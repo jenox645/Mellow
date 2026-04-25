@@ -1,0 +1,10 @@
+build/
+dist/
+__pycache__/
+*.pyc
+static/app.bundle.js
+static/react.min.js
+static/react-dom.min.js
+*.spec.bak
+node_modules/
+.vscode/
