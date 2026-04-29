@@ -1,0 +1,1155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MELLOW // DATA LAKE COMMANDER</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@300;400;500;600;700;800&family=Share+Tech+Mono&family=Exo+2:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#07090F;
+  --bg1:#0C1118;
+  --bg2:#111928;
+  --bg3:#162035;
+  --cyan:#00D8FF;
+  --cyan2:rgba(0,216,255,0.2);
+  --cyan3:rgba(0,216,255,0.06);
+  --amber:#FFAD00;
+  --amber2:rgba(255,173,0,0.18);
+  --red:#FF3B61;
+  --red2:rgba(255,59,97,0.14);
+  --green:#00FF94;
+  --green2:rgba(0,255,148,0.12);
+  --purple:#C084FC;
+  --t1:#D8ECF5;
+  --t2:#8AABB8;
+  --t3:#3D6070;
+  --t4:#1E3A48;
+  --border:rgba(0,216,255,0.1);
+  --border2:rgba(0,216,255,0.35);
+}
+html,body{height:100%;background:var(--bg);color:var(--t1);font-family:'Exo 2',sans-serif;font-size:13px;overflow:hidden}
+/* SCANLINES */
+body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradient(0deg,rgba(0,0,0,0.025) 0,rgba(0,0,0,0.025) 1px,transparent 1px,transparent 3px);pointer-events:none;z-index:9999}
+/* GRID */
+body::after{content:'';position:fixed;inset:0;background-image:linear-gradient(rgba(0,216,255,0.025) 1px,transparent 1px),linear-gradient(90deg,rgba(0,216,255,0.025) 1px,transparent 1px);background-size:44px 44px;pointer-events:none;z-index:0}
+.app{display:flex;height:100vh;position:relative;z-index:1}
+
+/* SIDEBAR */
+.sidebar{width:210px;flex-shrink:0;background:var(--bg1);border-right:1px solid var(--border);display:flex;flex-direction:column;position:relative;overflow:hidden}
+.sidebar::after{content:'';position:absolute;top:0;right:0;width:1px;height:60%;background:linear-gradient(180deg,transparent,var(--cyan),transparent);opacity:0.25;top:20%}
+.logo-area{padding:22px 18px 16px;border-bottom:1px solid var(--border)}
+.logo{display:flex;align-items:center;gap:10px;margin-bottom:6px}
+.logo-img{width:34px;height:34px;object-fit:contain;filter:drop-shadow(0 0 6px rgba(0,216,255,0.5))}
+.logo-text{font-family:'Oxanium',sans-serif;font-size:20px;font-weight:800;color:var(--cyan);letter-spacing:0.12em;text-shadow:0 0 18px rgba(0,216,255,0.5)}
+.logo-sub{font-family:'Share Tech Mono',monospace;font-size:8.5px;color:var(--t3);letter-spacing:0.22em;text-transform:uppercase}
+.nav{padding:12px 0;flex:1}
+.nav-section{padding:10px 16px 4px;font-family:'Share Tech Mono',monospace;font-size:8px;color:var(--t4);letter-spacing:0.2em;text-transform:uppercase;display:flex;align-items:center;gap:6px}
+.nav-section::before{content:'//';color:var(--t3)}
+.nav-item{display:flex;align-items:center;gap:11px;padding:9px 18px;cursor:pointer;transition:all 0.18s;position:relative;border-left:2px solid transparent;color:var(--t2);font-size:12.5px;font-weight:500;letter-spacing:0.02em;user-select:none}
+.nav-item:hover{color:var(--t1);background:var(--cyan3)}
+.nav-item.active{color:var(--cyan);background:var(--cyan3);border-left-color:var(--cyan)}
+.nav-item .nnum{font-family:'Share Tech Mono',monospace;font-size:8px;color:var(--t4);margin-left:auto}
+.nav-item.active .nnum{color:var(--cyan)}
+.nbadge{background:var(--cyan);color:var(--bg);font-size:8px;font-weight:700;padding:1px 5px;border-radius:1px;margin-left:auto;font-family:'Share Tech Mono',monospace}
+.nav-icon{width:15px;height:15px;flex-shrink:0;opacity:0.65}
+.nav-item.active .nav-icon{opacity:1}
+.sys-panel{padding:14px 18px;border-top:1px solid var(--border)}
+.sys-title{font-family:'Share Tech Mono',monospace;font-size:8px;color:var(--t3);letter-spacing:0.18em;text-transform:uppercase;margin-bottom:10px;display:flex;align-items:center;gap:6px}
+.sys-stat{display:flex;justify-content:space-between;font-size:10.5px;margin-bottom:5px;color:var(--t2)}
+.sys-stat span:last-child{font-family:'Share Tech Mono',monospace;color:var(--cyan)}
+.sys-online{display:flex;align-items:center;gap:6px;margin-top:10px}
+.sdot{width:5px;height:5px;border-radius:50%;background:var(--green);box-shadow:0 0 7px var(--green);animation:sdot 2.2s infinite}
+@keyframes sdot{0%,100%{opacity:1}50%{opacity:0.35}}
+.stext{font-family:'Share Tech Mono',monospace;font-size:8.5px;color:var(--green);letter-spacing:0.12em}
+.mini-graph{margin-top:10px;height:28px;position:relative}
+.mini-graph canvas{width:100%;height:100%}
+
+/* MAIN */
+.main{flex:1;display:flex;flex-direction:column;overflow:hidden}
+
+/* TOPBAR */
+.topbar{height:44px;background:var(--bg1);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 22px;gap:14px;flex-shrink:0}
+.topbar-path{font-family:'Share Tech Mono',monospace;font-size:9.5px;color:var(--t3);letter-spacing:0.08em}
+.topbar-path .acc{color:var(--cyan)}
+.topbar-spacer{flex:1}
+.topbar-time{font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--t3)}
+.topbar-tag{font-family:'Share Tech Mono',monospace;font-size:8px;padding:2px 7px;border:1px solid var(--border);color:var(--t3);letter-spacing:0.12em;text-transform:uppercase}
+
+/* CONTENT */
+.content{flex:1;overflow-y:auto;padding:22px;display:none}
+.content.active{display:block}
+.content::-webkit-scrollbar{width:3px}
+.content::-webkit-scrollbar-track{background:var(--bg1)}
+.content::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
+
+/* VIEW HEADERS */
+.vhead{display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:22px}
+.vlabel{font-family:'Share Tech Mono',monospace;font-size:9px;color:var(--t3);letter-spacing:0.22em;text-transform:uppercase;margin-bottom:4px;display:flex;align-items:center;gap:6px}
+.vlabel::before{content:'//';color:var(--cyan)}
+.vtitle{font-family:'Oxanium',sans-serif;font-size:26px;font-weight:700;color:var(--t1);letter-spacing:0.05em;line-height:1}
+.vtitle .c{color:var(--cyan);text-shadow:0 0 18px rgba(0,216,255,0.4)}
+.vtitle .a{color:var(--amber)}
+.vright{font-family:'Share Tech Mono',monospace;font-size:9px;color:var(--t3);text-align:right;line-height:1.8}
+.vright .acc{color:var(--cyan)}
+
+/* PANELS */
+.panel{background:var(--bg1);border:1px solid var(--border);position:relative;overflow:hidden}
+.panel-hud{position:absolute;top:0;left:0;width:26px;height:26px;border-top:1px solid var(--cyan);border-left:1px solid var(--cyan);pointer-events:none;opacity:0.5}
+.panel-hud-br{position:absolute;bottom:0;right:0;width:26px;height:26px;border-bottom:1px solid var(--cyan);border-right:1px solid var(--cyan);pointer-events:none;opacity:0.5}
+.ph{padding:11px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:9px}
+.ptag{font-family:'Share Tech Mono',monospace;font-size:7.5px;color:var(--bg);background:var(--cyan);padding:2px 5px;letter-spacing:0.1em}
+.ptag.amber{background:var(--amber)}
+.ptag.red{background:var(--red)}
+.ptag.green{background:var(--green)}
+.ptitle{font-family:'Oxanium',sans-serif;font-size:12.5px;font-weight:600;color:var(--t1);letter-spacing:0.08em}
+.psub{font-family:'Share Tech Mono',monospace;font-size:8px;color:var(--t3);margin-left:auto;letter-spacing:0.1em}
+
+/* URL PANEL */
+.url-row{display:flex;gap:10px;align-items:center;padding:18px}
+.url-input{flex:1;background:var(--bg);border:1px solid var(--border);color:var(--t1);padding:11px 14px;font-family:'Share Tech Mono',monospace;font-size:11.5px;outline:none;transition:border-color 0.2s}
+.url-input:focus{border-color:var(--cyan);box-shadow:0 0 0 1px rgba(0,216,255,0.2)}
+.url-input::placeholder{color:var(--t4)}
+.btn{padding:11px 20px;font-family:'Oxanium',sans-serif;font-size:12px;font-weight:600;letter-spacing:0.1em;cursor:pointer;border:none;transition:all 0.18s;text-transform:uppercase;clip-path:polygon(7px 0%,100% 0%,100% calc(100% - 7px),calc(100% - 7px) 100%,0% 100%,0% 7px)}
+.btn-primary{background:var(--cyan);color:var(--bg)}
+.btn-primary:hover{background:#00EEFF;box-shadow:0 0 16px rgba(0,216,255,0.4)}
+.btn-secondary{background:var(--bg2);color:var(--t2);border:1px solid var(--border)}
+.btn-secondary:hover{border-color:var(--cyan);color:var(--t1)}
+.btn-danger{background:var(--red2);color:var(--red);border:1px solid rgba(255,59,97,0.3)}
+.btn-danger:hover{background:var(--red);color:var(--bg)}
+.btn-sm{padding:6px 12px;font-size:10px}
+
+/* DOWNLOAD CARD */
+.dl-card{margin:0 18px 18px;background:var(--bg2);border:1px solid var(--border);position:relative;overflow:hidden}
+.dl-card::before{content:'ACTIVE';position:absolute;top:9px;right:12px;font-family:'Share Tech Mono',monospace;font-size:7.5px;color:var(--cyan);letter-spacing:0.2em;opacity:0.6}
+.dl-inner{display:flex;gap:0;align-items:stretch}
+.dl-thumb{width:120px;height:80px;flex-shrink:0;object-fit:cover;display:block;background:var(--bg3)}
+.dl-thumb-ph{width:120px;height:80px;flex-shrink:0;background:linear-gradient(135deg,var(--bg3),var(--bg2));display:flex;align-items:center;justify-content:center;font-size:28px;color:var(--t4)}
+.dl-info{flex:1;padding:12px 14px;min-width:0}
+.dl-title{font-family:'Oxanium',sans-serif;font-size:14px;font-weight:600;color:var(--t1);margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dl-ch{font-family:'Share Tech Mono',monospace;font-size:9px;color:var(--t3);margin-bottom:8px;letter-spacing:0.05em}
+.dl-tags{display:flex;gap:5px;margin-bottom:10px;flex-wrap:wrap}
+.tag{font-family:'Share Tech Mono',monospace;font-size:8.5px;padding:2px 6px;border:1px solid var(--border);color:var(--t3);letter-spacing:0.06em}
+.tag.cyan{border-color:rgba(0,216,255,0.35);color:var(--cyan)}
+.tag.amber{border-color:rgba(255,173,0,0.35);color:var(--amber)}
+.tag.red{border-color:rgba(255,59,97,0.35);color:var(--red)}
+.tag.green{border-color:rgba(0,255,148,0.35);color:var(--green)}
+.tag.purple{border-color:rgba(192,132,252,0.35);color:var(--purple)}
+.prog-row{display:flex;align-items:center;gap:10px;margin-bottom:6px}
+.prog-bar{flex:1;height:5px;background:var(--bg3);position:relative;overflow:hidden}
+.prog-bar-fill{height:100%;background:linear-gradient(90deg,var(--cyan),rgba(0,216,255,0.6));position:relative;transition:width 0.5s}
+.prog-bar-fill::after{content:'';position:absolute;right:0;top:0;height:100%;width:20px;background:linear-gradient(90deg,transparent,rgba(255,255,255,0.4));animation:shimmer 1.2s infinite}
+@keyframes shimmer{0%{opacity:0}50%{opacity:1}100%{opacity:0}}
+.prog-pct{font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--cyan);min-width:38px}
+.dl-meta{display:flex;gap:14px;font-family:'Share Tech Mono',monospace;font-size:9px;color:var(--t3)}
+.dl-meta .acc{color:var(--cyan)}
+.dl-side{width:200px;flex-shrink:0;padding:12px 14px;border-left:1px solid var(--border);background:var(--bg1)}
+.dl-side-title{font-family:'Share Tech Mono',monospace;font-size:8px;color:var(--t3);letter-spacing:0.15em;text-transform:uppercase;margin-bottom:8px}
+.dl-kv{display:flex;justify-content:space-between;margin-bottom:4px;font-size:10px}
+.dl-kv .k{color:var(--t3);font-family:'Share Tech Mono',monospace;font-size:8.5px;letter-spacing:0.06em}
+.dl-kv .v{color:var(--t1);font-family:'Share Tech Mono',monospace;font-size:8.5px}
+
+/* QUEUE */
+.q-item{display:flex;align-items:center;gap:11px;padding:10px 14px;border-bottom:1px solid var(--border);transition:background 0.15s;cursor:pointer}
+.q-item:hover{background:var(--cyan3)}
+.q-item:last-child{border-bottom:none}
+.q-drag{color:var(--t4);font-size:12px;cursor:grab;flex-shrink:0}
+.q-thumb{width:50px;height:35px;object-fit:cover;background:var(--bg3);flex-shrink:0}
+.q-thumb-ph{width:50px;height:35px;background:var(--bg3);flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:14px;color:var(--t4)}
+.q-name{flex:1;font-size:12px;font-weight:500;color:var(--t1);min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.q-fmt{font-family:'Share Tech Mono',monospace;font-size:9px;color:var(--t3);width:38px;text-align:center}
+.q-qual{font-family:'Share Tech Mono',monospace;font-size:9px;color:var(--t3);width:44px;text-align:center}
+.q-size{font-family:'Share Tech Mono',monospace;font-size:9px;color:var(--t3);width:50px;text-align:right}
+.q-status{width:70px;text-align:right}
+.q-st-badge{font-family:'Share Tech Mono',monospace;font-size:8px;padding:2px 6px;letter-spacing:0.1em;text-transform:uppercase}
+.q-st-badge.queued{color:var(--cyan);border:1px solid rgba(0,216,255,0.3)}
+.q-st-badge.waiting{color:var(--amber);border:1px solid rgba(255,173,0,0.3)}
+.q-st-badge.paused{color:var(--purple);border:1px solid rgba(192,132,252,0.3)}
+.q-del{width:24px;height:24px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--t4);transition:color 0.15s}
+.q-del:hover{color:var(--red)}
+
+/* GRID */
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
+.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:16px}
+.g4{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:16px;margin-bottom:16px}
+
+/* STAT CARDS */
+.stat{background:var(--bg1);border:1px solid var(--border);padding:16px 18px;position:relative;overflow:hidden}
+.stat::before{content:'';position:absolute;top:0;left:0;width:22px;height:22px;border-top:1px solid var(--cyan);border-left:1px solid var(--cyan);opacity:0.45}
+.stat-label{font-family:'Share Tech Mono',monospace;font-size:8.5px;color:var(--t3);letter-spacing:0.18em;text-transform:uppercase;margin-bottom:6px}
+.stat-value{font-family:'Oxanium',sans-serif;font-size:28px;font-weight:700;line-height:1}
+.stat-value.cyan{color:var(--cyan);text-shadow:0 0 12px rgba(0,216,255,0.35)}
+.stat-value.amber{color:var(--amber)}
+.stat-value.green{color:var(--green)}
+.stat-value.red{color:var(--red)}
+.stat-sub{font-family:'Share Tech Mono',monospace;font-size:8.5px;color:var(--t3);margin-top:4px}
+.stat-delta{font-size:9px;margin-top:4px}
+.stat-delta.pos{color:var(--green)}
+.stat-delta.neg{color:var(--red)}
+
+/* LIBRARY GRID */
+.lib-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;margin-bottom:16px}
+.lib-card{background:var(--bg2);border:1px solid var(--border);overflow:hidden;cursor:pointer;transition:all 0.18s;position:relative}
+.lib-card:hover{border-color:rgba(0,216,255,0.35);transform:translateY(-2px)}
+.lib-thumb{width:100%;height:95px;object-fit:cover;background:var(--bg3);display:block}
+.lib-thumb-ph{width:100%;height:95px;background:linear-gradient(135deg,var(--bg3),var(--bg2));display:flex;align-items:center;justify-content:center;font-size:24px;color:var(--t4)}
+.lib-dur{position:absolute;top:6px;right:6px;background:rgba(7,9,15,0.85);font-family:'Share Tech Mono',monospace;font-size:8.5px;color:var(--t1);padding:1px 5px}
+.lib-fmt{position:absolute;top:6px;left:6px;font-family:'Share Tech Mono',monospace;font-size:7.5px;padding:1px 5px}
+.lib-fmt.mp4{background:rgba(0,216,255,0.2);color:var(--cyan)}
+.lib-fmt.mp3{background:rgba(255,173,0,0.2);color:var(--amber)}
+.lib-fmt.webm{background:rgba(192,132,252,0.2);color:var(--purple)}
+.lib-body{padding:9px 10px}
+.lib-title{font-size:11.5px;font-weight:600;color:var(--t1);margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lib-meta{font-family:'Share Tech Mono',monospace;font-size:8.5px;color:var(--t3)}
+
+/* ANALYTICS */
+.chart-panel{background:var(--bg1);border:1px solid var(--border);padding:18px;position:relative;overflow:hidden}
+.chart-title{font-family:'Oxanium',sans-serif;font-size:13px;font-weight:600;color:var(--t1);margin-bottom:4px;letter-spacing:0.06em}
+.chart-sub{font-family:'Share Tech Mono',monospace;font-size:8.5px;color:var(--t3);letter-spacing:0.1em;margin-bottom:16px}
+.chart-wrap{position:relative}
+canvas.chart{display:block;width:100%!important}
+
+/* HEATMAP */
+.heatmap{display:grid;grid-template-columns:repeat(24,1fr);gap:2px;margin-top:8px}
+.hm-cell{height:18px;border-radius:1px;transition:opacity 0.2s}
+.hm-labels{display:flex;justify-content:space-between;font-family:'Share Tech Mono',monospace;font-size:7.5px;color:var(--t3);margin-top:4px}
+
+/* API PANEL */
+.endpoint{padding:10px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;cursor:pointer;transition:background 0.15s}
+.endpoint:hover{background:var(--cyan3)}
+.method{font-family:'Share Tech Mono',monospace;font-size:9px;font-weight:700;width:36px;text-align:center;padding:2px 4px}
+.method.get{color:var(--green);border:1px solid rgba(0,255,148,0.3)}
+.method.post{color:var(--amber);border:1px solid rgba(255,173,0,0.3)}
+.method.del{color:var(--red);border:1px solid rgba(255,59,97,0.3)}
+.ep-path{font-family:'Share Tech Mono',monospace;font-size:10.5px;color:var(--cyan);flex:1}
+.ep-desc{font-size:10.5px;color:var(--t3);flex:1;text-align:right}
+.code-block{background:var(--bg);border:1px solid var(--border);padding:14px 16px;font-family:'Share Tech Mono',monospace;font-size:10.5px;color:var(--t2);line-height:1.7;overflow-x:auto;margin:14px 0}
+.code-block .key{color:var(--purple)}
+.code-block .str{color:var(--amber)}
+.code-block .num{color:var(--cyan)}
+.code-block .comment{color:var(--t4)}
+
+/* SETTINGS */
+.settings-row{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--border)}
+.settings-label{flex:1}
+.settings-label .sl-name{font-size:12.5px;font-weight:500;color:var(--t1);margin-bottom:2px}
+.settings-label .sl-sub{font-family:'Share Tech Mono',monospace;font-size:9px;color:var(--t3)}
+.settings-ctrl{flex-shrink:0}
+.sel{background:var(--bg2);border:1px solid var(--border);color:var(--t1);padding:7px 10px;font-family:'Share Tech Mono',monospace;font-size:10.5px;outline:none;cursor:pointer;min-width:130px}
+.inp-sm{background:var(--bg2);border:1px solid var(--border);color:var(--t1);padding:7px 10px;font-family:'Share Tech Mono',monospace;font-size:10.5px;outline:none;width:180px}
+.inp-sm:focus{border-color:var(--cyan)}
+/* TOGGLE */
+.toggle{width:36px;height:20px;background:var(--bg3);border:1px solid var(--border);border-radius:10px;position:relative;cursor:pointer;transition:background 0.2s}
+.toggle.on{background:rgba(0,216,255,0.25);border-color:var(--cyan)}
+.toggle::after{content:'';position:absolute;width:12px;height:12px;background:var(--t3);border-radius:50%;top:3px;left:3px;transition:all 0.2s}
+.toggle.on::after{left:19px;background:var(--cyan);box-shadow:0 0 6px rgba(0,216,255,0.5)}
+
+/* DECORATIVE LINES */
+.deco-line{height:1px;background:linear-gradient(90deg,transparent,var(--cyan),transparent);opacity:0.2;margin:18px 0}
+
+/* FLASH ANIM */
+@keyframes fadein{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
+.content.active{animation:fadein 0.2s ease-out}
+
+/* PROGRESS INDICATOR */
+.step-dots{display:flex;gap:4px;align-items:center}
+.sdot2{width:6px;height:6px;border-radius:50%;background:var(--border2)}
+.sdot2.done{background:var(--green)}
+.sdot2.active{background:var(--cyan);box-shadow:0 0 6px var(--cyan)}
+.sdot2.fail{background:var(--red)}
+.step-line{flex:1;height:1px;background:var(--border)}
+.step-line.done{background:var(--green)}
+
+/* NOTIF */
+.notif{position:fixed;top:54px;right:18px;background:var(--bg2);border:1px solid var(--border2);border-left:3px solid var(--cyan);padding:10px 14px;width:260px;z-index:100;animation:notif-in 0.3s ease-out;display:none}
+@keyframes notif-in{from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1}}
+.notif.show{display:block}
+.notif-title{font-family:'Oxanium',sans-serif;font-size:12px;font-weight:600;color:var(--cyan);margin-bottom:3px}
+.notif-body{font-family:'Share Tech Mono',monospace;font-size:9.5px;color:var(--t2)}
+</style>
+</head>
+<body>
+<div class="app">
+
+<!-- SIDEBAR -->
+<aside class="sidebar">
+  <div class="logo-area">
+    <div class="logo">
+      <img class="logo-img" src="data:image/png;base64,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" alt="Mellow">
+      <span class="logo-text">MELLOW</span>
+    </div>
+    <div class="logo-sub">Data Lake Commander · v1.0.0</div>
+  </div>
+  <nav class="nav">
+    <div class="nav-section">CORE</div>
+    <div class="nav-item active" onclick="switchTab('feed')">
+      <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+      FEED
+      <span class="nnum">01</span>
+    </div>
+    <div class="nav-item" onclick="switchTab('queue')">
+      <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+      QUEUE
+      <span class="nbadge">3</span>
+    </div>
+    <div class="nav-item" onclick="switchTab('vault')">
+      <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8m-4-4v4"/></svg>
+      VAULT
+      <span class="nnum">03</span>
+    </div>
+    <div class="nav-section">DATA LAKE</div>
+    <div class="nav-item" onclick="switchTab('lake')">
+      <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+      ANALYTICS
+      <span class="nnum">04</span>
+    </div>
+    <div class="nav-item" onclick="switchTab('signal')">
+      <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><circle cx="12" cy="20" r="1" fill="currentColor"/></svg>
+      SIGNAL API
+      <span class="nnum">05</span>
+    </div>
+    <div class="nav-item" onclick="switchTab('config')">
+      <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      CONFIG
+      <span class="nnum">06</span>
+    </div>
+  </nav>
+  <div class="sys-panel">
+    <div class="sys-title">SYS STATUS</div>
+    <div class="sys-stat"><span>DL SPEED</span><span>8.2 MB/s</span></div>
+    <div class="sys-stat"><span>ACTIVE</span><span>1</span></div>
+    <div class="sys-stat"><span>QUEUED</span><span>3</span></div>
+    <div class="sys-stat"><span>TOTAL DB</span><span>35.4 GB</span></div>
+    <div class="sys-stat"><span>RECORDS</span><span>847</span></div>
+    <div class="sys-online">
+      <div class="sdot"></div>
+      <div class="stext">ALL SYSTEMS NOMINAL</div>
+    </div>
+    <div class="mini-graph" style="margin-top:10px">
+      <canvas id="miniGraph" height="28"></canvas>
+    </div>
+  </div>
+</aside>
+
+<!-- MAIN -->
+<main class="main">
+  <div class="topbar">
+    <div class="topbar-path">MELLOW · <span class="acc">COMMAND CENTER</span> · ホーム</div>
+    <div class="topbar-spacer"></div>
+    <div class="topbar-time" id="topbar-time">--:--:--</div>
+    <div class="topbar-tag">2025/01/15</div>
+    <div class="topbar-tag" style="color:var(--cyan);border-color:rgba(0,216,255,0.35)">ADMIN</div>
+  </div>
+
+  <!-- ======= FEED TAB ======= -->
+  <div class="content active" id="tab-feed">
+    <div class="vhead">
+      <div>
+        <div class="vlabel">ダッシュボード / COMMAND FEED</div>
+        <div class="vtitle"><span class="c">FEED</span> COMMAND</div>
+      </div>
+      <div class="vright">
+        <div>USER // <span class="acc">ADMIN</span></div>
+        <div id="feed-time">2025 / 01 / 15 — 09:41</div>
+      </div>
+    </div>
+
+    <!-- URL INPUT -->
+    <div class="panel" style="margin-bottom:16px">
+      <div class="panel-hud"></div><div class="panel-hud-br"></div>
+      <div class="ph">
+        <span class="ptag">INGEST</span>
+        <span class="ptitle">URL PASTE — URLを貼り付け</span>
+        <span class="psub">PASTE URL HERE</span>
+      </div>
+      <div class="url-row">
+        <input class="url-input" type="text" placeholder="https://www.youtube.com/watch?v=... or any supported platform URL">
+        <button class="btn btn-secondary btn-sm" style="clip-path:none" onclick="showNotif('Analyzing URL...','Fetching metadata from platform API.')">FORMATS</button>
+        <button class="btn btn-primary" onclick="showNotif('Download queued!','Added to QUEUE — position 4 of 4.')">ANALYZE →</button>
+      </div>
+    </div>
+
+    <!-- ACTIVE DOWNLOAD -->
+    <div class="panel" style="margin-bottom:16px">
+      <div class="panel-hud"></div><div class="panel-hud-br"></div>
+      <div class="ph">
+        <span class="ptag">ACTIVE</span>
+        <span class="ptitle">NOW PROCESSING — 処理中</span>
+        <span class="psub">1 / 1 ACTIVE</span>
+      </div>
+      <div class="dl-card" style="margin:14px;background:var(--bg);border-color:rgba(0,216,255,0.2)">
+        <div class="dl-inner">
+          <div class="dl-thumb-ph">▶</div>
+          <div class="dl-info">
+            <div class="dl-title">NIKKE OST - EMPRESS Extended Mix</div>
+            <div class="dl-ch">Channel: NIKKE Official · youtube.com</div>
+            <div class="dl-tags">
+              <span class="tag cyan">MP4</span>
+              <span class="tag">1080p</span>
+              <span class="tag">H.264</span>
+              <span class="tag amber">60fps</span>
+              <span class="tag">AAC</span>
+            </div>
+            <div class="prog-row">
+              <div class="prog-bar" style="flex:1"><div class="prog-bar-fill" id="prog-fill" style="width:68.4%"></div></div>
+              <span class="prog-pct" id="prog-pct">68.4%</span>
+            </div>
+            <div class="dl-meta">
+              <span>28.7 MB / <span class="acc">41.9 MB</span></span>
+              <span>↓ <span class="acc">8.2 MB/s</span></span>
+              <span>ETA <span class="acc">00:00:08</span></span>
+              <span>THREADS <span class="acc">16</span></span>
+            </div>
+          </div>
+          <div class="dl-side">
+            <div class="dl-side-title">DETAILS — 詳細</div>
+            <div class="dl-kv"><span class="k">FORMAT</span><span class="v">MP4 (H.264)</span></div>
+            <div class="dl-kv"><span class="k">RESOLUTION</span><span class="v">1920×1080</span></div>
+            <div class="dl-kv"><span class="k">FRAMERATE</span><span class="v">60 fps</span></div>
+            <div class="dl-kv"><span class="k">AUDIO</span><span class="v">AAC 128kbps</span></div>
+            <div class="dl-kv"><span class="k">SIZE</span><span class="v">41.9 MB (est.)</span></div>
+            <div class="dl-kv"><span class="k">PLATFORM</span><span class="v">YouTube</span></div>
+            <div class="dl-kv"><span class="k">ADDED</span><span class="v">09:38:12</span></div>
+            <div style="margin-top:10px;display:flex;gap:6px">
+              <button class="btn btn-secondary btn-sm" style="clip-path:none;flex:1">⏸</button>
+              <button class="btn btn-danger btn-sm" style="clip-path:none;flex:1">✕ CANCEL</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- STEP INDICATOR -->
+      <div style="padding:10px 28px 14px;display:flex;align-items:center;gap:4px;font-family:'Share Tech Mono',monospace;font-size:8px;color:var(--t3)">
+        <div class="sdot2 done"></div><div class="step-line done"></div>
+        <span style="color:var(--green)">FETCH</span>
+        <div class="step-line done"></div><div class="sdot2 done"></div><div class="step-line done"></div>
+        <span style="color:var(--green)">META</span>
+        <div class="step-line done"></div><div class="sdot2 active"></div><div class="step-line"></div>
+        <span style="color:var(--cyan)">DOWNLOAD</span>
+        <div class="step-line"></div><div class="sdot2"></div><div class="step-line"></div>
+        <span>MERGE</span>
+        <div class="step-line"></div><div class="sdot2"></div><div class="step-line"></div>
+        <span>INDEX</span>
+        <div class="step-line"></div><div class="sdot2"></div>
+        <span>WRITE DB</span>
+      </div>
+    </div>
+
+    <!-- QUEUE PREVIEW + STATS SIDE BY SIDE -->
+    <div class="g2" style="margin-bottom:16px">
+      <div class="panel">
+        <div class="panel-hud"></div><div class="panel-hud-br"></div>
+        <div class="ph">
+          <span class="ptag">QUEUE</span>
+          <span class="ptitle">WAITING — 待機中</span>
+          <span class="psub">3 PENDING</span>
+        </div>
+        <div class="q-item">
+          <span class="q-drag">⋮⋮</span>
+          <div class="q-thumb-ph">♫</div>
+          <span class="q-name">Arknights EP - Requiem / Near Light</span>
+          <span class="q-fmt">MP3</span>
+          <span class="q-qual">320k</span>
+          <span class="q-size">12.8 MB</span>
+          <div class="q-status"><span class="q-st-badge queued">QUEUED</span></div>
+          <div class="q-del" onclick="showNotif('Removed','Arknights EP removed from queue.')">✕</div>
+        </div>
+        <div class="q-item">
+          <span class="q-drag">⋮⋮</span>
+          <div class="q-thumb-ph">▶</div>
+          <span class="q-name">Honkai Star Rail - Official Trailer</span>
+          <span class="q-fmt">MP4</span>
+          <span class="q-qual">1080p</span>
+          <span class="q-size">82.3 MB</span>
+          <div class="q-status"><span class="q-st-badge waiting">WAIT</span></div>
+          <div class="q-del">✕</div>
+        </div>
+        <div class="q-item">
+          <span class="q-drag">⋮⋮</span>
+          <div class="q-thumb-ph">♫</div>
+          <span class="q-name">Blue Archive OST - Unwelcome School</span>
+          <span class="q-fmt">MP3</span>
+          <span class="q-qual">320k</span>
+          <span class="q-size">9.7 MB</span>
+          <div class="q-status"><span class="q-st-badge waiting">WAIT</span></div>
+          <div class="q-del">✕</div>
+        </div>
+        <div style="padding:10px 14px;border-top:1px solid var(--border);display:flex;gap:8px">
+          <button class="btn btn-secondary btn-sm" style="clip-path:none" onclick="switchTab('queue')">VIEW ALL →</button>
+          <button class="btn btn-danger btn-sm" style="clip-path:none;margin-left:auto" onclick="showNotif('Queue cleared','All 3 pending items removed.')">CLEAR QUEUE</button>
+        </div>
+      </div>
+
+      <!-- SYSTEM STATS -->
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div class="g2" style="margin-bottom:0">
+          <div class="stat"><div class="stat-label">TOTAL RECORDS</div><div class="stat-value cyan">847</div><div class="stat-sub">+12 today</div></div>
+          <div class="stat"><div class="stat-label">STORAGE USED</div><div class="stat-value amber">35.4 GB</div><div class="stat-sub">of 2 TB</div></div>
+        </div>
+        <div class="g2" style="margin-bottom:0">
+          <div class="stat"><div class="stat-label">DL TODAY</div><div class="stat-value green">24</div><div class="stat-delta pos">↑ +8 vs yesterday</div></div>
+          <div class="stat"><div class="stat-label">AVG SPEED</div><div class="stat-value cyan">6.4<span style="font-size:14px"> MB/s</span></div><div class="stat-sub">peak 12.1 MB/s</div></div>
+        </div>
+        <div class="panel" style="flex:1">
+          <div class="ph"><span class="ptag">RECENT</span><span class="ptitle">LAST 6H THROUGHPUT</span></div>
+          <div style="padding:14px"><canvas id="miniThroughput" height="70"></canvas></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ======= QUEUE TAB ======= -->
+  <div class="content" id="tab-queue">
+    <div class="vhead">
+      <div>
+        <div class="vlabel">キュー / DOWNLOAD QUEUE</div>
+        <div class="vtitle">QUEUE <span class="c">CONTROL</span></div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:flex-end">
+        <button class="btn btn-secondary btn-sm" style="clip-path:none">IMPORT BATCH</button>
+        <button class="btn btn-primary btn-sm" onclick="showNotif('Queue started','Processing 3 items in sequence.')">▶ START ALL</button>
+      </div>
+    </div>
+    <div class="g4" style="margin-bottom:16px">
+      <div class="stat"><div class="stat-label">QUEUED</div><div class="stat-value cyan">3</div></div>
+      <div class="stat"><div class="stat-label">ACTIVE</div><div class="stat-value amber">1</div></div>
+      <div class="stat"><div class="stat-label">PAUSED</div><div class="stat-value" style="color:var(--purple)">0</div></div>
+      <div class="stat"><div class="stat-label">FAILED</div><div class="stat-value red">0</div></div>
+    </div>
+    <div class="panel" style="margin-bottom:16px">
+      <div class="panel-hud"></div><div class="panel-hud-br"></div>
+      <div class="ph">
+        <span class="ptag">ACTIVE</span>
+        <span class="ptitle">NOW DOWNLOADING</span>
+        <span class="psub" style="color:var(--cyan)">68.4% COMPLETE</span>
+      </div>
+      <div class="q-item" style="background:var(--cyan3);border-left:2px solid var(--cyan)">
+        <span class="q-drag">⋮⋮</span>
+        <div class="q-thumb-ph" style="background:rgba(0,216,255,0.08)">▶</div>
+        <div style="flex:1;min-width:0">
+          <div class="q-name" style="font-size:13px;margin-bottom:4px">NIKKE OST - EMPRESS Extended Mix</div>
+          <div class="prog-bar" style="height:4px"><div class="prog-bar-fill" style="width:68.4%"></div></div>
+        </div>
+        <span class="q-fmt">MP4</span>
+        <span class="q-qual">1080p</span>
+        <span class="q-size">41.9 MB</span>
+        <div class="q-status"><span class="q-st-badge queued">ACTIVE</span></div>
+        <div class="q-del">⏸</div>
+        <div class="q-del">✕</div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-hud"></div><div class="panel-hud-br"></div>
+      <div class="ph">
+        <span class="ptag">QUEUE</span>
+        <span class="ptitle">PENDING DOWNLOADS — 待機中</span>
+        <div style="margin-left:auto;display:flex;gap:6px">
+          <button class="btn btn-secondary btn-sm" style="clip-path:none">SORT ↕</button>
+          <button class="btn btn-danger btn-sm" style="clip-path:none">CLEAR ALL</button>
+        </div>
+      </div>
+      <!-- Queue Header -->
+      <div style="display:flex;padding:6px 14px;border-bottom:1px solid var(--border);gap:11px">
+        <span style="width:18px"></span>
+        <span style="width:50px"></span>
+        <span style="flex:1;font-family:'Share Tech Mono',monospace;font-size:8.5px;color:var(--t3)">TITLE</span>
+        <span style="width:38px;font-family:'Share Tech Mono',monospace;font-size:8.5px;color:var(--t3);text-align:center">FMT</span>
+        <span style="width:44px;font-family:'Share Tech Mono',monospace;font-size:8.5px;color:var(--t3);text-align:center">QUAL</span>
+        <span style="width:50px;font-family:'Share Tech Mono',monospace;font-size:8.5px;color:var(--t3);text-align:right">SIZE</span>
+        <span style="width:70px;font-family:'Share Tech Mono',monospace;font-size:8.5px;color:var(--t3);text-align:right">STATUS</span>
+        <span style="width:48px"></span>
+      </div>
+      <div class="q-item">
+        <span class="q-drag">⋮⋮</span>
+        <div class="q-thumb-ph">♫</div>
+        <span class="q-name">Arknights EP - Requiem / Near Light (Full OST)</span>
+        <span class="q-fmt">MP3</span><span class="q-qual">320kbps</span><span class="q-size">12.8 MB</span>
+        <div class="q-status"><span class="q-st-badge queued">QUEUED</span></div>
+        <div class="q-del">⏸</div><div class="q-del">✕</div>
+      </div>
+      <div class="q-item">
+        <span class="q-drag">⋮⋮</span>
+        <div class="q-thumb-ph">▶</div>
+        <span class="q-name">Honkai Star Rail - Official Story Trailer v2.2</span>
+        <span class="q-fmt">MP4</span><span class="q-qual">1080p</span><span class="q-size">82.3 MB</span>
+        <div class="q-status"><span class="q-st-badge waiting">WAITING</span></div>
+        <div class="q-del">⏸</div><div class="q-del">✕</div>
+      </div>
+      <div class="q-item">
+        <span class="q-drag">⋮⋮</span>
+        <div class="q-thumb-ph">♫</div>
+        <span class="q-name">Blue Archive OST - Unwelcome School (Mitsuki Nakae)</span>
+        <span class="q-fmt">MP3</span><span class="q-qual">320kbps</span><span class="q-size">9.7 MB</span>
+        <div class="q-status"><span class="q-st-badge waiting">WAITING</span></div>
+        <div class="q-del">⏸</div><div class="q-del">✕</div>
+      </div>
+      <div class="q-item" style="background:var(--red2);border-left:2px solid var(--red)">
+        <span class="q-drag">⋮⋮</span>
+        <div class="q-thumb-ph" style="background:rgba(255,59,97,0.08)">!</div>
+        <span class="q-name">Punishing Gray Raven OST - Faded Rainbow</span>
+        <span class="q-fmt">WEBM</span><span class="q-qual">4K</span><span class="q-size">244 MB</span>
+        <div class="q-status"><span class="q-st-badge" style="color:var(--red);border-color:rgba(255,59,97,0.4)">ERROR</span></div>
+        <div class="q-del" style="color:var(--amber)">↻</div><div class="q-del">✕</div>
+      </div>
+      <div style="padding:10px 14px;border-top:1px solid var(--border);font-family:'Share Tech Mono',monospace;font-size:8.5px;color:var(--t3)">
+        TOTAL QUEUED: 4 ITEMS · EST. SIZE: 349.8 MB · ETA: ~42 MIN AT CURRENT SPEED
+      </div>
+    </div>
+  </div>
+
+  <!-- ======= VAULT TAB ======= -->
+  <div class="content" id="tab-vault">
+    <div class="vhead">
+      <div>
+        <div class="vlabel">ライブラリ / MEDIA VAULT</div>
+        <div class="vtitle">MEDIA <span class="c">VAULT</span></div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:flex-end">
+        <input class="inp-sm" type="text" placeholder="Search vault...">
+        <button class="btn btn-secondary btn-sm" style="clip-path:none">FILTER ▾</button>
+        <button class="btn btn-secondary btn-sm" style="clip-path:none">SORT ↕</button>
+      </div>
+    </div>
+    <div class="g4" style="margin-bottom:16px">
+      <div class="stat"><div class="stat-label">TOTAL ITEMS</div><div class="stat-value cyan">847</div><div class="stat-sub">across all platforms</div></div>
+      <div class="stat"><div class="stat-label">VIDEO (MP4)</div><div class="stat-value amber">412</div><div class="stat-sub">29.1 GB</div></div>
+      <div class="stat"><div class="stat-label">AUDIO (MP3)</div><div class="stat-value green">389</div><div class="stat-sub">4.8 GB</div></div>
+      <div class="stat"><div class="stat-label">OTHER</div><div class="stat-value" style="color:var(--purple)">46</div><div class="stat-sub">1.5 GB</div></div>
+    </div>
+    <div class="lib-grid">
+      <!-- Cards -->
+      <div class="lib-card" onclick="showNotif('NIKKE OST - EMPRESS','MP4 · 1920×1080 · 60fps · 41.9 MB')">
+        <div class="lib-thumb-ph">▶</div>
+        <span class="lib-dur">04:32</span>
+        <span class="lib-fmt mp4">MP4</span>
+        <div class="lib-body"><div class="lib-title">NIKKE OST - EMPRESS</div><div class="lib-meta">41.9 MB · 2025/01/14</div></div>
+      </div>
+      <div class="lib-card"><div class="lib-thumb-ph">♫</div><span class="lib-dur">03:50</span><span class="lib-fmt mp3">MP3</span><div class="lib-body"><div class="lib-title">Arknights EP - Requiem</div><div class="lib-meta">8.9 MB · 2025/01/14</div></div></div>
+      <div class="lib-card"><div class="lib-thumb-ph">▶</div><span class="lib-dur">02:16</span><span class="lib-fmt mp4">MP4</span><div class="lib-body"><div class="lib-title">Honkai Star Rail Trailer</div><div class="lib-meta">82.3 MB · 2025/01/13</div></div></div>
+      <div class="lib-card"><div class="lib-thumb-ph">♫</div><span class="lib-dur">03:19</span><span class="lib-fmt mp3">MP3</span><div class="lib-body"><div class="lib-title">Blue Archive OST</div><div class="lib-meta">7.2 MB · 2025/01/12</div></div></div>
+      <div class="lib-card"><div class="lib-thumb-ph">▶</div><span class="lib-dur">04:01</span><span class="lib-fmt mp4">MP4</span><div class="lib-body"><div class="lib-title">Fate/Grand Order CM</div><div class="lib-meta">27.1 MB · 2025/01/12</div></div></div>
+      <div class="lib-card"><div class="lib-thumb-ph">♫</div><span class="lib-dur">03:37</span><span class="lib-fmt mp3">MP3</span><div class="lib-body"><div class="lib-title">Punishing: Gray Raven OST</div><div class="lib-meta">8.6 MB · 2025/01/11</div></div></div>
+      <div class="lib-card"><div class="lib-thumb-ph">▶</div><span class="lib-dur">01:42</span><span class="lib-fmt mp4">MP4</span><div class="lib-body"><div class="lib-title">Genshin Impact Cutscene</div><div class="lib-meta">156 MB · 2025/01/11</div></div></div>
+      <div class="lib-card"><div class="lib-thumb-ph">♫</div><span class="lib-dur">05:12</span><span class="lib-fmt" style="background:rgba(192,132,252,0.2);color:var(--purple)">WEBM</span><div class="lib-body"><div class="lib-title">Tower of Fantasy Radio OST</div><div class="lib-meta">11.4 MB · 2025/01/10</div></div></div>
+      <div class="lib-card" style="border:1px dashed var(--border2);background:var(--cyan3);align-items:center;justify-content:center;display:flex;flex-direction:column;gap:6px;padding:20px;cursor:pointer" onclick="switchTab('feed')">
+        <div style="font-size:28px;color:var(--t4)">+</div>
+        <div style="font-family:'Share Tech Mono',monospace;font-size:8px;color:var(--t3);letter-spacing:0.15em;text-align:center">ADD NEW DOWNLOAD</div>
+      </div>
+    </div>
+    <div style="font-family:'Share Tech Mono',monospace;font-size:9px;color:var(--t3);text-align:center;padding:8px">
+      SHOWING 8 OF 847 RECORDS · SORTED BY DATE ADDED ↓
+    </div>
+  </div>
+
+  <!-- ======= LAKE TAB ======= -->
+  <div class="content" id="tab-lake">
+    <div class="vhead">
+      <div>
+        <div class="vlabel">データレイク / DATA LAKE ANALYTICS</div>
+        <div class="vtitle">DATA <span class="a">LAKE</span></div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:flex-end">
+        <button class="btn btn-secondary btn-sm" style="clip-path:none">EXPORT CSV</button>
+        <button class="btn btn-secondary btn-sm" style="clip-path:none">LAST 30D ▾</button>
+      </div>
+    </div>
+    <!-- KPI Row -->
+    <div class="g4" style="margin-bottom:16px">
+      <div class="stat"><div class="stat-label">TOTAL DOWNLOADS</div><div class="stat-value cyan">847</div><div class="stat-delta pos">↑ +24 this week</div></div>
+      <div class="stat"><div class="stat-label">STORAGE USED</div><div class="stat-value amber">35.4 GB</div><div class="stat-sub">avg 42.8 MB/item</div></div>
+      <div class="stat"><div class="stat-label">PLATFORMS</div><div class="stat-value green">7</div><div class="stat-sub">YT · SC · NND · TW + 3</div></div>
+      <div class="stat"><div class="stat-label">PEAK HOUR</div><div class="stat-value" style="color:var(--purple)">23:00</div><div class="stat-sub">most active</div></div>
+    </div>
+
+    <div class="g2" style="margin-bottom:16px">
+      <!-- TREND CHART -->
+      <div class="chart-panel">
+        <div class="panel-hud"></div><div class="panel-hud-br"></div>
+        <div class="chart-title">Download Trend</div>
+        <div class="chart-sub">DAILY DOWNLOADS · LAST 14 DAYS</div>
+        <div class="chart-wrap"><canvas id="trendChart" height="160"></canvas></div>
+      </div>
+      <!-- FORMAT DONUT -->
+      <div class="chart-panel">
+        <div class="panel-hud"></div><div class="panel-hud-br"></div>
+        <div class="chart-title">Storage by Format</div>
+        <div class="chart-sub">DISTRIBUTION ACROSS FORMATS</div>
+        <div style="display:flex;gap:20px;align-items:center">
+          <canvas id="donutChart" width="140" height="140"></canvas>
+          <div style="flex:1">
+            <div style="margin-bottom:10px">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px"><span style="display:flex;align-items:center;gap:6px"><span style="width:10px;height:10px;background:var(--cyan);display:inline-block"></span><span style="font-size:11px">MP4 Video</span></span><span style="font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--cyan)">29.1 GB</span></div>
+              <div class="prog-bar" style="height:4px"><div class="prog-bar-fill" style="width:82%;background:linear-gradient(90deg,var(--cyan),rgba(0,216,255,0.5))"></div></div>
+            </div>
+            <div style="margin-bottom:10px">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px"><span style="display:flex;align-items:center;gap:6px"><span style="width:10px;height:10px;background:var(--amber);display:inline-block"></span><span style="font-size:11px">MP3 Audio</span></span><span style="font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--amber)">4.8 GB</span></div>
+              <div class="prog-bar" style="height:4px"><div class="prog-bar-fill" style="width:14%;background:linear-gradient(90deg,var(--amber),rgba(255,173,0,0.5))"></div></div>
+            </div>
+            <div>
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px"><span style="display:flex;align-items:center;gap:6px"><span style="width:10px;height:10px;background:var(--purple);display:inline-block"></span><span style="font-size:11px">WEBM/Other</span></span><span style="font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--purple)">1.5 GB</span></div>
+              <div class="prog-bar" style="height:4px"><div class="prog-bar-fill" style="width:4%;background:linear-gradient(90deg,var(--purple),rgba(192,132,252,0.5))"></div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PLATFORM + HEATMAP -->
+    <div class="g2" style="margin-bottom:16px">
+      <div class="chart-panel">
+        <div class="panel-hud"></div><div class="panel-hud-br"></div>
+        <div class="chart-title">Downloads by Platform</div>
+        <div class="chart-sub">TOP SOURCES · ALL TIME</div>
+        <canvas id="platformChart" height="150"></canvas>
+      </div>
+      <div class="chart-panel">
+        <div class="panel-hud"></div><div class="panel-hud-br"></div>
+        <div class="chart-title">Activity Heatmap</div>
+        <div class="chart-sub">DOWNLOADS BY HOUR (0H → 23H)</div>
+        <div class="heatmap" id="heatmap"></div>
+        <div class="hm-labels"><span>00:00</span><span>06:00</span><span>12:00</span><span>18:00</span><span>23:00</span></div>
+        <div style="margin-top:14px;display:flex;gap:6px;align-items:center;font-family:'Share Tech Mono',monospace;font-size:8.5px;color:var(--t3)">
+          <span>LOW</span>
+          <div style="display:flex;gap:2px">
+            <div style="width:12px;height:12px;background:rgba(0,216,255,0.08)"></div>
+            <div style="width:12px;height:12px;background:rgba(0,216,255,0.25)"></div>
+            <div style="width:12px;height:12px;background:rgba(0,216,255,0.50)"></div>
+            <div style="width:12px;height:12px;background:rgba(0,216,255,0.75)"></div>
+            <div style="width:12px;height:12px;background:rgba(0,216,255,1)"></div>
+          </div>
+          <span>HIGH</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- RECENT DB RECORDS -->
+    <div class="panel">
+      <div class="panel-hud"></div><div class="panel-hud-br"></div>
+      <div class="ph"><span class="ptag amber">SQLITE</span><span class="ptitle">METADATA RECORDS — データベース</span><span class="psub">LAST 5 ENTRIES</span></div>
+      <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;font-family:'Share Tech Mono',monospace;font-size:9.5px">
+          <thead>
+            <tr style="border-bottom:1px solid var(--border)">
+              <th style="padding:7px 14px;text-align:left;color:var(--t3);font-weight:400;letter-spacing:0.1em">ID</th>
+              <th style="padding:7px 14px;text-align:left;color:var(--t3);font-weight:400">TITLE</th>
+              <th style="padding:7px 14px;text-align:left;color:var(--t3);font-weight:400">PLATFORM</th>
+              <th style="padding:7px 14px;text-align:left;color:var(--t3);font-weight:400">FORMAT</th>
+              <th style="padding:7px 14px;text-align:right;color:var(--t3);font-weight:400">SIZE</th>
+              <th style="padding:7px 14px;text-align:right;color:var(--t3);font-weight:400">TIMESTAMP</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr style="border-bottom:1px solid var(--border)"><td style="padding:7px 14px;color:var(--t3)">#847</td><td style="padding:7px 14px;color:var(--t1);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">NIKKE OST - EMPRESS Extended Mix</td><td style="padding:7px 14px;color:var(--cyan)">YouTube</td><td style="padding:7px 14px;color:var(--t2)">MP4 H.264</td><td style="padding:7px 14px;text-align:right;color:var(--t2)">41.9 MB</td><td style="padding:7px 14px;text-align:right;color:var(--t3)">09:38:12</td></tr>
+            <tr style="border-bottom:1px solid var(--border)"><td style="padding:7px 14px;color:var(--t3)">#846</td><td style="padding:7px 14px;color:var(--t1)">Arknights EP - Requiem</td><td style="padding:7px 14px;color:var(--cyan)">YouTube</td><td style="padding:7px 14px;color:var(--t2)">MP3</td><td style="padding:7px 14px;text-align:right;color:var(--t2)">8.9 MB</td><td style="padding:7px 14px;text-align:right;color:var(--t3)">09:12:04</td></tr>
+            <tr style="border-bottom:1px solid var(--border)"><td style="padding:7px 14px;color:var(--t3)">#845</td><td style="padding:7px 14px;color:var(--t1)">Honkai Star Rail - Official Trailer</td><td style="padding:7px 14px;color:var(--amber)">Twitter</td><td style="padding:7px 14px;color:var(--t2)">MP4 H.264</td><td style="padding:7px 14px;text-align:right;color:var(--t2)">82.3 MB</td><td style="padding:7px 14px;text-align:right;color:var(--t3)">08:55:31</td></tr>
+            <tr style="border-bottom:1px solid var(--border)"><td style="padding:7px 14px;color:var(--t3)">#844</td><td style="padding:7px 14px;color:var(--t1)">Blue Archive OST - Unwelcome School</td><td style="padding:7px 14px;color:var(--cyan)">YouTube</td><td style="padding:7px 14px;color:var(--t2)">MP3</td><td style="padding:7px 14px;text-align:right;color:var(--t2)">7.2 MB</td><td style="padding:7px 14px;text-align:right;color:var(--t3)">08:20:17</td></tr>
+            <tr><td style="padding:7px 14px;color:var(--t3)">#843</td><td style="padding:7px 14px;color:var(--t1)">Punishing: Gray Raven - OST Vol.3</td><td style="padding:7px 14px;color:var(--purple)">NicoNico</td><td style="padding:7px 14px;color:var(--t2)">WEBM</td><td style="padding:7px 14px;text-align:right;color:var(--t2)">11.4 MB</td><td style="padding:7px 14px;text-align:right;color:var(--t3)">07:44:09</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ======= SIGNAL API TAB ======= -->
+  <div class="content" id="tab-signal">
+    <div class="vhead">
+      <div>
+        <div class="vlabel">APIシグナル / HTTP METADATA API</div>
+        <div class="vtitle">SIGNAL <span class="c">API</span></div>
+      </div>
+      <div class="vright">
+        <div>BASE URL // <span class="acc">http://localhost:8420/api/v1</span></div>
+        <div>STATUS // <span style="color:var(--green)">ONLINE</span></div>
+      </div>
+    </div>
+    <div class="g2" style="margin-bottom:16px">
+      <div class="stat"><div class="stat-label">REQUESTS TODAY</div><div class="stat-value cyan">1,204</div></div>
+      <div class="stat"><div class="stat-label">AVG LATENCY</div><div class="stat-value green">4<span style="font-size:14px">ms</span></div></div>
+    </div>
+    <div class="panel" style="margin-bottom:16px">
+      <div class="panel-hud"></div><div class="panel-hud-br"></div>
+      <div class="ph"><span class="ptag green">LIVE</span><span class="ptitle">ENDPOINTS — エンドポイント</span></div>
+      <div class="endpoint"><span class="method get">GET</span><span class="ep-path">/media</span><span class="ep-desc">List all media records with pagination</span></div>
+      <div class="endpoint"><span class="method get">GET</span><span class="ep-path">/media/{id}</span><span class="ep-desc">Get single record by ID</span></div>
+      <div class="endpoint"><span class="method get">GET</span><span class="ep-path">/media/search?q={query}</span><span class="ep-desc">Full-text search across metadata</span></div>
+      <div class="endpoint"><span class="method get">GET</span><span class="ep-path">/analytics/trends</span><span class="ep-desc">Daily download trend data</span></div>
+      <div class="endpoint"><span class="method get">GET</span><span class="ep-path">/analytics/storage</span><span class="ep-desc">Storage breakdown by format & platform</span></div>
+      <div class="endpoint"><span class="method get">GET</span><span class="ep-path">/analytics/heatmap</span><span class="ep-desc">Hourly activity heatmap data</span></div>
+      <div class="endpoint"><span class="method post">POST</span><span class="ep-path">/download</span><span class="ep-desc">Enqueue a new download via API</span></div>
+      <div class="endpoint"><span class="method del">DEL</span><span class="ep-path">/media/{id}</span><span class="ep-desc">Remove record from database</span></div>
+    </div>
+    <div class="g2">
+      <div class="panel">
+        <div class="ph"><span class="ptag">EXAMPLE</span><span class="ptitle">RESPONSE — GET /media/847</span></div>
+        <div class="code-block">
+<span class="comment">// GET /api/v1/media/847</span>
+{
+  <span class="key">"id"</span>: <span class="num">847</span>,
+  <span class="key">"title"</span>: <span class="str">"NIKKE OST - EMPRESS"</span>,
+  <span class="key">"channel"</span>: <span class="str">"NIKKE Official"</span>,
+  <span class="key">"platform"</span>: <span class="str">"youtube"</span>,
+  <span class="key">"url"</span>: <span class="str">"https://youtu.be/dQw4..."</span>,
+  <span class="key">"duration"</span>: <span class="num">272</span>,
+  <span class="key">"format"</span>: <span class="str">"mp4"</span>,
+  <span class="key">"codec"</span>: <span class="str">"h264"</span>,
+  <span class="key">"resolution"</span>: <span class="str">"1920x1080"</span>,
+  <span class="key">"fps"</span>: <span class="num">60</span>,
+  <span class="key">"file_size_bytes"</span>: <span class="num">43909120</span>,
+  <span class="key">"tags"</span>: [<span class="str">"ost"</span>, <span class="str">"nikke"</span>, <span class="str">"game"</span>],
+  <span class="key">"downloaded_at"</span>: <span class="str">"2025-01-15T09:38:12Z"</span>
+}
+        </div>
+      </div>
+      <div class="panel">
+        <div class="ph"><span class="ptag amber">POST</span><span class="ptitle">ENQUEUE — POST /download</span></div>
+        <div class="code-block">
+<span class="comment">// POST /api/v1/download</span>
+<span class="comment">// Request body:</span>
+{
+  <span class="key">"url"</span>: <span class="str">"https://youtu.be/xxxx"</span>,
+  <span class="key">"format"</span>: <span class="str">"mp4"</span>,
+  <span class="key">"quality"</span>: <span class="str">"1080p"</span>,
+  <span class="key">"audio_only"</span>: <span class="num">false</span>,
+  <span class="key">"write_metadata"</span>: <span class="num">true</span>
+}
+
+<span class="comment">// Response:</span>
+{
+  <span class="key">"queued"</span>: <span class="num">true</span>,
+  <span class="key">"job_id"</span>: <span class="str">"mellow_job_0848"</span>,
+  <span class="key">"position"</span>: <span class="num">4</span>,
+  <span class="key">"eta_seconds"</span>: <span class="num">2520</span>
+}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ======= CONFIG TAB ======= -->
+  <div class="content" id="tab-config">
+    <div class="vhead">
+      <div>
+        <div class="vlabel">設定 / SYSTEM CONFIGURATION</div>
+        <div class="vtitle">SYS <span class="c">CONFIG</span></div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:flex-end">
+        <button class="btn btn-danger btn-sm" style="clip-path:none">RESET DEFAULTS</button>
+        <button class="btn btn-primary btn-sm" onclick="showNotif('Config saved!','All settings written to mellow.conf')">SAVE CONFIG →</button>
+      </div>
+    </div>
+    <div class="g2">
+      <div>
+        <div class="panel" style="margin-bottom:16px">
+          <div class="ph"><span class="ptag">STORAGE</span><span class="ptitle">FILE SYSTEM — ファイルシステム</span></div>
+          <div style="padding:0 14px">
+            <div class="settings-row"><div class="settings-label"><div class="sl-name">Download Path</div><div class="sl-sub">BASE OUTPUT DIRECTORY</div></div><div class="settings-ctrl"><input class="inp-sm" value="D:\MELLOW\Downloads" style="width:210px"></div></div>
+            <div class="settings-row"><div class="settings-label"><div class="sl-name">Database Path</div><div class="sl-sub">SQLITE / DUCKDB FILE LOCATION</div></div><div class="settings-ctrl"><input class="inp-sm" value="D:\MELLOW\mellow.db" style="width:210px"></div></div>
+            <div class="settings-row"><div class="settings-label"><div class="sl-name">Filename Template</div><div class="sl-sub">YT-DLP FORMAT STRING</div></div><div class="settings-ctrl"><input class="inp-sm" value="%(uploader)s - %(title)s.%(ext)s" style="width:210px"></div></div>
+          </div>
+        </div>
+        <div class="panel" style="margin-bottom:16px">
+          <div class="ph"><span class="ptag amber">NETWORK</span><span class="ptitle">DOWNLOAD SETTINGS</span></div>
+          <div style="padding:0 14px">
+            <div class="settings-row"><div class="settings-label"><div class="sl-name">Max Concurrent</div><div class="sl-sub">SIMULTANEOUS DOWNLOADS</div></div><div class="settings-ctrl"><select class="sel"><option>1</option><option selected>2</option><option>3</option><option>5</option></select></div></div>
+            <div class="settings-row"><div class="settings-label"><div class="sl-name">Rate Limit</div><div class="sl-sub">MB/S CAP (0 = UNLIMITED)</div></div><div class="settings-ctrl"><input class="inp-sm" value="0" type="number" style="width:80px"></div></div>
+            <div class="settings-row"><div class="settings-label"><div class="sl-name">Retries</div><div class="sl-sub">AUTOMATIC RETRY COUNT</div></div><div class="settings-ctrl"><input class="inp-sm" value="3" type="number" style="width:80px"></div></div>
+            <div class="settings-row"><div class="settings-label"><div class="sl-name">Proxy</div><div class="sl-sub">HTTP/SOCKS5 PROXY URL</div></div><div class="settings-ctrl"><input class="inp-sm" placeholder="socks5://..." style="width:210px"></div></div>
+          </div>
+        </div>
+      </div>
+      <div>
+        <div class="panel" style="margin-bottom:16px">
+          <div class="ph"><span class="ptag green">DATABASE</span><span class="ptitle">DATA LAKE SETTINGS</span></div>
+          <div style="padding:0 14px">
+            <div class="settings-row"><div class="settings-label"><div class="sl-name">Write Metadata</div><div class="sl-sub">LOG EVERY DOWNLOAD TO DB</div></div><div class="settings-ctrl"><div class="toggle on" onclick="this.classList.toggle('on')"></div></div></div>
+            <div class="settings-row"><div class="settings-label"><div class="sl-name">Extract Chapters</div><div class="sl-sub">WRITE CHAPTER DATA TO RECORDS</div></div><div class="settings-ctrl"><div class="toggle on" onclick="this.classList.toggle('on')"></div></div></div>
+            <div class="settings-row"><div class="settings-label"><div class="sl-name">Track Play Count</div><div class="sl-sub">INCREMENT ON FILE OPEN</div></div><div class="settings-ctrl"><div class="toggle" onclick="this.classList.toggle('on')"></div></div></div>
+            <div class="settings-row"><div class="settings-label"><div class="sl-name">DB Engine</div><div class="sl-sub">STORAGE BACKEND</div></div><div class="settings-ctrl"><select class="sel"><option selected>SQLite (default)</option><option>DuckDB (analytics)</option></select></div></div>
+          </div>
+        </div>
+        <div class="panel" style="margin-bottom:16px">
+          <div class="ph"><span class="ptag" style="background:var(--purple)">API</span><span class="ptitle">SIGNAL API SERVER</span></div>
+          <div style="padding:0 14px">
+            <div class="settings-row"><div class="settings-label"><div class="sl-name">Enable API Server</div><div class="sl-sub">HTTP METADATA ENDPOINT</div></div><div class="settings-ctrl"><div class="toggle on" onclick="this.classList.toggle('on')"></div></div></div>
+            <div class="settings-row"><div class="settings-label"><div class="sl-name">Port</div><div class="sl-sub">API LISTEN PORT</div></div><div class="settings-ctrl"><input class="inp-sm" value="8420" type="number" style="width:90px"></div></div>
+            <div class="settings-row"><div class="settings-label"><div class="sl-name">Auth Token</div><div class="sl-sub">BEARER TOKEN (OPTIONAL)</div></div><div class="settings-ctrl"><input class="inp-sm" type="password" value="••••••••••••" style="width:210px"></div></div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="ph"><span class="ptag red">DANGER</span><span class="ptitle">DESTRUCTIVE ACTIONS</span></div>
+          <div style="padding:14px;display:flex;flex-direction:column;gap:8px">
+            <button class="btn btn-danger" style="clip-path:none;width:100%;text-align:left" onclick="showNotif('Cache cleared','Temporary files removed.')">CLEAR CACHE</button>
+            <button class="btn btn-danger" style="clip-path:none;width:100%;text-align:left" onclick="showNotif('Warning','This action cannot be undone. Confirm in next dialog.')">PURGE DATABASE RECORDS</button>
+            <button class="btn btn-danger" style="clip-path:none;width:100%;text-align:left" onclick="showNotif('Warning','All downloads and records will be permanently deleted.')">FACTORY RESET</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</main>
+</div>
+
+<!-- NOTIFICATION -->
+<div class="notif" id="notif">
+  <div class="notif-title" id="notif-title">Notification</div>
+  <div class="notif-body" id="notif-body"></div>
+</div>
+
+<script>
+// Tab switching
+function switchTab(id) {
+  document.querySelectorAll('.content').forEach(c => c.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('tab-' + id).classList.add('active');
+  const items = document.querySelectorAll('.nav-item');
+  const map = {feed:0,queue:1,vault:2,lake:3,signal:4,config:5};
+  items[map[id]].classList.add('active');
+  const paths = {feed:'FEED',queue:'QUEUE',vault:'VAULT',lake:'ANALYTICS',signal:'SIGNAL API',config:'CONFIG'};
+  document.querySelector('.topbar-path').innerHTML = 'MELLOW · <span class="acc">' + paths[id] + '</span>';
+  if(id==='lake') setTimeout(initCharts,100);
+}
+
+// Notification
+let notifTimeout;
+function showNotif(title, body) {
+  const n = document.getElementById('notif');
+  document.getElementById('notif-title').textContent = title;
+  document.getElementById('notif-body').textContent = body;
+  n.classList.add('show');
+  clearTimeout(notifTimeout);
+  notifTimeout = setTimeout(() => n.classList.remove('show'), 3200);
+}
+
+// Clock
+function updateClock() {
+  const now = new Date();
+  const t = now.toTimeString().split(' ')[0];
+  const el = document.getElementById('topbar-time');
+  if(el) el.textContent = t;
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+// Progress simulation
+let pct = 68.4;
+setInterval(() => {
+  pct = Math.min(100, pct + 0.15);
+  const fill = document.getElementById('prog-fill');
+  const pctEl = document.getElementById('prog-pct');
+  if(fill) fill.style.width = pct.toFixed(1) + '%';
+  if(pctEl) pctEl.textContent = pct.toFixed(1) + '%';
+}, 500);
+
+// Mini graph (sidebar)
+function drawMiniGraph() {
+  const c = document.getElementById('miniGraph');
+  if(!c) return;
+  c.width = c.offsetWidth * window.devicePixelRatio || 174;
+  c.height = 28 * (window.devicePixelRatio || 1);
+  const ctx = c.getContext('2d');
+  const w = c.width, h = c.height;
+  ctx.clearRect(0,0,w,h);
+  const pts = [0.2,0.4,0.35,0.7,0.5,0.8,0.6,0.9,0.4,0.7,0.85,0.6,0.75,1.0,0.8,0.65,0.9,0.7,0.5,0.6];
+  ctx.strokeStyle = 'rgba(0,216,255,0.6)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  pts.forEach((v,i) => {
+    const x = (i/(pts.length-1))*w;
+    const y = h - v*h*0.9 - h*0.05;
+    i===0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+  });
+  ctx.stroke();
+}
+drawMiniGraph();
+
+// Heatmap
+function buildHeatmap() {
+  const data = [2,1,1,0,1,2,4,6,8,10,12,9,7,8,11,10,8,7,9,12,15,14,11,8];
+  const max = Math.max(...data);
+  const el = document.getElementById('heatmap');
+  if(!el) return;
+  el.innerHTML = '';
+  data.forEach(v => {
+    const cell = document.createElement('div');
+    cell.className = 'hm-cell';
+    const opacity = 0.06 + (v/max)*0.94;
+    cell.style.background = `rgba(0,216,255,${opacity.toFixed(2)})`;
+    cell.title = v + ' downloads';
+    el.appendChild(cell);
+  });
+}
+buildHeatmap();
+
+// Charts (drawn lazily when lake tab opens)
+let chartsInited = false;
+function initCharts() {
+  if(chartsInited) return;
+  chartsInited = true;
+
+  // Trend chart
+  const tc = document.getElementById('trendChart');
+  if(tc) {
+    const ctx = tc.getContext('2d');
+    const w = tc.offsetWidth; tc.width = w; tc.height = 160;
+    const data = [18,22,15,28,24,31,19,26,34,28,22,30,24,29];
+    const labels = ['1','2','3','4','5','6','7','8','9','10','11','12','13','14'];
+    const maxV = Math.max(...data);
+    const pad = {l:30,r:10,t:10,b:25};
+    const cw = w - pad.l - pad.r, ch = 160 - pad.t - pad.b;
+    ctx.clearRect(0,0,w,160);
+    // Grid lines
+    [0,0.25,0.5,0.75,1].forEach(f => {
+      const y = pad.t + ch*(1-f);
+      ctx.strokeStyle = 'rgba(61,96,112,0.3)';
+      ctx.lineWidth = 0.5;
+      ctx.setLineDash([3,3]);
+      ctx.beginPath(); ctx.moveTo(pad.l,y); ctx.lineTo(pad.l+cw,y); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = 'rgba(138,171,184,0.5)';
+      ctx.font = '8px Share Tech Mono';
+      ctx.fillText(Math.round(maxV*f), 0, y+3);
+    });
+    // Area fill
+    const grad = ctx.createLinearGradient(0,pad.t,0,pad.t+ch);
+    grad.addColorStop(0,'rgba(0,216,255,0.25)');
+    grad.addColorStop(1,'rgba(0,216,255,0.01)');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    data.forEach((v,i) => {
+      const x = pad.l + i*(cw/(data.length-1));
+      const y = pad.t + ch*(1-v/maxV);
+      i===0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+    });
+    ctx.lineTo(pad.l+cw, pad.t+ch);
+    ctx.lineTo(pad.l, pad.t+ch);
+    ctx.closePath(); ctx.fill();
+    // Line
+    ctx.strokeStyle = 'rgba(0,216,255,0.9)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    data.forEach((v,i) => {
+      const x = pad.l + i*(cw/(data.length-1));
+      const y = pad.t + ch*(1-v/maxV);
+      i===0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+    });
+    ctx.stroke();
+    // Dots
+    data.forEach((v,i) => {
+      const x = pad.l + i*(cw/(data.length-1));
+      const y = pad.t + ch*(1-v/maxV);
+      ctx.fillStyle = 'var(--bg1)';
+      ctx.beginPath(); ctx.arc(x,y,3,0,Math.PI*2); ctx.fill();
+      ctx.strokeStyle = 'rgba(0,216,255,0.9)'; ctx.lineWidth=1.5;
+      ctx.beginPath(); ctx.arc(x,y,3,0,Math.PI*2); ctx.stroke();
+    });
+    // X labels
+    ctx.fillStyle = 'rgba(61,96,112,0.7)';
+    ctx.font = '8px Share Tech Mono';
+    labels.forEach((l,i) => {
+      const x = pad.l + i*(cw/(data.length-1));
+      ctx.fillText(l, x-2, 160-5);
+    });
+  }
+
+  // Donut chart
+  const dc = document.getElementById('donutChart');
+  if(dc) {
+    const ctx = dc.getContext('2d');
+    const cx=70,cy=70,r=52,ri=34;
+    const data = [{v:82,c:'rgba(0,216,255,0.9)'},{v:14,c:'rgba(255,173,0,0.9)'},{v:4,c:'rgba(192,132,252,0.9)'}];
+    let start = -Math.PI/2;
+    data.forEach(d => {
+      const sweep = (d.v/100)*Math.PI*2;
+      ctx.beginPath();
+      ctx.moveTo(cx,cy);
+      ctx.arc(cx,cy,r,start,start+sweep);
+      ctx.closePath();
+      ctx.fillStyle = d.c;
+      ctx.fill();
+      start += sweep;
+    });
+    ctx.beginPath();
+    ctx.arc(cx,cy,ri,0,Math.PI*2);
+    ctx.fillStyle = '#111928';
+    ctx.fill();
+    ctx.fillStyle = 'rgba(0,216,255,0.9)';
+    ctx.font = 'bold 16px Oxanium';
+    ctx.textAlign = 'center';
+    ctx.fillText('35.4', cx, cy-2);
+    ctx.fillStyle = 'rgba(61,96,112,0.9)';
+    ctx.font = '8px Share Tech Mono';
+    ctx.fillText('GB TOTAL', cx, cy+12);
+  }
+
+  // Platform chart
+  const pc = document.getElementById('platformChart');
+  if(pc) {
+    const ctx = pc.getContext('2d');
+    const w = pc.offsetWidth; pc.width = w; pc.height = 150;
+    const platforms = [
+      {name:'YouTube',v:68,c:'rgba(0,216,255,0.85)'},
+      {name:'SoundCloud',c:'rgba(255,173,0,0.85)',v:14},
+      {name:'NicoNico',c:'rgba(192,132,252,0.85)',v:8},
+      {name:'Twitter/X',c:'rgba(0,255,148,0.7)',v:5},
+      {name:'Bilibili',c:'rgba(255,59,97,0.7)',v:3},
+      {name:'Other',c:'rgba(61,96,112,0.7)',v:2},
+    ];
+    const bh=14, gap=8, pad={l:80,r:10,t:8,b:8};
+    const cw = w - pad.l - pad.r;
+    platforms.forEach((p,i) => {
+      const y = pad.t + i*(bh+gap);
+      ctx.fillStyle='rgba(138,171,184,0.55)';
+      ctx.font='9px Share Tech Mono';
+      ctx.textAlign='right';
+      ctx.fillText(p.name, pad.l-6, y+bh/2+3);
+      const bw = (p.v/100)*cw;
+      ctx.fillStyle='rgba(30,58,72,0.5)';
+      ctx.fillRect(pad.l,y,cw,bh);
+      ctx.fillStyle=p.c;
+      ctx.fillRect(pad.l,y,bw,bh);
+      ctx.fillStyle='rgba(216,236,245,0.8)';
+      ctx.textAlign='left';
+      ctx.fillText(p.v+'%', pad.l+bw+4, y+bh/2+3);
+    });
+  }
+
+  // Throughput mini chart
+  const mt = document.getElementById('miniThroughput');
+  if(mt) {
+    const ctx = mt.getContext('2d');
+    const w = mt.offsetWidth || 300; mt.width = w; mt.height = 70;
+    const data = [3.2,5.1,4.8,8.2,6.4,7.9,5.5,9.1,8.2,6.7,7.4,8.9];
+    const maxV = Math.max(...data);
+    const pad={l:28,r:8,t:6,b:18};
+    const cw=w-pad.l-pad.r, ch=70-pad.t-pad.b;
+    ctx.clearRect(0,0,w,70);
+    [0,0.5,1].forEach(f=>{
+      const y=pad.t+ch*(1-f);
+      ctx.strokeStyle='rgba(61,96,112,0.25)';ctx.lineWidth=0.5;ctx.setLineDash([2,2]);
+      ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(pad.l+cw,y);ctx.stroke();ctx.setLineDash([]);
+      ctx.fillStyle='rgba(61,96,112,0.7)';ctx.font='7px Share Tech Mono';
+      ctx.fillText((maxV*f).toFixed(1),0,y+3);
+    });
+    const grad=ctx.createLinearGradient(0,pad.t,0,pad.t+ch);
+    grad.addColorStop(0,'rgba(255,173,0,0.2)');grad.addColorStop(1,'rgba(255,173,0,0.01)');
+    ctx.fillStyle=grad;
+    ctx.beginPath();
+    data.forEach((v,i)=>{const x=pad.l+i*(cw/(data.length-1));const y=pad.t+ch*(1-v/maxV);i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);});
+    ctx.lineTo(pad.l+cw,pad.t+ch);ctx.lineTo(pad.l,pad.t+ch);ctx.closePath();ctx.fill();
+    ctx.strokeStyle='rgba(255,173,0,0.8)';ctx.lineWidth=1.5;
+    ctx.beginPath();
+    data.forEach((v,i)=>{const x=pad.l+i*(cw/(data.length-1));const y=pad.t+ch*(1-v/maxV);i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);});
+    ctx.stroke();
+    const xlabels=['3h','','','2h','','','1h','','','30m','','now'];
+    ctx.fillStyle='rgba(61,96,112,0.6)';ctx.font='7px Share Tech Mono';ctx.textAlign='center';
+    xlabels.forEach((l,i)=>{if(l)ctx.fillText(l,pad.l+i*(cw/(data.length-1)),70-3);});
+  }
+}
+initCharts();
+window.addEventListener('resize', () => { chartsInited=false; initCharts(); });
+</script>
+</body>
+</html>

@@ -1,324 +1,565 @@
-"""MellowDLP Flask backend v4."""
-import os, sys, json, threading, time, subprocess, shutil, datetime, re
+from __future__ import annotations
+
+import json
+import mimetypes
+import os
+import platform
+import queue
+import subprocess
+import sys
+import threading
+import time
+import tkinter
+import tkinter.filedialog
+import uuid
 from pathlib import Path
-from flask import Flask, request, jsonify, Response, send_from_directory
+from typing import Any
+from urllib.error import URLError
+from urllib.request import urlopen
 
-if getattr(sys, 'frozen', False):
-    BASE = Path(sys._MEIPASS)
-else:
-    BASE = Path(__file__).parent
+from flask import Flask, Response, jsonify, request, send_from_directory
 
-STATIC = BASE / 'static'
-app = Flask(__name__, static_folder=str(STATIC))
+import analytics
+import downloader
 
-from downloader import Downloader
-_dl = Downloader()
-_events = []
-_lock = threading.Lock()
+CONFIG_PATH = Path.home() / ".mellow_dlp.json"
+STATIC_DIR = Path(__file__).parent / "static"
 
-CONFIG_FILE  = Path.home() / '.mellow_dlp.json'
-HISTORY_FILE = Path.home() / '.mellow_dlp_history.json'
-LIBRARY_FILE = Path.home() / '.mellow_dlp_library.json'
+app = Flask(__name__, static_folder=None)
 
-def load_config():
-    d = {
-        'download_dir': str(Path.home() / 'Downloads' / 'MellowDLP'),
-        'cookies_file': '', 'cookies_from_browser': '',
-        'rate_limit': '', 'concurrent': 4,
-        'sponsorblock': False, 'proxy': '',
-        'external_downloader': '', 'language': 'en',
+_progress_queue: queue.Queue = queue.Queue()
+_active_thread: threading.Thread | None = None
+_tk_lock = threading.Lock()
+
+
+def _load_config() -> dict:
+    if CONFIG_PATH.exists():
+        try:
+            return json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+    return {
+        "output_dir": str(Path.home() / "Downloads" / "MellowDLP"),
+        "cookies_browser": "none",
+        "cookies_file": "",
+        "rate_limit": "",
+        "proxy": "",
+        "external_downloader": "",
+        "concurrent_fragments": 4,
+        "sleep_interval": 1,
+        "retries": 3,
+        "write_metadata": True,
+        "extract_chapters": True,
+        "filename_template": "",
     }
-    if CONFIG_FILE.exists():
-        try: d.update(json.loads(CONFIG_FILE.read_text()))
-        except: pass
-    os.makedirs(d['download_dir'], exist_ok=True)
-    return d
 
-def save_config(c): CONFIG_FILE.write_text(json.dumps(c, indent=2))
 
-def load_history():
-    if HISTORY_FILE.exists():
-        try: return json.loads(HISTORY_FILE.read_text())
-        except: pass
-    return []
+def _save_config(cfg: dict) -> None:
+    CONFIG_PATH.write_text(json.dumps(cfg, indent=2), encoding="utf-8")
 
-def load_library():
-    if LIBRARY_FILE.exists():
-        try: return json.loads(LIBRARY_FILE.read_text())
-        except: pass
-    return []
 
-def save_library(lib): LIBRARY_FILE.write_text(json.dumps(lib, indent=2))
+def _push_progress(event: dict) -> None:
+    _progress_queue.put(event)
 
-def push_event(d):
-    with _lock:
-        _events.append(d)
-        if len(_events) > 300: _events.pop(0)
 
-@app.route('/')
-def index(): return send_from_directory(STATIC, 'index.html')
+def _open_in_explorer(path: str) -> None:
+    p = Path(path)
+    target = str(p if p.is_dir() else p.parent)
+    system = platform.system()
+    if system == "Windows":
+        proc = subprocess.Popen(["explorer", target])
+        try:
+            import ctypes
+            time.sleep(0.3)
+            hwnd = ctypes.windll.user32.FindWindowW(None, None)
+            ctypes.windll.user32.SetForegroundWindow(hwnd)
+        except Exception:
+            pass
+        _ = proc
+    elif system == "Darwin":
+        subprocess.Popen(["open", target])
+    else:
+        subprocess.Popen(["xdg-open", target])
 
-@app.route('/<path:p>')
-def static_files(p): return send_from_directory(STATIC, p)
 
-@app.route('/api/progress')
-def progress_stream():
-    def gen():
-        last = 0
-        while True:
-            with _lock:
-                new = _events[last:]; last = len(_events)
-            for e in new: yield f'data: {json.dumps(e)}\n\n'
-            time.sleep(0.1)
-    return Response(gen(), mimetype='text/event-stream',
-                    headers={'Cache-Control':'no-cache','X-Accel-Buffering':'no'})
+def _open_file(path: str) -> None:
+    system = platform.system()
+    if system == "Windows":
+        os.startfile(path)  # type: ignore[attr-defined]
+    elif system == "Darwin":
+        subprocess.Popen(["open", path])
+    else:
+        subprocess.Popen(["xdg-open", path])
 
-@app.route('/api/clipboard', methods=['GET'])
-def read_clipboard():
-    """Read clipboard server-side to avoid browser permission popup."""
+
+def _get_clipboard_text() -> str:
+    system = platform.system()
     try:
-        import subprocess as sp
-        if sys.platform == 'win32':
-            r = sp.run(['powershell','-command','Get-Clipboard'], capture_output=True, text=True, timeout=3)
-            return jsonify({'text': r.stdout.strip()})
-        elif sys.platform == 'darwin':
-            r = sp.run(['pbpaste'], capture_output=True, text=True, timeout=3)
-            return jsonify({'text': r.stdout.strip()})
-        else:
-            r = sp.run(['xclip','-selection','clipboard','-o'], capture_output=True, text=True, timeout=3)
-            return jsonify({'text': r.stdout.strip()})
-    except Exception as e:
-        return jsonify({'text': '', 'error': str(e)})
+        if system == "Windows":
+            result = subprocess.run(
+                ["powershell", "-Command", "Get-Clipboard"],
+                capture_output=True, text=True, timeout=5
+            )
+            return result.stdout.strip()
+        if system == "Darwin":
+            result = subprocess.run(["pbpaste"], capture_output=True, text=True, timeout=5)
+            return result.stdout.strip()
+        result = subprocess.run(
+            ["xclip", "-selection", "clipboard", "-o"],
+            capture_output=True, text=True, timeout=5
+        )
+        return result.stdout.strip()
+    except Exception:
+        return ""
 
-@app.route('/api/open-folder', methods=['POST'])
-def open_folder():
-    """Open a folder in Windows Explorer."""
-    path = (request.json or {}).get('path', '')
-    if not path: return jsonify({'error': 'No path'}), 400
-    p = Path(path).expanduser()
-    p.mkdir(parents=True, exist_ok=True)
-    try:
-        if sys.platform == 'win32':
-            subprocess.Popen(['explorer', str(p)])
-        elif sys.platform == 'darwin':
-            subprocess.Popen(['open', str(p)])
-        else:
-            subprocess.Popen(['xdg-open', str(p)])
-        return jsonify({'status': 'opened'})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
 
-@app.route('/api/download', methods=['POST'])
-def start_download():
-    body = request.json or {}
-    cfg = load_config()
-    opts = {**cfg, **body}
-    if not opts.get('url'): return jsonify({'error': 'No URL'}), 400
-    threading.Thread(target=_dl.download, kwargs={'opts':opts,'progress_cb':push_event}, daemon=True).start()
-    return jsonify({'status': 'started'})
+def _tk_dialog(dialog_fn: Any, **kwargs: Any) -> str:
+    result: list[str] = []
 
-@app.route('/api/cancel', methods=['POST'])
-def cancel():
-    _dl.cancel(); push_event({'status':'cancelled'})
-    return jsonify({'status':'cancelled'})
+    def _run() -> None:
+        with _tk_lock:
+            root = tkinter.Tk()
+            root.withdraw()
+            root.lift()
+            root.focus_force()
+            try:
+                val = dialog_fn(**kwargs)
+                result.append(str(val) if val else "")
+            finally:
+                root.destroy()
 
-@app.route('/api/info', methods=['POST'])
-def get_info():
-    url = (request.json or {}).get('url','')
-    if not url: return jsonify({'error':'No URL'}), 400
+    t = threading.Thread(target=_run, daemon=True)
+    t.start()
+    t.join(timeout=120)
+    return result[0] if result else ""
+
+
+# ── Static ────────────────────────────────────────────────────────────────────
+
+@app.route("/")
+def index() -> Response:
+    return send_from_directory(str(STATIC_DIR), "index.html")
+
+
+@app.route("/static/<path:filename>")
+def static_files(filename: str) -> Response:
+    return send_from_directory(str(STATIC_DIR), filename)
+
+
+@app.route("/<path:filename>")
+def static_root(filename: str) -> Response:
+    target = STATIC_DIR / filename
+    if target.exists() and target.is_file():
+        return send_from_directory(str(STATIC_DIR), filename)
+    return send_from_directory(str(STATIC_DIR), "index.html")
+
+
+# ── System ────────────────────────────────────────────────────────────────────
+
+@app.route("/api/clipboard")
+def api_clipboard() -> Response:
+    return jsonify({"text": _get_clipboard_text()})
+
+
+@app.route("/api/open-folder", methods=["POST"])
+def api_open_folder() -> Response:
+    data = request.get_json(force=True) or {}
+    path = data.get("path", "")
+    if path:
+        threading.Thread(target=_open_in_explorer, args=(path,), daemon=True).start()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/browse-file", methods=["POST"])
+def api_browse_file() -> Response:
+    data = request.get_json(force=True) or {}
+    filt = data.get("filter", "")
+    filetypes = [("Text files", f"*{filt}"), ("All files", "*.*")] if filt else [("All files", "*.*")]
+    path = _tk_dialog(tkinter.filedialog.askopenfilename, filetypes=filetypes)
+    return jsonify({"path": path})
+
+
+@app.route("/api/browse-folder", methods=["POST"])
+def api_browse_folder() -> Response:
+    data = request.get_json(force=True) or {}
+    initial = data.get("initial", str(Path.home()))
+    path = _tk_dialog(tkinter.filedialog.askdirectory, initialdir=initial, mustexist=False)
+    return jsonify({"path": path})
+
+
+@app.route("/api/system")
+def api_system() -> Response:
+    ytdlp_version = "unknown"
     try:
         import yt_dlp
-        cfg = load_config()
-        opts = {'quiet':True,'no_warnings':True}
-        if cfg.get('cookies_file') and Path(cfg['cookies_file']).exists():
-            opts['cookiefile'] = cfg['cookies_file']
-        if cfg.get('cookies_from_browser'):
-            opts['cookiesfrombrowser'] = (cfg['cookies_from_browser'],)
-        with yt_dlp.YoutubeDL(opts) as ydl:
-            info = ydl.extract_info(url, download=False)
-        thumb = info.get('thumbnail','')
-        for t in sorted(info.get('thumbnails',[]), key=lambda x: x.get('width',0), reverse=True):
-            if t.get('width',9999) <= 640: thumb = t.get('url',thumb); break
-        return jsonify({
-            'title': info.get('title','Unknown'),
-            'uploader': info.get('uploader',''),
-            'duration': info.get('duration',0),
-            'thumbnail': thumb,
-            'platform': info.get('extractor_key',''),
-            'is_playlist': info.get('_type') == 'playlist',
-            'playlist_count': info.get('playlist_count'),
-        })
-    except Exception as e: return jsonify({'error':str(e)[:300]}), 500
+        ytdlp_version = yt_dlp.version.__version__
+    except Exception:
+        pass
+    ffmpeg_ok = False
+    try:
+        result = subprocess.run(["ffmpeg", "-version"], capture_output=True, timeout=5)
+        ffmpeg_ok = result.returncode == 0
+    except Exception:
+        pass
+    return jsonify({
+        "ffmpeg": ffmpeg_ok,
+        "ytdlp_version": ytdlp_version,
+        "python_version": sys.version.split()[0],
+        "db_size_bytes": analytics.get_db_size(),
+    })
 
-@app.route('/api/config', methods=['GET'])
-def get_config(): return jsonify(load_config())
 
-@app.route('/api/config', methods=['POST'])
-def post_config():
-    cfg = load_config(); cfg.update(request.json or {}); save_config(cfg)
-    return jsonify({'status':'saved'})
+@app.route("/api/check-ytdlp-update")
+def api_check_ytdlp_update() -> Response:
+    def _check() -> dict:
+        try:
+            import yt_dlp
+            installed = yt_dlp.version.__version__
+        except Exception:
+            installed = "unknown"
+        try:
+            with urlopen("https://pypi.org/pypi/yt-dlp/json", timeout=30) as resp:
+                payload = json.loads(resp.read().decode())
+            latest = payload["info"]["version"]
+        except (URLError, KeyError, Exception) as exc:
+            return {"error": str(exc), "installed": installed, "latest": None, "current": installed}
+        return {
+            "installed": installed, "latest": latest, "current": installed,
+            "update_available": latest != installed,
+        }
+    return jsonify(_check())
 
-@app.route('/api/history', methods=['GET'])
-def get_history(): return jsonify(load_history())
 
-@app.route('/api/history', methods=['DELETE'])
-def delete_history():
-    body = request.json or {}
-    hist = load_history()
-    if 'ids' in body:
-        ids = set(body['ids']); hist = [h for i,h in enumerate(hist) if i not in ids]
-    elif 'older_than_days' in body:
-        cut = datetime.datetime.now() - datetime.timedelta(days=body['older_than_days'])
-        hist = [h for h in hist if datetime.datetime.strptime(h.get('date','1970-01-01 00:00'),'%Y-%m-%d %H:%M') > cut]
-    else: hist = []
-    HISTORY_FILE.write_text(json.dumps(hist, indent=2))
-    return jsonify({'remaining':len(hist)})
+@app.route("/api/update-ytdlp", methods=["POST"])
+def api_update_ytdlp() -> Response:
+    def _update() -> None:
+        try:
+            subprocess.run(
+                [sys.executable, "-m", "pip", "install", "--upgrade", "yt-dlp"],
+                check=True, capture_output=True,
+            )
+            _push_progress({"status": "ytdlp_updated", "ok": True})
+        except Exception as exc:
+            _push_progress({"status": "ytdlp_updated", "ok": False, "error": str(exc)})
+    threading.Thread(target=_update, daemon=True).start()
+    return jsonify({"status": "updating"})
 
-@app.route('/api/library', methods=['GET'])
-def get_library(): return jsonify(load_library())
 
-@app.route('/api/library', methods=['POST'])
-def add_library():
-    body = request.json or {}
-    lib = load_library()
-    entry = {
-        'id': str(int(time.time()*1000)),
-        'name': body.get('name','Untitled'),
-        'url': body.get('url',''),
-        'folder': body.get('folder',''),
-        'folder_name': body.get('folder_name',''),
-        'use_subfolder': body.get('use_subfolder', True),
-        'quality': body.get('quality','1080p'),
-        'mode': body.get('mode','VIDEO'),
-        'embed_thumbnail': body.get('embed_thumbnail', True),
-        'embed_chapters': body.get('embed_chapters', True),
-        'embed_metadata': body.get('embed_metadata', True),
-        'embed_subs': body.get('embed_subs', False),
-        'sub_langs': body.get('sub_langs','en'),
-        'sponsorblock': body.get('sponsorblock', False),
-        'filename_template': body.get('filename_template',''),
-        'last_updated': None,
-        'status': 'idle',
+# ── Config ────────────────────────────────────────────────────────────────────
+
+@app.route("/api/config", methods=["GET"])
+def api_config_get() -> Response:
+    return jsonify(_load_config())
+
+
+@app.route("/api/config", methods=["POST"])
+def api_config_post() -> Response:
+    data = request.get_json(force=True) or {}
+    cfg = _load_config()
+    cfg.update(data)
+    _save_config(cfg)
+    return jsonify({"ok": True})
+
+
+# ── Download ──────────────────────────────────────────────────────────────────
+
+@app.route("/api/info", methods=["POST"])
+def api_info() -> Response:
+    data = request.get_json(force=True) or {}
+    url = data.get("url", "").strip()
+    if not url:
+        return jsonify({"error": "No URL"}), 400
+    try:
+        info = downloader.get_video_info(url)
+        return jsonify(info)
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/download", methods=["POST"])
+def api_download() -> Response:
+    global _active_thread
+    data = request.get_json(force=True) or {}
+    url = data.get("url", "").strip()
+    if not url:
+        return jsonify({"error": "No URL provided"}), 400
+    cfg = _load_config()
+    output_dir = data.get("output_dir") or cfg.get("output_dir", str(Path.home() / "Downloads"))
+    opts = {
+        "mode": data.get("mode", "video"),
+        "quality": data.get("quality", "best"),
+        "container": data.get("container", "mp4"),
+        "audio_format": data.get("audio_format", "mp3"),
+        "embed_thumbnail": data.get("embed_thumbnail", True),
+        "embed_chapters": data.get("embed_chapters", True),
+        "embed_metadata": data.get("embed_metadata", True),
+        "embed_subs": data.get("embed_subs", False),
+        "sub_langs": data.get("sub_langs", "en"),
+        "auto_subs": data.get("auto_subs", False),
+        "sponsorblock": data.get("sponsorblock", False),
+        "split_chapters": data.get("split_chapters", False),
+        "custom_format": data.get("custom_format", ""),
+        "start_time": data.get("start_time", ""),
+        "end_time": data.get("end_time", ""),
+        "playlist_start": data.get("playlist_start"),
+        "playlist_end": data.get("playlist_end"),
+        "date_before": data.get("date_before", ""),
+        "date_after": data.get("date_after", ""),
+        "filename_template": data.get("filename_template", "") or cfg.get("filename_template", ""),
+        "cookies_browser": cfg.get("cookies_browser", "none"),
+        "cookies_file": cfg.get("cookies_file", ""),
+        "rate_limit": cfg.get("rate_limit", ""),
+        "proxy": cfg.get("proxy", ""),
+        "external_downloader": cfg.get("external_downloader", ""),
+        "concurrent_fragments": cfg.get("concurrent_fragments", 4),
+        "sleep_interval": cfg.get("sleep_interval", 0),
     }
-    lib.append(entry); save_library(lib)
-    return jsonify(entry)
+    _active_thread = downloader.download_in_thread(url, output_dir, opts, _push_progress)
+    return jsonify({"status": "started"})
 
-@app.route('/api/library/<lid>', methods=['PUT'])
-def update_library(lid):
-    lib = load_library()
-    for i,e in enumerate(lib):
-        if e['id']==lid: lib[i].update(request.json or {}); lib[i]['id']=lid; save_library(lib); return jsonify(lib[i])
-    return jsonify({'error':'Not found'}), 404
 
-@app.route('/api/library/<lid>', methods=['DELETE'])
-def delete_library(lid):
-    save_library([e for e in load_library() if e['id']!=lid])
-    return jsonify({'status':'deleted'})
+@app.route("/api/cancel", methods=["POST"])
+def api_cancel() -> Response:
+    downloader.cancel_download()
+    return jsonify({"status": "cancelled"})
 
-@app.route('/api/library/<lid>/sync', methods=['POST'])
-def sync_library(lid):
-    body = request.json or {}
-    sync_mode = body.get('mode','add')
-    lib = load_library()
-    entry = next((e for e in lib if e['id']==lid), None)
-    if not entry: return jsonify({'error':'Not found'}), 404
 
-    cfg = load_config()
-    base_folder = entry.get('folder') or cfg['download_dir']
-    if entry.get('use_subfolder'):
-        folder_name = entry.get('folder_name') or entry.get('name') or 'Playlist'
-        output_dir = str(Path(base_folder) / folder_name)
+@app.route("/api/progress")
+def api_progress() -> Response:
+    def generate():
+        while True:
+            try:
+                event = _progress_queue.get(timeout=25)
+                data = json.dumps(event)
+                yield f"data: {data}\n\n"
+            except queue.Empty:
+                yield 'data: {"status":"ping"}\n\n'
+    return Response(generate(), mimetype="text/event-stream",
+                    headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+# ── History ───────────────────────────────────────────────────────────────────
+
+@app.route("/api/history")
+def api_history() -> Response:
+    limit = int(request.args.get("limit", 50))
+    offset = int(request.args.get("offset", 0))
+    type_filter = request.args.get("type", "all")
+    search = request.args.get("search", "").strip() or None
+    rows = analytics.get_history(limit, offset, type_filter if type_filter != "all" else None, search)
+    return jsonify(rows)
+
+
+@app.route("/api/history", methods=["DELETE"])
+def api_history_delete() -> Response:
+    data = request.get_json(force=True) or {}
+    count = analytics.delete_history(
+        ids=data.get("ids"),
+        older_than_days=data.get("older_than_days"),
+        delete_all=data.get("all", False),
+    )
+    return jsonify({"deleted": count})
+
+
+# ── Stats / Analytics ─────────────────────────────────────────────────────────
+
+@app.route("/api/stats")
+def api_stats() -> Response:
+    time_range = request.args.get("range", "30d")
+    return jsonify(analytics.get_stats(time_range))
+
+
+@app.route("/api/analytics/export")
+def api_analytics_export() -> Response:
+    csv_data = analytics.export_csv()
+    return Response(
+        csv_data,
+        mimetype="text/csv",
+        headers={"Content-Disposition": "attachment; filename=mellow_downloads.csv"},
+    )
+
+
+@app.route("/api/analytics/query", methods=["POST"])
+def api_analytics_query() -> Response:
+    data = request.get_json(force=True) or {}
+    sql = data.get("sql", "").strip()
+    if not sql:
+        return jsonify({"error": "No SQL provided", "columns": [], "rows": []}), 400
+    result = analytics.run_query(sql)
+    return jsonify(result)
+
+
+@app.route("/api/analytics/vacuum", methods=["POST"])
+def api_analytics_vacuum() -> Response:
+    try:
+        analytics.vacuum()
+        return jsonify({"ok": True, "db_size_bytes": analytics.get_db_size()})
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+# ── Vault ─────────────────────────────────────────────────────────────────────
+
+@app.route("/api/vault")
+def api_vault() -> Response:
+    cfg = _load_config()
+    base_path = request.args.get("path") or cfg.get("output_dir", str(Path.home() / "Downloads" / "MellowDLP"))
+    folders = analytics.get_vault_folders(base_path)
+    return jsonify({"folders": folders, "base_path": base_path})
+
+
+@app.route("/api/vault/folder")
+def api_vault_folder() -> Response:
+    path = request.args.get("path", "")
+    if not path or not Path(path).exists():
+        return jsonify({"files": [], "path": path})
+    root = Path(path)
+    files = []
+    media_exts = {".mp4", ".mkv", ".webm", ".avi", ".mov", ".mp3", ".flac", ".m4a", ".aac", ".opus", ".wav", ".ogg"}
+    try:
+        for f in sorted(root.iterdir()):
+            if f.is_file() and f.suffix.lower() in media_exts and not f.name.startswith("."):
+                try:
+                    stat = f.stat()
+                    files.append({
+                        "name": f.name,
+                        "path": str(f),
+                        "size_bytes": stat.st_size,
+                        "modified": stat.st_mtime,
+                        "ext": f.suffix.lower().lstrip("."),
+                    })
+                except OSError:
+                    pass
+    except PermissionError:
+        pass
+    return jsonify({"files": files, "path": path, "folder_name": root.name})
+
+
+@app.route("/api/vault/open-file", methods=["POST"])
+def api_vault_open_file() -> Response:
+    data = request.get_json(force=True) or {}
+    path = data.get("path", "")
+    if path and Path(path).exists():
+        threading.Thread(target=_open_file, args=(path,), daemon=True).start()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/vault/file", methods=["DELETE"])
+def api_vault_delete_file() -> Response:
+    data = request.get_json(force=True) or {}
+    path = data.get("path", "")
+    if not path:
+        return jsonify({"error": "No path"}), 400
+    p = Path(path)
+    if not p.exists():
+        return jsonify({"error": "File not found"}), 404
+    if not p.is_file():
+        return jsonify({"error": "Not a file"}), 400
+    try:
+        p.unlink()
+        analytics.delete_history(delete_all=False)
+        return jsonify({"ok": True})
+    except OSError as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+# ── Library ───────────────────────────────────────────────────────────────────
+
+@app.route("/api/library", methods=["GET"])
+def api_library_get() -> Response:
+    return jsonify(analytics.get_library_entries())
+
+
+@app.route("/api/library", methods=["POST"])
+def api_library_post() -> Response:
+    data = request.get_json(force=True) or {}
+    entry_id = str(uuid.uuid4())
+    now = time.strftime("%Y-%m-%d %H:%M:%S")
+    entry = {
+        "id": entry_id,
+        "name": data.get("name", ""),
+        "url": data.get("url", ""),
+        "folder": data.get("folder", ""),
+        "folder_name": data.get("folder_name", ""),
+        "use_subfolder": data.get("use_subfolder", True),
+        "quality": data.get("quality", "1080p"),
+        "mode": data.get("mode", "VIDEO"),
+        "embed_thumbnail": data.get("embed_thumbnail", True),
+        "embed_chapters": data.get("embed_chapters", True),
+        "embed_metadata": data.get("embed_metadata", True),
+        "embed_subs": data.get("embed_subs", False),
+        "sub_langs": data.get("sub_langs", "en"),
+        "sponsorblock": data.get("sponsorblock", False),
+        "filename_template": data.get("filename_template", ""),
+        "sync_mode": data.get("sync_mode", "add"),
+        "last_synced": None,
+        "created_at": now,
+    }
+    analytics.upsert_library_entry(entry)
+    return jsonify(entry), 201
+
+
+@app.route("/api/library/<entry_id>", methods=["PUT"])
+def api_library_put(entry_id: str) -> Response:
+    data = request.get_json(force=True) or {}
+    entries = analytics.get_library_entries()
+    existing = next((e for e in entries if e["id"] == entry_id), None)
+    if not existing:
+        return jsonify({"error": "Not found"}), 404
+    existing.update(data)
+    existing["id"] = entry_id
+    analytics.upsert_library_entry(existing)
+    return jsonify(existing)
+
+
+@app.route("/api/library/<entry_id>", methods=["DELETE"])
+def api_library_delete(entry_id: str) -> Response:
+    analytics.delete_library_entry(entry_id)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/library/<entry_id>/sync", methods=["POST"])
+def api_library_sync(entry_id: str) -> Response:
+    data = request.get_json(force=True) or {}
+    sync_mode = data.get("mode", "add")
+    entries = analytics.get_library_entries()
+    entry = next((e for e in entries if e["id"] == entry_id), None)
+    if not entry:
+        return jsonify({"error": "Not found"}), 404
+    cfg = _load_config()
+    base_folder = entry.get("folder") or cfg.get("output_dir", str(Path.home() / "Downloads"))
+    if entry.get("use_subfolder") and entry.get("folder_name"):
+        output_dir = str(Path(base_folder) / entry["folder_name"])
     else:
         output_dir = base_folder
-
-    archive = str(Path(output_dir) / f'.mellow_archive_{lid}.txt')
-    Path(output_dir).mkdir(parents=True, exist_ok=True)
-
     opts = {
-        **cfg,
-        'url': entry['url'],
-        'format_type': entry.get('mode','VIDEO'),
-        'quality': entry.get('quality','1080p'),
-        'container': 'mp4',
-        'audio_format': 'mp3',
-        'embed_thumbnail': entry.get('embed_thumbnail', True),
-        'embed_subs': entry.get('embed_subs', False),
-        'sub_langs': entry.get('sub_langs','en'),
-        'embed_chapters': entry.get('embed_chapters', True),
-        'embed_metadata': entry.get('embed_metadata', True),
-        'sponsorblock': entry.get('sponsorblock', False),
-        'archive_file': archive,
-        'download_dir': output_dir,
-        'filename_template': entry.get('filename_template') or '%(title)s [%(id)s].%(ext)s',
-        'sleep_interval': 1.5,
-        'max_sleep_interval': 5,
-        'use_format_sort': True,
-        'library_id': lid,
-        'sync_mode': sync_mode,
+        "mode": "library",
+        "quality": entry.get("quality", "1080p"),
+        "embed_thumbnail": entry.get("embed_thumbnail", True),
+        "embed_chapters": entry.get("embed_chapters", True),
+        "embed_metadata": entry.get("embed_metadata", True),
+        "embed_subs": entry.get("embed_subs", False),
+        "sub_langs": entry.get("sub_langs", "en"),
+        "sponsorblock": entry.get("sponsorblock", False),
+        "filename_template": entry.get("filename_template", ""),
+        "sync_mode": sync_mode,
+        "cookies_browser": cfg.get("cookies_browser", "none"),
+        "cookies_file": cfg.get("cookies_file", ""),
+        "rate_limit": cfg.get("rate_limit", ""),
+        "proxy": cfg.get("proxy", ""),
+        "sleep_interval": cfg.get("sleep_interval", 1),
     }
 
-    def run():
-        lib2 = load_library()
-        for e in lib2:
-            if e['id']==lid: e['status']='syncing'
-        save_library(lib2)
-        push_event({'status':'library_start','library_id':lid})
+    def _sync() -> None:
+        analytics.update_library_last_synced(entry_id)
+        downloader.download_video(entry["url"], output_dir, opts, _push_progress, entry_id)
 
-        if sync_mode == 'mirror':
-            # For mirror mode: get current playlist IDs, compare with archive
-            # This is handled in the downloader
-            opts['mirror_mode'] = True
+    threading.Thread(target=_sync, daemon=True).start()
+    return jsonify({"status": "started", "library_id": entry_id})
 
-        _dl.download(opts=opts, progress_cb=push_event)
 
-        lib3 = load_library()
-        for e in lib3:
-            if e['id']==lid:
-                e['status']='idle'
-                e['last_updated']=datetime.datetime.now().strftime('%Y-%m-%d %H:%M')
-        save_library(lib3)
-        push_event({'status':'library_done','library_id':lid})
+# ── App init ──────────────────────────────────────────────────────────────────
 
-    threading.Thread(target=run, daemon=True).start()
-    return jsonify({'status':'started'})
-
-@app.route('/api/check-ytdlp-update', methods=['GET'])
-def check_update():
-    """Check if a newer yt-dlp is available without installing it."""
-    try:
-        import yt_dlp
-        current = yt_dlp.version.__version__
-        # Check PyPI for latest
-        r = subprocess.run(
-            [sys.executable,'-m','pip','index','versions','yt-dlp'],
-            capture_output=True, text=True, timeout=15
-        )
-        latest = current
-        if r.returncode == 0:
-            m = re.search(r'Available versions: ([^\n]+)', r.stdout)
-            if m:
-                versions = [v.strip() for v in m.group(1).split(',')]
-                if versions: latest = versions[0]
-        return jsonify({'current': current==latest, 'version': current, 'latest': latest})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/update-ytdlp', methods=['POST'])
-def update_ytdlp():
-    try:
-        subprocess.run([sys.executable,'-m','pip','install','--upgrade','yt-dlp'],
-                       capture_output=True, timeout=120)
-        import importlib, yt_dlp; importlib.reload(yt_dlp)
-        return jsonify({'version': yt_dlp.version.__version__})
-    except Exception as e: return jsonify({'error':str(e)}), 500
-
-@app.route('/api/system', methods=['GET'])
-def system_info():
-    ffmpeg = shutil.which('ffmpeg') is not None
-    try:
-        import yt_dlp; ver = yt_dlp.version.__version__
-    except: ver = 'unknown'
-    return jsonify({'ffmpeg':ffmpeg,'ytdlp_version':ver})
-
-if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+def init_app() -> Flask:
+    analytics.init_db()
+    return app

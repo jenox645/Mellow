@@ -1,23 +1,40 @@
-"""MellowDLP entry point."""
-import sys, logging
+from __future__ import annotations
 
-def main():
-    logging.getLogger("werkzeug").setLevel(logging.ERROR)
-    try:
-        from flaskwebgui import FlaskUI
-    except ImportError:
-        print("ERROR: flaskwebgui not installed. Run SETUP.bat first.")
-        input("Press Enter..."); sys.exit(1)
-    try:
-        from server import app
-    except Exception as e:
-        print(f"ERROR loading server: {e}")
-        input("Press Enter..."); sys.exit(1)
+import socket
+import sys
+from pathlib import Path
 
-    # flaskwebgui opens Edge/Chrome in app mode automatically
-    # Translate is blocked via HTML meta tags in index.html
-    ui = FlaskUI(app=app, server="flask", width=1300, height=840, fullscreen=False)
+from flaskwebgui import FlaskUI
+
+from server import init_app
+
+
+def _find_free_port() -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("", 0))
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        return s.getsockname()[1]
+
+
+def main() -> None:
+    flask_app = init_app()
+    port = _find_free_port()
+
+    static_dir = Path(__file__).parent / "static"
+    if not static_dir.exists():
+        print(f"ERROR: static/ directory not found at {static_dir}", file=sys.stderr)
+        print("Run build_setup.py first to generate static assets.", file=sys.stderr)
+        sys.exit(1)
+
+    ui = FlaskUI(
+        app=flask_app,
+        server="flask",
+        port=port,
+        width=1100,
+        height=780,
+    )
     ui.run()
+
 
 if __name__ == "__main__":
     main()

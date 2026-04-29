@@ -1,241 +1,380 @@
-"""MellowDLP downloader v3 — library/playlist smart download support."""
-import json, datetime
+from __future__ import annotations
+
+import threading
+import time
 from pathlib import Path
+from typing import Any, Callable
 
-try:
-    import yt_dlp
-except ImportError:
-    yt_dlp = None
+import yt_dlp
 
-HISTORY_FILE = Path.home() / '.mellow_dlp_history.json'
+import analytics
 
-QUALITY_MAP = {
-    'best':  'bestvideo+bestaudio/best',
-    '4k':    'bestvideo[height<=2160]+bestaudio/best[height<=2160]',
-    '1080p': 'bestvideo[height<=1080]+bestaudio/best[height<=1080]',
-    '720p':  'bestvideo[height<=720]+bestaudio/best[height<=720]',
-    '480p':  'bestvideo[height<=480]+bestaudio/best[height<=480]',
-    '360p':  'bestvideo[height<=360]+bestaudio/best[height<=360]',
+QUALITY_MAP: dict[str, str] = {
+    "best": "bestvideo+bestaudio/best",
+    "4k": "bestvideo[height<=2160]+bestaudio/best",
+    "1080p": "bestvideo[height<=1080]+bestaudio/best",
+    "720p": "bestvideo[height<=720]+bestaudio/best",
+    "480p": "bestvideo[height<=480]+bestaudio/best",
+    "360p": "bestvideo[height<=360]+bestaudio/best",
 }
 
-# Format sort strings — better than raw -f for compatibility
-FORMAT_SORT_MAP = {
-    '1080p': 'vcodec:h264,res:1080,acodec:aac',
-    '720p':  'vcodec:h264,res:720,acodec:aac',
-    '480p':  'vcodec:h264,res:480,acodec:aac',
-    '4k':    'vcodec:h264,res:2160,acodec:aac',
-    'best':  'vcodec:h264,acodec:aac',
+AUDIO_FORMAT_MAP: dict[str, str] = {
+    "mp3": "mp3",
+    "aac": "aac",
+    "flac": "flac",
+    "m4a": "m4a",
+    "opus": "opus",
+    "wav": "wav",
 }
 
+_cancel_event = threading.Event()
+_lock = threading.Lock()
 
-class Downloader:
-    def __init__(self):
-        self._cancelled = False
-        self._ydl = None
 
-    def cancel(self):
-        self._cancelled = True
+def cancel_download() -> None:
+    _cancel_event.set()
 
-    def download(self, opts: dict, progress_cb):
-        if yt_dlp is None:
-            progress_cb({'status':'error','message':'yt-dlp not installed'}); return
 
-        self._cancelled = False
-        url = opts.get('url','')
-        fmt_type = opts.get('format_type','VIDEO')
-        output_dir = opts.get('download_dir', str(Path.home()/'Downloads'/'MellowDLP'))
-        filename_tpl = opts.get('filename_template','%(title)s.%(ext)s')
-        use_sort = opts.get('use_format_sort', False)
-        library_id = opts.get('library_id')
+def _is_cancelled() -> bool:
+    return _cancel_event.is_set()
 
-        # Output template
-        if fmt_type == 'PLAYLIST' or library_id:
-            outtmpl = f"{output_dir}/{filename_tpl}"
-        else:
-            outtmpl = f"{output_dir}/%(title)s.%(ext)s"
 
-        # Format
-        if opts.get('custom_format'):
-            fmt_str = opts['custom_format']
-            format_sort = None
-        elif use_sort:
-            q = opts.get('quality','1080p').lower()
-            fmt_str = 'bv+ba/b'
-            format_sort = FORMAT_SORT_MAP.get(q, FORMAT_SORT_MAP['best'])
-        elif fmt_type == 'AUDIO':
-            fmt_str = 'bestaudio/best'
-            format_sort = None
-        else:
-            q = opts.get('quality','best').lower()
-            fmt_str = QUALITY_MAP.get(q, QUALITY_MAP['best'])
-            format_sort = None
+def _reset_cancel() -> None:
+    _cancel_event.clear()
 
-        # Post-processors
-        pps = []
-        if fmt_type == 'AUDIO':
-            pps.append({'key':'FFmpegExtractAudio','preferredcodec':opts.get('audio_format','mp3'),'preferredquality':'0'})
-        else:
-            pass  # merge handled by merge_output_format
 
-        if opts.get('embed_thumbnail'):
-            pps.append({'key':'EmbedThumbnail'})
-        if opts.get('embed_metadata') or opts.get('embed_chapters'):
-            pps.append({'key':'FFmpegMetadata','add_metadata':True,'add_chapters':bool(opts.get('embed_chapters'))})
-        if opts.get('sponsorblock'):
-            pps.append({'key':'SponsorBlock','categories':['sponsor','intro','outro','selfpromo']})
-        if opts.get('split_chapters'):
-            pps.append({'key':'FFmpegSplitChapters'})
+def _make_progress_hook(progress_cb: Callable, library_id: str | None, speed_tracker: dict) -> Callable:
+    def hook(d: dict) -> None:
+        if _is_cancelled():
+            raise yt_dlp.utils.DownloadCancelled()
+        status = d.get("status")
+        if status == "downloading":
+            total = d.get("total_bytes") or d.get("total_bytes_estimate") or 0
+            downloaded = d.get("downloaded_bytes", 0)
+            pct = round((downloaded / total * 100) if total else 0, 1)
+            speed = d.get("speed") or 0
+            eta = d.get("eta") or 0
+            filename = Path(d.get("filename", "")).name
+            if speed:
+                speed_tracker["samples"].append(speed)
+            progress_cb({
+                "status": "downloading",
+                "pct": pct,
+                "downloaded": downloaded,
+                "total": total,
+                "speed": speed,
+                "eta": eta,
+                "filename": filename,
+                "library_id": library_id,
+            })
+        elif status == "finished":
+            progress_cb({"status": "processing", "library_id": library_id})
 
-        # Clip / trim
-        download_ranges = None
-        cs, ce = opts.get('clip_start','').strip(), opts.get('clip_end','').strip()
-        if cs or ce:
-            s = _parse_time(cs) if cs else 0
-            e = _parse_time(ce) if ce else float('inf')
-            download_ranges = yt_dlp.utils.download_range_func(None, [(s, e)])
-            pps.append({'key':'FFmpegFixupStretch'})
+    return hook
 
-        # Subs
-        sub_opts = {}
-        if opts.get('embed_subs'):
-            langs = opts.get('sub_langs','en')
-            sub_opts = {
-                'writesubtitles': True,
-                'writeautomaticsub': opts.get('auto_subs', False),
-                'subtitleslangs': [l.strip() for l in langs.split(',')],
-                'embedsubtitles': True,
-            }
 
+def _build_postprocessors(opts: dict) -> list[dict]:
+    pps: list[dict] = []
+    if opts.get("embed_thumbnail"):
+        pps.append({"key": "EmbedThumbnail"})
+    if opts.get("embed_chapters") or opts.get("embed_metadata"):
+        pps.append({
+            "key": "FFmpegMetadata",
+            "add_chapters": bool(opts.get("embed_chapters")),
+            "add_metadata": bool(opts.get("embed_metadata")),
+        })
+    if opts.get("sponsorblock"):
+        pps.append({
+            "key": "SponsorBlock",
+            "categories": ["sponsor", "intro", "outro", "selfpromo"],
+        })
+    if opts.get("split_chapters"):
+        pps.append({"key": "FFmpegSplitChapters"})
+    return pps
+
+
+def _detect_platform(url: str) -> str:
+    url_lower = url.lower()
+    if "youtube.com" in url_lower or "youtu.be" in url_lower:
+        return "YouTube"
+    if "twitter.com" in url_lower or "x.com" in url_lower:
+        return "Twitter/X"
+    if "instagram.com" in url_lower:
+        return "Instagram"
+    if "tiktok.com" in url_lower:
+        return "TikTok"
+    if "twitch.tv" in url_lower:
+        return "Twitch"
+    if "vimeo.com" in url_lower:
+        return "Vimeo"
+    if "reddit.com" in url_lower:
+        return "Reddit"
+    if "soundcloud.com" in url_lower:
+        return "SoundCloud"
+    return "Other"
+
+
+def _parse_time(s: str) -> float | None:
+    s = s.strip()
+    if not s:
+        return None
+    if ":" in s:
+        parts = s.split(":")
+        try:
+            if len(parts) == 3:
+                return int(parts[0]) * 3600 + int(parts[1]) * 60 + float(parts[2])
+            if len(parts) == 2:
+                return int(parts[0]) * 60 + float(parts[1])
+        except ValueError:
+            return None
+    try:
+        return float(s)
+    except ValueError:
+        return None
+
+
+def download_video(
+    url: str,
+    output_dir: str,
+    opts: dict,
+    progress_cb: Callable,
+    library_id: str | None = None,
+) -> None:
+    _reset_cancel()
+    t_start = time.monotonic()
+    speed_tracker: dict = {"samples": []}
+    progress_cb({"status": "starting", "url": url, "library_id": library_id})
+
+    out_dir = Path(output_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    mode = opts.get("mode", "video").lower()
+    quality = opts.get("quality", "best")
+    container = opts.get("container", "mp4").lower()
+    audio_fmt = opts.get("audio_format", "mp3").lower()
+    custom_format = opts.get("custom_format", "").strip()
+    start_time = opts.get("start_time", "").strip()
+    end_time = opts.get("end_time", "").strip()
+    cookies_browser = opts.get("cookies_browser", "")
+    cookies_file = opts.get("cookies_file", "")
+    rate_limit = opts.get("rate_limit", "")
+    proxy = opts.get("proxy", "")
+    ext_downloader = opts.get("external_downloader", "")
+    concurrent_frags = opts.get("concurrent_fragments", 4)
+    sleep_interval = opts.get("sleep_interval", 0)
+    embed_subs = opts.get("embed_subs", False)
+    sub_langs = opts.get("sub_langs", "en")
+    playlist_start = opts.get("playlist_start")
+    playlist_end = opts.get("playlist_end")
+    date_before = opts.get("date_before", "")
+    date_after = opts.get("date_after", "")
+    filename_template = opts.get("filename_template", "").strip()
+
+    if filename_template:
+        outtmpl = str(out_dir / filename_template)
+    else:
+        outtmpl = str(out_dir / "%(title)s [%(id)s].%(ext)s")
+
+    hook = _make_progress_hook(progress_cb, library_id, speed_tracker)
+
+    if mode == "audio":
+        fmt = "bestaudio/best"
+        pps = [{
+            "key": "FFmpegExtractAudio",
+            "preferredcodec": AUDIO_FORMAT_MAP.get(audio_fmt, "mp3"),
+            "preferredquality": "0",
+        }]
+        pps += _build_postprocessors(opts)
+        ydl_opts: dict[str, Any] = {
+            "format": fmt,
+            "outtmpl": outtmpl,
+            "postprocessors": pps,
+            "progress_hooks": [hook],
+            "noplaylist": True,
+        }
+    elif mode == "library":
+        archive_path = str(out_dir / f".mellow_archive_{library_id}.txt")
+        pps = _build_postprocessors(opts)
         ydl_opts = {
-            'format': fmt_str,
-            'outtmpl': outtmpl,
-            'writethumbnail': bool(opts.get('embed_thumbnail')),
-            'postprocessors': pps,
-            'progress_hooks': [self._make_hook(progress_cb, library_id)],
-            'noprogress': True,
-            'quiet': True,
-            'ignoreerrors': True,  # don't abort on single-video errors in playlists
-            'retries': 5,
-            'fragment_retries': 10,
-            'continuedl': True,
-            'concurrent_fragment_downloads': int(opts.get('concurrent', 4)),
-            **sub_opts,
+            "format": custom_format if custom_format else "bv+ba/b",
+            "format_sort": ["vcodec:h264,res:1080,acodec:aac"],
+            "outtmpl": outtmpl,
+            "postprocessors": pps,
+            "progress_hooks": [hook],
+            "download_archive": archive_path,
+            "ignoreerrors": True,
+        }
+    else:
+        fmt = custom_format if custom_format else QUALITY_MAP.get(quality, "bestvideo+bestaudio/best")
+        pps = _build_postprocessors(opts)
+        ydl_opts = {
+            "format": fmt,
+            "merge_output_format": container,
+            "outtmpl": outtmpl,
+            "postprocessors": pps,
+            "progress_hooks": [hook],
         }
 
-        if format_sort:
-            ydl_opts['format_sort'] = [format_sort]
+    if embed_subs and mode != "audio":
+        ydl_opts["writesubtitles"] = True
+        ydl_opts["writeautomaticsub"] = opts.get("auto_subs", False)
+        ydl_opts["subtitleslangs"] = [s.strip() for s in sub_langs.split(",") if s.strip()]
+        ydl_opts.setdefault("postprocessors", []).append(
+            {"key": "FFmpegEmbedSubtitle", "already_have_subtitle": False}
+        )
 
-        if fmt_type != 'AUDIO':
-            ydl_opts['merge_output_format'] = opts.get('container','mp4')
+    if cookies_browser and cookies_browser.lower() not in ("none", ""):
+        ydl_opts["cookiesfrombrowser"] = (cookies_browser.lower(),)
+    elif cookies_file:
+        ydl_opts["cookiefile"] = cookies_file
 
-        if download_ranges:
-            ydl_opts['download_ranges'] = download_ranges
-            ydl_opts['force_keyframes_at_cuts'] = True
+    if rate_limit:
+        ydl_opts["ratelimit"] = rate_limit
+    if proxy:
+        ydl_opts["proxy"] = proxy
+    if ext_downloader:
+        ydl_opts["external_downloader"] = ext_downloader
+    if concurrent_frags and int(concurrent_frags) > 1:
+        ydl_opts["concurrent_fragment_downloads"] = int(concurrent_frags)
+    if sleep_interval and int(sleep_interval) > 0:
+        ydl_opts["sleep_interval"] = int(sleep_interval)
 
-        if opts.get('cookies_file') and Path(opts['cookies_file']).exists():
-            ydl_opts['cookiefile'] = opts['cookies_file']
-        elif opts.get('cookies_from_browser'):
-            ydl_opts['cookiesfrombrowser'] = (opts['cookies_from_browser'],)
+    if start_time or end_time:
+        start_sec = _parse_time(start_time) if start_time else None
+        end_sec = _parse_time(end_time) if end_time else None
+        ydl_opts["download_ranges"] = yt_dlp.utils.download_range_func(
+            None, [{"start_time": start_sec, "end_time": end_sec}]
+        )
+        ydl_opts["force_keyframes_at_cuts"] = True
 
-        if opts.get('rate_limit'): ydl_opts['ratelimit'] = opts['rate_limit']
-        if opts.get('proxy'): ydl_opts['proxy'] = opts['proxy']
-        if opts.get('external_dl'): ydl_opts['external_downloader'] = opts['external_dl']
-        if opts.get('archive_file'): ydl_opts['download_archive'] = opts['archive_file']
-        if opts.get('playlist_start'): ydl_opts['playliststart'] = int(opts['playlist_start'])
-        if opts.get('playlist_end'): ydl_opts['playlistend'] = int(opts['playlist_end'])
-        if opts.get('date_after'): ydl_opts['dateafter'] = opts['date_after'].replace('-','')
-        if opts.get('date_before'): ydl_opts['datebefore'] = opts['date_before'].replace('-','')
-        if opts.get('sleep_interval'):
-            ydl_opts['sleep_interval'] = float(opts['sleep_interval'])
-        if opts.get('max_sleep_interval'):
-            ydl_opts['max_sleep_interval'] = float(opts['max_sleep_interval'])
-        if opts.get('sleep_requests'):
-            ydl_opts['sleep_requests'] = float(opts['sleep_requests'])
+    if playlist_start:
+        ydl_opts["playliststart"] = int(playlist_start)
+    if playlist_end:
+        ydl_opts["playlistend"] = int(playlist_end)
+    if date_before:
+        ydl_opts["datebefore"] = date_before.replace("-", "")
+    if date_after:
+        ydl_opts["dateafter"] = date_after.replace("-", "")
 
-        try:
-            progress_cb({'status':'starting','url':url,'library_id':library_id})
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                self._ydl = ydl
-                try:
-                    info = ydl.extract_info(url, download=False)
-                    title = info.get('title', url) if info else url
-                except Exception:
-                    title = url
-                if self._cancelled:
-                    progress_cb({'status':'cancelled'}); return
-                code = ydl.download([url])
-            if self._cancelled:
-                progress_cb({'status':'cancelled'})
-            elif code == 0:
-                progress_cb({'status':'complete','title':title,'library_id':library_id})
-                _append_history(url, title, fmt_type, opts)
-            else:
-                progress_cb({'status':'error','message':f'Exit code {code}','library_id':library_id})
-        except yt_dlp.utils.DownloadError as e:
-            progress_cb({'status':'error','message':_friendly(str(e)),'library_id':library_id})
-        except Exception as e:
-            if 'cancelled' in str(e).lower():
-                progress_cb({'status':'cancelled'})
-            else:
-                progress_cb({'status':'error','message':str(e)[:300],'library_id':library_id})
-        finally:
-            self._ydl = None
+    final_path: str | None = None
+    final_size: int = 0
+    final_title: str | None = None
+    final_uploader: str | None = None
+    final_duration: int | None = None
 
-    def _make_hook(self, cb, library_id=None):
-        def hook(d):
-            if self._cancelled: raise Exception('cancelled')
-            s = d.get('status')
-            if s == 'downloading':
-                total = d.get('total_bytes') or d.get('total_bytes_estimate') or 0
-                done  = d.get('downloaded_bytes', 0)
-                speed = d.get('speed') or 0
-                eta   = d.get('eta') or 0
-                cb({
-                    'status':'downloading',
-                    'pct': int(done/total*100) if total else 0,
-                    'downloaded': done, 'total': total,
-                    'speed': _fmt_speed(speed), 'eta': _fmt_eta(eta),
-                    'filename': Path(d.get('filename','')).name,
-                    'library_id': library_id,
-                })
-            elif s == 'finished':
-                cb({'status':'processing','library_id':library_id})
-        return hook
-
-
-def _parse_time(s):
-    parts = s.strip().split(':')
     try:
-        if len(parts)==3: return int(parts[0])*3600+int(parts[1])*60+float(parts[2])
-        if len(parts)==2: return int(parts[0])*60+float(parts[1])
-        return float(s)
-    except: return 0.0
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=True)
+            if info:
+                final_title = info.get("title")
+                final_uploader = info.get("uploader") or info.get("channel")
+                final_duration = info.get("duration")
+                requested = info.get("requested_downloads", [{}])
+                if requested:
+                    fp = requested[0].get("filepath") or requested[0].get("_filename")
+                    if fp:
+                        final_path = fp
+                        try:
+                            final_size = Path(fp).stat().st_size
+                        except OSError:
+                            final_size = info.get("filesize") or 0
 
-def _fmt_speed(b):
-    if not b: return '—'
-    return f'{b/1e6:.1f} MB/s' if b>1e6 else f'{b/1e3:.0f} KB/s'
+        elapsed = time.monotonic() - t_start
+        samples = speed_tracker["samples"]
+        avg_speed = int(sum(samples) / len(samples)) if samples else None
+        elapsed_int = int(elapsed)
 
-def _fmt_eta(s):
-    if not s: return '—'
-    m,s=divmod(s,60); h,m=divmod(m,60)
-    if h: return f'{h}h {m}m'
-    if m: return f'{m}m {s}s'
-    return f'{s}s'
+        if _is_cancelled():
+            progress_cb({"status": "cancelled"})
+            analytics.record_download({
+                "url": url, "title": final_title, "uploader": final_uploader,
+                "platform": _detect_platform(url), "duration_seconds": final_duration,
+                "status": "cancelled",
+                "elapsed_seconds": elapsed_int,
+            })
+            return
 
-def _friendly(msg):
-    m = msg.lower()
-    if 'sign in' in m or 'age' in m: return 'Age-restricted — add cookies in Settings.'
-    if '403' in m: return 'HTTP 403 rate-limited — add cookies or set a rate limit.'
-    if 'private' in m or 'unavailable' in m: return 'Video is private or unavailable.'
-    if 'ffmpeg' in m: return 'FFmpeg not found — install it and restart.'
-    return msg[:200]
+        progress_cb({
+            "status": "complete",
+            "title": final_title or url,
+            "file_path": final_path,
+            "file_size": final_size,
+            "library_id": library_id,
+        })
+        analytics.record_download({
+            "url": url, "title": final_title, "uploader": final_uploader,
+            "platform": _detect_platform(url), "duration_seconds": final_duration,
+            "file_size_bytes": final_size,
+            "format": "audio" if mode == "audio" else "video",
+            "quality": quality,
+            "container": audio_fmt if mode == "audio" else container,
+            "file_path": final_path,
+            "status": "success",
+            "download_speed_avg_bps": avg_speed,
+            "elapsed_seconds": elapsed_int,
+        })
 
-def _append_history(url, title, fmt_type, opts):
-    try:
-        hist = []
-        if HISTORY_FILE.exists(): hist = json.loads(HISTORY_FILE.read_text())
-        hist.insert(0, {'url':url,'title':title,'type':fmt_type.lower(),
-                        'date':datetime.datetime.now().strftime('%Y-%m-%d %H:%M'),
-                        'quality':opts.get('quality',''),'container':opts.get('container','')})
-        HISTORY_FILE.write_text(json.dumps(hist[:100], indent=2))
-    except: pass
+    except yt_dlp.utils.DownloadCancelled:
+        elapsed = time.monotonic() - t_start
+        progress_cb({"status": "cancelled"})
+        analytics.record_download({
+            "url": url, "title": final_title, "platform": _detect_platform(url),
+            "status": "cancelled", "elapsed_seconds": int(elapsed),
+        })
+    except Exception as exc:
+        elapsed = time.monotonic() - t_start
+        msg = str(exc)
+        progress_cb({"status": "error", "message": msg, "library_id": library_id})
+        analytics.record_download({
+            "url": url, "title": final_title, "uploader": final_uploader,
+            "platform": _detect_platform(url),
+            "format": "audio" if mode == "audio" else "video",
+            "quality": quality,
+            "status": "error",
+            "error_message": msg,
+            "elapsed_seconds": int(elapsed),
+        })
+
+
+def get_video_info(url: str) -> dict:
+    ydl_opts = {
+        "quiet": True,
+        "no_warnings": True,
+        "skip_download": True,
+        "extract_flat": "in_playlist",
+        "noplaylist": False,
+    }
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        info = ydl.extract_info(url, download=False)
+    if not info:
+        return {}
+    is_playlist = info.get("_type") == "playlist" or "entries" in info
+    playlist_count = 0
+    if is_playlist:
+        entries = info.get("entries") or []
+        playlist_count = len(entries)
+    return {
+        "title": info.get("title"),
+        "uploader": info.get("uploader") or info.get("channel"),
+        "thumbnail": info.get("thumbnail"),
+        "duration": info.get("duration"),
+        "platform": _detect_platform(url),
+        "is_playlist": is_playlist,
+        "playlist_count": playlist_count,
+    }
+
+
+def download_in_thread(
+    url: str,
+    output_dir: str,
+    opts: dict,
+    progress_cb: Callable,
+    library_id: str | None = None,
+) -> threading.Thread:
+    t = threading.Thread(
+        target=download_video,
+        args=(url, output_dir, opts, progress_cb, library_id),
+        daemon=True,
+    )
+    t.start()
+    return t

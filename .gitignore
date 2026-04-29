@@ -1,5 +1,5 @@
-build/
 dist/
+build/
 __pycache__/
 *.pyc
 static/app.bundle.js
@@ -8,3 +8,9 @@ static/react-dom.min.js
 *.spec.bak
 node_modules/
 .vscode/
+assets/wizard_large.bmp
+assets/wizard_small.bmp
+*.duckdb
+*.duckdb.wal
+*.json
+!package.json
