@@ -175,6 +175,7 @@ def download_video(
     else:
         outtmpl = str(out_dir / "%(title)s [%(id)s].%(ext)s")
 
+    print(f"[MellowDLP] yt-dlp outtmpl={outtmpl!r}  output_dir={output_dir!r}", flush=True)
     hook = _make_progress_hook(progress_cb, library_id, speed_tracker)
 
     if mode == "audio":

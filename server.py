@@ -296,7 +296,8 @@ def api_download() -> Response:
     if not url:
         return jsonify({"error": "No URL provided"}), 400
     cfg = _load_config()
-    output_dir = data.get("output_dir") or cfg.get("output_dir", str(Path.home() / "Downloads"))
+    output_dir = data.get("output_dir") or cfg.get("output_dir") or str(Path.home() / "Downloads" / "MellowDLP")
+    print(f"[MellowDLP] download -> output_dir={output_dir!r}", flush=True)
     opts = {
         "mode": data.get("mode", "video"),
         "quality": data.get("quality", "best"),
@@ -365,11 +366,16 @@ def api_history() -> Response:
 @app.route("/api/history", methods=["DELETE"])
 def api_history_delete() -> Response:
     data = request.get_json(force=True) or {}
+    delete_all = data.get("all", False)
     count = analytics.delete_history(
         ids=data.get("ids"),
         older_than_days=data.get("older_than_days"),
-        delete_all=data.get("all", False),
+        delete_all=delete_all,
     )
+    if delete_all:
+        cfg = _load_config()
+        cfg["stat_overrides"] = {}
+        _save_config(cfg)
     return jsonify({"deleted": count})
 
 

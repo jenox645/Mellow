@@ -9,10 +9,11 @@ OutputDir=dist
 OutputBaseFilename=MellowDLP_Setup
 Compression=lzma2/ultra64
 SolidCompression=yes
-WizardStyle=classic
+WizardStyle=modern
 PrivilegesRequired=lowest
 DisableDirPage=no
 DisableProgramGroupPage=yes
+DisableWelcomePage=no
 UninstallDisplayIcon={app}\MellowDLP.exe
 
 [Tasks]
@@ -27,15 +28,3 @@ Name: "{autodesktop}\MellowDLP"; Filename: "{app}\MellowDLP.exe"; Tasks: desktop
 
 [Run]
 Filename: "{app}\MellowDLP.exe"; Description: "Launch MellowDLP"; Flags: nowait postinstall skipifsilent
-
-[Code]
-procedure CurStepChanged(CurStep: TSetupStep);
-begin
-  if CurStep = ssPostInstall then
-    if not FileExists(ExpandConstant('{sys}\ffmpeg.exe')) then
-      MsgBox(
-        'FFmpeg not found. Install it with:' + #13#10 +
-        '    winget install ffmpeg' + #13#10 + #13#10 +
-        'Required for thumbnails, subtitles and SponsorBlock.',
-        mbInformation, MB_OK);
-end;
