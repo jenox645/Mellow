@@ -9,7 +9,7 @@ OutputDir=dist
 OutputBaseFilename=MellowDLP_Setup
 Compression=lzma2/ultra64
 SolidCompression=yes
-WizardStyle=modern
+WizardStyle=classic
 PrivilegesRequired=lowest
 DisableDirPage=no
 DisableProgramGroupPage=yes
@@ -22,8 +22,8 @@ Name: desktopicon; Description: "Create desktop shortcut"
 Source: "dist\MellowDLP.exe"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
-Name: "{autoprograms}\MellowDLP"; Filename: "{app}\MellowDLP.exe"
-Name: "{autodesktop}\MellowDLP"; Filename: "{app}\MellowDLP.exe"; Tasks: desktopicon
+Name: "{autoprograms}\MellowDLP"; Filename: "{app}\MellowDLP.exe"; IconFilename: "{app}\MellowDLP.exe"
+Name: "{autodesktop}\MellowDLP"; Filename: "{app}\MellowDLP.exe"; Tasks: desktopicon; IconFilename: "{app}\MellowDLP.exe"
 
 [Run]
 Filename: "{app}\MellowDLP.exe"; Description: "Launch MellowDLP"; Flags: nowait postinstall skipifsilent

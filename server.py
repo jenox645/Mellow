@@ -96,11 +96,16 @@ def _get_clipboard_text() -> str:
     system = platform.system()
     try:
         if system == "Windows":
-            result = subprocess.run(
-                ["powershell", "-Command", "Get-Clipboard"],
-                capture_output=True, text=True, timeout=5
-            )
-            return result.stdout.strip()
+            # Use tkinter clipboard — no shell window, no PowerShell spawned
+            root = tkinter.Tk()
+            root.withdraw()
+            try:
+                text = root.clipboard_get()
+            except tkinter.TclError:
+                text = ""
+            finally:
+                root.destroy()
+            return text.strip()
         if system == "Darwin":
             result = subprocess.run(["pbpaste"], capture_output=True, text=True, timeout=5)
             return result.stdout.strip()
@@ -120,6 +125,7 @@ def _tk_dialog(dialog_fn: Any, **kwargs: Any) -> str:
         with _tk_lock:
             root = tkinter.Tk()
             root.withdraw()
+            root.attributes("-topmost", True)  # stay above app window
             root.lift()
             root.focus_force()
             try:
@@ -197,7 +203,10 @@ def api_system() -> Response:
         pass
     ffmpeg_ok = False
     try:
-        result = subprocess.run(["ffmpeg", "-version"], capture_output=True, timeout=5)
+        _kw: dict = {"capture_output": True, "timeout": 5}
+        if platform.system() == "Windows":
+            _kw["creationflags"] = subprocess.CREATE_NO_WINDOW
+        result = subprocess.run(["ffmpeg", "-version"], **_kw)
         ffmpeg_ok = result.returncode == 0
     except Exception:
         pass
@@ -234,9 +243,12 @@ def api_check_ytdlp_update() -> Response:
 def api_update_ytdlp() -> Response:
     def _update() -> None:
         try:
+            _kw: dict = {"check": True, "capture_output": True}
+            if platform.system() == "Windows":
+                _kw["creationflags"] = subprocess.CREATE_NO_WINDOW
             subprocess.run(
                 [sys.executable, "-m", "pip", "install", "--upgrade", "yt-dlp"],
-                check=True, capture_output=True,
+                **_kw,
             )
             _push_progress({"status": "ytdlp_updated", "ok": True})
         except Exception as exc:
@@ -389,6 +401,23 @@ def api_analytics_query() -> Response:
     return jsonify(result)
 
 
+@app.route("/api/analytics/overrides", methods=["GET"])
+def api_analytics_overrides_get() -> Response:
+    cfg = _load_config()
+    return jsonify(cfg.get("stat_overrides", {}))
+
+
+@app.route("/api/analytics/overrides", methods=["POST"])
+def api_analytics_overrides_post() -> Response:
+    data = request.get_json(force=True) or {}
+    cfg = _load_config()
+    overrides = cfg.get("stat_overrides", {})
+    overrides.update(data)
+    cfg["stat_overrides"] = overrides
+    _save_config(cfg)
+    return jsonify({"ok": True, "overrides": overrides})
+
+
 @app.route("/api/analytics/vacuum", methods=["POST"])
 def api_analytics_vacuum() -> Response:
     try:
@@ -405,7 +434,62 @@ def api_vault() -> Response:
     cfg = _load_config()
     base_path = request.args.get("path") or cfg.get("output_dir", str(Path.home() / "Downloads" / "MellowDLP"))
     folders = analytics.get_vault_folders(base_path)
-    return jsonify({"folders": folders, "base_path": base_path})
+    # Include watched folders as additional vault entries
+    watched = cfg.get("watched_folders", [])
+    watched_entries = []
+    for wp in watched:
+        p = Path(wp)
+        if p.exists() and p.is_dir():
+            try:
+                count = sum(1 for f in p.iterdir() if f.is_file())
+            except Exception:
+                count = 0
+            watched_entries.append({
+                "path": str(p),
+                "name": p.name,
+                "item_count": count,
+                "watched": True,
+            })
+    return jsonify({"folders": folders + watched_entries, "base_path": base_path})
+
+
+@app.route("/api/vault/watch", methods=["GET"])
+def api_vault_watch_get() -> Response:
+    cfg = _load_config()
+    return jsonify({"watched_folders": cfg.get("watched_folders", [])})
+
+
+@app.route("/api/vault/watch", methods=["POST"])
+def api_vault_watch_post() -> Response:
+    data = request.get_json(force=True) or {}
+    folder = data.get("path", "").strip()
+    if not folder:
+        return jsonify({"error": "No path provided"}), 400
+    p = Path(folder)
+    if not p.exists():
+        try:
+            p.mkdir(parents=True, exist_ok=True)
+        except Exception as exc:
+            return jsonify({"error": str(exc)}), 400
+    cfg = _load_config()
+    watched = cfg.get("watched_folders", [])
+    if folder not in watched:
+        watched.append(folder)
+    cfg["watched_folders"] = watched
+    _save_config(cfg)
+    return jsonify({"ok": True, "watched_folders": watched})
+
+
+@app.route("/api/vault/watch", methods=["DELETE"])
+def api_vault_watch_delete() -> Response:
+    data = request.get_json(force=True) or {}
+    folder = data.get("path", "").strip()
+    cfg = _load_config()
+    watched = cfg.get("watched_folders", [])
+    watched = [w for w in watched if w != folder]
+    cfg["watched_folders"] = watched
+    _save_config(cfg)
+    return jsonify({"ok": True, "watched_folders": watched})
 
 
 @app.route("/api/vault/folder")

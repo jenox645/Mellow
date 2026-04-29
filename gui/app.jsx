@@ -1,8 +1,16 @@
 /* @jsxRuntime classic */
 /* @jsx React.createElement */
 /* @jsxFrag React.Fragment */
-/* global React, ReactDOM, MASCOT_DJ, MASCOT_VIBING, MASCOT_CHILLING, MASCOT_FRUSTRATED, MASCOT_TIRED */
+/* global React, ReactDOM, MASCOT_DJ, MASCOT_VIBING, MASCOT_CHILLING, MASCOT_FRUSTRATED, MASCOT_TIRED, MASCOT_COMFY, MASCOT_SUCCESS, MASCOT_TROUBLESHOOTING, MASCOT_VICTORY */
 'use strict';
+
+// Safe refs for optional mascots (defined by build_setup.py; may be absent in dev)
+const _g = typeof globalThis !== 'undefined' ? globalThis : window;
+const _mc = (name) => (typeof _g[name] !== 'undefined' ? _g[name] : null);
+const MASCOT_COMFY_SAFE          = _mc('MASCOT_COMFY');
+const MASCOT_SUCCESS_SAFE        = _mc('MASCOT_SUCCESS');
+const MASCOT_TROUBLESHOOTING_SAFE = _mc('MASCOT_TROUBLESHOOTING');
+const MASCOT_VICTORY_SAFE        = _mc('MASCOT_VICTORY');
 
 // ── Utilities ────────────────────────────────────────────────────────────────
 
@@ -136,6 +144,67 @@ function Toggle({ checked, onChange }) {
   );
 }
 
+// ── Mascot ─────────────────────────────────────────────────────────────────────
+// Handles both inline-SVG strings and data-URI PNGs from mascots.js
+
+function Mascot({ src, className, style, wrapClass }) {
+  if (src && typeof src === 'string' && src.trimStart().startsWith('<svg')) {
+    return (
+      <div
+        className={'mascot-wrap ' + (wrapClass || className || '')}
+        style={style}
+        dangerouslySetInnerHTML={{ __html: src }}
+      />
+    );
+  }
+  return <img src={src} className={className || 'mascot-img'} style={style} alt="" />;
+}
+
+// ── EditableStat ──────────────────────────────────────────────────────────────
+
+function EditableStat({ value, colorClass, format, onSave }) {
+  const [editing, setEditing] = React.useState(false);
+  const [draft, setDraft] = React.useState('');
+  const inputRef = React.useRef(null);
+
+  const startEdit = () => {
+    setDraft(String(value));
+    setEditing(true);
+  };
+
+  React.useEffect(() => {
+    if (editing && inputRef.current) inputRef.current.select();
+  }, [editing]);
+
+  const commit = () => {
+    setEditing(false);
+    if (onSave && draft !== String(value)) onSave(draft);
+  };
+
+  if (editing) {
+    return (
+      <input
+        ref={inputRef}
+        className="stat-value-input"
+        value={draft}
+        onChange={e => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={e => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') setEditing(false); }}
+      />
+    );
+  }
+
+  return (
+    <div
+      className={'stat-value editable ' + (colorClass || '')}
+      onClick={startEdit}
+      title="Click to edit"
+    >
+      {format ? format(value) : value}
+    </div>
+  );
+}
+
 // ── Modal ─────────────────────────────────────────────────────────────────────
 
 function Modal({ title, onClose, children, footer }) {
@@ -174,10 +243,18 @@ function Notif({ notif, dismiss }) {
 
 // ── Loading Screen ────────────────────────────────────────────────────────────
 
+const LOADING_MIN_MS = 4500;
+
 function LoadingScreen({ onReady }) {
   const [text, setText] = React.useState('');
   const [attempts, setAttempts] = React.useState(0);
+  const serverReadyRef = React.useRef(false);
+  const minElapsedRef = React.useRef(false);
   const TARGET = 'WELCOME, ADMINISTRATOR';
+
+  const tryReady = React.useCallback(() => {
+    if (serverReadyRef.current && minElapsedRef.current) onReady();
+  }, [onReady]);
 
   React.useEffect(() => {
     let i = 0;
@@ -189,32 +266,49 @@ function LoadingScreen({ onReady }) {
     return () => clearInterval(timer);
   }, []);
 
+  // Minimum display duration — ensures animation completes
+  React.useEffect(() => {
+    const t = setTimeout(() => {
+      minElapsedRef.current = true;
+      tryReady();
+    }, LOADING_MIN_MS);
+    return () => clearTimeout(t);
+  }, [tryReady]);
+
+  // Server readiness check
   React.useEffect(() => {
     const tryConnect = () => {
       fetch('/api/system')
         .then(r => r.json())
-        .then(() => onReady())
+        .then(() => {
+          serverReadyRef.current = true;
+          tryReady();
+        })
         .catch(() => {
           setAttempts(a => {
-            if (a < 2) { setTimeout(tryConnect, 1200); return a + 1; }
-            onReady();
-            return a;
+            const next = a + 1;
+            if (next < 5) setTimeout(tryConnect, 1200);
+            else {
+              serverReadyRef.current = true;
+              tryReady();
+            }
+            return next;
           });
         });
     };
     const t = setTimeout(tryConnect, 600);
     return () => clearTimeout(t);
-  }, []);
+  }, [tryReady]);
 
   return (
     <div className="loading-screen">
-      <img src={MASCOT_CHILLING} className="loading-mascot" alt="Mellow" />
+      <Mascot src={MASCOT_CHILLING} className="loading-mascot" wrapClass="loading-mascot" />
       <div className="loading-title">{text}<span style={{ opacity: 0.5, animation: 'pulse 1s infinite' }}>_</span></div>
-      <div className="loading-sub">MELLOW // DATA LAKE COMMANDER v1.0.0</div>
+      <div className="loading-sub">MELLOW // DATA LAKE COMMANDER v2.0.0</div>
       <div className="loading-bar"><div className="loading-bar-fill" /></div>
       {attempts > 0 && (
         <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: '9px', color: 'var(--t4)' }}>
-          CONNECTING... ATTEMPT {attempts + 1}/3
+          CONNECTING... ATTEMPT {attempts}/5
         </div>
       )}
     </div>
@@ -320,7 +414,9 @@ function Sidebar({ page, setPage, appState, stats, speedHistory, sysInfo, vaultF
     empty: MASCOT_CHILLING,
   }[appState] || MASCOT_VIBING;
 
-  const mascotAnim = appState === 'downloading' ? ' mascot-img downloading' : ' mascot-img';
+  const LAKE_IDS = ['analytics', 'signal', 'config'];
+  const isLakePage = LAKE_IDS.includes(page);
+  const mascotAreaClass = 'mascot-area' + (isLakePage ? ' lake-color' : ' core-color');
   const hideMascot = page === 'vault' && vaultFolders.length > 3;
 
   const currentSpeed = speedHistory.length ? speedHistory[speedHistory.length - 1] : 0;
@@ -373,6 +469,7 @@ function Sidebar({ page, setPage, appState, stats, speedHistory, sysInfo, vaultF
             >
               <Ico name="folder" />
               <span className="vt-item-name">{f.name}</span>
+              {f.watched && <span className="vt-watched">WATCH</span>}
               <span className="vt-badge">{f.item_count}</span>
             </div>
           ))}
@@ -381,8 +478,8 @@ function Sidebar({ page, setPage, appState, stats, speedHistory, sysInfo, vaultF
           </div>
         </div>
       ) : (
-        <div className={'mascot-area' + (hideMascot ? ' hidden' : '')}>
-          <img src={mascotSrc} className={mascotAnim} alt="Mellow" />
+        <div className={mascotAreaClass + (hideMascot ? ' hidden' : '')}>
+          <Mascot src={mascotSrc} className="mascot-img" />
         </div>
       )}
 
@@ -503,7 +600,7 @@ function StatusBar({ sysInfo, speedHistory, config }) {
 
 // ── FEED Page ─────────────────────────────────────────────────────────────────
 
-function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats, showNotif, switchPage }) {
+function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats, showNotif, switchPage, config }) {
   const [url, setUrl] = React.useState('');
   const [analyzing, setAnalyzing] = React.useState(false);
   const [info, setInfo] = React.useState(null);
@@ -521,6 +618,7 @@ function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats, showN
   const [startTime, setStartTime] = React.useState('');
   const [endTime, setEndTime] = React.useState('');
   const [customFmt, setCustomFmt] = React.useState('');
+  const [downloadPath, setDownloadPath] = React.useState('');
   const [vaultModal, setVaultModal] = React.useState(false);
   const [vaultName, setVaultName] = React.useState('');
   const [vaultFolder, setVaultFolder] = React.useState('');
@@ -551,6 +649,10 @@ function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats, showN
     startDownload();
   }, [url, info]);
 
+  const browseDownloadPath = React.useCallback(() => {
+    API.post('/api/browse-folder', {}).then(d => { if (d.path) setDownloadPath(d.path); }).catch(() => {});
+  }, []);
+
   const startDownload = React.useCallback((extra) => {
     setVaultModal(false);
     API.post('/api/download', {
@@ -567,11 +669,12 @@ function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats, showN
       start_time: startTime,
       end_time: endTime,
       custom_format: customFmt,
+      ...(downloadPath ? { output_dir: downloadPath } : {}),
       ...extra,
     }).then(d => {
       if (d.error) showNotif('Error', d.error, 'error');
     }).catch(e => showNotif('Error', e.message, 'error'));
-  }, [url, mode, quality, container, audioFmt, embedThumb, embedChapters, embedMeta, embedSubs, sponsorblock, startTime, endTime, customFmt, showNotif]);
+  }, [url, mode, quality, container, audioFmt, embedThumb, embedChapters, embedMeta, embedSubs, sponsorblock, startTime, endTime, customFmt, downloadPath, showNotif]);
 
   const handleCancel = React.useCallback(() => {
     API.post('/api/cancel', {}).then(() => showNotif('Cancelled', 'Download cancelled'));
@@ -748,6 +851,13 @@ function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats, showN
                     <div className="inp-label">CUSTOM FORMAT STRING</div>
                     <input className="inp-sm" value={customFmt} onChange={e => setCustomFmt(e.target.value)} placeholder="bv[height<=1080]+ba/best" />
                   </div>
+                  <div style={{ gridColumn: '1 / -1' }}>
+                    <div className="inp-label">TARGET FOLDER <span style={{ color: 'var(--t4)', fontSize: 7 }}>(OVERRIDE — empty uses Config default)</span></div>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <input className="inp-sm" style={{ flex: 1 }} value={downloadPath} onChange={e => setDownloadPath(e.target.value)} placeholder={config.output_dir || 'Default from Config'} />
+                      <button className="btn btn-secondary btn-sm" onClick={browseDownloadPath}>BROWSE</button>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -846,7 +956,7 @@ function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats, showN
             <span className="psub">EMPTY</span>
           </div>
           <div className="empty-state" style={{ padding: '24px' }}>
-            <img src={MASCOT_CHILLING} className="empty-mascot" alt="" />
+            <Mascot src={MASCOT_CHILLING} className="empty-mascot" wrapClass="empty-mascot-wrap" />
             <div className="empty-title">QUEUE EMPTY</div>
             <div className="empty-sub" onClick={() => switchPage('queue')}>VIEW QUEUE →</div>
           </div>
@@ -974,7 +1084,7 @@ function QueuePage({ dlState, showNotif }) {
           <span className="ptitle">PENDING DOWNLOADS — 待機中</span>
         </div>
         <div className="empty-state">
-          <img src={MASCOT_VIBING} className="empty-mascot" alt="" />
+          <Mascot src={MASCOT_VIBING} className="empty-mascot" wrapClass="empty-mascot-wrap" />
           <div className="empty-title">QUEUE EMPTY</div>
           <div className="empty-sub">Paste a URL in FEED to start downloading</div>
         </div>
@@ -985,7 +1095,7 @@ function QueuePage({ dlState, showNotif }) {
 
 // ── VAULT Page ────────────────────────────────────────────────────────────────
 
-function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, config, showNotif, onAddVault }) {
+function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, config, showNotif, onAddVault, onRefreshVault }) {
   const [files, setFiles] = React.useState([]);
   const [folderInfo, setFolderInfo] = React.useState(null);
   const [loading, setLoading] = React.useState(false);
@@ -1050,6 +1160,24 @@ function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, config, sh
     return () => document.removeEventListener('click', close);
   }, []);
 
+  const handleWatchFolder = React.useCallback(() => {
+    API.post('/api/browse-folder', {}).then(d => {
+      if (!d.path) return;
+      API.post('/api/vault/watch', { path: d.path })
+        .then(() => {
+          showNotif('Watch Folder Added', d.path.split(/[\\/]/).pop(), 'success');
+          onRefreshVault && onRefreshVault();
+        })
+        .catch(e => showNotif('Error', e.message, 'error'));
+    }).catch(() => {});
+  }, [showNotif, onRefreshVault]);
+
+  const handleUnwatchFolder = React.useCallback((folderPath) => {
+    API.del('/api/vault/watch', { path: folderPath })
+      .then(() => { onRefreshVault && onRefreshVault(); })
+      .catch(() => {});
+  }, [onRefreshVault]);
+
   if (!selectedFolder) {
     return (
       <div className="content active">
@@ -1058,17 +1186,18 @@ function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, config, sh
             <div className="vlabel">メディアボールト / MEDIA VAULT</div>
             <div className="vtitle">VAULT <span className="c">BROWSER</span></div>
           </div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+            <button className="btn btn-secondary btn-sm" onClick={handleWatchFolder}>
+              <Ico name="folder" /> WATCH FOLDER
+            </button>
+            <button className="btn btn-primary btn-sm" onClick={onAddVault}>ADD PLAYLIST</button>
+          </div>
         </div>
         <div className="empty-state">
-          <img src={MASCOT_CHILLING} className="empty-mascot" alt="" />
+          <Mascot src={MASCOT_COMFY_SAFE || MASCOT_CHILLING} className="empty-mascot" wrapClass="empty-mascot-wrap" />
           <div className="empty-title">SELECT A FOLDER</div>
-          <div className="empty-sub">Choose a folder from the sidebar tree</div>
+          <div className="empty-sub">Choose a folder from the sidebar tree or add one above</div>
         </div>
-        {vaultFolders.length === 0 && (
-          <div style={{ textAlign: 'center', marginTop: 16 }}>
-            <button className="btn btn-primary" onClick={onAddVault}>ADD PLAYLIST TO VAULT</button>
-          </div>
-        )}
       </div>
     );
   }
@@ -1094,8 +1223,11 @@ function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, config, sh
               )}
             </button>
           )}
+          <button className="btn btn-secondary btn-sm" onClick={handleWatchFolder} title="Add a local folder to vault">
+            <Ico name="folder" /> WATCH FOLDER
+          </button>
           <button className="btn btn-secondary btn-sm" onClick={() => handleOpenFolder(selectedFolder)}>
-            OPEN FOLDER
+            OPEN IN EXPLORER
           </button>
         </div>
       </div>
@@ -1114,12 +1246,12 @@ function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, config, sh
 
       {loading ? (
         <div className="empty-state">
-          <img src={MASCOT_CHILLING} className="empty-mascot" alt="" />
+          <Mascot src={MASCOT_CHILLING} className="empty-mascot" wrapClass="empty-mascot-wrap" />
           <div className="empty-title">LOADING...</div>
         </div>
       ) : files.length === 0 ? (
         <div className="empty-state">
-          <img src={MASCOT_CHILLING} className="empty-mascot" alt="" />
+          <Mascot src={MASCOT_TIRED} className="empty-mascot" wrapClass="empty-mascot-wrap" />
           <div className="empty-title">NO MEDIA HERE</div>
           <div className="empty-sub">Download something to this folder</div>
         </div>
@@ -1180,7 +1312,7 @@ function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, config, sh
           }
         >
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14 }}>
-            <img src={MASCOT_FRUSTRATED} style={{ width: 80, opacity: 0.7 }} alt="" />
+            <Mascot src={MASCOT_FRUSTRATED} className="error-mascot" wrapClass="error-mascot" style={{ width: 80 }} />
             <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 11, color: 'var(--t2)', textAlign: 'center' }}>
               Delete <span style={{ color: 'var(--red)' }}>{deleteConfirm.name}</span>?<br />
               <span style={{ color: 'var(--t4)', fontSize: 9 }}>This cannot be undone.</span>
@@ -1197,6 +1329,7 @@ function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, config, sh
 function AnalyticsPage({ stats, refreshStats }) {
   const [range, setRange] = React.useState('30d');
   const [localStats, setLocalStats] = React.useState(stats);
+  const [overrides, setOverrides] = React.useState({});
   const trendRef = React.useRef(null);
   const platformRef = React.useRef(null);
   const donutRef = React.useRef(null);
@@ -1210,6 +1343,19 @@ function AnalyticsPage({ stats, refreshStats }) {
   React.useEffect(() => {
     setLocalStats(s => ({ ...s, ...stats }));
   }, [stats]);
+
+  React.useEffect(() => {
+    API.get('/api/analytics/overrides').then(setOverrides).catch(() => {});
+  }, []);
+
+  const saveOverride = React.useCallback((key, val) => {
+    const update = { [key]: val };
+    setOverrides(o => ({ ...o, ...update }));
+    API.post('/api/analytics/overrides', update).catch(() => {});
+  }, []);
+
+  // Use override value if present, else computed value
+  const statVal = (key, computed) => (key in overrides && overrides[key] !== '' && overrides[key] !== null) ? overrides[key] : computed;
 
   // Draw trend chart
   React.useEffect(() => {
@@ -1338,23 +1484,47 @@ function AnalyticsPage({ stats, refreshStats }) {
         </div>
       </div>
 
-      {/* KPI CARDS */}
+      {/* KPI CARDS — click any value to edit/override */}
       <div className="g4" style={{ marginBottom: 16 }}>
         <div className="stat">
           <div className="stat-label">TOTAL DOWNLOADS</div>
-          <div className="stat-value cyan">{(localStats.total_downloads || 0).toLocaleString()}</div>
+          <EditableStat
+            value={statVal('total_downloads', localStats.total_downloads || 0)}
+            colorClass="cyan"
+            format={v => Number(v).toLocaleString()}
+            onSave={v => saveOverride('total_downloads', v)}
+          />
+          <div className="stat-sub">all time</div>
         </div>
         <div className="stat">
           <div className="stat-label">STORAGE USED</div>
-          <div className="stat-value amber">{fmtBytes(localStats.total_size_bytes || 0)}</div>
+          <EditableStat
+            value={statVal('total_size_bytes', localStats.total_size_bytes || 0)}
+            colorClass="amber"
+            format={v => fmtBytes(Number(v))}
+            onSave={v => saveOverride('total_size_bytes', v)}
+          />
+          <div className="stat-sub">disk usage</div>
         </div>
         <div className="stat">
           <div className="stat-label">PLATFORMS</div>
-          <div className="stat-value green">{(localStats.by_platform || []).length}</div>
+          <EditableStat
+            value={statVal('platform_count', (localStats.by_platform || []).length)}
+            colorClass="green"
+            format={v => String(v)}
+            onSave={v => saveOverride('platform_count', v)}
+          />
+          <div className="stat-sub">distinct sources</div>
         </div>
         <div className="stat">
           <div className="stat-label">AVG SPEED</div>
-          <div className="stat-value cyan" style={{ fontSize: 20 }}>{fmtSpeed(localStats.avg_speed_bps || 0)}</div>
+          <EditableStat
+            value={statVal('avg_speed_bps', localStats.avg_speed_bps || 0)}
+            colorClass="cyan"
+            format={v => fmtSpeed(Number(v))}
+            onSave={v => saveOverride('avg_speed_bps', v)}
+          />
+          <div className="stat-sub">bytes/sec</div>
         </div>
       </div>
 
@@ -1598,7 +1768,7 @@ function SignalApiPage() {
               </table>
             ) : !running ? (
               <div className="error-state">
-                <img src={MASCOT_VIBING} className="error-mascot" alt="" />
+                <Mascot src={MASCOT_TROUBLESHOOTING_SAFE || MASCOT_VIBING} className="error-mascot" wrapClass="error-mascot" style={{ width: 80 }} />
                 <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 10, color: 'var(--t3)', textAlign: 'center' }}>
                   SELECT A PRESET OR WRITE A QUERY
                 </div>
@@ -1912,7 +2082,7 @@ function ConfigPage({ config, setConfig, showNotif, sysInfo }) {
           }
         >
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14 }}>
-            <img src={MASCOT_FRUSTRATED} style={{ width: 80, opacity: 0.7 }} alt="" />
+            <Mascot src={MASCOT_FRUSTRATED} className="error-mascot" wrapClass="error-mascot" style={{ width: 80 }} />
             <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 10, color: 'var(--t2)', textAlign: 'center', lineHeight: 1.8 }}>
               This will permanently delete all download records from DuckDB.<br />
               <span style={{ color: 'var(--red)' }}>This action cannot be undone.</span>
@@ -2050,6 +2220,7 @@ function App() {
             refreshStats={refreshStats}
             showNotif={showNotif}
             switchPage={switchPage}
+            config={config}
           />
         )}
         {page === 'queue' && (
@@ -2063,6 +2234,7 @@ function App() {
             config={config}
             showNotif={showNotif}
             onAddVault={() => setAddVaultModal(true)}
+            onRefreshVault={refreshVault}
           />
         )}
         {page === 'analytics' && (
