@@ -664,7 +664,7 @@ function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats, showN
     if (!url.trim()) return;
     if (info && info.is_playlist && onPlaylistDownload) onPlaylistDownload();
     startDownload();
-  }, [url, info, onPlaylistDownload, startDownload]);
+  }, [url, info, onPlaylistDownload]);
 
   const browseDownloadPath = React.useCallback(() => {
     API.post('/api/browse-folder', {}).then(d => { if (d.path) setDownloadPath(d.path); }).catch(() => {});
