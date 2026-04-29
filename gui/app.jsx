@@ -245,12 +245,22 @@ function Notif({ notif, dismiss }) {
 
 const LOADING_MIN_MS = 4500;
 
+const _SPLASH_POOL = [
+  MASCOT_DJ, MASCOT_VIBING, MASCOT_CHILLING, MASCOT_TIRED,
+  MASCOT_COMFY_SAFE, MASCOT_SUCCESS_SAFE, MASCOT_TROUBLESHOOTING_SAFE, MASCOT_VICTORY_SAFE,
+].filter(Boolean);
+
 function LoadingScreen({ onReady }) {
   const [text, setText] = React.useState('');
   const [attempts, setAttempts] = React.useState(0);
   const serverReadyRef = React.useRef(false);
   const minElapsedRef = React.useRef(false);
   const TARGET = 'WELCOME, ADMINISTRATOR';
+  const splashMascot = React.useRef(_SPLASH_POOL[Math.floor(Math.random() * _SPLASH_POOL.length)]).current;
+  const isSvgSplash = typeof splashMascot === 'string' && splashMascot.trimStart().startsWith('<svg');
+  const splashStyle = isSvgSplash
+    ? { filter: 'drop-shadow(0 0 24px rgba(0,216,255,0.35))' }
+    : { filter: 'sepia(1) saturate(6.7) hue-rotate(151deg) brightness(0.87) drop-shadow(0 0 24px rgba(0,216,255,0.35))', mixBlendMode: 'screen' };
 
   const tryReady = React.useCallback(() => {
     if (serverReadyRef.current && minElapsedRef.current) onReady();
@@ -302,7 +312,7 @@ function LoadingScreen({ onReady }) {
 
   return (
     <div className="loading-screen">
-      <Mascot src={MASCOT_CHILLING} className="loading-mascot" wrapClass="loading-mascot" />
+      <Mascot src={splashMascot} className="loading-mascot" wrapClass="loading-mascot" style={splashStyle} />
       <div className="loading-title">{text}<span style={{ opacity: 0.5, animation: 'pulse 1s infinite' }}>_</span></div>
       <div className="loading-sub">MELLOW // DATA LAKE COMMANDER v2.0.0</div>
       <div className="loading-bar"><div className="loading-bar-fill" /></div>
@@ -407,12 +417,15 @@ function Sidebar({ page, setPage, appState, stats, speedHistory, sysInfo, vaultF
     { id: 'config', label: 'CONFIG', num: '06', icon: 'config' },
   ];
 
-  const mascotSrc = {
-    downloading: MASCOT_DJ,
-    processing: MASCOT_TIRED,
-    error: MASCOT_FRUSTRATED,
-    empty: MASCOT_CHILLING,
-  }[appState] || MASCOT_VIBING;
+  const PAGE_MASCOT = {
+    feed:      MASCOT_VIBING,
+    queue:     MASCOT_DJ,
+    vault:     MASCOT_COMFY_SAFE || MASCOT_CHILLING,
+    analytics: MASCOT_CHILLING,
+    signal:    MASCOT_SUCCESS_SAFE || MASCOT_VIBING,
+    config:    MASCOT_TROUBLESHOOTING_SAFE || MASCOT_VIBING,
+  };
+  const mascotSrc = PAGE_MASCOT[page] || MASCOT_VIBING;
 
   const LAKE_IDS = ['analytics', 'signal', 'config'];
   const isLakePage = LAKE_IDS.includes(page);
@@ -479,7 +492,7 @@ function Sidebar({ page, setPage, appState, stats, speedHistory, sysInfo, vaultF
         </div>
       ) : (
         <div className={mascotAreaClass + (hideMascot ? ' hidden' : '')}>
-          <Mascot src={mascotSrc} className="mascot-img" />
+          <Mascot key={page} src={mascotSrc} className="mascot-img" />
         </div>
       )}
 
@@ -490,8 +503,10 @@ function Sidebar({ page, setPage, appState, stats, speedHistory, sysInfo, vaultF
         <div className="sys-stat"><span>TOTAL DB</span><span>{fmtBytes(stats.total_size_bytes || 0)}</span></div>
         <div className="sys-stat"><span>LIBRARY</span><span>{stats.library_playlists || 0}</span></div>
         <div className="sys-online">
-          <div className="sdot" />
-          <div className="stext">ALL SYSTEMS NOMINAL</div>
+          <div className={'sdot' + (!sysInfo.ffmpeg ? ' warn' : appState === 'error' ? ' warn' : '')} />
+          <div className="stext">
+            {!sysInfo.ffmpeg ? 'FFMPEG MISSING' : appState === 'error' ? 'LAST DL FAILED' : 'ALL SYSTEMS NOMINAL'}
+          </div>
         </div>
         <div className="mini-graph">
           <canvas ref={canvasRef} style={{ width: '100%', height: '28px' }} />
@@ -600,15 +615,15 @@ function StatusBar({ sysInfo, speedHistory, config }) {
 
 // ── FEED Page ─────────────────────────────────────────────────────────────────
 
-function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats, showNotif, switchPage, config }) {
-  const [url, setUrl] = React.useState('');
+function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats, showNotif, switchPage, config, onPlaylistDownload }) {
+  const [url, setUrl] = React.useState(() => sessionStorage.getItem('feed_url') || '');
   const [analyzing, setAnalyzing] = React.useState(false);
   const [info, setInfo] = React.useState(null);
   const [optsOpen, setOptsOpen] = React.useState(false);
   const [advOpen, setAdvOpen] = React.useState(false);
-  const [mode, setMode] = React.useState('video');
-  const [quality, setQuality] = React.useState('1080p');
-  const [container, setContainer] = React.useState('mp4');
+  const [mode, setMode] = React.useState(() => sessionStorage.getItem('feed_mode') || 'video');
+  const [quality, setQuality] = React.useState(() => sessionStorage.getItem('feed_quality') || '1080p');
+  const [container, setContainer] = React.useState(() => sessionStorage.getItem('feed_container') || 'mp4');
   const [audioFmt, setAudioFmt] = React.useState('mp3');
   const [embedThumb, setEmbedThumb] = React.useState(true);
   const [embedSubs, setEmbedSubs] = React.useState(false);
@@ -618,8 +633,14 @@ function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats, showN
   const [startTime, setStartTime] = React.useState('');
   const [endTime, setEndTime] = React.useState('');
   const [customFmt, setCustomFmt] = React.useState('');
-  const [downloadPath, setDownloadPath] = React.useState('');
+  const [downloadPath, setDownloadPath] = React.useState(() => sessionStorage.getItem('feed_downloadPath') || '');
   const [vaultModal, setVaultModal] = React.useState(false);
+
+  React.useEffect(() => { sessionStorage.setItem('feed_url', url); }, [url]);
+  React.useEffect(() => { sessionStorage.setItem('feed_mode', mode); }, [mode]);
+  React.useEffect(() => { sessionStorage.setItem('feed_quality', quality); }, [quality]);
+  React.useEffect(() => { sessionStorage.setItem('feed_container', container); }, [container]);
+  React.useEffect(() => { sessionStorage.setItem('feed_downloadPath', downloadPath); }, [downloadPath]);
   const [vaultName, setVaultName] = React.useState('');
   const [vaultFolder, setVaultFolder] = React.useState('');
 
@@ -641,13 +662,9 @@ function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats, showN
 
   const handleDownload = React.useCallback(() => {
     if (!url.trim()) return;
-    if (info && info.is_playlist) {
-      setVaultName(info.title || '');
-      setVaultModal(true);
-      return;
-    }
+    if (info && info.is_playlist && onPlaylistDownload) onPlaylistDownload();
     startDownload();
-  }, [url, info]);
+  }, [url, info, onPlaylistDownload, startDownload]);
 
   const browseDownloadPath = React.useCallback(() => {
     API.post('/api/browse-folder', {}).then(d => { if (d.path) setDownloadPath(d.path); }).catch(() => {});
@@ -909,7 +926,7 @@ function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats, showN
                 }
                 <div className="dl-info">
                   <div className="dl-title">{info && info.title || dlState.filename || 'Downloading...'}</div>
-                  <div className="dl-ch">{info && info.uploader || ''}</div>
+                  <div className="dl-ch">{[info && info.uploader, info && info.platform, info && info.duration ? fmtDuration(info.duration) : null].filter(Boolean).join(' · ')}</div>
                   <div className="dl-tags">
                     <span className="tag cyan">{mode === 'audio' ? audioFmt.toUpperCase() : container.toUpperCase()}</span>
                     {mode !== 'audio' && <span className="tag">{quality.toUpperCase()}</span>}
@@ -1798,10 +1815,11 @@ function SignalApiPage() {
 
 // ── CONFIG Page ───────────────────────────────────────────────────────────────
 
-function ConfigPage({ config, setConfig, showNotif, sysInfo }) {
+function ConfigPage({ config, setConfig, showNotif, sysInfo, refreshStats }) {
   const [local, setLocal] = React.useState({ ...config });
   const [updateInfo, setUpdateInfo] = React.useState(null);
   const [checking, setChecking] = React.useState(false);
+  const [updating, setUpdating] = React.useState(false);
   const [vacuuming, setVacuuming] = React.useState(false);
   const [dangerModal, setDangerModal] = React.useState(null);
 
@@ -1852,7 +1870,12 @@ function ConfigPage({ config, setConfig, showNotif, sysInfo }) {
 
   const doPurge = () => {
     API.del('/api/history', { all: true })
-      .then(d => { showNotif('Purged', d.deleted + ' records deleted', 'success'); setDangerModal(null); })
+      .then(d => {
+        showNotif('Purged', d.deleted + ' records deleted', 'success');
+        setDangerModal(null);
+        if (refreshStats) refreshStats();
+        API.get('/api/config').then(c => { setLocal(c); setConfig(c); }).catch(() => {});
+      })
       .catch(e => showNotif('Error', e.message, 'error'));
   };
 
@@ -2042,7 +2065,13 @@ function ConfigPage({ config, setConfig, showNotif, sysInfo }) {
                 <div className="settings-ctrl" style={{ display: 'flex', gap: 6 }}>
                   <button className="btn btn-secondary btn-sm" onClick={checkUpdate} disabled={checking}>{checking ? '...' : 'CHECK'}</button>
                   {updateInfo && updateInfo.update_available && (
-                    <button className="btn btn-amber btn-sm" onClick={() => API.post('/api/update-ytdlp', {}).then(() => showNotif('Updating', 'yt-dlp update started'))}>UPDATE</button>
+                    <button className="btn btn-amber btn-sm" disabled={updating} onClick={() => {
+                      setUpdating(true);
+                      API.post('/api/update-ytdlp', {})
+                        .then(() => showNotif('Updating', 'yt-dlp update started'))
+                        .catch(e => showNotif('Error', e.message, 'error'))
+                        .finally(() => setUpdating(false));
+                    }}>{updating ? 'UPDATING...' : 'UPDATE'}</button>
                   )}
                 </div>
               </div>
@@ -2109,7 +2138,10 @@ function App() {
   const [vaultFolders, setVaultFolders] = React.useState([]);
   const [selectedVaultFolder, setSelectedVaultFolder] = React.useState(null);
   const [addVaultModal, setAddVaultModal] = React.useState(false);
+  const [showVictory, setShowVictory] = React.useState(false);
+  const playlistActiveRef = React.useRef(false);
   const notifTimer = React.useRef(null);
+  const victoryTimer = React.useRef(null);
 
   const showNotif = React.useCallback((title, body, type = 'info') => {
     setNotif({ title, body, type });
@@ -2165,6 +2197,12 @@ function App() {
         showNotif('Download Complete', data.title || 'File saved successfully', 'success');
         refreshStats();
         refreshVault();
+        if (playlistActiveRef.current && MASCOT_VICTORY_SAFE) {
+          playlistActiveRef.current = false;
+          setShowVictory(true);
+          if (victoryTimer.current) clearTimeout(victoryTimer.current);
+          victoryTimer.current = setTimeout(() => setShowVictory(false), 4500);
+        }
       } else if (data.status === 'error') {
         setDlState(null);
         setAppState('error');
@@ -2221,6 +2259,7 @@ function App() {
             showNotif={showNotif}
             switchPage={switchPage}
             config={config}
+            onPlaylistDownload={() => { playlistActiveRef.current = true; }}
           />
         )}
         {page === 'queue' && (
@@ -2247,6 +2286,7 @@ function App() {
             setConfig={setConfig}
             showNotif={showNotif}
             sysInfo={sysInfo}
+            refreshStats={refreshStats}
           />
         )}
 
@@ -2254,6 +2294,13 @@ function App() {
       </div>
 
       <Notif notif={notif} dismiss={() => setNotif(null)} />
+
+      {showVictory && MASCOT_VICTORY_SAFE && (
+        <div className="victory-overlay" onClick={() => setShowVictory(false)}>
+          <Mascot src={MASCOT_VICTORY_SAFE} className="victory-mascot" wrapClass="victory-mascot" />
+          <div className="victory-text">PLAYLIST COMPLETE!</div>
+        </div>
+      )}
 
       {addVaultModal && (
         <AddVaultModal
@@ -2281,7 +2328,7 @@ function AddVaultModal({ onClose, onSaved, showNotif }) {
   };
 
   const handleSave = () => {
-    if (!name.trim() || !url.trim()) { showNotif('Error', 'Name and URL are required', 'error'); return; }
+    if (!name.trim()) { showNotif('Error', 'Name is required', 'error'); return; }
     setSaving(true);
     API.post('/api/library', {
       name: name.trim(),
