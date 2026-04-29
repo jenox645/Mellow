@@ -148,14 +148,18 @@ function Toggle({ checked, onChange }) {
 // Handles both inline-SVG strings and data-URI PNGs from mascots.js
 
 function Mascot({ src, className, style, wrapClass }) {
-  if (src && typeof src === 'string' && src.trimStart().startsWith('<svg')) {
-    return (
-      <div
-        className={'mascot-wrap ' + (wrapClass || className || '')}
-        style={style}
-        dangerouslySetInnerHTML={{ __html: src }}
-      />
-    );
+  if (src && typeof src === 'string') {
+    const t = src.trimStart();
+    if (t.startsWith('<svg') || t.startsWith('<?xml')) {
+      const svgHtml = t.startsWith('<?xml') ? src.replace(/^<\?xml[^?]*\?>\s*/i, '') : src;
+      return (
+        <div
+          className={'mascot-wrap ' + (wrapClass || className || '')}
+          style={style}
+          dangerouslySetInnerHTML={{ __html: svgHtml }}
+        />
+      );
+    }
   }
   return <img src={src} className={className || 'mascot-img'} style={style} alt="" />;
 }
@@ -257,10 +261,8 @@ function LoadingScreen({ onReady }) {
   const minElapsedRef = React.useRef(false);
   const TARGET = 'WELCOME, ADMINISTRATOR';
   const splashMascot = React.useRef(_SPLASH_POOL[Math.floor(Math.random() * _SPLASH_POOL.length)]).current;
-  const isSvgSplash = typeof splashMascot === 'string' && splashMascot.trimStart().startsWith('<svg');
-  const splashStyle = isSvgSplash
-    ? { filter: 'drop-shadow(0 0 24px rgba(0,216,255,0.35))' }
-    : { filter: 'sepia(1) saturate(6.7) hue-rotate(151deg) brightness(0.87) drop-shadow(0 0 24px rgba(0,216,255,0.35))', mixBlendMode: 'screen' };
+  const splashIsSvg = typeof splashMascot === 'string' && (splashMascot.trimStart().startsWith('<svg') || splashMascot.trimStart().startsWith('<?xml'));
+  const splashSvgHtml = splashIsSvg ? splashMascot.replace(/^<\?xml[^?]*\?>\s*/i, '') : null;
 
   const tryReady = React.useCallback(() => {
     if (serverReadyRef.current && minElapsedRef.current) onReady();
@@ -312,7 +314,11 @@ function LoadingScreen({ onReady }) {
 
   return (
     <div className="loading-screen">
-      <Mascot src={splashMascot} className="loading-mascot" wrapClass="loading-mascot" style={splashStyle} />
+      {splashIsSvg ? (
+        <div className="loading-mascot" style={{ filter: 'drop-shadow(0 0 24px rgba(0,216,255,0.35))' }} dangerouslySetInnerHTML={{ __html: splashSvgHtml }} />
+      ) : splashMascot ? (
+        <img src={splashMascot} className="loading-mascot" style={{ filter: 'sepia(1) saturate(6.7) hue-rotate(151deg) brightness(0.87) drop-shadow(0 0 24px rgba(0,216,255,0.35))', mixBlendMode: 'screen' }} alt="" />
+      ) : null}
       <div className="loading-title">{text}<span style={{ opacity: 0.5, animation: 'pulse 1s infinite' }}>_</span></div>
       <div className="loading-sub">MELLOW // DATA LAKE COMMANDER v2.0.0</div>
       <div className="loading-bar"><div className="loading-bar-fill" /></div>
@@ -472,26 +478,33 @@ function Sidebar({ page, setPage, appState, stats, speedHistory, sysInfo, vaultF
       </nav>
 
       {page === 'vault' ? (
-        <div className="vault-tree">
-          <div className="vt-header">VAULT FOLDERS</div>
-          {vaultFolders.map(f => (
-            <div
-              key={f.path}
-              className={'vt-item' + (selectedVaultFolder === f.path ? ' active' : '')}
-              onClick={() => setSelectedVaultFolder(f.path)}
-            >
-              <Ico name="folder" />
-              <span className="vt-item-name">{f.name}</span>
-              {f.watched && <span className="vt-watched">WATCH</span>}
-              <span className="vt-badge">{f.item_count}</span>
+        <>
+          {vaultFolders.length <= 3 && (
+            <div className="mascot-area core-color" style={{ flex: '0 0 auto', padding: '6px 0' }}>
+              <Mascot key="vault-sm" src={MASCOT_COMFY_SAFE || MASCOT_CHILLING} className="mascot-img" style={{ width: 95 }} />
             </div>
-          ))}
-          <div className="vt-add" onClick={onAddVault}>
-            <Ico name="plus" /> Add Playlist...
+          )}
+          <div className="vault-tree">
+            <div className="vt-header">VAULT FOLDERS</div>
+            {vaultFolders.map(f => (
+              <div
+                key={f.path}
+                className={'vt-item' + (selectedVaultFolder === f.path ? ' active' : '')}
+                onClick={() => setSelectedVaultFolder(f.path)}
+              >
+                <Ico name="folder" />
+                <span className="vt-item-name">{f.name}</span>
+                {f.watched && <span className="vt-watched">WATCH</span>}
+                <span className="vt-badge">{f.item_count}</span>
+              </div>
+            ))}
+            <div className="vt-add" onClick={onAddVault}>
+              <Ico name="plus" /> Add Playlist...
+            </div>
           </div>
-        </div>
+        </>
       ) : (
-        <div className={mascotAreaClass + (hideMascot ? ' hidden' : '')}>
+        <div className={mascotAreaClass}>
           <Mascot key={page} src={mascotSrc} className="mascot-img" />
         </div>
       )}
@@ -2156,8 +2169,8 @@ function App() {
 
   const refreshVault = React.useCallback((basePath) => {
     const path = basePath || config.output_dir;
-    if (!path) return;
-    API.get('/api/vault?path=' + encodeURIComponent(path))
+    const url = path ? '/api/vault?path=' + encodeURIComponent(path) : '/api/vault';
+    API.get(url)
       .then(d => setVaultFolders(d.folders || []))
       .catch(() => {});
   }, [config.output_dir]);
