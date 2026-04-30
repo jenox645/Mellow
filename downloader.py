@@ -248,7 +248,10 @@ def download_video(
         )
         ydl_opts["force_keyframes_at_cuts"] = True
 
-    if playlist_start:
+    playlist_items_str = opts.get("playlist_items", "").strip()
+    if playlist_items_str:
+        ydl_opts["playlist_items"] = playlist_items_str
+    elif playlist_start:
         ydl_opts["playliststart"] = int(playlist_start)
     if playlist_end:
         ydl_opts["playlistend"] = int(playlist_end)
@@ -363,6 +366,37 @@ def get_video_info(url: str) -> dict:
         "is_playlist": is_playlist,
         "playlist_count": playlist_count,
     }
+
+
+def get_playlist_items(url: str) -> list[dict]:
+    ydl_opts = {
+        "quiet": True,
+        "no_warnings": True,
+        "extract_flat": "in_playlist",
+        "skip_download": True,
+        "noplaylist": False,
+    }
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        info = ydl.extract_info(url, download=False)
+    if not info:
+        return []
+    entries = info.get("entries") or []
+    items = []
+    for i, e in enumerate(entries):
+        if not e:
+            continue
+        thumbs = e.get("thumbnails") or []
+        thumb_url = e.get("thumbnail") or (thumbs[-1].get("url") if thumbs else "")
+        items.append({
+            "idx": i + 1,
+            "id": e.get("id", ""),
+            "title": e.get("title") or e.get("url", ""),
+            "url": e.get("url") or e.get("webpage_url") or "",
+            "thumbnail": thumb_url,
+            "duration": e.get("duration"),
+            "uploader": e.get("uploader") or e.get("channel", ""),
+        })
+    return items
 
 
 def download_in_thread(

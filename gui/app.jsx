@@ -98,12 +98,12 @@ const API = {
 // ── SVG Icons ────────────────────────────────────────────────────────────────
 
 const SVG = {
-  feed: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="15" height="15"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>',
-  queue: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="15" height="15"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>',
-  vault: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="15" height="15"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8m-4-4v4"/></svg>',
-  analytics: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="15" height="15"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>',
-  signal: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="15" height="15"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><circle cx="12" cy="20" r="1" fill="currentColor"/></svg>',
-  config: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="15" height="15"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>',
+  feed: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="18" height="18"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>',
+  queue: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="18" height="18"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>',
+  vault: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="18" height="18"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8m-4-4v4"/></svg>',
+  analytics: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="18" height="18"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>',
+  signal: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="18" height="18"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><circle cx="12" cy="20" r="1" fill="currentColor"/></svg>',
+  config: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="18" height="18"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>',
   folder: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="14" height="14"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>',
   play: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="14" height="14"><polygon points="5 3 19 12 5 21 5 3"/></svg>',
   sync: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="14" height="14"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>',
@@ -387,7 +387,7 @@ function MiniGraph({ data, color, height = 28 }) {
 
 // ── Sidebar ────────────────────────────────────────────────────────────────────
 
-function Sidebar({ page, setPage, appState, stats, speedHistory, sysInfo, vaultFolders, selectedVaultFolder, setSelectedVaultFolder, onAddVault }) {
+function Sidebar({ page, setPage, appState, stats, speedHistory, sysInfo }) {
   const canvasRef = React.useRef(null);
 
   React.useEffect(() => {
@@ -432,12 +432,9 @@ function Sidebar({ page, setPage, appState, stats, speedHistory, sysInfo, vaultF
     config:    MASCOT_TROUBLESHOOTING_SAFE || MASCOT_VIBING,
   };
   const mascotSrc = PAGE_MASCOT[page] || MASCOT_VIBING;
-
   const LAKE_IDS = ['analytics', 'signal', 'config'];
   const isLakePage = LAKE_IDS.includes(page);
   const mascotAreaClass = 'mascot-area' + (isLakePage ? ' lake-color' : ' core-color');
-  const hideMascot = page === 'vault' && vaultFolders.length > 3;
-
   const currentSpeed = speedHistory.length ? speedHistory[speedHistory.length - 1] : 0;
 
   return (
@@ -477,37 +474,9 @@ function Sidebar({ page, setPage, appState, stats, speedHistory, sysInfo, vaultF
         ))}
       </nav>
 
-      {page === 'vault' ? (
-        <>
-          {vaultFolders.length <= 3 && (
-            <div className="mascot-area core-color" style={{ flex: '0 0 auto', padding: '6px 0' }}>
-              <Mascot key="vault-sm" src={MASCOT_COMFY_SAFE || MASCOT_CHILLING} className="mascot-img" style={{ width: 95 }} />
-            </div>
-          )}
-          <div className="vault-tree">
-            <div className="vt-header">VAULT FOLDERS</div>
-            {vaultFolders.map(f => (
-              <div
-                key={f.path}
-                className={'vt-item' + (selectedVaultFolder === f.path ? ' active' : '')}
-                onClick={() => setSelectedVaultFolder(f.path)}
-              >
-                <Ico name="folder" />
-                <span className="vt-item-name">{f.name}</span>
-                {f.watched && <span className="vt-watched">WATCH</span>}
-                <span className="vt-badge">{f.item_count}</span>
-              </div>
-            ))}
-            <div className="vt-add" onClick={onAddVault}>
-              <Ico name="plus" /> Add Playlist...
-            </div>
-          </div>
-        </>
-      ) : (
-        <div className={mascotAreaClass}>
-          <Mascot key={page} src={mascotSrc} className="mascot-img" />
-        </div>
-      )}
+      <div className={mascotAreaClass}>
+        <Mascot key={page} src={mascotSrc} className="mascot-img" />
+      </div>
 
       <div className="sys-panel">
         <div className="sys-title">SYS STATUS</div>
@@ -628,9 +597,10 @@ function StatusBar({ sysInfo, speedHistory, config }) {
 
 // ── FEED Page ─────────────────────────────────────────────────────────────────
 
-function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats, showNotif, switchPage, config, onPlaylistDownload }) {
+function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats, showNotif, switchPage, config, onPlaylistDownload, playlistItems, setPlaylistItems }) {
   const [url, setUrl] = React.useState(() => sessionStorage.getItem('feed_url') || '');
   const [analyzing, setAnalyzing] = React.useState(false);
+  const [fetchingItems, setFetchingItems] = React.useState(false);
   const [info, setInfo] = React.useState(null);
   const [optsOpen, setOptsOpen] = React.useState(false);
   const [advOpen, setAdvOpen] = React.useState(false);
@@ -654,6 +624,8 @@ function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats, showN
   React.useEffect(() => { sessionStorage.setItem('feed_quality', quality); }, [quality]);
   React.useEffect(() => { sessionStorage.setItem('feed_container', container); }, [container]);
   React.useEffect(() => { sessionStorage.setItem('feed_downloadPath', downloadPath); }, [downloadPath]);
+  // Clear analysis when URL changes so the user can re-analyze
+  React.useEffect(() => { setInfo(null); setPlaylistItems && setPlaylistItems(null); }, [url]);
   const [vaultName, setVaultName] = React.useState('');
   const [vaultFolder, setVaultFolder] = React.useState('');
 
@@ -663,15 +635,27 @@ function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats, showN
     if (!url.trim()) return;
     setAnalyzing(true);
     setInfo(null);
+    setPlaylistItems && setPlaylistItems(null);
     API.post('/api/info', { url: url.trim() })
       .then(data => {
         if (data.error) { showNotif('Error', data.error, 'error'); return; }
         setInfo(data);
-        if (data.is_playlist) { setMode('video'); }
+        if (data.is_playlist) {
+          setMode('video');
+          setFetchingItems(true);
+          API.post('/api/playlist-items', { url: url.trim() })
+            .then(r => {
+              if (r.items && setPlaylistItems) {
+                setPlaylistItems(r.items.map(item => ({ ...item, selected: true })));
+              }
+            })
+            .catch(() => {})
+            .finally(() => setFetchingItems(false));
+        }
       })
       .catch(e => showNotif('Error', e.message, 'error'))
       .finally(() => setAnalyzing(false));
-  }, [url, showNotif]);
+  }, [url, showNotif, setPlaylistItems]);
 
   const handleDownload = React.useCallback(() => {
     if (!url.trim()) return;
@@ -685,6 +669,13 @@ function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats, showN
 
   const startDownload = React.useCallback((extra) => {
     setVaultModal(false);
+    let playlistItemsParam = undefined;
+    if (playlistItems && info && info.is_playlist) {
+      const selected = playlistItems.filter(i => i.selected !== false);
+      if (selected.length > 0 && selected.length < playlistItems.length) {
+        playlistItemsParam = selected.map(i => i.idx).join(',');
+      }
+    }
     API.post('/api/download', {
       url: url.trim(),
       mode,
@@ -700,11 +691,12 @@ function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats, showN
       end_time: endTime,
       custom_format: customFmt,
       ...(downloadPath ? { output_dir: downloadPath } : {}),
+      ...(playlistItemsParam ? { playlist_items: playlistItemsParam } : {}),
       ...extra,
     }).then(d => {
       if (d.error) showNotif('Error', d.error, 'error');
     }).catch(e => showNotif('Error', e.message, 'error'));
-  }, [url, mode, quality, container, audioFmt, embedThumb, embedChapters, embedMeta, embedSubs, sponsorblock, startTime, endTime, customFmt, downloadPath, showNotif]);
+  }, [url, mode, quality, container, audioFmt, embedThumb, embedChapters, embedMeta, embedSubs, sponsorblock, startTime, endTime, customFmt, downloadPath, playlistItems, info, showNotif]);
 
   const handleCancel = React.useCallback(() => {
     API.post('/api/cancel', {}).then(() => showNotif('Cancelled', 'Download cancelled'));
@@ -792,9 +784,14 @@ function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats, showN
             OPTIONS
           </button>
           {info ? (
-            <button className="btn btn-primary" onClick={handleDownload} disabled={isDownloading}>
-              {isDownloading ? 'ACTIVE...' : 'DOWNLOAD'}
-            </button>
+            <>
+              <button className="btn btn-secondary btn-sm" onClick={handleAnalyze} disabled={analyzing || isDownloading} title="Re-analyze URL">
+                {analyzing ? '...' : '↺'}
+              </button>
+              <button className="btn btn-primary" onClick={handleDownload} disabled={isDownloading}>
+                {isDownloading ? 'ACTIVE...' : 'DOWNLOAD'}
+              </button>
+            </>
           ) : (
             <button className="btn btn-primary" onClick={handleAnalyze} disabled={analyzing}>
               {analyzing ? 'ANALYZING...' : 'ANALYZE →'}
@@ -983,13 +980,45 @@ function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats, showN
           <div className="ph">
             <span className="ptag">QUEUE</span>
             <span className="ptitle">WAITING — 待機中</span>
-            <span className="psub">EMPTY</span>
+            <span className="psub">{playlistItems ? playlistItems.length + ' ITEMS' : 'EMPTY'}</span>
           </div>
-          <div className="empty-state" style={{ padding: '24px' }}>
-            <Mascot src={MASCOT_CHILLING} className="empty-mascot" wrapClass="empty-mascot-wrap" />
-            <div className="empty-title">QUEUE EMPTY</div>
-            <div className="empty-sub" onClick={() => switchPage('queue')}>VIEW QUEUE →</div>
-          </div>
+          {playlistItems && playlistItems.length > 0 ? (
+            <div style={{ maxHeight: 220, overflowY: 'auto' }}>
+              {playlistItems.slice(0, 12).map(item => (
+                <div key={item.idx} className="pl-queue-item">
+                  <span className="pl-queue-idx">{item.idx}</span>
+                  {item.thumbnail
+                    ? <img src={item.thumbnail} className="pl-queue-thumb" alt="" onError={e => { e.target.style.display = 'none'; }} />
+                    : <div className="pl-queue-thumb-ph">▶</div>
+                  }
+                  <div className="pl-queue-info">
+                    <div className="pl-queue-title">{item.title || 'Unknown'}</div>
+                    {item.uploader && <div className="pl-queue-sub">{item.uploader}</div>}
+                  </div>
+                  <span className="pl-queue-dur">{item.duration ? fmtDuration(item.duration) : '—'}</span>
+                  <div className="pl-queue-remove" onClick={() => setPlaylistItems && setPlaylistItems(prev => prev ? prev.filter(x => x.idx !== item.idx) : prev)}>
+                    <Ico name="x" size={10} />
+                  </div>
+                </div>
+              ))}
+              {playlistItems.length > 12 && (
+                <div style={{ padding: '6px 14px', fontFamily: 'Share Tech Mono', fontSize: 9, color: 'var(--t4)', textAlign: 'center' }}>
+                  +{playlistItems.length - 12} more ·{' '}
+                  <span style={{ color: 'var(--cyan)', cursor: 'pointer' }} onClick={() => switchPage('queue')}>VIEW ALL →</span>
+                </div>
+              )}
+            </div>
+          ) : fetchingItems ? (
+            <div style={{ padding: '20px', fontFamily: 'Share Tech Mono', fontSize: 9, color: 'var(--t3)', textAlign: 'center' }}>
+              FETCHING PLAYLIST ITEMS...
+            </div>
+          ) : (
+            <div className="empty-state" style={{ padding: '24px' }}>
+              <Mascot src={MASCOT_CHILLING} className="empty-mascot" wrapClass="empty-mascot-wrap" />
+              <div className="empty-title">QUEUE EMPTY</div>
+              <div className="empty-sub" onClick={() => switchPage('queue')}>VIEW QUEUE →</div>
+            </div>
+          )}
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           <div className="g2" style={{ marginBottom: 0 }}>
@@ -1050,11 +1079,16 @@ function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats, showN
 
 // ── QUEUE Page ────────────────────────────────────────────────────────────────
 
-function QueuePage({ dlState, showNotif }) {
+function QueuePage({ dlState, showNotif, playlistItems, setPlaylistItems }) {
   const isDownloading = dlState && dlState.pct !== undefined;
+  const queueCount = playlistItems ? playlistItems.length : 0;
 
   const handleCancel = () => {
     API.post('/api/cancel', {}).then(() => showNotif('Cancelled', 'Download stopped'));
+  };
+
+  const handleRemove = (idx) => {
+    setPlaylistItems && setPlaylistItems(prev => prev ? prev.filter(x => x.idx !== idx) : prev);
   };
 
   return (
@@ -1065,18 +1099,22 @@ function QueuePage({ dlState, showNotif }) {
           <div className="vtitle">QUEUE <span className="c">CONTROL</span></div>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
-          <button className="btn btn-secondary btn-sm">IMPORT BATCH</button>
+          {playlistItems && playlistItems.length > 0 && (
+            <button className="btn btn-danger btn-sm" onClick={() => setPlaylistItems && setPlaylistItems(null)}>
+              CLEAR QUEUE
+            </button>
+          )}
         </div>
       </div>
 
       <div className="g4" style={{ marginBottom: 16 }}>
         <div className="stat"><div className="stat-label">ACTIVE</div><div className="stat-value amber">{isDownloading ? 1 : 0}</div></div>
-        <div className="stat"><div className="stat-label">QUEUED</div><div className="stat-value cyan">0</div></div>
+        <div className="stat"><div className="stat-label">QUEUED</div><div className="stat-value cyan">{queueCount}</div></div>
         <div className="stat"><div className="stat-label">PAUSED</div><div className="stat-value" style={{ color: 'var(--purple)' }}>0</div></div>
         <div className="stat"><div className="stat-label">FAILED</div><div className="stat-value red">0</div></div>
       </div>
 
-      {isDownloading ? (
+      {isDownloading && (
         <div className="panel" style={{ marginBottom: 16 }}>
           <div className="panel-hud" /><div className="panel-hud-br" />
           <div className="ph">
@@ -1095,9 +1133,7 @@ function QueuePage({ dlState, showNotif }) {
             </div>
             <span className="q-size">{fmtBytes(dlState.total)}</span>
             <div className="q-status"><span className="q-st-badge downloading">ACTIVE</span></div>
-            <div className="q-del" onClick={handleCancel}>
-              <Ico name="x" />
-            </div>
+            <div className="q-del" onClick={handleCancel}><Ico name="x" /></div>
           </div>
           <div style={{ padding: '8px 14px', borderTop: '1px solid var(--border)', display: 'flex', gap: 12, fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: 'var(--t3)' }}>
             <span>↓ <span style={{ color: 'var(--cyan)' }}>{fmtSpeed(dlState.speed)}</span></span>
@@ -1105,20 +1141,50 @@ function QueuePage({ dlState, showNotif }) {
             <span>{fmtBytes(dlState.downloaded)} / {fmtBytes(dlState.total)}</span>
           </div>
         </div>
-      ) : null}
+      )}
 
-      <div className="panel">
-        <div className="panel-hud" /><div className="panel-hud-br" />
-        <div className="ph">
-          <span className="ptag">QUEUE</span>
-          <span className="ptitle">PENDING DOWNLOADS — 待機中</span>
+      {playlistItems && playlistItems.length > 0 ? (
+        <div className="panel">
+          <div className="panel-hud" /><div className="panel-hud-br" />
+          <div className="ph">
+            <span className="ptag">PLAYLIST</span>
+            <span className="ptitle">PENDING ITEMS — 待機中</span>
+            <span className="psub">{playlistItems.length} TRACKS · CLICK × TO REMOVE</span>
+          </div>
+          <div style={{ maxHeight: 520, overflowY: 'auto' }}>
+            {playlistItems.map(item => (
+              <div key={item.idx} className="pl-queue-item">
+                <span className="pl-queue-idx">{item.idx}</span>
+                {item.thumbnail
+                  ? <img src={item.thumbnail} className="pl-queue-thumb" alt="" onError={e => { e.target.style.display = 'none'; }} />
+                  : <div className="pl-queue-thumb-ph">▶</div>
+                }
+                <div className="pl-queue-info">
+                  <div className="pl-queue-title">{item.title || 'Unknown'}</div>
+                  {item.uploader && <div className="pl-queue-sub">{item.uploader}</div>}
+                </div>
+                <span className="pl-queue-dur">{item.duration ? fmtDuration(item.duration) : '—'}</span>
+                <div className="pl-queue-remove" onClick={() => handleRemove(item.idx)}>
+                  <Ico name="x" size={10} />
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
-        <div className="empty-state">
-          <Mascot src={MASCOT_VIBING} className="empty-mascot" wrapClass="empty-mascot-wrap" />
-          <div className="empty-title">QUEUE EMPTY</div>
-          <div className="empty-sub">Paste a URL in FEED to start downloading</div>
+      ) : (
+        <div className="panel">
+          <div className="panel-hud" /><div className="panel-hud-br" />
+          <div className="ph">
+            <span className="ptag">QUEUE</span>
+            <span className="ptitle">PENDING DOWNLOADS — 待機中</span>
+          </div>
+          <div className="empty-state">
+            <Mascot src={MASCOT_VIBING} className="empty-mascot" wrapClass="empty-mascot-wrap" />
+            <div className="empty-title">QUEUE EMPTY</div>
+            <div className="empty-sub">Paste a playlist URL in FEED to populate the queue</div>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
@@ -1127,12 +1193,13 @@ function QueuePage({ dlState, showNotif }) {
 
 function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, config, showNotif, onAddVault, onRefreshVault }) {
   const [files, setFiles] = React.useState([]);
-  const [folderInfo, setFolderInfo] = React.useState(null);
   const [loading, setLoading] = React.useState(false);
   const [ctxMenu, setCtxMenu] = React.useState(null);
   const [libraryEntries, setLibraryEntries] = React.useState([]);
   const [syncingId, setSyncingId] = React.useState(null);
   const [deleteConfirm, setDeleteConfirm] = React.useState(null);
+  const [dragOver, setDragOver] = React.useState(false);
+  const [dropModal, setDropModal] = React.useState(null);
 
   React.useEffect(() => {
     API.get('/api/library').then(setLibraryEntries).catch(() => {});
@@ -1142,21 +1209,24 @@ function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, config, sh
     if (!selectedFolder) return;
     setLoading(true);
     API.get('/api/vault/folder?path=' + encodeURIComponent(selectedFolder))
-      .then(d => { setFiles(d.files || []); setFolderInfo(d); })
+      .then(d => setFiles(d.files || []))
       .catch(() => {})
       .finally(() => setLoading(false));
   }, [selectedFolder]);
 
-  const folderEntry = libraryEntries.find(e => e.folder_name && selectedFolder && selectedFolder.endsWith(e.folder_name));
+  const selectedFolderMeta = vaultFolders.find(f => f.path === selectedFolder);
+  const libEntry = selectedFolderMeta && selectedFolderMeta.library_id
+    ? libraryEntries.find(e => e.id === selectedFolderMeta.library_id)
+    : libraryEntries.find(e => e.folder_name && selectedFolder && selectedFolder.endsWith(e.folder_name));
 
   const handleSync = React.useCallback(() => {
-    if (!folderEntry) return;
-    setSyncingId(folderEntry.id);
-    API.post('/api/library/' + folderEntry.id + '/sync', { mode: folderEntry.sync_mode || 'add' })
-      .then(() => showNotif('Sync started', folderEntry.name))
+    if (!libEntry) return;
+    setSyncingId(libEntry.id);
+    API.post('/api/library/' + libEntry.id + '/sync', { mode: libEntry.sync_mode || 'add' })
+      .then(() => showNotif('Sync started', libEntry.name))
       .catch(e => showNotif('Error', e.message, 'error'))
       .finally(() => setSyncingId(null));
-  }, [folderEntry, showNotif]);
+  }, [libEntry, showNotif]);
 
   const handleOpenFile = React.useCallback((path) => {
     API.post('/api/vault/open-file', { path }).catch(() => {});
@@ -1202,15 +1272,26 @@ function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, config, sh
     }).catch(() => {});
   }, [showNotif, onRefreshVault]);
 
-  const handleUnwatchFolder = React.useCallback((folderPath) => {
-    API.del('/api/vault/watch', { path: folderPath })
-      .then(() => { onRefreshVault && onRefreshVault(); })
-      .catch(() => {});
-  }, [onRefreshVault]);
+  const handleDragOver = (e) => { e.preventDefault(); e.stopPropagation(); setDragOver(true); };
+  const handleDragLeave = (e) => { e.preventDefault(); setDragOver(false); };
+  const handleDrop = (e) => {
+    e.preventDefault(); e.stopPropagation(); setDragOver(false);
+    const droppedFiles = Array.from(e.dataTransfer.files || []);
+    if (droppedFiles.length > 0) {
+      const first = droppedFiles[0];
+      setDropModal({ name: first.name });
+    }
+  };
 
+  // ── ROOT VIEW — folder grid ──────────────────────────────────────────────────
   if (!selectedFolder) {
     return (
-      <div className="content active">
+      <div
+        className={'content active' + (dragOver ? ' drag-over' : '')}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+      >
         <div className="vhead">
           <div>
             <div className="vlabel">メディアボールト / MEDIA VAULT</div>
@@ -1223,52 +1304,112 @@ function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, config, sh
             <button className="btn btn-primary btn-sm" onClick={onAddVault}>ADD PLAYLIST</button>
           </div>
         </div>
-        <div className="empty-state">
-          <Mascot src={MASCOT_COMFY_SAFE || MASCOT_CHILLING} className="empty-mascot" wrapClass="empty-mascot-wrap" />
-          <div className="empty-title">SELECT A FOLDER</div>
-          <div className="empty-sub">Choose a folder from the sidebar tree or add one above</div>
-        </div>
+
+        {vaultFolders.length === 0 ? (
+          <div className="empty-state">
+            <Mascot src={MASCOT_COMFY_SAFE || MASCOT_CHILLING} className="empty-mascot" wrapClass="empty-mascot-wrap" />
+            <div className="empty-title">VAULT EMPTY</div>
+            <div className="empty-sub" onClick={onAddVault}>Add a playlist or watch folder to get started</div>
+          </div>
+        ) : (
+          <div className="vault-folder-grid">
+            {vaultFolders.map(folder => (
+              <div key={folder.path} className="vault-folder-card" onClick={() => setSelectedFolder(folder.path)}>
+                <div className="vfc-icon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" width="56" height="56">
+                    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+                  </svg>
+                </div>
+                <div className="vfc-name">{folder.name}</div>
+                {folder.library_name ? (
+                  <div className="vfc-lib-tag"><Ico name="sync" size={9} />{folder.library_name}</div>
+                ) : folder.watched ? (
+                  <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 8, color: 'var(--amber)', background: 'var(--amber2)', padding: '3px 8px' }}>WATCHED</div>
+                ) : null}
+                <div className="vfc-meta">
+                  <div className="vfc-meta-row">
+                    <span className="vfc-meta-label">FILES</span>
+                    <span className="vfc-meta-val">{folder.item_count || 0}</span>
+                  </div>
+                  <div className="vfc-meta-row">
+                    <span className="vfc-meta-label">SIZE</span>
+                    <span className="vfc-meta-val">{fmtBytes(folder.size_bytes)}</span>
+                  </div>
+                  <div className="vfc-meta-row">
+                    <span className="vfc-meta-label">CREATED</span>
+                    <span className="vfc-meta-val">{folder.created_at ? fmtDate(folder.created_at * 1000) : '—'}</span>
+                  </div>
+                  <div className="vfc-meta-row">
+                    <span className="vfc-meta-label">MODIFIED</span>
+                    <span className="vfc-meta-val">{folder.modified_at ? timeAgo(folder.modified_at * 1000) : '—'}</span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {dropModal && (
+          <Modal title="DROP DETECTED" onClose={() => setDropModal(null)}
+            footer={
+              <>
+                <button className="btn btn-secondary btn-sm" onClick={() => setDropModal(null)}>CANCEL</button>
+                <button className="btn btn-secondary btn-sm" onClick={() => { setDropModal(null); handleWatchFolder(); }}>WATCH FOLDER</button>
+                <button className="btn btn-primary btn-sm" onClick={() => { setDropModal(null); onAddVault && onAddVault(); }}>LINK PLAYLIST</button>
+              </>
+            }
+          >
+            <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 10, color: 'var(--t2)', textAlign: 'center', lineHeight: 2 }}>
+              Dropped: <span style={{ color: 'var(--cyan)' }}>{dropModal.name}</span><br />
+              <span style={{ color: 'var(--t4)', fontSize: 9 }}>What would you like to do?</span>
+            </div>
+          </Modal>
+        )}
       </div>
     );
   }
 
+  // ── FOLDER VIEW ──────────────────────────────────────────────────────────────
   const folderName = selectedFolder.split(/[\\/]/).pop();
 
   return (
-    <div className="content active">
+    <div
+      className={'content active' + (dragOver ? ' drag-over' : '')}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
       <div className="vhead">
         <div>
-          <div className="vlabel">メディアボールト / {folderName.toUpperCase()}</div>
+          <div className="vlabel">メディアボールト / MEDIA VAULT</div>
           <div className="vtitle">VAULT <span className="c">{folderName.toUpperCase().slice(0, 16)}</span></div>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
-          {folderEntry && (
-            <button
-              className="btn btn-amber btn-sm"
-              onClick={handleSync}
-              disabled={!!syncingId}
-            >
-              {syncingId ? 'SYNCING...' : (
-                <><Ico name="sync" /> SYNC NOW</>
-              )}
+          {libEntry && (
+            <button className="btn btn-amber btn-sm" onClick={handleSync} disabled={!!syncingId}>
+              {syncingId ? 'SYNCING...' : (<><Ico name="sync" /> SYNC NOW</>)}
             </button>
           )}
-          <button className="btn btn-secondary btn-sm" onClick={handleWatchFolder} title="Add a local folder to vault">
-            <Ico name="folder" /> WATCH FOLDER
-          </button>
           <button className="btn btn-secondary btn-sm" onClick={() => handleOpenFolder(selectedFolder)}>
             OPEN IN EXPLORER
           </button>
         </div>
       </div>
 
-      {folderEntry && (
+      {/* BREADCRUMB */}
+      <div className="vault-breadcrumb">
+        <span className="vbc-root" onClick={() => setSelectedFolder(null)}>VAULT ROOT</span>
+        <span className="vbc-sep">›</span>
+        <span className="vbc-current">{folderName.toUpperCase()}</span>
+      </div>
+
+      {libEntry && (
         <div className="panel" style={{ marginBottom: 16 }}>
           <div className="ph">
             <span className="ptag cyan">SYNCED</span>
-            <span className="ptitle">{folderEntry.name}</span>
+            <span className="ptitle">{libEntry.name}</span>
             <span className="psub">
-              {folderEntry.last_synced ? 'Last sync: ' + timeAgo(folderEntry.last_synced) : 'Never synced'}
+              {libEntry.last_synced ? 'Last sync: ' + timeAgo(libEntry.last_synced) : 'Never synced'}
             </span>
           </div>
         </div>
@@ -1289,8 +1430,14 @@ function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, config, sh
         <div className="lib-grid">
           {files.map(file => (
             <div key={file.path} className="lib-card" onDoubleClick={() => handleOpenFile(file.path)}>
-              <div className="lib-thumb-ph">
-                {isVideoExt(file.ext) ? '▶' : '♫'}
+              <div style={{ position: 'relative', width: '100%', height: 100, overflow: 'hidden', background: 'linear-gradient(135deg,var(--bg3),var(--bg2))', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 32, color: 'var(--t4)' }}>
+                <span style={{ position: 'relative', zIndex: 0 }}>{isVideoExt(file.ext) ? '▶' : '♫'}</span>
+                <img
+                  src={'/api/vault/thumb?path=' + encodeURIComponent(file.path)}
+                  style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', zIndex: 1 }}
+                  alt=""
+                  onError={e => { e.target.style.display = 'none'; }}
+                />
               </div>
               <div className={'lib-fmt ' + (isVideoExt(file.ext) ? 'video' : 'audio')}>
                 {file.ext.toUpperCase()}
@@ -1298,6 +1445,9 @@ function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, config, sh
               <div className="lib-body">
                 <div className="lib-title">{file.name.replace(/\.[^.]+$/, '')}</div>
                 <div className="lib-meta">{fmtBytes(file.size_bytes)}</div>
+                {file.created && (
+                  <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 8, color: 'var(--t4)', marginTop: 2 }}>{fmtDate(file.created * 1000)}</div>
+                )}
               </div>
               <div
                 className="lib-menu"
@@ -1314,7 +1464,6 @@ function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, config, sh
         </div>
       )}
 
-      {/* CONTEXT MENU */}
       {ctxMenu && (
         <div className="ctx-menu" style={{ left: ctxMenu.x, top: ctxMenu.y }} onClick={e => e.stopPropagation()}>
           <div className="ctx-item" onClick={() => { handleOpenFile(ctxMenu.file.path); setCtxMenu(null); }}>
@@ -1329,11 +1478,8 @@ function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, config, sh
         </div>
       )}
 
-      {/* DELETE CONFIRM */}
       {deleteConfirm && (
-        <Modal
-          title="CONFIRM DELETE"
-          onClose={() => setDeleteConfirm(null)}
+        <Modal title="CONFIRM DELETE" onClose={() => setDeleteConfirm(null)}
           footer={
             <>
               <button className="btn btn-secondary btn-sm" onClick={() => setDeleteConfirm(null)}>CANCEL</button>
@@ -1347,6 +1493,22 @@ function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, config, sh
               Delete <span style={{ color: 'var(--red)' }}>{deleteConfirm.name}</span>?<br />
               <span style={{ color: 'var(--t4)', fontSize: 9 }}>This cannot be undone.</span>
             </div>
+          </div>
+        </Modal>
+      )}
+
+      {dropModal && (
+        <Modal title="DROP DETECTED" onClose={() => setDropModal(null)}
+          footer={
+            <>
+              <button className="btn btn-secondary btn-sm" onClick={() => setDropModal(null)}>CANCEL</button>
+              <button className="btn btn-secondary btn-sm" onClick={() => { setDropModal(null); handleOpenFolder(selectedFolder); }}>OPEN FOLDER</button>
+            </>
+          }
+        >
+          <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 10, color: 'var(--t2)', textAlign: 'center', lineHeight: 2 }}>
+            Dropped: <span style={{ color: 'var(--cyan)' }}>{dropModal.name}</span><br />
+            <span style={{ color: 'var(--t4)', fontSize: 9 }}>Open the folder to manage files directly.</span>
           </div>
         </Modal>
       )}
@@ -1843,8 +2005,9 @@ function ConfigPage({ config, setConfig, showNotif, sysInfo, refreshStats }) {
   const set = (key, val) => setLocal(l => ({ ...l, [key]: val }));
 
   const handleSave = () => {
-    API.post('/api/config', local)
-      .then(() => { setConfig(local); showNotif('Saved', 'Configuration updated', 'success'); })
+    const { watched_folders, stat_overrides, ...toSave } = local;
+    API.post('/api/config', toSave)
+      .then(() => { setConfig(c => ({ ...c, ...toSave })); showNotif('Saved', 'Configuration updated', 'success'); })
       .catch(e => showNotif('Error', e.message, 'error'));
   };
 
@@ -1858,7 +2021,11 @@ function ConfigPage({ config, setConfig, showNotif, sysInfo, refreshStats }) {
   };
 
   const browseFolder = () => {
-    API.post('/api/browse-folder', {}).then(d => { if (d.path) set('output_dir', d.path); });
+    API.post('/api/browse-folder', {}).then(d => {
+      if (!d.path) return;
+      set('output_dir', d.path);
+      API.post('/api/config', { output_dir: d.path }).catch(() => {});
+    });
   };
 
   const browseCookies = () => {
@@ -2152,6 +2319,7 @@ function App() {
   const [selectedVaultFolder, setSelectedVaultFolder] = React.useState(null);
   const [addVaultModal, setAddVaultModal] = React.useState(false);
   const [showVictory, setShowVictory] = React.useState(false);
+  const [playlistItems, setPlaylistItems] = React.useState(null);
   const playlistActiveRef = React.useRef(false);
   const notifTimer = React.useRef(null);
   const victoryTimer = React.useRef(null);
@@ -2250,13 +2418,6 @@ function App() {
         stats={stats}
         speedHistory={speedHistory}
         sysInfo={sysInfo}
-        vaultFolders={vaultFolders}
-        selectedVaultFolder={selectedVaultFolder}
-        setSelectedVaultFolder={(folder) => {
-          setSelectedVaultFolder(folder);
-          setPage('vault');
-        }}
-        onAddVault={() => setAddVaultModal(true)}
       />
 
       <div className="main">
@@ -2273,10 +2434,17 @@ function App() {
             switchPage={switchPage}
             config={config}
             onPlaylistDownload={() => { playlistActiveRef.current = true; }}
+            playlistItems={playlistItems}
+            setPlaylistItems={setPlaylistItems}
           />
         )}
         {page === 'queue' && (
-          <QueuePage dlState={dlState} showNotif={showNotif} />
+          <QueuePage
+            dlState={dlState}
+            showNotif={showNotif}
+            playlistItems={playlistItems}
+            setPlaylistItems={setPlaylistItems}
+          />
         )}
         {page === 'vault' && (
           <VaultPage

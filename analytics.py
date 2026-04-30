@@ -343,17 +343,26 @@ def get_vault_folders(base_path: str) -> list[dict]:
                 try:
                     files = [f for f in item.rglob("*") if f.is_file() and not f.name.startswith(".")]
                     size = sum(f.stat().st_size for f in files if f.exists())
+                    st = item.stat()
                 except PermissionError:
-                    files, size = [], 0
+                    files, size, st = [], 0, None
                 result.append({
                     "name": item.name,
                     "path": str(item),
                     "item_count": len(files),
                     "size_bytes": size,
+                    "created_at": st.st_ctime if st else None,
+                    "modified_at": st.st_mtime if st else None,
                 })
     except PermissionError:
         pass
     return result
+
+
+def clear_library() -> None:
+    with get_conn() as con:
+        con.execute("DELETE FROM library")
+        con.execute("DELETE FROM sync_log")
 
 
 def vacuum() -> None:

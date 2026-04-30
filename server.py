@@ -316,6 +316,7 @@ def api_download() -> Response:
         "end_time": data.get("end_time", ""),
         "playlist_start": data.get("playlist_start"),
         "playlist_end": data.get("playlist_end"),
+        "playlist_items": data.get("playlist_items", ""),
         "date_before": data.get("date_before", ""),
         "date_after": data.get("date_after", ""),
         "filename_template": data.get("filename_template", "") or cfg.get("filename_template", ""),
@@ -373,6 +374,7 @@ def api_history_delete() -> Response:
         delete_all=delete_all,
     )
     if delete_all:
+        analytics.clear_library()
         cfg = _load_config()
         cfg["stat_overrides"] = {}
         _save_config(cfg)
@@ -439,24 +441,68 @@ def api_analytics_vacuum() -> Response:
 def api_vault() -> Response:
     cfg = _load_config()
     base_path = request.args.get("path") or cfg.get("output_dir", str(Path.home() / "Downloads" / "MellowDLP"))
-    folders = analytics.get_vault_folders(base_path)
-    # Include watched folders as additional vault entries
-    watched = cfg.get("watched_folders", [])
-    watched_entries = []
-    for wp in watched:
+    all_folders = analytics.get_vault_folders(base_path)
+    all_paths: set[str] = {f["path"] for f in all_folders}
+
+    # Include watched folders
+    for wp in cfg.get("watched_folders", []):
         p = Path(wp)
-        if p.exists() and p.is_dir():
+        norm = str(p)
+        if norm not in all_paths and p.exists() and p.is_dir():
             try:
                 count = sum(1 for f in p.iterdir() if f.is_file())
+                st = p.stat()
             except Exception:
-                count = 0
-            watched_entries.append({
-                "path": str(p),
-                "name": p.name,
-                "item_count": count,
-                "watched": True,
+                count, st = 0, None
+            all_folders.append({
+                "path": norm, "name": p.name, "item_count": count,
+                "size_bytes": 0, "watched": True,
+                "created_at": st.st_ctime if st else None,
+                "modified_at": st.st_mtime if st else None,
             })
-    return jsonify({"folders": folders + watched_entries, "base_path": base_path})
+            all_paths.add(norm)
+
+    # Tag existing folders with library info and add missing library folders
+    for entry in analytics.get_library_entries():
+        folder = entry.get("folder") or ""
+        folder_name = entry.get("folder_name") or ""
+        use_sub = entry.get("use_subfolder", True)
+        if use_sub and folder and folder_name:
+            actual_path = str(Path(folder) / folder_name)
+        elif folder:
+            actual_path = folder
+        else:
+            continue
+        norm = str(Path(actual_path))
+        found = False
+        for f in all_folders:
+            if f["path"] == norm:
+                f.setdefault("library_id", entry["id"])
+                f.setdefault("library_name", entry["name"])
+                found = True
+                break
+        if not found and norm not in all_paths:
+            p = Path(actual_path)
+            if p.exists() and p.is_dir():
+                try:
+                    files = [f2 for f2 in p.iterdir() if f2.is_file()]
+                    count = len(files)
+                    st = p.stat()
+                except Exception:
+                    count, st = 0, None
+            else:
+                count, st = 0, None
+            all_folders.append({
+                "path": actual_path,
+                "name": folder_name or Path(actual_path).name,
+                "item_count": count, "size_bytes": 0,
+                "library_id": entry["id"], "library_name": entry["name"],
+                "created_at": st.st_ctime if st else None,
+                "modified_at": st.st_mtime if st else None,
+            })
+            all_paths.add(norm)
+
+    return jsonify({"folders": all_folders, "base_path": base_path})
 
 
 @app.route("/api/vault/watch", methods=["GET"])
@@ -516,6 +562,7 @@ def api_vault_folder() -> Response:
                         "path": str(f),
                         "size_bytes": stat.st_size,
                         "modified": stat.st_mtime,
+                        "created": stat.st_ctime,
                         "ext": f.suffix.lower().lstrip("."),
                     })
                 except OSError:
@@ -523,6 +570,36 @@ def api_vault_folder() -> Response:
     except PermissionError:
         pass
     return jsonify({"files": files, "path": path, "folder_name": root.name})
+
+
+@app.route("/api/vault/thumb")
+def api_vault_thumb() -> Response:
+    path = request.args.get("path", "")
+    if not path:
+        return Response("", 404)
+    p = Path(path)
+    if not p.exists():
+        return Response("", 404)
+    base = p.with_suffix("")
+    for ext in (".jpg", ".jpeg", ".png", ".webp"):
+        thumb = base.with_suffix(ext)
+        if thumb.exists():
+            mime = "image/jpeg" if ext in (".jpg", ".jpeg") else ("image/png" if ext == ".png" else "image/webp")
+            return send_from_directory(str(thumb.parent), thumb.name, mimetype=mime)
+    return Response("", 404)
+
+
+@app.route("/api/playlist-items", methods=["POST"])
+def api_playlist_items() -> Response:
+    data = request.get_json(force=True) or {}
+    url = data.get("url", "").strip()
+    if not url:
+        return jsonify({"error": "No URL"}), 400
+    try:
+        items = downloader.get_playlist_items(url)
+        return jsonify({"items": items})
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
 
 
 @app.route("/api/vault/open-file", methods=["POST"])
