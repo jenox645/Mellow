@@ -783,16 +783,7 @@ function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats, showN
           >
             OPTIONS
           </button>
-          {info ? (
-            <>
-              <button className="btn btn-secondary btn-sm" onClick={handleAnalyze} disabled={analyzing || isDownloading} title="Re-analyze URL">
-                {analyzing ? '...' : '↺'}
-              </button>
-              <button className="btn btn-primary" onClick={handleDownload} disabled={isDownloading}>
-                {isDownloading ? 'ACTIVE...' : 'DOWNLOAD'}
-              </button>
-            </>
-          ) : (
+          {!info && (
             <button className="btn btn-primary" onClick={handleAnalyze} disabled={analyzing}>
               {analyzing ? 'ANALYZING...' : 'ANALYZE →'}
             </button>
@@ -895,23 +886,39 @@ function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats, showN
         <div className={'info-card' + (info ? ' open' : '')}>
           {info && (
             <div className="info-inner">
-              {info.thumbnail
-                ? <img src={info.thumbnail} className="info-thumb" alt="" />
-                : <div className="info-thumb-ph">▶</div>
-              }
+              {/* LEFT: thumbnail block — fixed 160×90, no border-radius */}
+              <div className="info-thumb-block">
+                {info.thumbnail
+                  ? <img src={info.thumbnail} className="info-thumb-img" alt="" />
+                  : <div className="info-thumb-img-ph">▶</div>
+                }
+                {info.duration && (
+                  <span className="info-thumb-dur">{fmtDuration(info.duration)}</span>
+                )}
+                <span className={'info-thumb-fmt ' + (mode === 'audio' ? 'fmt-audio' : 'fmt-video')}>
+                  {mode === 'audio' ? audioFmt.toUpperCase() : container.toUpperCase()}
+                </span>
+              </div>
+              {/* CENTER: metadata */}
               <div className="info-details">
                 <div className="info-title">{info.title || 'Unknown Title'}</div>
                 <div className="info-meta">
-                  {info.uploader && <span>{info.uploader}</span>}
-                  {info.platform && <span>{info.platform}</span>}
-                  {info.duration && <span>{fmtDuration(info.duration)}</span>}
-                  {info.is_playlist && <span>{info.playlist_count} items</span>}
+                  {[info.uploader, info.platform, info.is_playlist ? (info.playlist_count + ' items') : null].filter(Boolean).join(' · ')}
                 </div>
                 <div className="info-tags">
                   <span className="tag cyan">{info.platform || 'URL'}</span>
-                  {info.is_playlist && <span className="tag amber">PLAYLIST</span>}
+                  {info.is_playlist && <span className="tag amber">PLAYLIST · {info.playlist_count}</span>}
                   {mode === 'video' ? <span className="tag">{quality.toUpperCase()}</span> : <span className="tag amber">{audioFmt.toUpperCase()}</span>}
                 </div>
+              </div>
+              {/* RIGHT: action area */}
+              <div className="info-actions">
+                <button className="btn btn-primary btn-sm" onClick={handleDownload} disabled={isDownloading} style={{ width: '100%' }}>
+                  {isDownloading ? 'ACTIVE...' : 'DOWNLOAD'}
+                </button>
+                <button className="btn btn-secondary btn-sm" onClick={handleAnalyze} disabled={analyzing || isDownloading} style={{ width: '100%' }} title="Re-analyze URL">
+                  ↺ RESCAN
+                </button>
               </div>
             </div>
           )}
@@ -983,30 +990,38 @@ function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats, showN
             <span className="psub">{playlistItems ? playlistItems.length + ' ITEMS' : 'EMPTY'}</span>
           </div>
           {playlistItems && playlistItems.length > 0 ? (
-            <div style={{ maxHeight: 220, overflowY: 'auto' }}>
-              {playlistItems.slice(0, 12).map(item => (
-                <div key={item.idx} className="pl-queue-item">
-                  <span className="pl-queue-idx">{item.idx}</span>
-                  {item.thumbnail
-                    ? <img src={item.thumbnail} className="pl-queue-thumb" alt="" onError={e => { e.target.style.display = 'none'; }} />
-                    : <div className="pl-queue-thumb-ph">▶</div>
-                  }
-                  <div className="pl-queue-info">
-                    <div className="pl-queue-title">{item.title || 'Unknown'}</div>
-                    {item.uploader && <div className="pl-queue-sub">{item.uploader}</div>}
+            <div>
+              <div className="queue-list-header">
+                <span className="qlh-left">PENDING ITEMS — 待機中</span>
+                <span className="qlh-right">{playlistItems.length} TRACKS · CLICK ✕ TO REMOVE</span>
+              </div>
+              <div className="pl-queue-list" style={{ maxHeight: 216 }}>
+                {playlistItems.slice(0, 12).map(item => (
+                  <div key={item.idx} className="pl-queue-item">
+                    <span className="pl-queue-drag">⠿</span>
+                    <span className="pl-queue-idx">{item.idx}</span>
+                    {item.thumbnail
+                      ? <img src={item.thumbnail} className="pl-queue-thumb" alt="" onError={e => { e.target.style.display = 'none'; }} />
+                      : <div className="pl-queue-thumb-ph">▶</div>
+                    }
+                    <div className="pl-queue-info">
+                      <div className="pl-queue-title">{item.title || 'Unknown'}</div>
+                      {item.uploader && <div className="pl-queue-sub">{item.uploader}</div>}
+                    </div>
+                    <span className="pl-queue-dur">{item.duration ? fmtDuration(item.duration) : '—'}</span>
+                    <div className="pl-queue-st"><span className="q-st-badge queued">QUEUED</span></div>
+                    <div className="pl-queue-remove" onClick={() => setPlaylistItems && setPlaylistItems(prev => prev ? prev.filter(x => x.idx !== item.idx) : prev)}>
+                      <Ico name="x" size={10} />
+                    </div>
                   </div>
-                  <span className="pl-queue-dur">{item.duration ? fmtDuration(item.duration) : '—'}</span>
-                  <div className="pl-queue-remove" onClick={() => setPlaylistItems && setPlaylistItems(prev => prev ? prev.filter(x => x.idx !== item.idx) : prev)}>
-                    <Ico name="x" size={10} />
+                ))}
+                {playlistItems.length > 12 && (
+                  <div style={{ padding: '6px 14px', fontFamily: 'Share Tech Mono', fontSize: 9, color: 'var(--t4)', textAlign: 'center' }}>
+                    +{playlistItems.length - 12} more ·{' '}
+                    <span style={{ color: 'var(--cyan)', cursor: 'pointer' }} onClick={() => switchPage('queue')}>VIEW ALL →</span>
                   </div>
-                </div>
-              ))}
-              {playlistItems.length > 12 && (
-                <div style={{ padding: '6px 14px', fontFamily: 'Share Tech Mono', fontSize: 9, color: 'var(--t4)', textAlign: 'center' }}>
-                  +{playlistItems.length - 12} more ·{' '}
-                  <span style={{ color: 'var(--cyan)', cursor: 'pointer' }} onClick={() => switchPage('queue')}>VIEW ALL →</span>
-                </div>
-              )}
+                )}
+              </div>
             </div>
           ) : fetchingItems ? (
             <div style={{ padding: '20px', fontFamily: 'Share Tech Mono', fontSize: 9, color: 'var(--t3)', textAlign: 'center' }}>
@@ -1149,11 +1164,16 @@ function QueuePage({ dlState, showNotif, playlistItems, setPlaylistItems }) {
           <div className="ph">
             <span className="ptag">PLAYLIST</span>
             <span className="ptitle">PENDING ITEMS — 待機中</span>
-            <span className="psub">{playlistItems.length} TRACKS · CLICK × TO REMOVE</span>
+            <span className="psub">{playlistItems.length} TRACKS</span>
           </div>
-          <div style={{ maxHeight: 520, overflowY: 'auto' }}>
+          <div className="queue-list-header">
+            <span className="qlh-left">PENDING ITEMS — 待機中</span>
+            <span className="qlh-right">{playlistItems.length} TRACKS · CLICK ✕ TO REMOVE</span>
+          </div>
+          <div className="pl-queue-list">
             {playlistItems.map(item => (
               <div key={item.idx} className="pl-queue-item">
+                <span className="pl-queue-drag">⠿</span>
                 <span className="pl-queue-idx">{item.idx}</span>
                 {item.thumbnail
                   ? <img src={item.thumbnail} className="pl-queue-thumb" alt="" onError={e => { e.target.style.display = 'none'; }} />
@@ -1164,6 +1184,7 @@ function QueuePage({ dlState, showNotif, playlistItems, setPlaylistItems }) {
                   {item.uploader && <div className="pl-queue-sub">{item.uploader}</div>}
                 </div>
                 <span className="pl-queue-dur">{item.duration ? fmtDuration(item.duration) : '—'}</span>
+                <div className="pl-queue-st"><span className="q-st-badge queued">QUEUED</span></div>
                 <div className="pl-queue-remove" onClick={() => handleRemove(item.idx)}>
                   <Ico name="x" size={10} />
                 </div>
@@ -1179,9 +1200,9 @@ function QueuePage({ dlState, showNotif, playlistItems, setPlaylistItems }) {
             <span className="ptitle">PENDING DOWNLOADS — 待機中</span>
           </div>
           <div className="empty-state">
-            <Mascot src={MASCOT_VIBING} className="empty-mascot" wrapClass="empty-mascot-wrap" />
+            <Mascot src={MASCOT_TIRED} className="empty-mascot tint-cyan" wrapClass="empty-mascot-wrap" style={{ width: 180 }} />
             <div className="empty-title">QUEUE EMPTY</div>
-            <div className="empty-sub">Paste a playlist URL in FEED to populate the queue</div>
+            <div className="empty-sub">PASTE A URL IN FEED TO START DOWNLOADING</div>
           </div>
         </div>
       )}
@@ -1200,6 +1221,8 @@ function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, config, sh
   const [deleteConfirm, setDeleteConfirm] = React.useState(null);
   const [dragOver, setDragOver] = React.useState(false);
   const [dropModal, setDropModal] = React.useState(null);
+  const [vaultSearch, setVaultSearch] = React.useState('');
+  const [vaultSort, setVaultSort] = React.useState('name');
 
   React.useEffect(() => {
     API.get('/api/library').then(setLibraryEntries).catch(() => {});
@@ -1315,34 +1338,18 @@ function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, config, sh
           <div className="vault-folder-grid">
             {vaultFolders.map(folder => (
               <div key={folder.path} className="vault-folder-card" onClick={() => setSelectedFolder(folder.path)}>
+                {folder.watched && <span className="vfc-watched-badge">WATCHED</span>}
                 <div className="vfc-icon">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" width="56" height="56">
+                  <svg className="vfc-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" width="48" height="48">
                     <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
                   </svg>
                 </div>
-                <div className="vfc-name">{folder.name}</div>
-                {folder.library_name ? (
-                  <div className="vfc-lib-tag"><Ico name="sync" size={9} />{folder.library_name}</div>
-                ) : folder.watched ? (
-                  <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 8, color: 'var(--amber)', background: 'var(--amber2)', padding: '3px 8px' }}>WATCHED</div>
-                ) : null}
-                <div className="vfc-meta">
-                  <div className="vfc-meta-row">
-                    <span className="vfc-meta-label">FILES</span>
-                    <span className="vfc-meta-val">{folder.item_count || 0}</span>
-                  </div>
-                  <div className="vfc-meta-row">
-                    <span className="vfc-meta-label">SIZE</span>
-                    <span className="vfc-meta-val">{fmtBytes(folder.size_bytes)}</span>
-                  </div>
-                  <div className="vfc-meta-row">
-                    <span className="vfc-meta-label">CREATED</span>
-                    <span className="vfc-meta-val">{folder.created_at ? fmtDate(folder.created_at * 1000) : '—'}</span>
-                  </div>
-                  <div className="vfc-meta-row">
-                    <span className="vfc-meta-label">MODIFIED</span>
-                    <span className="vfc-meta-val">{folder.modified_at ? timeAgo(folder.modified_at * 1000) : '—'}</span>
-                  </div>
+                <div className="vfc-bottom">
+                  <div className="vfc-name">{folder.name}</div>
+                  <div className="vfc-meta-text">{folder.item_count || 0} FILES · {fmtBytes(folder.size_bytes)}</div>
+                  {folder.library_name && (
+                    <div className="vfc-lib-tag"><Ico name="sync" size={9} />{folder.library_name}</div>
+                  )}
                 </div>
               </div>
             ))}
@@ -1415,6 +1422,28 @@ function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, config, sh
         </div>
       )}
 
+      {!loading && files.length > 0 && (
+        <>
+          <div className="vault-lib-controls">
+            <div className="vault-lib-search-wrap">
+              <span className="vault-lib-search-icon"><Ico name="signal" size={12} /></span>
+              <input
+                className="vault-lib-search"
+                placeholder="SEARCH IN LIBRARY — ライブラリを検索"
+                value={vaultSearch}
+                onChange={e => setVaultSearch(e.target.value)}
+              />
+            </div>
+            <select className="vault-lib-sort" value={vaultSort} onChange={e => setVaultSort(e.target.value)}>
+              <option value="name">SORT BY: NAME</option>
+              <option value="size">SORT BY: SIZE</option>
+              <option value="date">SORT BY: DATE</option>
+            </select>
+          </div>
+          <div className="vault-lib-count">TOTAL: <span>{files.filter(f => !vaultSearch || f.name.toLowerCase().includes(vaultSearch.toLowerCase())).length} ITEMS</span></div>
+        </>
+      )}
+
       {loading ? (
         <div className="empty-state">
           <Mascot src={MASCOT_CHILLING} className="empty-mascot" wrapClass="empty-mascot-wrap" />
@@ -1428,7 +1457,14 @@ function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, config, sh
         </div>
       ) : (
         <div className="lib-grid">
-          {files.map(file => (
+          {files
+            .filter(f => !vaultSearch || f.name.toLowerCase().includes(vaultSearch.toLowerCase()))
+            .sort((a, b) => {
+              if (vaultSort === 'size') return (b.size_bytes || 0) - (a.size_bytes || 0);
+              if (vaultSort === 'date') return (b.created || 0) - (a.created || 0);
+              return a.name.localeCompare(b.name);
+            })
+            .map(file => (
             <div key={file.path} className="lib-card" onDoubleClick={() => handleOpenFile(file.path)}>
               <div style={{ position: 'relative', width: '100%', height: 100, overflow: 'hidden', background: 'linear-gradient(135deg,var(--bg3),var(--bg2))', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 32, color: 'var(--t4)' }}>
                 <span style={{ position: 'relative', zIndex: 0 }}>{isVideoExt(file.ext) ? '▶' : '♫'}</span>
