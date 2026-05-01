@@ -649,6 +649,7 @@ function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats, showN
 
   const [vaultName, setVaultName] = React.useState('');
   const [vaultFolder, setVaultFolder] = React.useState('');
+  const [vaultLinkPrompt, setVaultLinkPrompt] = React.useState(false);
 
   // Ref to always call the latest startDownload (avoids stale closure in handleDownload)
   const startDownloadRef = React.useRef(null);
@@ -684,7 +685,11 @@ function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats, showN
   // handleDownload uses a ref so it always calls the latest startDownload without stale closure
   const handleDownload = React.useCallback(() => {
     if (!url.trim()) return;
-    if (info && info.is_playlist && onPlaylistDownload) onPlaylistDownload();
+    if (info && info.is_playlist) {
+      if (onPlaylistDownload) onPlaylistDownload();
+      setVaultLinkPrompt(true);
+      return;
+    }
     if (startDownloadRef.current) startDownloadRef.current();
   }, [url, info, onPlaylistDownload]);
 
@@ -1116,22 +1121,41 @@ function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats, showN
           </div>
         </Modal>
       )}
+
+      {/* VAULT LINK PROMPT MODAL — shown for playlist downloads */}
+      {vaultLinkPrompt && (
+        <VaultLinkPromptModal
+          info={info}
+          url={url}
+          config={config}
+          onClose={() => setVaultLinkPrompt(false)}
+          onJustDownload={() => { setVaultLinkPrompt(false); if (startDownloadRef.current) startDownloadRef.current(); }}
+          onLinkAndDownload={(extra) => { setVaultLinkPrompt(false); if (startDownloadRef.current) startDownloadRef.current(extra); }}
+          showNotif={showNotif}
+        />
+      )}
     </div>
   );
 }
 
 // ── QUEUE Page ────────────────────────────────────────────────────────────────
 
-function QueuePage({ dlState, showNotif, playlistItems, setPlaylistItems }) {
+function QueuePage({ dlState, showNotif, playlistItems, setPlaylistItems, completedItems }) {
   const isDownloading = dlState && dlState.pct !== undefined;
   const queueCount = playlistItems ? playlistItems.length : 0;
+  const [qTab, setQTab] = React.useState('pending');
+  const [removingItems, setRemovingItems] = React.useState(new Set());
 
   const handleCancel = () => {
     API.post('/api/cancel', {}).then(() => showNotif('Cancelled', 'Download stopped'));
   };
 
   const handleRemove = (idx) => {
-    setPlaylistItems && setPlaylistItems(prev => prev ? prev.filter(x => x.idx !== idx) : prev);
+    setRemovingItems(prev => new Set([...prev, idx]));
+    setTimeout(() => {
+      setPlaylistItems && setPlaylistItems(prev => prev ? prev.filter(x => x.idx !== idx) : prev);
+      setRemovingItems(prev => { const n = new Set(prev); n.delete(idx); return n; });
+    }, 350);
   };
 
   return (
@@ -1186,39 +1210,68 @@ function QueuePage({ dlState, showNotif, playlistItems, setPlaylistItems }) {
         </div>
       )}
 
-      {playlistItems && playlistItems.length > 0 ? (
+      {(playlistItems && playlistItems.length > 0) || (completedItems && completedItems.length > 0) ? (
         <div className="panel">
           <div className="panel-hud" /><div className="panel-hud-br" />
           <div className="ph">
             <span className="ptag">PLAYLIST</span>
-            <span className="ptitle">PENDING ITEMS — 待機中</span>
-            <span className="psub">{playlistItems.length} TRACKS</span>
+            <span className="ptitle">DOWNLOAD QUEUE</span>
+            <span className="psub">{qTab === 'pending' ? (playlistItems ? playlistItems.length : 0) + ' PENDING' : (completedItems ? completedItems.length : 0) + ' DONE'}</span>
           </div>
-          <div className="queue-list-header">
-            <span className="qlh-left">PENDING ITEMS — 待機中</span>
-            <span className="qlh-right">{playlistItems.length} TRACKS · CLICK ✕ TO REMOVE</span>
+          <div className="q-tabs">
+            <div className={'q-tab' + (qTab === 'pending' ? ' active' : '')} onClick={() => setQTab('pending')}>PENDING</div>
+            <div className={'q-tab' + (qTab === 'completed' ? ' active' : '')} onClick={() => setQTab('completed')}>COMPLETED</div>
           </div>
-          <div className="pl-queue-list">
-            {playlistItems.map(item => (
-              <div key={item.idx} className="pl-queue-item">
-                <span className="pl-queue-drag">⠿</span>
-                <span className="pl-queue-idx">{item.idx}</span>
-                {item.thumbnail
-                  ? <img src={item.thumbnail} className="pl-queue-thumb" alt="" onError={e => { e.target.style.display = 'none'; }} />
-                  : <div className="pl-queue-thumb-ph">▶</div>
-                }
-                <div className="pl-queue-info">
-                  <div className="pl-queue-title">{item.title || 'Unknown'}</div>
-                  {item.uploader && <div className="pl-queue-sub">{item.uploader}</div>}
-                </div>
-                <span className="pl-queue-dur">{item.duration ? fmtDuration(item.duration) : '—'}</span>
-                <div className="pl-queue-st"><span className="q-st-badge queued">QUEUED</span></div>
-                <div className="pl-queue-remove" onClick={() => handleRemove(item.idx)}>
-                  <Ico name="x" size={10} />
-                </div>
+          {qTab === 'pending' ? (
+            <>
+              <div className="queue-list-header">
+                <span className="qlh-left">PENDING ITEMS — 待機中</span>
+                <span className="qlh-right">{(playlistItems ? playlistItems.length : 0)} TRACKS · CLICK ✕ TO REMOVE</span>
               </div>
-            ))}
-          </div>
+              <div className="pl-queue-list">
+                {(playlistItems || []).map(item => (
+                  <div key={item.idx} className={'pl-queue-item' + (removingItems.has(item.idx) ? ' removing' : '')}>
+                    <span className="pl-queue-drag">⠿</span>
+                    <span className="pl-queue-idx">{item.idx}</span>
+                    {item.thumbnail
+                      ? <img src={item.thumbnail} className="pl-queue-thumb" alt="" onError={e => { e.target.style.display = 'none'; }} />
+                      : <div className="pl-queue-thumb-ph">▶</div>
+                    }
+                    <div className="pl-queue-info">
+                      <div className="pl-queue-title">{item.title || 'Unknown'}</div>
+                      {item.uploader && <div className="pl-queue-sub">{item.uploader}</div>}
+                    </div>
+                    <span className="pl-queue-dur">{item.duration ? fmtDuration(item.duration) : '—'}</span>
+                    <div className="pl-queue-st"><span className="q-st-badge queued">QUEUED</span></div>
+                    <div className="pl-queue-remove" onClick={() => handleRemove(item.idx)}>
+                      <Ico name="x" size={10} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          ) : (
+            <div className="pl-queue-list">
+              {(completedItems || []).map((item, i) => (
+                <div key={i} className="q-completed-item">
+                  <div className="q-comp-thumb-ph">✓</div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div className="q-comp-title">{item.title || 'Unknown'}</div>
+                    <div className="q-comp-meta">
+                      <span className="q-st-badge completed">DONE</span>
+                      {' '}
+                      {item.file_size ? fmtBytes(item.file_size) : ''}
+                      {' · '}
+                      {timeAgo(item.completedAt)}
+                    </div>
+                  </div>
+                </div>
+              ))}
+              {(!completedItems || completedItems.length === 0) && (
+                <div style={{ padding: '20px', fontFamily: 'Share Tech Mono', fontSize: 9, color: 'var(--t4)', textAlign: 'center' }}>NO COMPLETED ITEMS YET</div>
+              )}
+            </div>
+          )}
         </div>
       ) : (
         <div className="panel">
@@ -1255,6 +1308,8 @@ function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, config, sh
   const [cardMenu, setCardMenu] = React.useState(null);
   const [linkPlModal, setLinkPlModal] = React.useState(null);
   const [renameModal, setRenameModal] = React.useState(null);
+  const [syncModal, setSyncModal] = React.useState(null);
+  const [fileThumbs, setFileThumbs] = React.useState({});
 
   React.useEffect(() => {
     API.get('/api/library').then(setLibraryEntries).catch(() => {});
@@ -1264,7 +1319,16 @@ function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, config, sh
     if (!selectedFolder) return;
     setLoading(true);
     API.get('/api/vault/folder?path=' + encodeURIComponent(selectedFolder))
-      .then(d => setFiles(d.files || []))
+      .then(d => {
+        const loaded = d.files || [];
+        setFiles(loaded);
+        if (loaded.length > 0) {
+          const paths = loaded.map(f => f.path);
+          API.post('/api/vault/file-thumbs', { paths })
+            .then(r => setFileThumbs(r.thumbs || {}))
+            .catch(() => {});
+        }
+      })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, [selectedFolder]);
@@ -1420,6 +1484,7 @@ function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, config, sh
                   {cardMenu === folder.path && (
                     <div className="vfc-menu-popup" onClick={e => e.stopPropagation()}>
                       <div className="vfc-menu-item" onClick={() => { setCardMenu(null); setLinkPlModal(folder); }}>Link Playlist</div>
+                      <div className="vfc-menu-item" onClick={() => { setCardMenu(null); setSyncModal(folder); }}>Sync</div>
                       <div className="vfc-menu-item" onClick={() => { setCardMenu(null); API.post('/api/open-folder', { path: folder.path }).catch(() => {}); }}>Open in Explorer</div>
                       <div className="vfc-menu-item" onClick={() => { setCardMenu(null); setRenameModal({ folder, name: folder.name }); }}>Rename</div>
                       <div className="vfc-menu-item danger" onClick={() => handleVaultRemove(folder)}>Remove from Vault</div>
@@ -1432,6 +1497,9 @@ function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, config, sh
                     <div className="vfc-meta-text">{folder.item_count || 0} FILES · {fmtBytes(folder.size_bytes)}</div>
                     {folder.library_name && (
                       <div className="vfc-lib-tag"><Ico name="sync" size={9} />{folder.library_name}</div>
+                    )}
+                    {folder.last_synced && (
+                      <div className="vfc-synced">SYNCED {timeAgo(folder.last_synced)}</div>
                     )}
                   </div>
                 </div>
@@ -1458,6 +1526,8 @@ function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, config, sh
         )}
 
         {linkPlModal && <LinkPlaylistModal folder={linkPlModal} onClose={() => setLinkPlModal(null)} showNotif={showNotif} />}
+
+        {syncModal && <SyncPlaylistModal folder={syncModal} onClose={() => setSyncModal(null)} showNotif={showNotif} onRefreshVault={onRefreshVault} />}
 
         {renameModal && (
           <RenameVaultModal
@@ -1563,12 +1633,14 @@ function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, config, sh
             <div key={file.path} className="lib-card" onDoubleClick={() => handleOpenFile(file.path)}>
               <div style={{ position: 'relative', width: '100%', height: 100, overflow: 'hidden', background: 'linear-gradient(135deg,var(--bg3),var(--bg2))', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 32, color: 'var(--t4)' }}>
                 <span style={{ position: 'relative', zIndex: 0 }}>{isVideoExt(file.ext) ? '▶' : '♫'}</span>
-                <img
-                  src={'/api/vault/thumb?path=' + encodeURIComponent(file.path)}
-                  style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', zIndex: 1 }}
-                  alt=""
-                  onError={e => { e.target.style.display = 'none'; }}
-                />
+                {(fileThumbs[file.path] || '/api/vault/thumb?path=' + encodeURIComponent(file.path)) && (
+                  <img
+                    src={fileThumbs[file.path] || '/api/vault/thumb?path=' + encodeURIComponent(file.path)}
+                    style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', zIndex: 1 }}
+                    alt=""
+                    onError={e => { e.target.style.display = 'none'; }}
+                  />
+                )}
               </div>
               <div className={'lib-fmt ' + (isVideoExt(file.ext) ? 'video' : 'audio')}>
                 {file.ext.toUpperCase()}
@@ -2434,6 +2506,98 @@ function ConfigPage({ config, setConfig, showNotif, sysInfo, refreshStats }) {
   );
 }
 
+// ── Vault Link Prompt Modal ───────────────────────────────────────────────────
+
+function VaultLinkPromptModal({ info, url, config, onClose, onJustDownload, onLinkAndDownload, showNotif }) {
+  const [step, setStep] = React.useState('choose'); // 'choose' | 'link-existing' | 'create-new'
+  const [vaultFolders, setVaultFolders] = React.useState([]);
+  const [selectedFolder, setSelectedFolder] = React.useState('');
+  const [newName, setNewName] = React.useState((info && info.title) ? info.title.slice(0, 40) : '');
+  const [newFolder, setNewFolder] = React.useState('');
+  const [saving, setSaving] = React.useState(false);
+
+  React.useEffect(() => {
+    if (step === 'link-existing') {
+      API.get('/api/vault').then(d => setVaultFolders(d.folders || [])).catch(() => {});
+    }
+  }, [step]);
+
+  const browseNewFolder = () => {
+    API.post('/api/browse-folder', {}).then(d => { if (d.path) setNewFolder(d.path); }).catch(() => {});
+  };
+
+  const handleLinkExisting = () => {
+    if (!selectedFolder) return;
+    onLinkAndDownload({ output_dir: selectedFolder });
+  };
+
+  const handleCreateNew = () => {
+    if (!newName.trim()) { showNotif('Error', 'Name required', 'error'); return; }
+    setSaving(true);
+    const folder = newFolder || (config.output_dir ? config.output_dir + '/' + newName.trim() : '');
+    API.post('/api/library', {
+      name: newName.trim(), url: url, folder: config.output_dir || '',
+      folder_name: newName.trim(), use_subfolder: true, quality: '1080p',
+      mode: 'VIDEO', sync_mode: 'add', embed_thumbnail: true,
+      embed_chapters: true, embed_metadata: true,
+    }).then(() => {
+      showNotif('Added to VAULT', newName.trim() + ' saved to library');
+      onLinkAndDownload({ output_dir: folder || undefined });
+    }).catch(e => { showNotif('Error', e.message, 'error'); setSaving(false); });
+  };
+
+  return (
+    <Modal title="SAVE TO VAULT?" onClose={onClose} footer={null}>
+      {step === 'choose' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 10, color: 'var(--t3)', textAlign: 'center', marginBottom: 6 }}>
+            This is a playlist. Would you like to save it to the Vault?
+          </div>
+          <button className="btn btn-secondary btn-sm" style={{ width: '100%' }} onClick={() => setStep('link-existing')}>LINK TO EXISTING VAULT FOLDER</button>
+          <button className="btn btn-secondary btn-sm" style={{ width: '100%' }} onClick={() => setStep('create-new')}>CREATE NEW VAULT ENTRY</button>
+          <button className="btn btn-primary btn-sm" style={{ width: '100%' }} onClick={onJustDownload}>JUST DOWNLOAD</button>
+        </div>
+      )}
+      {step === 'link-existing' && (
+        <div>
+          <div className="form-row">
+            <div className="form-label">SELECT VAULT FOLDER</div>
+            <select className="sel" style={{ width: '100%' }} value={selectedFolder} onChange={e => setSelectedFolder(e.target.value)}>
+              <option value="">— Select folder —</option>
+              {vaultFolders.map(f => <option key={f.path} value={f.path}>{f.name}</option>)}
+            </select>
+          </div>
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 8 }}>
+            <button className="btn btn-secondary btn-sm" onClick={() => setStep('choose')}>BACK</button>
+            <button className="btn btn-primary btn-sm" onClick={handleLinkExisting} disabled={!selectedFolder}>DOWNLOAD TO FOLDER</button>
+          </div>
+        </div>
+      )}
+      {step === 'create-new' && (
+        <div>
+          <div className="form-row">
+            <div className="form-label">VAULT ENTRY NAME</div>
+            <input className="form-input" value={newName} onChange={e => setNewName(e.target.value)} placeholder="My Playlist" />
+          </div>
+          <div className="form-row">
+            <div className="form-label">SAVE FOLDER (OPTIONAL)</div>
+            <div className="input-row">
+              <input className="form-input" value={newFolder} onChange={e => setNewFolder(e.target.value)} placeholder="Uses Config default if empty" />
+              <button className="btn btn-secondary btn-sm" onClick={browseNewFolder}>BROWSE</button>
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 8 }}>
+            <button className="btn btn-secondary btn-sm" onClick={() => setStep('choose')}>BACK</button>
+            <button className="btn btn-primary btn-sm" onClick={handleCreateNew} disabled={saving || !newName.trim()}>
+              {saving ? 'SAVING...' : 'CREATE AND DOWNLOAD'}
+            </button>
+          </div>
+        </div>
+      )}
+    </Modal>
+  );
+}
+
 // ── App Root ──────────────────────────────────────────────────────────────────
 
 function App() {
@@ -2451,6 +2615,7 @@ function App() {
   const [addVaultModal, setAddVaultModal] = React.useState(false);
   const [showVictory, setShowVictory] = React.useState(false);
   const [playlistItems, setPlaylistItems] = React.useState(null);
+  const [completedItems, setCompletedItems] = React.useState([]);
   const playlistActiveRef = React.useRef(false);
   const notifTimer = React.useRef(null);
   const victoryTimer = React.useRef(null);
@@ -2509,6 +2674,14 @@ function App() {
         showNotif('Download Complete', data.title || 'File saved successfully', 'success');
         refreshStats();
         refreshVault();
+        if (data.title) {
+          setCompletedItems(prev => [{
+            title: data.title,
+            file_path: data.file_path,
+            file_size: data.file_size,
+            completedAt: Date.now(),
+          }, ...prev].slice(0, 100));
+        }
         if (playlistActiveRef.current && MASCOT_VICTORY_SAFE) {
           playlistActiveRef.current = false;
           setShowVictory(true);
@@ -2575,6 +2748,7 @@ function App() {
             showNotif={showNotif}
             playlistItems={playlistItems}
             setPlaylistItems={setPlaylistItems}
+            completedItems={completedItems}
           />
         )}
         {page === 'vault' && (
@@ -2611,6 +2785,11 @@ function App() {
         <div className="victory-overlay" onClick={() => setShowVictory(false)}>
           <Mascot src={MASCOT_VICTORY_SAFE} className="victory-mascot" wrapClass="victory-mascot" />
           <div className="victory-text">PLAYLIST COMPLETE!</div>
+          {completedItems.length > 0 && (
+            <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 13, color: 'var(--cyan)', letterSpacing: '0.15em', opacity: 0.85 }}>
+              {completedItems.length} ITEMS SAVED
+            </div>
+          )}
         </div>
       )}
 
@@ -2760,6 +2939,73 @@ function LinkPlaylistModal({ folder, onClose, showNotif }) {
       )}
       {playlists.length === 0 && (
         <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: 'var(--t4)', textAlign: 'center', padding: '12px 0' }}>NO PLAYLISTS LINKED YET</div>
+      )}
+    </Modal>
+  );
+}
+
+// ── Sync Playlist Modal ───────────────────────────────────────────────────────
+
+function SyncPlaylistModal({ folder, onClose, showNotif, onRefreshVault }) {
+  const [playlists, setPlaylists] = React.useState(null);
+  const [syncMode, setSyncMode] = React.useState('add');
+  const [syncing, setSyncing] = React.useState(false);
+
+  React.useEffect(() => {
+    API.get('/api/vault/playlists?path=' + encodeURIComponent(folder.path))
+      .then(d => setPlaylists(d.playlists || []))
+      .catch(() => setPlaylists([]));
+  }, [folder.path]);
+
+  const handleSync = () => {
+    setSyncing(true);
+    API.post('/api/vault/sync', { path: folder.path, mode: syncMode })
+      .then(d => {
+        showNotif('Sync Started', folder.name + ' — ' + syncMode.toUpperCase() + ' mode', 'success');
+        onRefreshVault && onRefreshVault();
+        onClose();
+      })
+      .catch(e => showNotif('Error', e.message || 'Sync failed', 'error'))
+      .finally(() => setSyncing(false));
+  };
+
+  const hasPlaylist = playlists && playlists.length > 0;
+
+  return (
+    <Modal title={'SYNC — ' + folder.name.toUpperCase()} onClose={onClose} footer={
+      hasPlaylist ? (
+        <>
+          <button className="btn btn-secondary btn-sm" onClick={onClose}>CANCEL</button>
+          <button className="btn btn-primary btn-sm" onClick={handleSync} disabled={syncing}>
+            {syncing ? 'SYNCING...' : 'SYNC NOW'}
+          </button>
+        </>
+      ) : (
+        <button className="btn btn-secondary btn-sm" onClick={onClose}>CLOSE</button>
+      )
+    }>
+      {playlists === null ? (
+        <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: 'var(--t4)', textAlign: 'center', padding: '12px 0' }}>LOADING...</div>
+      ) : !hasPlaylist ? (
+        <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 10, color: 'var(--t3)', textAlign: 'center', padding: '12px 0' }}>
+          No playlist linked. Use ⋮ → Link Playlist first.
+        </div>
+      ) : (
+        <>
+          <div className="form-row">
+            <div className="form-label">LINKED PLAYLIST</div>
+            <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 10, color: 'var(--cyan)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', padding: '4px 0' }}>{playlists[0]}</div>
+          </div>
+          <div className="form-row">
+            <div className="form-label">SYNC MODE</div>
+            <div className="pills">
+              <div className={'pill' + (syncMode === 'add' ? ' active' : '')} onClick={() => setSyncMode('add')}>ADD ONLY</div>
+              <div className={'pill' + (syncMode === 'mirror' ? ' active' : '')} onClick={() => setSyncMode('mirror')}>
+                MIRROR <span style={{ color: 'var(--amber)', fontSize: 8 }}> DESTRUCTIVE</span>
+              </div>
+            </div>
+          </div>
+        </>
       )}
     </Modal>
   );

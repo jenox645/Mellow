@@ -242,31 +242,50 @@ def api_check_ytdlp_update() -> Response:
 @app.route("/api/update-ytdlp", methods=["POST"])
 def api_update_ytdlp() -> Response:
     def _update() -> None:
-        import shutil as _shutil
+        import shutil as _sh
         try:
-            _kw: dict = {"check": True, "capture_output": True}
-            if platform.system() == "Windows":
-                _kw["creationflags"] = subprocess.CREATE_NO_WINDOW
-            exe = sys.executable
-            # Guard: never run the app binary itself as an updater
-            if getattr(sys, "frozen", False) or "mellowdlp" in exe.lower():
-                # Frozen bundle — sys.executable is the app; find yt-dlp or Python separately
-                ytdlp_bin = _shutil.which("yt-dlp") or _shutil.which("yt-dlp.exe")
+            import yt_dlp as _ytdlp_mod_check
+            ytdlp_file = Path(_ytdlp_mod_check.__file__).parent
+            print(f"[YT-DLP PATH] yt_dlp module at {ytdlp_file}", flush=True)
+        except Exception:
+            pass
+
+        _kw: dict = {"capture_output": True}
+        if platform.system() == "Windows":
+            _kw["creationflags"] = subprocess.CREATE_NO_WINDOW
+
+        exe = sys.executable
+        frozen = getattr(sys, "frozen", False)
+        guard = frozen or "mellowdlp" in exe.lower()
+
+        try:
+            if guard:
+                ytdlp_bin = _sh.which("yt-dlp") or _sh.which("yt-dlp.exe")
                 if ytdlp_bin and "mellowdlp" not in ytdlp_bin.lower():
-                    subprocess.run([ytdlp_bin, "-U"], **_kw)
+                    print(f"[YT-DLP UPDATE] Running: {ytdlp_bin} -U", flush=True)
+                    subprocess.run([ytdlp_bin, "-U"], check=True, **_kw)
                 else:
-                    python = _shutil.which("python") or _shutil.which("python3")
+                    python = _sh.which("python") or _sh.which("python3")
                     if not python or "mellowdlp" in python.lower():
-                        raise RuntimeError(
-                            "Cannot update: no standalone Python or yt-dlp binary found. "
-                            "Install yt-dlp manually: pip install --upgrade yt-dlp"
-                        )
-                    subprocess.run([python, "-m", "pip", "install", "--upgrade", "yt-dlp"], **_kw)
+                        raise RuntimeError("No suitable Python found for yt-dlp update")
+                    subprocess.run([python, "-m", "pip", "install", "--upgrade", "yt-dlp"], check=True, **_kw)
             else:
-                subprocess.run([exe, "-m", "pip", "install", "--upgrade", "yt-dlp"], **_kw)
-            _push_progress({"status": "ytdlp_updated", "ok": True})
+                print(f"[YT-DLP UPDATE] Using: {exe} -m pip install --upgrade yt-dlp", flush=True)
+                subprocess.run([exe, "-m", "pip", "install", "--upgrade", "yt-dlp"], check=True, **_kw)
+
+            # Re-check version after update
+            try:
+                import importlib
+                import yt_dlp as _ytdlp_mod
+                importlib.reload(_ytdlp_mod.version)
+                new_ver = _ytdlp_mod.version.__version__
+                print(f"[YT-DLP UPDATE] New version: {new_ver}", flush=True)
+                _push_progress({"status": "ytdlp_updated", "ok": True, "new_version": new_ver})
+            except Exception:
+                _push_progress({"status": "ytdlp_updated", "ok": True})
         except Exception as exc:
             _push_progress({"status": "ytdlp_updated", "ok": False, "error": str(exc)})
+
     threading.Thread(target=_update, daemon=True).start()
     return jsonify({"status": "updating"})
 
@@ -400,7 +419,14 @@ def api_history_delete() -> Response:
 @app.route("/api/stats")
 def api_stats() -> Response:
     time_range = request.args.get("range", "30d")
-    return jsonify(analytics.get_stats(time_range))
+    result = analytics.get_stats(time_range)
+    # Fix library count: combine library entries + vault_playlists with URLs
+    cfg = _load_config()
+    vault_playlists = cfg.get("vault_playlists", {})
+    vault_pl_count = sum(1 for urls in vault_playlists.values() if urls)
+    # Use the larger of the two counts (library table vs vault_playlists config)
+    result["library_playlists"] = max(result.get("library_playlists", 0), vault_pl_count)
+    return jsonify(result)
 
 
 @app.route("/api/analytics/export")
@@ -519,9 +545,12 @@ def api_vault() -> Response:
     # Apply custom names and filter hidden
     vault_names = cfg.get("vault_names", {})
     vault_hidden = set(cfg.get("vault_hidden", []))
+    vault_sync_times = cfg.get("vault_sync_times", {})
     for f in all_folders:
         if f["path"] in vault_names:
             f["name"] = vault_names[f["path"]]
+        if f["path"] in vault_sync_times:
+            f["last_synced"] = vault_sync_times[f["path"]]
     all_folders = [f for f in all_folders if f["path"] not in vault_hidden]
 
     return jsonify({"folders": all_folders, "base_path": base_path})
@@ -748,6 +777,65 @@ def api_vault_delete_file() -> Response:
         return jsonify({"ok": True})
     except OSError as exc:
         return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/vault/sync", methods=["POST"])
+def api_vault_sync() -> Response:
+    data = request.get_json(force=True) or {}
+    path = data.get("path", "").strip()
+    mode = data.get("mode", "add")  # 'add' or 'mirror'
+    if not path:
+        return jsonify({"error": "path required"}), 400
+    cfg = _load_config()
+    vp = cfg.get("vault_playlists", {}).get(path, [])
+    if not vp:
+        return jsonify({"error": "No playlist linked to this folder"}), 400
+    playlist_url = vp[0]  # use first linked playlist
+    library_entries = analytics.get_library_entries()
+    lib = next((e for e in library_entries if e.get("folder") == path or
+                str(Path(e.get("folder", "")) / (e.get("folder_name") or "")) == path), None)
+    output_dir = path
+    opts = {
+        "mode": "library",
+        "quality": lib["quality"] if lib else cfg.get("quality_default", "1080p"),
+        "embed_thumbnail": lib["embed_thumbnail"] if lib else cfg.get("embed_thumbnail", True),
+        "embed_chapters": lib["embed_chapters"] if lib else True,
+        "embed_metadata": lib["embed_metadata"] if lib else True,
+        "cookies_browser": cfg.get("cookies_browser", "none"),
+        "cookies_file": cfg.get("cookies_file", ""),
+        "rate_limit": cfg.get("rate_limit", ""),
+        "proxy": cfg.get("proxy", ""),
+        "concurrent_fragments": cfg.get("concurrent_fragments", 4),
+        "sleep_interval": cfg.get("sleep_interval", 0),
+    }
+    if mode == "mirror":
+        opts["sync_mode"] = "mirror"
+    library_id = lib["id"] if lib else None
+    downloader.download_in_thread(playlist_url, output_dir, opts, _push_progress, library_id)
+    vault_sync_times = cfg.get("vault_sync_times", {})
+    vault_sync_times[path] = time.strftime("%Y-%m-%dT%H:%M:%S")
+    cfg["vault_sync_times"] = vault_sync_times
+    _save_config(cfg)
+    return jsonify({"ok": True, "synced_at": vault_sync_times[path]})
+
+
+@app.route("/api/vault/file-thumbs", methods=["POST"])
+def api_vault_file_thumbs() -> Response:
+    data = request.get_json(force=True) or {}
+    paths = data.get("paths", [])
+    result = {}
+    with analytics.get_conn() as con:
+        for p in paths[:100]:
+            row = con.execute("SELECT thumbnail_url FROM downloads WHERE file_path=? LIMIT 1", [p]).fetchone()
+            if row and row[0]:
+                result[p] = row[0]
+            else:
+                fp = Path(p)
+                for ext in (".jpg", ".jpeg", ".png", ".webp"):
+                    if fp.with_suffix(ext).exists():
+                        result[p] = f"/api/vault/thumb?path={p}"
+                        break
+    return jsonify({"thumbs": result})
 
 
 # ── Library ───────────────────────────────────────────────────────────────────

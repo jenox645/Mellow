@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import shutil as _shutil
 import threading
 import time
 from pathlib import Path
@@ -8,6 +9,8 @@ from typing import Any, Callable
 import yt_dlp
 
 import analytics
+
+_ffmpeg_ok = bool(_shutil.which("ffmpeg"))
 
 QUALITY_MAP: dict[str, str] = {
     "best": "bestvideo+bestaudio/best",
@@ -76,7 +79,13 @@ def _make_progress_hook(progress_cb: Callable, library_id: str | None, speed_tra
 def _build_postprocessors(opts: dict) -> list[dict]:
     pps: list[dict] = []
     if opts.get("embed_thumbnail"):
-        pps.append({"key": "EmbedThumbnail"})
+        if not _ffmpeg_ok:
+            print("[MellowDLP] WARNING: ffmpeg not found, skipping thumbnail embed", flush=True)
+        else:
+            audio_fmt = opts.get("audio_format", "mp3").lower()
+            if audio_fmt in ("mp3", "m4a"):
+                pps.append({"key": "FFmpegThumbnailsConvertor", "format": "jpg"})
+            pps.append({"key": "EmbedThumbnail"})
     if opts.get("embed_chapters") or opts.get("embed_metadata"):
         pps.append({
             "key": "FFmpegMetadata",
@@ -173,7 +182,7 @@ def download_video(
     if filename_template:
         outtmpl = str(out_dir / filename_template)
     else:
-        outtmpl = str(out_dir / "%(title)s [%(id)s].%(ext)s")
+        outtmpl = str(out_dir / "%(title)s.%(ext)s")
 
     print(f"[MellowDLP] yt-dlp outtmpl={outtmpl!r}  output_dir={output_dir!r}", flush=True)
     hook = _make_progress_hook(progress_cb, library_id, speed_tracker)
@@ -192,6 +201,7 @@ def download_video(
             "postprocessors": pps,
             "progress_hooks": [hook],
             "noplaylist": True,
+            "windows_filenames": True,
         }
     elif mode == "library":
         archive_path = str(out_dir / f".mellow_archive_{library_id}.txt")
@@ -204,6 +214,7 @@ def download_video(
             "progress_hooks": [hook],
             "download_archive": archive_path,
             "ignoreerrors": True,
+            "windows_filenames": True,
         }
     else:
         fmt = custom_format if custom_format else QUALITY_MAP.get(quality, "bestvideo+bestaudio/best")
@@ -214,6 +225,7 @@ def download_video(
             "outtmpl": outtmpl,
             "postprocessors": pps,
             "progress_hooks": [hook],
+            "windows_filenames": True,
         }
 
     if embed_subs and mode != "audio":
@@ -265,6 +277,7 @@ def download_video(
     final_title: str | None = None
     final_uploader: str | None = None
     final_duration: int | None = None
+    final_thumbnail: str | None = None
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -273,6 +286,8 @@ def download_video(
                 final_title = info.get("title")
                 final_uploader = info.get("uploader") or info.get("channel")
                 final_duration = info.get("duration")
+                final_thumbnail = info.get("thumbnail")
+                is_playlist = "entries" in info or info.get("_type") == "playlist"
                 requested = info.get("requested_downloads", [{}])
                 if requested:
                     fp = requested[0].get("filepath") or requested[0].get("_filename")
@@ -305,18 +320,49 @@ def download_video(
             "file_size": final_size,
             "library_id": library_id,
         })
-        analytics.record_download({
-            "url": url, "title": final_title, "uploader": final_uploader,
-            "platform": _detect_platform(url), "duration_seconds": final_duration,
-            "file_size_bytes": final_size,
-            "format": "audio" if mode == "audio" else "video",
-            "quality": quality,
-            "container": audio_fmt if mode == "audio" else container,
-            "file_path": final_path,
-            "status": "success",
-            "download_speed_avg_bps": avg_speed,
-            "elapsed_seconds": elapsed_int,
-        })
+
+        # Record per-item for playlists; record single item for single downloads
+        if info and ("entries" in info or info.get("_type") == "playlist"):
+            entries = info.get("entries") or []
+            for entry in entries:
+                if not entry:
+                    continue
+                req = entry.get("requested_downloads") or [{}]
+                fp = req[0].get("filepath") or req[0].get("_filename") if req else None
+                try:
+                    sz = Path(fp).stat().st_size if fp else 0
+                except OSError:
+                    sz = entry.get("filesize") or 0
+                analytics.record_download({
+                    "url": entry.get("webpage_url") or entry.get("url", ""),
+                    "title": entry.get("title"),
+                    "uploader": entry.get("uploader") or entry.get("channel"),
+                    "platform": _detect_platform(url),
+                    "duration_seconds": entry.get("duration"),
+                    "file_size_bytes": sz,
+                    "format": "audio" if mode == "audio" else "video",
+                    "quality": quality,
+                    "container": audio_fmt if mode == "audio" else container,
+                    "file_path": fp,
+                    "thumbnail_url": entry.get("thumbnail"),
+                    "status": "success",
+                    "download_speed_avg_bps": avg_speed,
+                    "elapsed_seconds": elapsed_int,
+                })
+        else:
+            analytics.record_download({
+                "url": url, "title": final_title, "uploader": final_uploader,
+                "platform": _detect_platform(url), "duration_seconds": final_duration,
+                "file_size_bytes": final_size,
+                "format": "audio" if mode == "audio" else "video",
+                "quality": quality,
+                "container": audio_fmt if mode == "audio" else container,
+                "file_path": final_path,
+                "thumbnail_url": final_thumbnail,
+                "status": "success",
+                "download_speed_avg_bps": avg_speed,
+                "elapsed_seconds": elapsed_int,
+            })
 
     except yt_dlp.utils.DownloadCancelled:
         elapsed = time.monotonic() - t_start
@@ -354,13 +400,19 @@ def get_video_info(url: str) -> dict:
         return {}
     is_playlist = info.get("_type") == "playlist" or "entries" in info
     playlist_count = 0
+    thumbnail = info.get("thumbnail")
     if is_playlist:
         entries = info.get("entries") or []
         playlist_count = len(entries)
+        # For playlists, yt-dlp may not return a playlist-level thumbnail; fall back to first entry
+        if not thumbnail and entries:
+            first = entries[0]
+            if first:
+                thumbnail = first.get("thumbnail") or ""
     return {
         "title": info.get("title"),
         "uploader": info.get("uploader") or info.get("channel"),
-        "thumbnail": info.get("thumbnail"),
+        "thumbnail": thumbnail,
         "duration": info.get("duration"),
         "platform": _detect_platform(url),
         "is_playlist": is_playlist,

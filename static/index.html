@@ -487,10 +487,10 @@
     .vfc-mosaic-cell{width:100%;height:100%;object-fit:cover;display:block}
     .vfc-mosaic-ph{width:100%;height:100%;background:#111820;display:flex;align-items:center;justify-content:center}
     /* Three-dot menu */
-    .vfc-menu-btn{position:absolute;top:5px;right:5px;z-index:4;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:16px;line-height:1;color:var(--t2);background:rgba(0,0,0,0.55);cursor:pointer;border-radius:2px;transition:color 0.15s,background 0.15s;opacity:0}
+    .vfc-menu-btn{position:absolute;bottom:8px;right:8px;z-index:4;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:16px;line-height:1;color:var(--t2);background:rgba(0,0,0,0.55);cursor:pointer;border-radius:2px;transition:color 0.15s,background 0.15s;opacity:0}
     .vault-folder-card:hover .vfc-menu-btn{opacity:1}
     .vfc-menu-btn:hover{color:var(--cyan);background:rgba(0,0,0,0.8)}
-    .vfc-menu-popup{position:absolute;top:28px;right:5px;z-index:10;background:var(--bg2);border:1px solid var(--border2);min-width:160px;box-shadow:0 8px 24px rgba(0,0,0,0.5)}
+    .vfc-menu-popup{position:absolute;bottom:32px;right:5px;z-index:10;background:var(--bg2);border:1px solid var(--border2);min-width:160px;box-shadow:0 8px 24px rgba(0,0,0,0.5)}
     .vfc-menu-item{padding:8px 14px;font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--t2);cursor:pointer;letter-spacing:0.06em;transition:background 0.12s,color 0.12s}
     .vfc-menu-item:hover{background:var(--bg3);color:var(--t1)}
     .vfc-menu-item.danger{color:var(--red)}
@@ -514,6 +514,21 @@
     .vault-lib-sort:focus{border-color:var(--cyan)}
     .vault-lib-count{font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--t4);margin-bottom:14px}
     .vault-lib-count span{color:var(--t2)}
+
+    /* ── VAULT SYNCED BADGE ──────────────────────────────────────────────────── */
+    .vfc-synced{font-family:'Share Tech Mono',monospace;font-size:9px;color:#7a8fa6;margin-top:3px}
+
+    /* ── QUEUE SLIDE-OUT ANIMATION ───────────────────────────────────────────── */
+    .pl-queue-item.removing{transform:translateX(-110%);opacity:0;pointer-events:none;max-height:0;transition:transform 0.3s ease,opacity 0.3s ease,max-height 0.3s ease 0.25s}
+
+    /* ── QUEUE COMPLETED TAB ─────────────────────────────────────────────────── */
+    .q-tabs{display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:0}
+    .q-tab{padding:8px 18px;font-family:'Share Tech Mono',monospace;font-size:9px;letter-spacing:0.1em;cursor:pointer;color:var(--t3);border-bottom:2px solid transparent;transition:color 0.15s}
+    .q-tab.active{color:var(--cyan);border-bottom-color:var(--cyan)}
+    .q-completed-item{display:flex;align-items:center;gap:10px;padding:8px 14px;border-bottom:1px solid var(--border)}
+    .q-comp-thumb-ph{width:64px;height:36px;background:var(--bg3);display:flex;align-items:center;justify-content:center;font-size:12px;color:var(--t4);flex-shrink:0;border-radius:2px}
+    .q-comp-title{font-size:12px;color:var(--t1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .q-comp-meta{font-family:'Share Tech Mono',monospace;font-size:9px;color:var(--t3)}
   </style>
 </head>
 <body>

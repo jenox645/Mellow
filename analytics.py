@@ -42,6 +42,7 @@ def init_db() -> None:
         for col, typ in [
             ("download_speed_avg_bps", "BIGINT"),
             ("elapsed_seconds", "INTEGER"),
+            ("thumbnail_url", "TEXT"),
         ]:
             try:
                 con.execute(f"ALTER TABLE downloads ADD COLUMN {col} {typ}")
@@ -95,8 +96,9 @@ def record_download(meta: dict) -> None:
             INSERT INTO downloads (
                 id, url, title, uploader, platform, duration_seconds,
                 file_size_bytes, format, quality, container, file_path,
-                status, error_message, download_speed_avg_bps, elapsed_seconds
-            ) VALUES (nextval('downloads_seq'),?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                status, error_message, download_speed_avg_bps, elapsed_seconds,
+                thumbnail_url
+            ) VALUES (nextval('downloads_seq'),?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """, [
             meta.get("url", ""),
             meta.get("title"),
@@ -112,6 +114,7 @@ def record_download(meta: dict) -> None:
             meta.get("error_message"),
             meta.get("download_speed_avg_bps"),
             meta.get("elapsed_seconds"),
+            meta.get("thumbnail_url"),
         ])
 
 

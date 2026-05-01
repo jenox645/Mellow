@@ -1,0 +1,43 @@
+name: MellowDLP CI
+
+on: [push, pull_request]
+
+jobs:
+  test-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Check imports
+        run: python -c "import server; import downloader; import analytics; print('imports OK')"
+      - name: Run tests
+        run: python -m pytest tests/ -v --timeout=30
+        continue-on-error: true
+
+  test-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Check imports
+        run: python -c "import server; import downloader; import analytics; print('imports OK')"
+
+  test-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Check imports
+        run: python -c "import server; import downloader; import analytics; print('imports OK')"
