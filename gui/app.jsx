@@ -598,36 +598,60 @@ function StatusBar({ sysInfo, speedHistory, config }) {
 // ── FEED Page ─────────────────────────────────────────────────────────────────
 
 function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats, showNotif, switchPage, config, onPlaylistDownload, playlistItems, setPlaylistItems }) {
-  const [url, setUrl] = React.useState(() => sessionStorage.getItem('feed_url') || '');
+  const ss = (k, fb) => { try { const v = sessionStorage.getItem(k); return v !== null ? v : fb; } catch { return fb; } };
+  const ssJ = (k, fb) => { try { const v = sessionStorage.getItem(k); return v ? JSON.parse(v) : fb; } catch { return fb; } };
+
+  const [url, setUrl] = React.useState(() => ss('feed_url', ''));
   const [analyzing, setAnalyzing] = React.useState(false);
   const [fetchingItems, setFetchingItems] = React.useState(false);
-  const [info, setInfo] = React.useState(null);
+  const [info, setInfo] = React.useState(() => ssJ('feed_info', null));
   const [optsOpen, setOptsOpen] = React.useState(false);
   const [advOpen, setAdvOpen] = React.useState(false);
-  const [mode, setMode] = React.useState(() => sessionStorage.getItem('feed_mode') || 'video');
-  const [quality, setQuality] = React.useState(() => sessionStorage.getItem('feed_quality') || '1080p');
-  const [container, setContainer] = React.useState(() => sessionStorage.getItem('feed_container') || 'mp4');
-  const [audioFmt, setAudioFmt] = React.useState('mp3');
-  const [embedThumb, setEmbedThumb] = React.useState(true);
-  const [embedSubs, setEmbedSubs] = React.useState(false);
-  const [embedChapters, setEmbedChapters] = React.useState(true);
-  const [embedMeta, setEmbedMeta] = React.useState(true);
-  const [sponsorblock, setSponsorblock] = React.useState(false);
-  const [startTime, setStartTime] = React.useState('');
-  const [endTime, setEndTime] = React.useState('');
-  const [customFmt, setCustomFmt] = React.useState('');
-  const [downloadPath, setDownloadPath] = React.useState(() => sessionStorage.getItem('feed_downloadPath') || '');
+  const [mode, setMode] = React.useState(() => ss('feed_mode', 'video'));
+  const [quality, setQuality] = React.useState(() => ss('feed_quality', '1080p'));
+  const [container, setContainer] = React.useState(() => ss('feed_container', 'mp4'));
+  const [audioFmt, setAudioFmt] = React.useState(() => ss('feed_audioFmt', 'mp3'));
+  const [embedThumb, setEmbedThumb] = React.useState(() => ssJ('feed_embedThumb', true));
+  const [embedSubs, setEmbedSubs] = React.useState(() => ssJ('feed_embedSubs', false));
+  const [embedChapters, setEmbedChapters] = React.useState(() => ssJ('feed_embedChapters', true));
+  const [embedMeta, setEmbedMeta] = React.useState(() => ssJ('feed_embedMeta', true));
+  const [sponsorblock, setSponsorblock] = React.useState(() => ssJ('feed_sponsorblock', false));
+  const [startTime, setStartTime] = React.useState(() => ss('feed_startTime', ''));
+  const [endTime, setEndTime] = React.useState(() => ss('feed_endTime', ''));
+  const [customFmt, setCustomFmt] = React.useState(() => ss('feed_customFmt', ''));
+  const [downloadPath, setDownloadPath] = React.useState(() => ss('feed_downloadPath', ''));
   const [vaultModal, setVaultModal] = React.useState(false);
 
-  React.useEffect(() => { sessionStorage.setItem('feed_url', url); }, [url]);
-  React.useEffect(() => { sessionStorage.setItem('feed_mode', mode); }, [mode]);
-  React.useEffect(() => { sessionStorage.setItem('feed_quality', quality); }, [quality]);
-  React.useEffect(() => { sessionStorage.setItem('feed_container', container); }, [container]);
-  React.useEffect(() => { sessionStorage.setItem('feed_downloadPath', downloadPath); }, [downloadPath]);
-  // Clear analysis when URL changes so the user can re-analyze
-  React.useEffect(() => { setInfo(null); setPlaylistItems && setPlaylistItems(null); }, [url]);
+  React.useEffect(() => { try { sessionStorage.setItem('feed_url', url); } catch {} }, [url]);
+  React.useEffect(() => { try { sessionStorage.setItem('feed_mode', mode); } catch {} }, [mode]);
+  React.useEffect(() => { try { sessionStorage.setItem('feed_quality', quality); } catch {} }, [quality]);
+  React.useEffect(() => { try { sessionStorage.setItem('feed_container', container); } catch {} }, [container]);
+  React.useEffect(() => { try { sessionStorage.setItem('feed_audioFmt', audioFmt); } catch {} }, [audioFmt]);
+  React.useEffect(() => { try { sessionStorage.setItem('feed_embedThumb', JSON.stringify(embedThumb)); } catch {} }, [embedThumb]);
+  React.useEffect(() => { try { sessionStorage.setItem('feed_embedSubs', JSON.stringify(embedSubs)); } catch {} }, [embedSubs]);
+  React.useEffect(() => { try { sessionStorage.setItem('feed_embedChapters', JSON.stringify(embedChapters)); } catch {} }, [embedChapters]);
+  React.useEffect(() => { try { sessionStorage.setItem('feed_embedMeta', JSON.stringify(embedMeta)); } catch {} }, [embedMeta]);
+  React.useEffect(() => { try { sessionStorage.setItem('feed_sponsorblock', JSON.stringify(sponsorblock)); } catch {} }, [sponsorblock]);
+  React.useEffect(() => { try { sessionStorage.setItem('feed_startTime', startTime); } catch {} }, [startTime]);
+  React.useEffect(() => { try { sessionStorage.setItem('feed_endTime', endTime); } catch {} }, [endTime]);
+  React.useEffect(() => { try { sessionStorage.setItem('feed_customFmt', customFmt); } catch {} }, [customFmt]);
+  React.useEffect(() => { try { sessionStorage.setItem('feed_downloadPath', downloadPath); } catch {} }, [downloadPath]);
+  React.useEffect(() => { try { sessionStorage.setItem('feed_info', info ? JSON.stringify(info) : ''); } catch {} }, [info]);
+
+  const prevUrl = React.useRef(url);
+  React.useEffect(() => {
+    if (prevUrl.current !== url) {
+      prevUrl.current = url;
+      setInfo(null);
+      setPlaylistItems && setPlaylistItems(null);
+    }
+  }, [url, setPlaylistItems]);
+
   const [vaultName, setVaultName] = React.useState('');
   const [vaultFolder, setVaultFolder] = React.useState('');
+
+  // Ref to always call the latest startDownload (avoids stale closure in handleDownload)
+  const startDownloadRef = React.useRef(null);
 
   const isDownloading = dlState && dlState.status !== 'complete' && dlState.status !== 'error';
 
@@ -657,10 +681,11 @@ function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats, showN
       .finally(() => setAnalyzing(false));
   }, [url, showNotif, setPlaylistItems]);
 
+  // handleDownload uses a ref so it always calls the latest startDownload without stale closure
   const handleDownload = React.useCallback(() => {
     if (!url.trim()) return;
     if (info && info.is_playlist && onPlaylistDownload) onPlaylistDownload();
-    startDownload();
+    if (startDownloadRef.current) startDownloadRef.current();
   }, [url, info, onPlaylistDownload]);
 
   const browseDownloadPath = React.useCallback(() => {
@@ -697,6 +722,9 @@ function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats, showN
       if (d.error) showNotif('Error', d.error, 'error');
     }).catch(e => showNotif('Error', e.message, 'error'));
   }, [url, mode, quality, container, audioFmt, embedThumb, embedChapters, embedMeta, embedSubs, sponsorblock, startTime, endTime, customFmt, downloadPath, playlistItems, info, showNotif]);
+
+  // Keep ref in sync with latest startDownload (assigned during render, safe to read in callbacks)
+  startDownloadRef.current = startDownload;
 
   const handleCancel = React.useCallback(() => {
     API.post('/api/cancel', {}).then(() => showNotif('Cancelled', 'Download cancelled'));
@@ -1223,6 +1251,10 @@ function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, config, sh
   const [dropModal, setDropModal] = React.useState(null);
   const [vaultSearch, setVaultSearch] = React.useState('');
   const [vaultSort, setVaultSort] = React.useState('name');
+  const [folderMosaics, setFolderMosaics] = React.useState({});
+  const [cardMenu, setCardMenu] = React.useState(null);
+  const [linkPlModal, setLinkPlModal] = React.useState(null);
+  const [renameModal, setRenameModal] = React.useState(null);
 
   React.useEffect(() => {
     API.get('/api/library').then(setLibraryEntries).catch(() => {});
@@ -1236,6 +1268,17 @@ function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, config, sh
       .catch(() => {})
       .finally(() => setLoading(false));
   }, [selectedFolder]);
+
+  // Load thumbnail mosaics for all vault folder cards
+  React.useEffect(() => {
+    if (!vaultFolders.length) return;
+    vaultFolders.forEach(folder => {
+      if (folderMosaics[folder.path] !== undefined) return;
+      API.get('/api/vault/folder-previews?path=' + encodeURIComponent(folder.path))
+        .then(d => setFolderMosaics(prev => ({ ...prev, [folder.path]: d.thumbs || [] })))
+        .catch(() => setFolderMosaics(prev => ({ ...prev, [folder.path]: [] })));
+    });
+  }, [vaultFolders]);
 
   const selectedFolderMeta = vaultFolders.find(f => f.path === selectedFolder);
   const libEntry = selectedFolderMeta && selectedFolderMeta.library_id
@@ -1278,10 +1321,24 @@ function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, config, sh
   const isVideoExt = (ext) => ['mp4','mkv','webm','avi','mov'].includes(ext);
 
   React.useEffect(() => {
-    const close = () => setCtxMenu(null);
+    const close = () => { setCtxMenu(null); setCardMenu(null); };
     document.addEventListener('click', close);
     return () => document.removeEventListener('click', close);
   }, []);
+
+  const handleVaultRemove = React.useCallback((folder) => {
+    API.post('/api/vault/remove', { path: folder.path })
+      .then(() => { showNotif('Removed', folder.name); onRefreshVault && onRefreshVault(); })
+      .catch(e => showNotif('Error', e.message, 'error'));
+    setCardMenu(null);
+  }, [showNotif, onRefreshVault]);
+
+  const handleVaultRename = React.useCallback((folder, name) => {
+    API.post('/api/vault/rename', { path: folder.path, name })
+      .then(() => { onRefreshVault && onRefreshVault(); })
+      .catch(e => showNotif('Error', e.message, 'error'));
+    setRenameModal(null);
+  }, [showNotif, onRefreshVault]);
 
   const handleWatchFolder = React.useCallback(() => {
     API.post('/api/browse-folder', {}).then(d => {
@@ -1336,23 +1393,50 @@ function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, config, sh
           </div>
         ) : (
           <div className="vault-folder-grid">
-            {vaultFolders.map(folder => (
-              <div key={folder.path} className="vault-folder-card" onClick={() => setSelectedFolder(folder.path)}>
-                {folder.watched && <span className="vfc-watched-badge">WATCHED</span>}
-                <div className="vfc-icon">
-                  <svg className="vfc-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" width="48" height="48">
-                    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
-                  </svg>
-                </div>
-                <div className="vfc-bottom">
-                  <div className="vfc-name">{folder.name}</div>
-                  <div className="vfc-meta-text">{folder.item_count || 0} FILES · {fmtBytes(folder.size_bytes)}</div>
-                  {folder.library_name && (
-                    <div className="vfc-lib-tag"><Ico name="sync" size={9} />{folder.library_name}</div>
+            {vaultFolders.map(folder => {
+              const thumbs = folderMosaics[folder.path] || [];
+              const showMosaic = thumbs.length > 0;
+              const cells = [0,1,2,3].map(i => thumbs[i] || null);
+              return (
+                <div key={folder.path} className="vault-folder-card" onClick={() => setSelectedFolder(folder.path)}>
+                  {/* Thumbnail mosaic or folder icon */}
+                  {showMosaic ? (
+                    <div className="vfc-mosaic">
+                      {cells.map((t, i) => t
+                        ? <img key={i} src={t} className="vfc-mosaic-cell" alt="" onError={e => { e.target.style.display='none'; }} />
+                        : <div key={i} className="vfc-mosaic-ph"><span style={{ fontSize: 14, color: 'var(--t4)' }}>♪</span></div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="vfc-icon">
+                      <svg className="vfc-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" width="48" height="48">
+                        <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+                      </svg>
+                    </div>
                   )}
+
+                  {/* Three-dot menu button */}
+                  <div className="vfc-menu-btn" onClick={e => { e.stopPropagation(); setCardMenu(cardMenu === folder.path ? null : folder.path); }}>⋮</div>
+                  {cardMenu === folder.path && (
+                    <div className="vfc-menu-popup" onClick={e => e.stopPropagation()}>
+                      <div className="vfc-menu-item" onClick={() => { setCardMenu(null); setLinkPlModal(folder); }}>Link Playlist</div>
+                      <div className="vfc-menu-item" onClick={() => { setCardMenu(null); API.post('/api/open-folder', { path: folder.path }).catch(() => {}); }}>Open in Explorer</div>
+                      <div className="vfc-menu-item" onClick={() => { setCardMenu(null); setRenameModal({ folder, name: folder.name }); }}>Rename</div>
+                      <div className="vfc-menu-item danger" onClick={() => handleVaultRemove(folder)}>Remove from Vault</div>
+                    </div>
+                  )}
+
+                  {folder.watched && <span className="vfc-watched-badge">WATCHED</span>}
+                  <div className="vfc-bottom">
+                    <div className="vfc-name">{folder.name}</div>
+                    <div className="vfc-meta-text">{folder.item_count || 0} FILES · {fmtBytes(folder.size_bytes)}</div>
+                    {folder.library_name && (
+                      <div className="vfc-lib-tag"><Ico name="sync" size={9} />{folder.library_name}</div>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
 
@@ -1371,6 +1455,17 @@ function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, config, sh
               <span style={{ color: 'var(--t4)', fontSize: 9 }}>What would you like to do?</span>
             </div>
           </Modal>
+        )}
+
+        {linkPlModal && <LinkPlaylistModal folder={linkPlModal} onClose={() => setLinkPlModal(null)} showNotif={showNotif} />}
+
+        {renameModal && (
+          <RenameVaultModal
+            folder={renameModal.folder}
+            initialName={renameModal.name}
+            onClose={() => setRenameModal(null)}
+            onSave={(name) => handleVaultRename(renameModal.folder, name)}
+          />
         )}
       </div>
     );
@@ -2606,6 +2701,86 @@ function AddVaultModal({ onClose, onSaved, showNotif }) {
             MIRROR <span style={{ color: 'var(--amber)', fontSize: 8 }}> DESTRUCTIVE</span>
           </div>
         </div>
+      </div>
+    </Modal>
+  );
+}
+
+// ── Link Playlist Modal ───────────────────────────────────────────────────────
+
+function LinkPlaylistModal({ folder, onClose, showNotif }) {
+  const [playlists, setPlaylists] = React.useState([]);
+  const [newUrl, setNewUrl] = React.useState('');
+  const [saving, setSaving] = React.useState(false);
+
+  React.useEffect(() => {
+    API.get('/api/vault/playlists?path=' + encodeURIComponent(folder.path))
+      .then(d => setPlaylists(d.playlists || []))
+      .catch(() => {});
+  }, [folder.path]);
+
+  const handleAdd = () => {
+    const u = newUrl.trim();
+    if (!u) return;
+    setSaving(true);
+    API.post('/api/vault/playlists', { path: folder.path, url: u })
+      .then(d => { setPlaylists(d.playlists || []); setNewUrl(''); })
+      .catch(e => showNotif('Error', e.message, 'error'))
+      .finally(() => setSaving(false));
+  };
+
+  const handleUnlink = (url) => {
+    API.del('/api/vault/playlists', { path: folder.path, url })
+      .then(() => setPlaylists(pl => pl.filter(p => p !== url)))
+      .catch(e => showNotif('Error', e.message, 'error'));
+  };
+
+  return (
+    <Modal title={'LINK PLAYLIST — ' + folder.name.toUpperCase()} onClose={onClose} footer={
+      <button className="btn btn-secondary btn-sm" onClick={onClose}>CLOSE</button>
+    }>
+      <div className="form-row">
+        <div className="form-label">PLAYLIST URL</div>
+        <div className="input-row">
+          <input className="form-input" value={newUrl} onChange={e => setNewUrl(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && handleAdd()}
+            placeholder="https://youtube.com/playlist?list=..." />
+          <button className="btn btn-primary btn-sm" onClick={handleAdd} disabled={saving || !newUrl.trim()}>LINK</button>
+        </div>
+      </div>
+      {playlists.length > 0 && (
+        <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {playlists.map(pl => (
+            <div key={pl} style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--bg3)', padding: '6px 10px' }}>
+              <span style={{ flex: 1, fontFamily: 'Share Tech Mono, monospace', fontSize: 10, color: 'var(--t2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{pl}</span>
+              <span style={{ cursor: 'pointer', color: 'var(--red)', fontSize: 12, flexShrink: 0 }} onClick={() => handleUnlink(pl)}>✕</span>
+            </div>
+          ))}
+        </div>
+      )}
+      {playlists.length === 0 && (
+        <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: 'var(--t4)', textAlign: 'center', padding: '12px 0' }}>NO PLAYLISTS LINKED YET</div>
+      )}
+    </Modal>
+  );
+}
+
+// ── Rename Vault Modal ────────────────────────────────────────────────────────
+
+function RenameVaultModal({ folder, initialName, onClose, onSave }) {
+  const [name, setName] = React.useState(initialName || '');
+  return (
+    <Modal title={'RENAME — ' + (folder.name || '').toUpperCase()} onClose={onClose} footer={
+      <>
+        <button className="btn btn-secondary btn-sm" onClick={onClose}>CANCEL</button>
+        <button className="btn btn-primary btn-sm" onClick={() => { if (name.trim()) onSave(name.trim()); }}>SAVE</button>
+      </>
+    }>
+      <div className="form-row">
+        <div className="form-label">DISPLAY NAME</div>
+        <input className="form-input" value={name} onChange={e => setName(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && name.trim() && onSave(name.trim())}
+          autoFocus />
       </div>
     </Modal>
   );

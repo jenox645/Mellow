@@ -64,7 +64,7 @@
     .nav-item.active-lake .nnum{color:var(--amber)}
     .nbadge{background:var(--cyan);color:var(--bg);font-size:10px;font-weight:700;padding:3px 9px;min-width:22px;border-radius:1px;margin-left:auto;font-family:'Share Tech Mono',monospace}
     .nbadge.amber{background:var(--amber)}
-    .nav-icon{width:18px;height:18px;flex-shrink:0;opacity:0.65}
+    .nav-icon{width:15px;height:15px;flex-shrink:0;opacity:0.65}
     .nav-item.active-core .nav-icon,.nav-item.active-lake .nav-icon{opacity:1}
     /* MASCOT */
     .mascot-area{flex:1;display:flex;align-items:center;justify-content:center;padding:10px;overflow:hidden;transition:opacity 0.3s,flex 0.3s;color:#fff}
@@ -421,44 +421,99 @@
     .victory-mascot{width:280px;height:auto;animation:mascot-float 2s ease-in-out infinite;color:var(--cyan)}
     .victory-mascot svg{width:280px;height:auto;display:block}
     .victory-text{font-family:'Oxanium',sans-serif;font-size:28px;font-weight:800;color:var(--cyan);letter-spacing:0.15em;text-shadow:0 0 24px rgba(0,216,255,0.6)}
-    /* VAULT FOLDER GRID */
-    .vault-folder-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(195px,1fr));gap:16px;margin-bottom:16px}
-    .vault-folder-card{background:var(--bg2);border:1px solid var(--border);padding:20px 16px 14px;cursor:pointer;transition:all 0.18s;position:relative;display:flex;flex-direction:column;align-items:center;text-align:center;gap:10px}
-    .vault-folder-card:hover{border-color:rgba(0,216,255,0.45);transform:translateY(-3px);box-shadow:0 8px 24px rgba(0,0,0,0.35);background:var(--bg3)}
-    .vault-folder-card::before{content:'';position:absolute;top:0;left:0;width:20px;height:20px;border-top:1px solid var(--cyan);border-left:1px solid var(--cyan);opacity:0.4}
-    .vfc-icon{color:var(--cyan);opacity:0.75;transition:opacity 0.2s}
-    .vault-folder-card:hover .vfc-icon{opacity:1}
-    .vfc-name{font-family:'Oxanium',sans-serif;font-size:14px;font-weight:600;color:var(--t1);letter-spacing:0.04em;width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-    .vfc-lib-tag{display:flex;align-items:center;gap:5px;font-family:'Share Tech Mono',monospace;font-size:8px;color:var(--cyan);background:var(--cyan2);padding:3px 8px;letter-spacing:0.08em;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-    .vfc-meta{width:100%;border-top:1px solid var(--border);padding-top:10px;display:flex;flex-direction:column;gap:5px}
-    .vfc-meta-row{display:flex;justify-content:space-between;font-family:'Share Tech Mono',monospace;font-size:8.5px}
-    .vfc-meta-label{color:var(--t3);letter-spacing:0.1em;text-transform:uppercase}
-    .vfc-meta-val{color:var(--t2)}
-    /* VAULT BREADCRUMB */
-    .vault-breadcrumb{display:flex;align-items:center;gap:8px;font-family:'Share Tech Mono',monospace;font-size:9px;letter-spacing:0.12em;text-transform:uppercase;margin-bottom:18px;padding:8px 0;border-bottom:1px solid var(--border)}
-    .vbc-root{color:var(--t2);cursor:pointer;transition:color 0.15s}
-    .vbc-root:hover{color:var(--cyan)}
-    .vbc-root.active{color:var(--cyan);cursor:default}
-    .vbc-sep{color:var(--t4);font-size:12px}
-    .vbc-current{color:var(--t1);font-weight:600}
-    /* VAULT DRAG OVER */
-    .content.active.drag-over{outline:2px dashed var(--cyan);outline-offset:-4px;background:rgba(0,216,255,0.03)}
-    /* PLAYLIST QUEUE */
-    .pl-queue-item{display:flex;align-items:center;gap:10px;padding:8px 14px;border-bottom:1px solid var(--border);transition:background 0.12s}
-    .pl-queue-item:last-child{border-bottom:none}
-    .pl-queue-item:hover{background:var(--bg3)}
-    .pl-queue-idx{font-family:'Share Tech Mono',monospace;font-size:9px;color:var(--t4);width:22px;flex-shrink:0;text-align:right}
-    .pl-queue-thumb{width:70px;height:40px;object-fit:cover;flex-shrink:0;background:var(--bg3)}
-    .pl-queue-thumb-ph{width:70px;height:40px;flex-shrink:0;background:var(--bg3);display:flex;align-items:center;justify-content:center;font-size:14px;color:var(--t4)}
-    .pl-queue-info{flex:1;min-width:0}
-    .pl-queue-title{font-size:12px;color:var(--t1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:2px}
-    .pl-queue-sub{font-family:'Share Tech Mono',monospace;font-size:8.5px;color:var(--t3)}
-    .pl-queue-dur{font-family:'Share Tech Mono',monospace;font-size:9px;color:var(--t3);width:46px;text-align:right;flex-shrink:0}
-    .pl-queue-remove{width:22px;height:22px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--t4);transition:color 0.15s;flex-shrink:0}
-    .pl-queue-remove:hover{color:var(--red)}
     /* TINT UTILITIES */
     .tint-cyan{filter:sepia(1) saturate(6.7) hue-rotate(151deg) brightness(0.87)}
     .tint-amber{filter:sepia(1) saturate(3) hue-rotate(10deg) brightness(0.9)}
+
+    /* ── INFO CARD REDESIGN ─────────────────────────────────────────────────── */
+    .info-card.open{max-height:120px;opacity:1}
+    .info-inner{display:flex;gap:0;padding:0;border-top:1px solid var(--border);background:var(--bg);align-items:stretch}
+    .info-thumb-block{position:relative;width:160px;height:90px;flex-shrink:0;overflow:hidden;background:var(--bg3)}
+    .info-thumb-img{width:160px;height:90px;object-fit:cover;display:block;border-radius:0;flex-shrink:0}
+    .info-thumb-img-ph{width:160px;height:90px;display:flex;align-items:center;justify-content:center;font-size:28px;color:var(--t4)}
+    .info-thumb-dur{position:absolute;bottom:5px;right:5px;background:rgba(0,0,0,0.78);color:#fff;font-family:'Share Tech Mono',monospace;font-size:9px;padding:2px 5px;pointer-events:none}
+    .info-thumb-fmt{position:absolute;top:5px;left:5px;font-family:'Share Tech Mono',monospace;font-size:8px;padding:2px 6px;pointer-events:none}
+    .info-thumb-fmt.fmt-video{background:rgba(0,216,255,0.25);color:var(--cyan)}
+    .info-thumb-fmt.fmt-audio{background:rgba(249,169,0,0.25);color:var(--amber)}
+    .info-details{flex:1;padding:12px 16px;min-width:0;display:flex;flex-direction:column;justify-content:center;gap:0}
+    .info-title{font-family:'Oxanium',sans-serif;font-size:15px;font-weight:600;color:#e0e8f0;margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .info-meta{font-family:'Share Tech Mono',monospace;font-size:12px;color:#8899aa;margin-bottom:6px}
+    .info-tags{display:flex;gap:5px;flex-wrap:wrap}
+    .info-actions{display:flex;flex-direction:column;gap:6px;padding:12px 14px;justify-content:center;flex-shrink:0;border-left:1px solid var(--border);min-width:130px}
+
+    /* ── DOWNLOAD CARD FIXES ────────────────────────────────────────────────── */
+    .dl-thumb{width:160px;height:90px;flex-shrink:0;object-fit:cover;display:block;background:var(--bg3);border-radius:0}
+    .dl-thumb-ph{width:160px;height:90px;flex-shrink:0;background:linear-gradient(135deg,var(--bg3),var(--bg2));display:flex;align-items:center;justify-content:center;font-size:28px;color:var(--t4)}
+    .prog-bar{flex:1;height:6px;background:var(--bg3);position:relative;overflow:hidden;border-radius:3px}
+    .prog-bar-fill{height:100%;background:var(--cyan);border-radius:3px;transition:width 0.4s;position:relative}
+    .prog-bar-fill::after{content:'';position:absolute;right:0;top:0;height:100%;width:20px;background:linear-gradient(90deg,transparent,rgba(255,255,255,0.4));animation:shimmer 1.2s infinite}
+
+    /* ── QUEUE COMPACT ROWS ─────────────────────────────────────────────────── */
+    .queue-list-header{display:flex;align-items:center;justify-content:space-between;padding:8px 14px;border-bottom:1px solid var(--border);font-family:'Share Tech Mono',monospace;font-size:9px;letter-spacing:0.08em;text-transform:uppercase}
+    .queue-list-header .qlh-left{color:var(--t2)}
+    .queue-list-header .qlh-right{color:var(--t4)}
+    .pl-queue-list{max-height:420px;overflow-y:auto}
+    .pl-queue-list::-webkit-scrollbar{width:3px}
+    .pl-queue-list::-webkit-scrollbar-thumb{background:var(--border2)}
+    .pl-queue-item{display:flex;align-items:center;gap:10px;padding:0 12px 0 10px;height:72px;border-bottom:1px solid var(--border);transition:background 0.15s}
+    .pl-queue-item:hover{background:var(--cyan3)}
+    .pl-queue-drag{color:var(--t4);font-size:14px;cursor:grab;flex-shrink:0;line-height:1;letter-spacing:-1px;user-select:none}
+    .pl-queue-idx{font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--t4);width:20px;text-align:center;flex-shrink:0}
+    .pl-queue-thumb{width:96px;height:54px;object-fit:cover;border-radius:4px;flex-shrink:0;display:block;background:var(--bg3)}
+    .pl-queue-thumb-ph{width:96px;height:54px;background:var(--bg3);flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:16px;color:var(--t4);border-radius:4px}
+    .pl-queue-info{flex:1;min-width:0;padding:0 6px}
+    .pl-queue-title{font-size:13px;color:var(--t1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:2px;font-weight:500}
+    .pl-queue-sub{font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--t3)}
+    .pl-queue-dur{font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--t2);width:46px;text-align:right;flex-shrink:0}
+    .pl-queue-st{flex-shrink:0;padding:0 4px}
+    .pl-queue-remove{width:24px;height:24px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--t4);transition:color 0.15s;flex-shrink:0}
+    .pl-queue-remove:hover{color:var(--red)}
+
+    /* ── VAULT FOLDER CARDS ─────────────────────────────────────────────────── */
+    .vault-folder-grid{display:flex;flex-wrap:wrap;gap:16px;margin-bottom:16px}
+    .vault-folder-card{width:200px;height:160px;background:var(--bg2);border:1px solid var(--border);cursor:pointer;transition:border-color 0.2s,box-shadow 0.2s;position:relative;overflow:hidden;display:flex;flex-direction:column}
+    .vault-folder-card:hover{border-color:var(--cyan);box-shadow:0 0 0 1px var(--cyan),0 4px 20px rgba(0,0,0,0.35)}
+    .vault-folder-card:hover .vfc-icon-svg{transform:scale(1.1)}
+    .vfc-icon{flex:1;display:flex;align-items:center;justify-content:center;background:var(--bg3);color:var(--cyan)}
+    .vfc-icon-svg{transition:transform 0.2s;display:block}
+    .vfc-bottom{padding:8px 12px;background:var(--bg2);border-top:1px solid var(--border);flex-shrink:0}
+    .vfc-name{font-size:13px;color:var(--t1);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:2px}
+    .vfc-meta-text{font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--t3)}
+    .vfc-lib-tag{font-family:'Share Tech Mono',monospace;font-size:8px;color:var(--cyan);display:flex;align-items:center;gap:3px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .vfc-watched-badge{position:absolute;top:7px;right:7px;font-family:'Share Tech Mono',monospace;font-size:7px;background:var(--amber2);color:var(--amber);padding:2px 6px;letter-spacing:0.08em;z-index:2}
+    .vfc-meta{display:none}
+    /* Thumbnail mosaic */
+    .vfc-mosaic{flex:1;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;overflow:hidden}
+    .vfc-mosaic-cell{width:100%;height:100%;object-fit:cover;display:block}
+    .vfc-mosaic-ph{width:100%;height:100%;background:#111820;display:flex;align-items:center;justify-content:center}
+    /* Three-dot menu */
+    .vfc-menu-btn{position:absolute;top:5px;right:5px;z-index:4;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:16px;line-height:1;color:var(--t2);background:rgba(0,0,0,0.55);cursor:pointer;border-radius:2px;transition:color 0.15s,background 0.15s;opacity:0}
+    .vault-folder-card:hover .vfc-menu-btn{opacity:1}
+    .vfc-menu-btn:hover{color:var(--cyan);background:rgba(0,0,0,0.8)}
+    .vfc-menu-popup{position:absolute;top:28px;right:5px;z-index:10;background:var(--bg2);border:1px solid var(--border2);min-width:160px;box-shadow:0 8px 24px rgba(0,0,0,0.5)}
+    .vfc-menu-item{padding:8px 14px;font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--t2);cursor:pointer;letter-spacing:0.06em;transition:background 0.12s,color 0.12s}
+    .vfc-menu-item:hover{background:var(--bg3);color:var(--t1)}
+    .vfc-menu-item.danger{color:var(--red)}
+    .vfc-menu-item.danger:hover{background:var(--red2);color:var(--red)}
+
+    /* ── VAULT BREADCRUMB ───────────────────────────────────────────────────── */
+    .vault-breadcrumb{display:flex;align-items:center;gap:8px;margin-bottom:24px;font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--t3);letter-spacing:0.08em}
+    .vbc-root{cursor:pointer;color:var(--t3);text-transform:uppercase}
+    .vbc-root:hover{color:var(--cyan)}
+    .vbc-sep{color:var(--t4);font-size:14px}
+    .vbc-current{color:var(--t1);text-transform:uppercase}
+
+    /* ── VAULT LIBRARY CONTROLS ─────────────────────────────────────────────── */
+    .vault-lib-controls{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+    .vault-lib-search-wrap{flex:1;position:relative}
+    .vault-lib-search{width:100%;background:var(--bg2);border:1px solid var(--border);color:var(--t1);padding:9px 14px 9px 34px;font-family:'Share Tech Mono',monospace;font-size:11px;outline:none;letter-spacing:0.06em}
+    .vault-lib-search:focus{border-color:var(--cyan);box-shadow:0 0 0 1px rgba(0,216,255,0.1)}
+    .vault-lib-search::placeholder{color:var(--t4)}
+    .vault-lib-search-icon{position:absolute;left:11px;top:50%;transform:translateY(-50%);color:var(--t3);line-height:0;pointer-events:none}
+    .vault-lib-sort{background:var(--bg2);border:1px solid var(--border);color:var(--t2);padding:8px 10px;font-family:'Share Tech Mono',monospace;font-size:10px;outline:none;cursor:pointer;letter-spacing:0.08em;text-transform:uppercase}
+    .vault-lib-sort:focus{border-color:var(--cyan)}
+    .vault-lib-count{font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--t4);margin-bottom:14px}
+    .vault-lib-count span{color:var(--t2)}
   </style>
 </head>
 <body>

@@ -242,14 +242,28 @@ def api_check_ytdlp_update() -> Response:
 @app.route("/api/update-ytdlp", methods=["POST"])
 def api_update_ytdlp() -> Response:
     def _update() -> None:
+        import shutil as _shutil
         try:
             _kw: dict = {"check": True, "capture_output": True}
             if platform.system() == "Windows":
                 _kw["creationflags"] = subprocess.CREATE_NO_WINDOW
-            subprocess.run(
-                [sys.executable, "-m", "pip", "install", "--upgrade", "yt-dlp"],
-                **_kw,
-            )
+            exe = sys.executable
+            # Guard: never run the app binary itself as an updater
+            if getattr(sys, "frozen", False) or "mellowdlp" in exe.lower():
+                # Frozen bundle — sys.executable is the app; find yt-dlp or Python separately
+                ytdlp_bin = _shutil.which("yt-dlp") or _shutil.which("yt-dlp.exe")
+                if ytdlp_bin and "mellowdlp" not in ytdlp_bin.lower():
+                    subprocess.run([ytdlp_bin, "-U"], **_kw)
+                else:
+                    python = _shutil.which("python") or _shutil.which("python3")
+                    if not python or "mellowdlp" in python.lower():
+                        raise RuntimeError(
+                            "Cannot update: no standalone Python or yt-dlp binary found. "
+                            "Install yt-dlp manually: pip install --upgrade yt-dlp"
+                        )
+                    subprocess.run([python, "-m", "pip", "install", "--upgrade", "yt-dlp"], **_kw)
+            else:
+                subprocess.run([exe, "-m", "pip", "install", "--upgrade", "yt-dlp"], **_kw)
             _push_progress({"status": "ytdlp_updated", "ok": True})
         except Exception as exc:
             _push_progress({"status": "ytdlp_updated", "ok": False, "error": str(exc)})
@@ -502,6 +516,14 @@ def api_vault() -> Response:
             })
             all_paths.add(norm)
 
+    # Apply custom names and filter hidden
+    vault_names = cfg.get("vault_names", {})
+    vault_hidden = set(cfg.get("vault_hidden", []))
+    for f in all_folders:
+        if f["path"] in vault_names:
+            f["name"] = vault_names[f["path"]]
+    all_folders = [f for f in all_folders if f["path"] not in vault_hidden]
+
     return jsonify({"folders": all_folders, "base_path": base_path})
 
 
@@ -608,6 +630,104 @@ def api_vault_open_file() -> Response:
     path = data.get("path", "")
     if path and Path(path).exists():
         threading.Thread(target=_open_file, args=(path,), daemon=True).start()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/vault/folder-previews")
+def api_vault_folder_previews() -> Response:
+    path = request.args.get("path", "")
+    if not path or not Path(path).exists():
+        return jsonify({"thumbs": []})
+    root = Path(path)
+    media_exts = {".mp4", ".mkv", ".webm", ".avi", ".mov", ".mp3", ".flac", ".m4a", ".aac", ".opus", ".wav", ".ogg"}
+    thumb_urls: list[str] = []
+    try:
+        for f in sorted(root.iterdir()):
+            if f.is_file() and f.suffix.lower() in media_exts and not f.name.startswith("."):
+                for ext in (".jpg", ".jpeg", ".png", ".webp"):
+                    if f.with_suffix(ext).exists():
+                        thumb_urls.append(f"/api/vault/thumb?path={f}")
+                        break
+                if len(thumb_urls) >= 4:
+                    break
+    except PermissionError:
+        pass
+    return jsonify({"thumbs": thumb_urls})
+
+
+@app.route("/api/vault/playlists", methods=["GET"])
+def api_vault_playlists_get() -> Response:
+    path = request.args.get("path", "")
+    cfg = _load_config()
+    return jsonify({"playlists": cfg.get("vault_playlists", {}).get(path, [])})
+
+
+@app.route("/api/vault/playlists", methods=["POST"])
+def api_vault_playlists_post() -> Response:
+    data = request.get_json(force=True) or {}
+    path = data.get("path", "").strip()
+    url_val = data.get("url", "").strip()
+    if not path or not url_val:
+        return jsonify({"error": "path and url required"}), 400
+    cfg = _load_config()
+    vp = cfg.get("vault_playlists", {})
+    if path not in vp:
+        vp[path] = []
+    if url_val not in vp[path]:
+        vp[path].append(url_val)
+    cfg["vault_playlists"] = vp
+    _save_config(cfg)
+    return jsonify({"ok": True, "playlists": vp[path]})
+
+
+@app.route("/api/vault/playlists", methods=["DELETE"])
+def api_vault_playlists_delete() -> Response:
+    data = request.get_json(force=True) or {}
+    path = data.get("path", "").strip()
+    url_val = data.get("url", "").strip()
+    cfg = _load_config()
+    vp = cfg.get("vault_playlists", {})
+    if path in vp:
+        vp[path] = [u for u in vp[path] if u != url_val]
+    cfg["vault_playlists"] = vp
+    _save_config(cfg)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/vault/rename", methods=["POST"])
+def api_vault_rename() -> Response:
+    data = request.get_json(force=True) or {}
+    path = data.get("path", "").strip()
+    name = data.get("name", "").strip()
+    if not path:
+        return jsonify({"error": "path required"}), 400
+    cfg = _load_config()
+    vault_names = cfg.get("vault_names", {})
+    if name:
+        vault_names[path] = name
+    else:
+        vault_names.pop(path, None)
+    cfg["vault_names"] = vault_names
+    _save_config(cfg)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/vault/remove", methods=["POST"])
+def api_vault_remove() -> Response:
+    data = request.get_json(force=True) or {}
+    path = data.get("path", "").strip()
+    if not path:
+        return jsonify({"error": "path required"}), 400
+    cfg = _load_config()
+    # Remove from watched_folders if present
+    watched = cfg.get("watched_folders", [])
+    cfg["watched_folders"] = [w for w in watched if w != path]
+    # Add to vault_hidden so auto-discovered folders are suppressed
+    hidden = cfg.get("vault_hidden", [])
+    if path not in hidden:
+        hidden.append(path)
+    cfg["vault_hidden"] = hidden
+    _save_config(cfg)
     return jsonify({"ok": True})
 
 
