@@ -177,6 +177,20 @@ def api_browse_file() -> Response:
     return jsonify({"path": path})
 
 
+@app.route("/api/read-url-file", methods=["POST"])
+def api_read_url_file() -> Response:
+    data = request.get_json(force=True) or {}
+    path = data.get("path", "").strip()
+    if not path or not os.path.isfile(path):
+        return jsonify({"error": "File not found"}), 400
+    try:
+        with open(path, "r", encoding="utf-8", errors="ignore") as fh:
+            urls = [line.strip() for line in fh if line.strip() and not line.strip().startswith("#")]
+        return jsonify({"urls": urls})
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
 @app.route("/api/browse-folder", methods=["POST"])
 def api_browse_folder() -> Response:
     data = request.get_json(force=True) or {}
@@ -492,6 +506,25 @@ def api_analytics_vacuum() -> Response:
         return jsonify({"error": str(exc)}), 500
 
 
+_FOLDER_MEDIA_EXTS = {'.mp3', '.mp4', '.mkv', '.webm', '.flac', '.m4a',
+                      '.wav', '.opus', '.aac', '.ogg', '.avi', '.mov'}
+
+
+def _get_folder_media_stats(path: str) -> dict:
+    p = Path(path)
+    if not p.is_dir():
+        return {"item_count": 0, "size_bytes": 0}
+    total, count = 0, 0
+    try:
+        for entry in p.rglob("*"):
+            if entry.is_file() and not entry.name.startswith(".") and entry.suffix.lower() in _FOLDER_MEDIA_EXTS:
+                total += entry.stat().st_size
+                count += 1
+    except PermissionError:
+        pass
+    return {"item_count": count, "size_bytes": total}
+
+
 # ── Vault ─────────────────────────────────────────────────────────────────────
 
 @app.route("/api/vault")
@@ -507,13 +540,14 @@ def api_vault() -> Response:
         norm = str(p)
         if norm not in all_paths and p.exists() and p.is_dir():
             try:
-                count = sum(1 for f in p.iterdir() if f.is_file())
+                ms = _get_folder_media_stats(norm)
                 st = p.stat()
             except Exception:
-                count, st = 0, None
+                ms, st = {"item_count": 0, "size_bytes": 0}, None
             all_folders.append({
-                "path": norm, "name": p.name, "item_count": count,
-                "size_bytes": 0, "watched": True,
+                "path": norm, "name": p.name,
+                "item_count": ms["item_count"], "size_bytes": ms["size_bytes"],
+                "watched": True,
                 "created_at": st.st_ctime if st else None,
                 "modified_at": st.st_mtime if st else None,
             })
@@ -542,17 +576,16 @@ def api_vault() -> Response:
             p = Path(actual_path)
             if p.exists() and p.is_dir():
                 try:
-                    files = [f2 for f2 in p.iterdir() if f2.is_file()]
-                    count = len(files)
+                    ms = _get_folder_media_stats(actual_path)
                     st = p.stat()
                 except Exception:
-                    count, st = 0, None
+                    ms, st = {"item_count": 0, "size_bytes": 0}, None
             else:
-                count, st = 0, None
+                ms, st = {"item_count": 0, "size_bytes": 0}, None
             all_folders.append({
                 "path": actual_path,
                 "name": folder_name or Path(actual_path).name,
-                "item_count": count, "size_bytes": 0,
+                "item_count": ms["item_count"], "size_bytes": ms["size_bytes"],
                 "library_id": entry["id"], "library_name": entry["name"],
                 "created_at": st.st_ctime if st else None,
                 "modified_at": st.st_mtime if st else None,
@@ -811,9 +844,12 @@ def api_vault_sync() -> Response:
     lib = next((e for e in library_entries if e.get("folder") == path or
                 str(Path(e.get("folder", "")) / (e.get("folder_name") or "")) == path), None)
     output_dir = path
+    sync_quality = data.get("quality") or (lib["quality"] if lib else cfg.get("quality_default", "1080p"))
+    sync_container = (data.get("container") or "mp4").lower()
     opts = {
         "mode": "library",
-        "quality": lib["quality"] if lib else cfg.get("quality_default", "1080p"),
+        "quality": sync_quality,
+        "container": sync_container,
         "embed_thumbnail": lib["embed_thumbnail"] if lib else cfg.get("embed_thumbnail", True),
         "embed_chapters": lib["embed_chapters"] if lib else True,
         "embed_metadata": lib["embed_metadata"] if lib else True,
@@ -871,20 +907,22 @@ def api_vault_mirror_preview() -> Response:
         except Exception as exc:
             print(f"[MIRROR-PREVIEW] failed to fetch {playlist_url}: {exc}", flush=True)
 
-    # Scan local media files and check which are not in the playlist
+    # Scan local media files: only delete files whose ID is confirmed NOT in any playlist
+    import re as _re
     p = Path(path)
     media_exts = {'.mp3', '.mp4', '.mkv', '.webm', '.flac', '.m4a', '.wav', '.opus', '.aac', '.ogg', '.avi', '.mov'}
     to_delete = []
     for f in p.iterdir():
         if not f.is_file() or f.suffix.lower() not in media_exts:
             continue
-        # Try to find video ID in filename (yt-dlp often appends [VIDEO_ID])
-        import re as _re
         m = _re.search(r'\[([A-Za-z0-9_-]{11})\]', f.name)
-        if m and m.group(1) in playlist_ids:
+        if not m:
+            # No video ID in filename — cannot confirm it belongs to or is missing from playlist, skip
             continue
-        # If we can't confirm it belongs to the playlist, flag for deletion
-        if playlist_ids:  # only flag if we successfully fetched the playlist
+        vid_id = m.group(1)
+        if vid_id in playlist_ids:
+            continue  # ID confirmed in playlist — keep
+        if playlist_ids:  # only flag if we successfully fetched at least one playlist
             to_delete.append({"path": str(f), "name": f.name, "size": f.stat().st_size})
 
     return jsonify({"to_delete": to_delete, "playlist_count": len(vp), "playlist_ids_found": len(playlist_ids)})

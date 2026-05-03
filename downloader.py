@@ -296,11 +296,12 @@ def download_video(
             "windows_filenames": True,
         }
     elif mode == "library":
-        archive_path = str(out_dir / f".mellow_archive_{library_id}.txt")
+        archive_path = str(out_dir / f".mellow_archive_{library_id or 'archive'}.txt")
+        lib_fmt = custom_format if custom_format else QUALITY_MAP.get(quality, "bestvideo+bestaudio/best")
         pps = _build_postprocessors(opts)
         ydl_opts = {
-            "format": custom_format if custom_format else "bv+ba/b",
-            "format_sort": ["vcodec:h264,res:1080,acodec:aac"],
+            "format": lib_fmt,
+            "merge_output_format": container,
             "outtmpl": outtmpl,
             "postprocessors": pps,
             "progress_hooks": [hook],

@@ -1545,17 +1545,23 @@ function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, config, sh
             {vaultFolders.map(folder => {
               const thumbs = folderMosaics[folder.path] || [];
               const showMosaic = thumbs.length > 0;
-              const cells = [0,1,2,3].map(i => thumbs[i] || null);
               return (
                 <div key={folder.path} className="vault-folder-card" onClick={() => setSelectedFolder(folder.path)}>
                   {/* Thumbnail mosaic or folder icon */}
                   {showMosaic ? (
-                    <div className="vfc-mosaic">
-                      {cells.map((t, i) => t
-                        ? <img key={i} src={t} className="vfc-mosaic-cell" alt="" onError={e => { e.target.style.display='none'; }} />
-                        : <div key={i} className="vfc-mosaic-ph"><span style={{ fontSize: 14, color: 'var(--t4)' }}>♪</span></div>
-                      )}
-                    </div>
+                    thumbs.length === 1 ? (
+                      <img src={thumbs[0]} style={{width:'100%',height:'100%',objectFit:'cover',display:'block'}} alt=""
+                        onError={e => { e.target.style.display='none'; }} />
+                    ) : (
+                      <div className="vfc-mosaic">
+                        {[0,1,2,3].map((i) => {
+                          const t = thumbs[i] || null;
+                          return t
+                            ? <img key={i} src={t} className="vfc-mosaic-cell" alt="" onError={e => { e.target.style.display='none'; }} />
+                            : <div key={i} className="vfc-mosaic-ph" />;
+                        })}
+                      </div>
+                    )
                   ) : (
                     <div className="vfc-icon">
                       <svg className="vfc-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" width="48" height="48">
@@ -2787,6 +2793,7 @@ function App() {
   const configRef = React.useRef(config);
   const notifTimer = React.useRef(null);
   const victoryTimer = React.useRef(null);
+  const processedCompletions = React.useRef(new Set());
 
   React.useEffect(() => { configRef.current = config; }, [config]);
 
@@ -2833,6 +2840,7 @@ function App() {
       try { data = JSON.parse(e.data); } catch { return; }
       if (data.status === 'ping') return;
       if (data.status === 'starting') {
+        processedCompletions.current.clear();
         setAppState('downloading');
         setDlState({ status: 'starting', pct: 0 });
       } else if (data.status === 'downloading') {
@@ -2843,17 +2851,23 @@ function App() {
         setAppState('processing');
         setDlState(prev => prev ? { ...prev, status: 'processing' } : { status: 'processing', pct: 100 });
       } else if (data.status === 'item_done') {
+        if (data.video_id && processedCompletions.current.has(data.video_id)) return;
+        if (data.video_id) processedCompletions.current.add(data.video_id);
         const idx = data.playlist_index;
         setPlaylistItems(prev => {
           if (!prev) return prev;
           if (idx !== undefined && idx !== null) return prev.filter(x => x.idx !== idx);
           return prev.length > 0 ? prev.slice(1) : prev;
         });
-        setCompletedItems(prev => [{
-          title: data.title,
-          thumbnail: data.thumbnail,
-          completedAt: Date.now(),
-        }, ...prev].slice(0, 200));
+        setCompletedItems(prev => {
+          if (data.video_id && prev.some(x => x.video_id === data.video_id)) return prev;
+          return [{
+            video_id: data.video_id,
+            title: data.title,
+            thumbnail: data.thumbnail,
+            completedAt: Date.now(),
+          }, ...prev].slice(0, 200);
+        });
         setPlaylistCompletedCount(c => c + 1);
       } else if (data.status === 'paused') {
         setIsPaused(true);
@@ -3152,6 +3166,7 @@ function LinkPlaylistModal({ folder, onClose, showNotif }) {
   const [playlists, setPlaylists] = React.useState([]);
   const [newUrl, setNewUrl] = React.useState('');
   const [saving, setSaving] = React.useState(false);
+  const [importing, setImporting] = React.useState(false);
 
   React.useEffect(() => {
     API.get('/api/vault/playlists?path=' + encodeURIComponent(folder.path))
@@ -3175,6 +3190,26 @@ function LinkPlaylistModal({ folder, onClose, showNotif }) {
       .catch(e => showNotif('Error', e.message, 'error'));
   };
 
+  const handleImportFile = () => {
+    setImporting(true);
+    API.post('/api/browse-file', { filter: '.txt' })
+      .then(d => {
+        if (!d.path) { setImporting(false); return; }
+        return API.post('/api/read-url-file', { path: d.path })
+          .then(r => {
+            const urls = (r.urls || []).filter(u => u.startsWith('http'));
+            if (!urls.length) { showNotif('No URLs', 'No valid URLs found in file', 'error'); setImporting(false); return; }
+            return urls.reduce((chain, url) =>
+              chain.then(() => API.post('/api/vault/playlists', { path: folder.path, url }))
+            , Promise.resolve())
+              .then(() => API.get('/api/vault/playlists?path=' + encodeURIComponent(folder.path)))
+              .then(d2 => { setPlaylists(d2.playlists || []); showNotif('Imported', urls.length + ' URL(s) linked', 'success'); });
+          });
+      })
+      .catch(e => showNotif('Error', e.message || 'Import failed', 'error'))
+      .finally(() => setImporting(false));
+  };
+
   return (
     <Modal title={'LINK PLAYLIST — ' + folder.name.toUpperCase()} onClose={onClose} footer={
       <button className="btn btn-secondary btn-sm" onClick={onClose}>CLOSE</button>
@@ -3186,6 +3221,9 @@ function LinkPlaylistModal({ folder, onClose, showNotif }) {
             onKeyDown={e => e.key === 'Enter' && handleAdd()}
             placeholder="https://youtube.com/playlist?list=..." />
           <button className="btn btn-primary btn-sm" onClick={handleAdd} disabled={saving || !newUrl.trim()}>LINK</button>
+          <button className="btn btn-secondary btn-sm" onClick={handleImportFile} disabled={importing} title="Import URLs from .txt file (one URL per line)">
+            {importing ? '...' : 'FROM FILE'}
+          </button>
         </div>
       </div>
       {playlists.length > 0 && (
@@ -3210,6 +3248,8 @@ function LinkPlaylistModal({ folder, onClose, showNotif }) {
 function SyncPlaylistModal({ folder, onClose, showNotif, onRefreshVault }) {
   const [playlists, setPlaylists] = React.useState(null);
   const [syncMode, setSyncMode] = React.useState('add');
+  const [syncQuality, setSyncQuality] = React.useState('1080p');
+  const [syncContainer, setSyncContainer] = React.useState('mp4');
   const [syncing, setSyncing] = React.useState(false);
   const [mirrorPreview, setMirrorPreview] = React.useState(null); // files to delete
   const [previewing, setPreviewing] = React.useState(false);
@@ -3222,15 +3262,16 @@ function SyncPlaylistModal({ folder, onClose, showNotif, onRefreshVault }) {
   }, [folder.path]);
 
   const handleSync = () => {
+    const fmtOpts = { quality: syncQuality, container: syncContainer };
     if (syncMode === 'mirror') {
       // For mirror: fetch preview first, then show confirm step
       setPreviewing(true);
       API.post('/api/vault/mirror-preview', { path: folder.path })
-        .then(d => { setMirrorPreview(d); setPreviewing(false); })
+        .then(d => { setMirrorPreview({ ...d, fmtOpts }); setPreviewing(false); })
         .catch(e => { showNotif('Error', e.message || 'Preview failed', 'error'); setPreviewing(false); });
     } else {
       setSyncing(true);
-      API.post('/api/vault/sync', { path: folder.path, mode: syncMode })
+      API.post('/api/vault/sync', { path: folder.path, mode: syncMode, ...fmtOpts })
         .then(() => {
           showNotif('Sync Started', folder.name + ' — ' + playlists.length + ' playlist(s)', 'success');
           onRefreshVault && onRefreshVault();
@@ -3244,9 +3285,10 @@ function SyncPlaylistModal({ folder, onClose, showNotif, onRefreshVault }) {
   const handleMirrorConfirm = () => {
     setConfirming(true);
     const pathsToDelete = (mirrorPreview?.to_delete || []).map(f => f.path);
+    const fmtOpts = mirrorPreview?.fmtOpts || { quality: syncQuality, container: syncContainer };
     // First delete files, then start add sync
     API.post('/api/vault/mirror-confirm', { paths: pathsToDelete })
-      .then(() => API.post('/api/vault/sync', { path: folder.path, mode: 'add' }))
+      .then(() => API.post('/api/vault/sync', { path: folder.path, mode: 'add', ...fmtOpts }))
       .then(() => {
         showNotif('Mirror Done', 'Deleted ' + pathsToDelete.length + ' file(s), syncing new items', 'success');
         onRefreshVault && onRefreshVault();
@@ -3314,6 +3356,22 @@ function SyncPlaylistModal({ folder, onClose, showNotif, onRefreshVault }) {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 2, padding: '4px 0' }}>
               {playlists.map((pl, i) => (
                 <div key={i} style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: 'var(--cyan)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{pl}</div>
+              ))}
+            </div>
+          </div>
+          <div className="form-row">
+            <div className="form-label">QUALITY</div>
+            <div className="pills">
+              {['best','1080p','720p','480p'].map(q => (
+                <div key={q} className={'pill' + (syncQuality === q ? ' active' : '')} onClick={() => setSyncQuality(q)}>{q.toUpperCase()}</div>
+              ))}
+            </div>
+          </div>
+          <div className="form-row">
+            <div className="form-label">CONTAINER</div>
+            <div className="pills">
+              {['mp4','mkv','webm'].map(c => (
+                <div key={c} className={'pill' + (syncContainer === c ? ' active' : '')} onClick={() => setSyncContainer(c)}>{c.toUpperCase()}</div>
               ))}
             </div>
           </div>
