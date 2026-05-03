@@ -1,9 +1,20 @@
+import os as _os
+import platform as _platform
+
+_is_windows = _platform.system() == "Windows"
+_is_linux   = _platform.system() == "Linux"
+
+_ytdlp_bin = "yt-dlp.exe" if _is_windows else "yt-dlp"
+_icon = _os.path.join("assets", "mellow.ico") if _is_windows else None
+
 block_cipher = None
 
 a = Analysis(
     ["main.py"],
     pathex=[],
-    binaries=[],
+    binaries=[
+        (_ytdlp_bin, "."),
+    ] if _os.path.exists(_ytdlp_bin) else [],
     datas=[
         ("static", "static"),
         ("server.py", "."),
@@ -45,9 +56,9 @@ exe = EXE(
     name="MellowDLP",
     debug=False,
     bootloader_ignore_signals=True,
-    strip=False,
+    strip=_is_linux,
     upx=True,
     runtime_tmpdir=None,
     console=False,
-    icon="assets\\mellow.ico",
+    icon=_icon,
 )

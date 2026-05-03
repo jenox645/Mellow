@@ -17,6 +17,11 @@ ASSETS = HERE / "assets"
 GUI = HERE / "gui"
 
 DESKTOP_SHORTCUT = "--desktop-shortcut" in sys.argv
+SYSTEM = platform.system()   # 'Windows' | 'Linux' | 'Darwin'
+IS_WINDOWS = SYSTEM == "Windows"
+IS_LINUX   = SYSTEM == "Linux"
+
+VERSION = "2.0.0"
 
 REACT_VERSION = "18.3.1"
 REACT_URL = f"https://unpkg.com/react@{REACT_VERSION}/umd/react.production.min.js"
@@ -155,47 +160,64 @@ for file_stem, var_name, use_svg in MASCOT_ENTRIES:
 print(f"  static/mascots.js written — OK")
 
 
-# ── Step 6: Process wizard images with Pillow ─────────────────────────────────
-step("6/12 · Processing wizard images")
+# ── Step 6: Process images with Pillow ────────────────────────────────────────
+step("6/12 · Processing images")
 from PIL import Image  # noqa: E402
-
-wizard_large = ASSETS / "wizard_large.bmp"
-if wizard_large.exists():
-    print(f"  wizard_large.bmp already present ({wizard_large.stat().st_size:,} bytes) — using as-is")
-else:
-    banner_src = ASSETS / "wizard_banner.png"
-    if not banner_src.exists():
-        fail(f"Missing {banner_src} and no wizard_large.bmp — cannot generate wizard images")
-    img = Image.open(banner_src).convert("RGB")
-    img = img.resize((164, 314), Image.LANCZOS)
-    img.save(wizard_large)
-    assert wizard_large.exists(), "wizard_large.bmp was not created"
-    print("  wizard_large.bmp (164x314) generated from wizard_banner.png — OK")
-
-wizard_small = ASSETS / "wizard_small.bmp"
-if wizard_small.exists():
-    print(f"  wizard_small.bmp already present ({wizard_small.stat().st_size:,} bytes) — using as-is")
-else:
-    mellow_src = ASSETS / "mellow_source.png"
-    small_src = mellow_src if mellow_src.exists() else (ASSETS / "wizard_banner.png")
-    if not small_src.exists():
-        fail(f"Missing wizard_small.bmp and no source image found to generate it")
-    src = Image.open(small_src).convert("RGBA")
-    src.thumbnail((55, 58), Image.LANCZOS)
-    out_img = Image.new("RGB", (55, 58), (26, 22, 20))
-    out_img.paste(src, ((55 - src.width) // 2, (58 - src.height) // 2), src)
-    out_img.save(wizard_small)
-    assert wizard_small.exists(), "wizard_small.bmp was not created"
-    print(f"  wizard_small.bmp (55x58) generated from {small_src.name} — OK")
 
 ico_path = ASSETS / "mellow.ico"
 if not ico_path.exists():
     fail(f"Missing {ico_path} — this file must exist with 16/32/48/256px frames")
 print(f"  mellow.ico ({ico_path.stat().st_size} bytes) — OK")
 
-# Copy favicon to static/ so the browser window shows the app icon
+# Copy favicon to static/
 shutil.copy2(ico_path, STATIC / "favicon.ico")
 print(f"  favicon.ico copied to static/ — OK")
+
+if IS_WINDOWS:
+    # Wizard BMPs are only needed by Inno Setup on Windows
+    wizard_large = ASSETS / "wizard_large.bmp"
+    if wizard_large.exists():
+        print(f"  wizard_large.bmp already present ({wizard_large.stat().st_size:,} bytes) — using as-is")
+    else:
+        banner_src = ASSETS / "wizard_banner.png"
+        if not banner_src.exists():
+            fail(f"Missing {banner_src} and no wizard_large.bmp — cannot generate wizard images")
+        img = Image.open(banner_src).convert("RGB")
+        img = img.resize((164, 314), Image.LANCZOS)
+        img.save(wizard_large)
+        assert wizard_large.exists(), "wizard_large.bmp was not created"
+        print("  wizard_large.bmp (164x314) generated from wizard_banner.png — OK")
+
+    wizard_small = ASSETS / "wizard_small.bmp"
+    if wizard_small.exists():
+        print(f"  wizard_small.bmp already present ({wizard_small.stat().st_size:,} bytes) — using as-is")
+    else:
+        mellow_src = ASSETS / "mellow_source.png"
+        small_src = mellow_src if mellow_src.exists() else (ASSETS / "wizard_banner.png")
+        if not small_src.exists():
+            fail(f"Missing wizard_small.bmp and no source image found to generate it")
+        src = Image.open(small_src).convert("RGBA")
+        src.thumbnail((55, 58), Image.LANCZOS)
+        out_img = Image.new("RGB", (55, 58), (26, 22, 20))
+        out_img.paste(src, ((55 - src.width) // 2, (58 - src.height) // 2), src)
+        out_img.save(wizard_small)
+        assert wizard_small.exists(), "wizard_small.bmp was not created"
+        print(f"  wizard_small.bmp (55x58) generated from {small_src.name} — OK")
+
+if IS_LINUX:
+    # Derive a 256×256 PNG from mellow.ico for .desktop / AppImage / .deb
+    icon_png = ASSETS / "mellow_256.png"
+    if not icon_png.exists():
+        ico_img = Image.open(ico_path)
+        # Pick the largest frame
+        best = max(ico_img.ico.sizes(), key=lambda s: s[0] * s[1], default=(256, 256))
+        ico_img.size = best
+        frame = ico_img.convert("RGBA")
+        frame = frame.resize((256, 256), Image.LANCZOS)
+        frame.save(icon_png)
+        print(f"  mellow_256.png (256×256) derived from mellow.ico — OK")
+    else:
+        print(f"  mellow_256.png already present — OK")
 
 
 # ── Step 7: Download React UMD bundles ────────────────────────────────────────
@@ -265,31 +287,112 @@ step("11/12 · Running PyInstaller")
 spec_file = HERE / "MellowDLP.spec"
 if not spec_file.exists():
     fail(f"Missing {spec_file}")
-run([sys.executable, "-m", "PyInstaller", "--clean", "--noconfirm", str(spec_file)])
-exe_path = HERE / "dist" / "MellowDLP.exe"
-if platform.system() == "Windows":
-    if not exe_path.exists():
-        fail(f"PyInstaller finished but exe not found at {exe_path}")
-    print(f"  dist/MellowDLP.exe ({exe_path.stat().st_size:,} bytes) — OK")
+
+# Download yt-dlp binary for bundling if not already present
+if IS_WINDOWS:
+    ytdlp_local = HERE / "yt-dlp.exe"
+    ytdlp_url = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe"
 else:
-    print("  PyInstaller complete (non-Windows, exe path not checked)")
+    ytdlp_local = HERE / "yt-dlp"
+    ytdlp_url = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp"
+
+if not ytdlp_local.exists():
+    print(f"  Downloading yt-dlp binary from GitHub…")
+    try:
+        urllib.request.urlretrieve(ytdlp_url, ytdlp_local)
+        if not IS_WINDOWS:
+            ytdlp_local.chmod(0o755)
+        print(f"  yt-dlp downloaded ({ytdlp_local.stat().st_size:,} bytes) — OK")
+    except Exception as exc:
+        print(f"  WARNING: could not download yt-dlp: {exc} — binary will not be bundled")
+else:
+    print(f"  yt-dlp already present ({ytdlp_local.stat().st_size:,} bytes) — OK")
+
+run([sys.executable, "-m", "PyInstaller", "--clean", "--noconfirm", str(spec_file)])
+
+exe_name = "MellowDLP.exe" if IS_WINDOWS else "MellowDLP"
+built_exe = HERE / "dist" / exe_name
+if not built_exe.exists():
+    fail(f"PyInstaller finished but binary not found at {built_exe}")
+print(f"  dist/{exe_name} ({built_exe.stat().st_size:,} bytes) — OK")
 
 
-# ── Step 12: Installer or Desktop shortcut ────────────────────────────────────
-if DESKTOP_SHORTCUT:
+# ── Step 12: Installer / AppImage / Desktop shortcut ─────────────────────────
+if IS_LINUX:
+    step("12/12 · Building AppImage")
+    import stat as _stat
+
+    appdir = HERE / "dist" / "MellowDLP.AppDir"
+    appdir_bin = appdir / "usr" / "bin"
+    appdir_icons = appdir / "usr" / "share" / "icons" / "hicolor" / "256x256" / "apps"
+    for d in [appdir_bin, appdir_icons]:
+        d.mkdir(parents=True, exist_ok=True)
+
+    shutil.copy2(built_exe, appdir_bin / "MellowDLP")
+    (appdir_bin / "MellowDLP").chmod(0o755)
+
+    icon_png = ASSETS / "mellow_256.png"
+    if icon_png.exists():
+        shutil.copy2(icon_png, appdir / "mellowdlp.png")
+        shutil.copy2(icon_png, appdir_icons / "mellowdlp.png")
+
+    desktop_content = (
+        "[Desktop Entry]\n"
+        "Name=MellowDLP\n"
+        "Comment=Data Lake Commander\n"
+        "Exec=MellowDLP\n"
+        "Icon=mellowdlp\n"
+        "Terminal=false\n"
+        "Type=Application\n"
+        "Categories=AudioVideo;Network;\n"
+    )
+    (appdir / "mellowdlp.desktop").write_text(desktop_content)
+
+    apprun = appdir / "AppRun"
+    apprun.write_text(
+        '#!/bin/bash\n'
+        'HERE="$(dirname "$(readlink -f "${0}")")"\n'
+        'exec "${HERE}/usr/bin/MellowDLP" "$@"\n'
+    )
+    apprun.chmod(0o755)
+
+    appimagetool = HERE / "appimagetool"
+    if not appimagetool.exists():
+        print("  Downloading appimagetool…")
+        try:
+            urllib.request.urlretrieve(
+                "https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage",
+                appimagetool,
+            )
+            appimagetool.chmod(0o755)
+            print(f"  appimagetool downloaded — OK")
+        except Exception as exc:
+            print(f"  WARNING: could not download appimagetool: {exc} — AppImage skipped")
+            appimagetool = None
+
+    if appimagetool and appimagetool.exists():
+        appimage_out = HERE / "dist" / f"MellowDLP-{VERSION}-x86_64.AppImage"
+        run([str(appimagetool), str(appdir), str(appimage_out)])
+        if appimage_out.exists():
+            print(f"  {appimage_out.name} ({appimage_out.stat().st_size:,} bytes) — OK")
+    else:
+        print("  AppImage skipped (appimagetool unavailable)")
+
+elif IS_WINDOWS and DESKTOP_SHORTCUT:
     step("12/12 · Creating Desktop shortcut")
     desktop = Path.home() / "Desktop"
     shortcut = desktop / "MellowDLP.lnk"
     ps = (
         f'$s=(New-Object -COM WScript.Shell).CreateShortcut("{shortcut}");'
-        f'$s.TargetPath="{exe_path}";'
-        f'$s.WorkingDirectory="{exe_path.parent}";'
-        f'$s.IconLocation="{exe_path}";'
+        f'$s.TargetPath="{built_exe}";'
+        f'$s.WorkingDirectory="{built_exe.parent}";'
+        f'$s.IconLocation="{built_exe}";'
         f'$s.Save()'
     )
     run(["powershell", "-NoProfile", "-Command", ps])
     print(f"  Desktop shortcut → {shortcut} — OK")
-else:
+
+elif IS_WINDOWS:
     step("12/12 · Building installer with Inno Setup")
     iscc = Path(r"C:\Program Files (x86)\Inno Setup 6\ISCC.exe")
     if iscc.exists():
@@ -304,15 +407,23 @@ else:
         print("  Inno Setup not found — skipping installer")
         print("  Install from https://jrsoftware.org/isinfo.php")
 
+else:
+    step("12/12 · Skipping platform-specific installer")
+    print(f"  Binary ready at dist/MellowDLP")
+
 
 # ── Summary ────────────────────────────────────────────────────────────────────
 step("Build complete")
 print("\n  Output files:")
-for path in [
-    HERE / "static" / "app.bundle.js",
-    HERE / "dist" / "MellowDLP.exe",
-    HERE / "dist" / "MellowDLP_Setup.exe",
-]:
+candidates = [HERE / "static" / "app.bundle.js"]
+if IS_WINDOWS:
+    candidates += [HERE / "dist" / "MellowDLP.exe", HERE / "dist" / "MellowDLP_Setup.exe"]
+elif IS_LINUX:
+    candidates += [HERE / "dist" / "MellowDLP"]
+    candidates += list((HERE / "dist").glob("MellowDLP-*.AppImage"))
+else:
+    candidates += [HERE / "dist" / "MellowDLP"]
+for path in candidates:
     if path.exists():
         print(f"    {path.relative_to(HERE)}  ({path.stat().st_size:,} bytes)")
     else:
