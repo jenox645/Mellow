@@ -597,7 +597,7 @@ function StatusBar({ sysInfo, speedHistory, config }) {
 
 // ── FEED Page ─────────────────────────────────────────────────────────────────
 
-function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats, showNotif, switchPage, config, onPlaylistDownload, playlistItems, setPlaylistItems, completedItems, playlistTotalCount, playlistCompletedCount }) {
+function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats, showNotif, switchPage, config, onPlaylistDownload, playlistItems, setPlaylistItems, completedItems, failedItems, playlistTotalCount, playlistCompletedCount, isPaused, onPause, onResume }) {
   const ss = (k, fb) => { try { const v = sessionStorage.getItem(k); return v !== null ? v : fb; } catch { return fb; } };
   const ssJ = (k, fb) => { try { const v = sessionStorage.getItem(k); return v ? JSON.parse(v) : fb; } catch { return fb; } };
 
@@ -1000,9 +1000,11 @@ function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats, showN
                   </div>
                   <div className="prog-row">
                     <div className="prog-bar">
-                      <div className="prog-bar-fill" style={{ width: (dlState.pct || 0) + '%' }} />
+                      <div className="prog-bar-fill" style={{ width: (dlState.pct || 0) + '%', background: isPaused ? 'var(--amber)' : undefined }} />
                     </div>
-                    <span className="prog-pct">{(dlState.pct || 0).toFixed(1)}%</span>
+                    <span className="prog-pct" style={{ color: isPaused ? 'var(--amber)' : undefined }}>
+                      {isPaused ? 'PAUSED' : (dlState.pct || 0).toFixed(1) + '%'}
+                    </span>
                   </div>
                   <div className="dl-meta">
                     <span>{fmtBytes(dlState.downloaded)} / <span className="acc">{fmtBytes(dlState.total)}</span></span>
@@ -1017,9 +1019,10 @@ function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats, showN
                   <div className="dl-kv"><span className="k">PLATFORM</span><span className="v">{info && info.platform || '—'}</span></div>
                   <div className="dl-kv"><span className="k">SIZE</span><span className="v">{fmtBytes(dlState.total)}</span></div>
                   <div style={{ marginTop: 10, display: 'flex', gap: 6 }}>
-                    <button className="btn btn-danger btn-sm" style={{ flex: 1 }} onClick={handleCancel}>
-                      CANCEL
-                    </button>
+                    {isPaused
+                      ? <button className="btn btn-amber btn-sm" style={{ flex: 1 }} onClick={onResume}>▶ RESUME</button>
+                      : <button className="btn btn-secondary btn-sm" style={{ flex: 1 }} onClick={onPause}>⏸ PAUSE</button>}
+                    <button className="btn btn-danger btn-sm" style={{ flex: 1 }} onClick={handleCancel}>CANCEL</button>
                   </div>
                 </div>
               </div>
@@ -1037,6 +1040,7 @@ function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats, showN
             <span className="ptag">QUEUE</span>
             <span className="ptitle">WAITING — 待機中</span>
             <span className="psub">{feedQTab === 'pending' ? (playlistItems ? playlistItems.length : 0) + ' ITEMS' : (completedItems ? completedItems.length : 0) + ' DONE'}</span>
+            {url && <span style={{ marginLeft: 'auto', cursor: 'pointer', color: 'var(--t3)', fontSize: 13, padding: '0 4px' }} title="Refresh queue" onClick={() => { if (url.trim()) { API.post('/api/playlist-items', { url: url.trim() }).then(r => { if (r.items && setPlaylistItems) setPlaylistItems(r.items.map(i => ({ ...i, selected: true }))); }).catch(() => {}); } }}>↻</span>}
           </div>
           {((playlistItems && playlistItems.length > 0) || (completedItems && completedItems.length > 0)) && (
             <div className="q-tabs">
@@ -1196,7 +1200,7 @@ function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats, showN
 
 // ── QUEUE Page ────────────────────────────────────────────────────────────────
 
-function QueuePage({ dlState, showNotif, playlistItems, setPlaylistItems, completedItems, playlistTotalCount, playlistCompletedCount }) {
+function QueuePage({ dlState, showNotif, playlistItems, setPlaylistItems, completedItems, failedItems, playlistTotalCount, playlistCompletedCount, isPaused, pausedCount, failedCount, onPause, onResume }) {
   const isDownloading = dlState && dlState.pct !== undefined;
   const queueCount = playlistItems ? playlistItems.length : 0;
   const [qTab, setQTab] = React.useState('pending');
@@ -1230,8 +1234,8 @@ function QueuePage({ dlState, showNotif, playlistItems, setPlaylistItems, comple
       <div className="g4" style={{ marginBottom: 16 }}>
         <div className="stat"><div className="stat-label">ACTIVE</div><div className="stat-value amber">{isDownloading ? 1 : 0}</div></div>
         <div className="stat"><div className="stat-label">QUEUED</div><div className="stat-value cyan">{queueCount}</div></div>
-        <div className="stat"><div className="stat-label">PAUSED</div><div className="stat-value" style={{ color: 'var(--purple)' }}>0</div></div>
-        <div className="stat"><div className="stat-label">FAILED</div><div className="stat-value red">0</div></div>
+        <div className="stat"><div className="stat-label">PAUSED</div><div className="stat-value" style={{ color: 'var(--amber)' }}>{pausedCount || 0}</div></div>
+        <div className="stat"><div className="stat-label">FAILED</div><div className="stat-value red">{failedCount || 0}</div></div>
       </div>
 
       {isDownloading && (
@@ -1254,11 +1258,14 @@ function QueuePage({ dlState, showNotif, playlistItems, setPlaylistItems, comple
             <div style={{ flex: 1, minWidth: 0 }}>
               <div className="q-name" style={{ marginBottom: 4 }}>{dlState.current_item_title || dlState.filename || 'Downloading...'}</div>
               <div className="prog-bar" style={{ height: 4 }}>
-                <div className="prog-bar-fill" style={{ width: (dlState.pct || 0) + '%' }} />
+                <div className="prog-bar-fill" style={{ width: (dlState.pct || 0) + '%', background: isPaused ? 'var(--amber)' : undefined }} />
               </div>
             </div>
             <span className="q-size">{fmtBytes(dlState.total)}</span>
-            <div className="q-status"><span className="q-st-badge downloading">ACTIVE</span></div>
+            <div className="q-status"><span className={'q-st-badge ' + (isPaused ? 'queued' : 'downloading')}>{isPaused ? 'PAUSED' : 'ACTIVE'}</span></div>
+            {isPaused
+              ? <button className="btn btn-amber btn-sm" style={{ padding: '4px 8px', fontSize: 9 }} onClick={onResume}>▶</button>
+              : <button className="btn btn-secondary btn-sm" style={{ padding: '4px 8px', fontSize: 9 }} onClick={onPause}>⏸</button>}
             <div className="q-del" onClick={handleCancel}><Ico name="x" /></div>
           </div>
           <div style={{ padding: '8px 14px', borderTop: '1px solid var(--border)', display: 'flex', gap: 12, fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: 'var(--t3)' }}>
@@ -1672,6 +1679,18 @@ function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, config, sh
               {syncingId ? 'SYNCING...' : (<><Ico name="sync" /> SYNC NOW</>)}
             </button>
           )}
+          <button className="btn btn-secondary btn-sm" onClick={() => {
+            setLoading(true);
+            API.get('/api/vault/folder?path=' + encodeURIComponent(selectedFolder))
+              .then(d => {
+                const loaded = d.files || [];
+                setFiles(loaded);
+                if (loaded.length > 0) {
+                  API.post('/api/vault/file-thumbs', { paths: loaded.map(f => f.path) })
+                    .then(r => setFileThumbs(r.thumbs || {})).catch(() => {});
+                }
+              }).catch(() => {}).finally(() => setLoading(false));
+          }}>↻ REFRESH</button>
           <button className="btn btn-secondary btn-sm" onClick={() => handleOpenFolder(selectedFolder)}>
             OPEN IN EXPLORER
           </button>
@@ -2743,11 +2762,16 @@ function App() {
   const [selectedVaultFolder, setSelectedVaultFolder] = React.useState(null);
   const [addVaultModal, setAddVaultModal] = React.useState(false);
   const [showVictory, setShowVictory] = React.useState(false);
+  const [victoryDismissing, setVictoryDismissing] = React.useState(false);
   const [victoryData, setVictoryData] = React.useState(null);
   const [playlistItems, setPlaylistItems] = React.useState(null);
   const [completedItems, setCompletedItems] = React.useState([]);
+  const [failedItems, setFailedItems] = React.useState([]);
   const [playlistTotalCount, setPlaylistTotalCount] = React.useState(0);
   const [playlistCompletedCount, setPlaylistCompletedCount] = React.useState(0);
+  const [failedCount, setFailedCount] = React.useState(0);
+  const [isPaused, setIsPaused] = React.useState(false);
+  const [pausedCount, setPausedCount] = React.useState(0);
   const playlistActiveRef = React.useRef(false);
   const currentPlaylistRef = React.useRef({ name: '', count: 0 });
   const configRef = React.useRef(config);
@@ -2821,9 +2845,26 @@ function App() {
           completedAt: Date.now(),
         }, ...prev].slice(0, 200));
         setPlaylistCompletedCount(c => c + 1);
+      } else if (data.status === 'paused') {
+        setIsPaused(true);
+        setPausedCount(1);
+        setDlState(prev => prev ? { ...prev, paused: true } : prev);
+      } else if (data.status === 'resumed') {
+        setIsPaused(false);
+        setPausedCount(0);
+        setDlState(prev => prev ? { ...prev, paused: false } : prev);
+      } else if (data.status === 'item_failed') {
+        setFailedCount(c => c + 1);
+        setFailedItems(prev => [{
+          title: data.message || 'Unknown item',
+          reason: data.reason || 'error',
+          failedAt: Date.now(),
+        }, ...prev].slice(0, 100));
       } else if (data.status === 'complete') {
         setDlState(null);
         setAppState('idle');
+        setIsPaused(false);
+        setPausedCount(0);
         setSpeedHistory(h => [...h.slice(1), 0]);
         showNotif('Download Complete', data.title || 'File saved successfully', 'success');
         refreshStats();
@@ -2836,19 +2877,26 @@ function App() {
               playlistName: currentPlaylistRef.current.name,
               itemCount: currentPlaylistRef.current.count,
             });
+            setVictoryDismissing(false);
             setShowVictory(true);
             if (victoryTimer.current) clearTimeout(victoryTimer.current);
-            victoryTimer.current = setTimeout(() => setShowVictory(false), 5000);
+            victoryTimer.current = setTimeout(() => {
+              setVictoryDismissing(true);
+              setTimeout(() => { setShowVictory(false); setVictoryDismissing(false); }, 800);
+            }, 5000);
           }
         }
       } else if (data.status === 'error') {
         setDlState(null);
         setAppState('error');
+        setIsPaused(false);
         showNotif('Error', data.message || 'Download failed', 'error');
         refreshStats();
       } else if (data.status === 'cancelled') {
         setDlState(null);
         setAppState('idle');
+        setIsPaused(false);
+        setPausedCount(0);
         showNotif('Cancelled', 'Download stopped');
       } else if (data.status === 'ytdlp_updated') {
         if (data.ok) showNotif('Updated', 'yt-dlp updated successfully', 'success');
@@ -2895,12 +2943,18 @@ function App() {
               currentPlaylistRef.current = { name: name || '', count: count || 0 };
               setPlaylistTotalCount(count || 0);
               setPlaylistCompletedCount(0);
+              setFailedCount(0);
+              setFailedItems([]);
             }}
             playlistItems={playlistItems}
             setPlaylistItems={setPlaylistItems}
             completedItems={completedItems}
+            failedItems={failedItems}
             playlistTotalCount={playlistTotalCount}
             playlistCompletedCount={playlistCompletedCount}
+            isPaused={isPaused}
+            onPause={() => API.post('/api/download/pause', {}).catch(() => {})}
+            onResume={() => API.post('/api/download/resume', {}).catch(() => {})}
           />
         )}
         {page === 'queue' && (
@@ -2910,8 +2964,14 @@ function App() {
             playlistItems={playlistItems}
             setPlaylistItems={setPlaylistItems}
             completedItems={completedItems}
+            failedItems={failedItems}
             playlistTotalCount={playlistTotalCount}
             playlistCompletedCount={playlistCompletedCount}
+            isPaused={isPaused}
+            pausedCount={pausedCount}
+            failedCount={failedCount}
+            onPause={() => API.post('/api/download/pause', {}).catch(() => {})}
+            onResume={() => API.post('/api/download/resume', {}).catch(() => {})}
           />
         )}
         {page === 'vault' && (
@@ -2945,7 +3005,11 @@ function App() {
       <Notif notif={notif} dismiss={() => setNotif(null)} />
 
       {showVictory && MASCOT_VICTORY_SAFE && (
-        <div className="victory-overlay" onClick={() => setShowVictory(false)}>
+        <div className={'victory-overlay' + (victoryDismissing ? ' dismissing' : '')} onClick={() => {
+          if (victoryTimer.current) clearTimeout(victoryTimer.current);
+          setVictoryDismissing(true);
+          setTimeout(() => { setShowVictory(false); setVictoryDismissing(false); }, 800);
+        }}>
           {[
             { delay: '0s',    tx: '80px',   ty: '-60px'  },
             { delay: '0.1s',  tx: '-70px',  ty: '-80px'  },

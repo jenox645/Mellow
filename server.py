@@ -372,6 +372,20 @@ def api_cancel() -> Response:
     return jsonify({"status": "cancelled"})
 
 
+@app.route("/api/download/pause", methods=["POST"])
+def api_pause() -> Response:
+    downloader.pause()
+    _push_progress({"status": "paused"})
+    return jsonify({"status": "paused"})
+
+
+@app.route("/api/download/resume", methods=["POST"])
+def api_resume() -> Response:
+    downloader.resume()
+    _push_progress({"status": "resumed"})
+    return jsonify({"status": "resumed"})
+
+
 @app.route("/api/progress")
 def api_progress() -> Response:
     def generate():

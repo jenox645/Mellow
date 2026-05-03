@@ -417,7 +417,8 @@
     .db-info{font-family:'Share Tech Mono',monospace;font-size:9px;color:var(--t3);display:flex;align-items:center;gap:8px}
     .db-val{color:var(--cyan)}
     /* VICTORY OVERLAY */
-    .victory-overlay{position:fixed;inset:0;background:rgba(10,15,26,0.95);backdrop-filter:blur(4px);z-index:9000;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;animation:fadein 0.4s ease-out;cursor:pointer;overflow:hidden}
+    .victory-overlay{position:fixed;inset:0;background:rgba(10,15,26,0.95);backdrop-filter:blur(4px);z-index:9000;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;animation:fadein 0.4s ease-out;cursor:pointer;overflow:hidden;transition:opacity 0.8s ease,transform 0.8s ease}
+    .victory-overlay.dismissing{opacity:0;transform:scale(1.03);pointer-events:none}
     .victory-mascot{width:340px;height:auto;animation:mascot-float 2s ease-in-out infinite;color:var(--cyan);mix-blend-mode:screen;filter:sepia(1) saturate(6.7) hue-rotate(151deg) brightness(0.87)}
     .victory-mascot svg{width:340px;height:auto;display:block}
     .victory-text{font-family:'Oxanium',sans-serif;font-size:24px;font-weight:800;color:var(--cyan);letter-spacing:6px;text-shadow:0 0 24px rgba(0,216,255,0.6);text-transform:uppercase}

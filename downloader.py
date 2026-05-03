@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import shutil as _shutil
 import threading
 import time
@@ -11,6 +12,50 @@ import yt_dlp
 import analytics
 
 _ffmpeg_ok = bool(_shutil.which("ffmpeg"))
+
+_pause_event = threading.Event()
+
+GEO_BLOCK_PATTERNS = [
+    "not made this video available in your country",
+    "not available in your region",
+    "blocked it in your country",
+    "geo.restricted",
+    "georestricted",
+    "not available in your country",
+    "this video is unavailable",
+]
+
+
+class _GeoBlockLogger:
+    def __init__(self, progress_cb: Callable, library_id: str | None) -> None:
+        self._cb = progress_cb
+        self._lid = library_id
+
+    def debug(self, msg: str) -> None:
+        pass
+
+    def info(self, msg: str) -> None:
+        pass
+
+    def warning(self, msg: str) -> None:
+        lmsg = msg.lower()
+        if any(p in lmsg for p in GEO_BLOCK_PATTERNS):
+            self._cb({"status": "item_failed", "reason": "geo_blocked", "message": msg, "library_id": self._lid})
+
+    def error(self, msg: str) -> None:
+        lmsg = msg.lower()
+        if any(p in lmsg for p in GEO_BLOCK_PATTERNS):
+            self._cb({"status": "item_failed", "reason": "geo_blocked", "message": msg, "library_id": self._lid})
+        else:
+            self._cb({"status": "item_failed", "reason": "error", "message": msg, "library_id": self._lid})
+
+
+def pause() -> None:
+    _pause_event.set()
+
+
+def resume() -> None:
+    _pause_event.clear()
 
 QUALITY_MAP: dict[str, str] = {
     "best": "bestvideo+bestaudio/best",
@@ -48,6 +93,11 @@ def _reset_cancel() -> None:
 
 def _make_progress_hook(progress_cb: Callable, library_id: str | None, speed_tracker: dict) -> Callable:
     def hook(d: dict) -> None:
+        # Pause support: block here while paused
+        while _pause_event.is_set():
+            if _is_cancelled():
+                raise yt_dlp.utils.DownloadCancelled()
+            time.sleep(0.2)
         if _is_cancelled():
             raise yt_dlp.utils.DownloadCancelled()
         status = d.get("status")
@@ -77,10 +127,15 @@ def _make_progress_hook(progress_cb: Callable, library_id: str | None, speed_tra
             })
         elif status == "finished":
             info_dict = d.get("info_dict") or {}
+            filename = d.get("filename", "")
+            thumb_url = info_dict.get("thumbnail")
+            # Save sidecar immediately — filename and URL are live right now
+            if filename:
+                _save_thumbnail_sidecar(filename, thumb_url)
             progress_cb({
                 "status": "item_done",
-                "title": info_dict.get("title") or Path(d.get("filename", "")).stem,
-                "thumbnail": info_dict.get("thumbnail"),
+                "title": info_dict.get("title") or Path(filename).stem,
+                "thumbnail": thumb_url,
                 "playlist_index": info_dict.get("playlist_index"),
                 "library_id": library_id,
             })
@@ -117,15 +172,26 @@ def _build_postprocessors(opts: dict) -> list[dict]:
 
 def _save_thumbnail_sidecar(filepath: str, thumb_url: str | None) -> None:
     if not thumb_url or not filepath:
+        print(f"[THUMB DEBUG] skipped — filepath={filepath!r} url={thumb_url!r}", flush=True)
+        return
+    p = Path(filepath)
+    stem = p.stem
+    # Strip yt-dlp format codes like .f137 .f251 appended to stem before extension
+    clean_stem = re.sub(r'\.[A-Za-z0-9_-]{1,8}$', '', stem)
+    sidecar = p.parent / ((clean_stem or stem) + ".jpg")
+    print(f"[THUMB DEBUG] filepath={filepath}", flush=True)
+    print(f"[THUMB DEBUG] thumbnail_url={thumb_url}", flush=True)
+    print(f"[THUMB DEBUG] sidecar={sidecar}", flush=True)
+    if sidecar.exists():
+        print(f"[THUMB DEBUG] already exists, skipping", flush=True)
         return
     try:
         from urllib.request import urlretrieve
-        p = Path(filepath)
-        sidecar = p.with_suffix(".jpg")
-        if not sidecar.exists():
-            urlretrieve(thumb_url, str(sidecar))
-    except Exception:
-        pass
+        urlretrieve(thumb_url, str(sidecar))
+        size = sidecar.stat().st_size if sidecar.exists() else 0
+        print(f"[THUMB DEBUG] saved OK ({size} bytes)", flush=True)
+    except Exception as e:
+        print(f"[THUMB ERROR] failed to save sidecar: {e}", flush=True)
 
 
 def _detect_platform(url: str) -> str:
@@ -297,6 +363,12 @@ def download_video(
         ydl_opts["datebefore"] = date_before.replace("-", "")
     if date_after:
         ydl_opts["dateafter"] = date_after.replace("-", "")
+
+    # For playlist-like downloads: skip geo-blocked/failed items instead of aborting
+    _is_playlist = bool(playlist_items_str) or "list=" in url or "/playlist" in url.lower()
+    if _is_playlist:
+        ydl_opts["ignoreerrors"] = True
+        ydl_opts["logger"] = _GeoBlockLogger(progress_cb, library_id)
 
     final_path: str | None = None
     final_size: int = 0
