@@ -31,6 +31,71 @@ _progress_queue: queue.Queue = queue.Queue()
 _active_thread: threading.Thread | None = None
 _tk_lock = threading.Lock()
 
+# ── Download job queue (single-worker — one download at a time) ────────────────
+_dl_queue: queue.Queue = queue.Queue()
+_dl_jobs: list[dict] = []
+_dl_jobs_lock = threading.Lock()
+
+
+def _enqueue_job(url: str, output_dir: str, opts: dict,
+                 library_id: str | None = None,
+                 job_type: str = "feed",
+                 label: str = "",
+                 multi_urls: list | None = None) -> dict:
+    job: dict = {
+        "id": str(uuid.uuid4()),
+        "type": job_type,
+        "label": label or url,
+        "url": url,
+        "multi_urls": multi_urls,
+        "output_dir": output_dir,
+        "opts": opts,
+        "library_id": library_id,
+        "status": "queued",
+    }
+    with _dl_jobs_lock:
+        _dl_jobs.append(job)
+    _dl_queue.put(job)
+    return job
+
+
+def _run_job(job: dict) -> None:
+    urls = job.get("multi_urls") or [job["url"]]
+    for url in urls:
+        if downloader._is_cancelled():
+            break
+        downloader.download_video(url, job["output_dir"], job["opts"],
+                                   _push_progress, job.get("library_id"))
+
+
+def _queue_worker() -> None:
+    while True:
+        job = _dl_queue.get()
+        if job is None:
+            break
+        with _dl_jobs_lock:
+            job["status"] = "active"
+        try:
+            _run_job(job)
+            with _dl_jobs_lock:
+                job["status"] = "complete"
+        except Exception as exc:
+            with _dl_jobs_lock:
+                job["status"] = "failed"
+                job["error"] = str(exc)
+        finally:
+            _dl_queue.task_done()
+            with _dl_jobs_lock:
+                done = [j for j in _dl_jobs if j["status"] in ("complete", "failed", "cancelled")]
+                if len(done) > 20:
+                    for old in done[:-20]:
+                        if old in _dl_jobs:
+                            _dl_jobs.remove(old)
+
+
+_worker_thread = threading.Thread(target=_queue_worker, daemon=True)
+_worker_thread.start()
+
 
 def _load_config() -> dict:
     if CONFIG_PATH.exists():
@@ -58,20 +123,45 @@ def _save_config(cfg: dict) -> None:
     CONFIG_PATH.write_text(json.dumps(cfg, indent=2), encoding="utf-8")
 
 
+def _fire_webhooks(event_type: str, payload: dict) -> None:
+    try:
+        from urllib.request import Request as _Req, urlopen as _urlopen
+        cfg = _load_config()
+        urls = cfg.get("webhooks", {}).get(event_type, [])
+        body = json.dumps({"event": event_type,
+                           "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                           "data": payload}).encode()
+        for wh_url in urls:
+            try:
+                req = _Req(wh_url, data=body, method="POST",
+                           headers={"Content-Type": "application/json"})
+                _urlopen(req, timeout=5)
+            except Exception as wh_exc:
+                print(f"[WEBHOOK] {event_type} → {wh_url} failed: {wh_exc}", flush=True)
+    except Exception:
+        pass
+
+
 def _push_progress(event: dict) -> None:
     _progress_queue.put(event)
+    status = event.get("status")
+    if status in ("complete", "error"):
+        threading.Thread(target=_fire_webhooks, args=(status, event), daemon=True).start()
 
 
 def _open_in_explorer(path: str) -> None:
     p = Path(path)
-    target = str(p if p.is_dir() else p.parent)
     system = platform.system()
     if system == "Windows":
-        subprocess.Popen(["explorer", target])
+        norm = os.path.normpath(str(p))
+        if p.is_file():
+            subprocess.Popen(["explorer", f"/select,{norm}"])
+        else:
+            subprocess.Popen(["explorer", os.path.normpath(str(p if p.is_dir() else p.parent))])
     elif system == "Darwin":
-        subprocess.Popen(["open", target])
+        subprocess.Popen(["open", str(p if p.is_dir() else p.parent)])
     else:
-        subprocess.Popen(["xdg-open", target])
+        subprocess.Popen(["xdg-open", str(p if p.is_dir() else p.parent)])
 
 
 def _open_file(path: str) -> None:
@@ -177,6 +267,38 @@ def api_browse_file() -> Response:
     return jsonify({"path": path})
 
 
+_ARCHIVE_PLATFORM_MAP = {
+    "youtube": "https://www.youtube.com/watch?v={}",
+    "soundcloud": "https://soundcloud.com/track/{}",
+    "twitter": "https://twitter.com/i/status/{}",
+    "vimeo": "https://vimeo.com/{}",
+    "twitch": "https://www.twitch.tv/videos/{}",
+}
+
+
+def _parse_url_file(content: str) -> tuple[list[str], str]:
+    """Parse a text file of URLs or a yt-dlp archive file.
+    Returns (urls, detected_format).
+    """
+    urls: list[str] = []
+    fmt = "url_list"
+    for line in content.strip().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("http"):
+            urls.append(line)
+        else:
+            parts = line.split()
+            if len(parts) == 2:
+                platform_name, video_id = parts
+                tmpl = _ARCHIVE_PLATFORM_MAP.get(platform_name.lower())
+                if tmpl:
+                    urls.append(tmpl.format(video_id))
+                    fmt = "archive"
+    return urls, fmt
+
+
 @app.route("/api/read-url-file", methods=["POST"])
 def api_read_url_file() -> Response:
     data = request.get_json(force=True) or {}
@@ -184,9 +306,9 @@ def api_read_url_file() -> Response:
     if not path or not os.path.isfile(path):
         return jsonify({"error": "File not found"}), 400
     try:
-        with open(path, "r", encoding="utf-8", errors="ignore") as fh:
-            urls = [line.strip() for line in fh if line.strip() and not line.strip().startswith("#")]
-        return jsonify({"urls": urls})
+        content = open(path, "r", encoding="utf-8", errors="ignore").read()
+        urls, fmt = _parse_url_file(content)
+        return jsonify({"urls": urls, "format": fmt, "count": len(urls)})
     except Exception as exc:
         return jsonify({"error": str(exc)}), 500
 
@@ -224,6 +346,13 @@ def api_system() -> Response:
     })
 
 
+def _parse_ytdlp_ver(v: str) -> tuple:
+    try:
+        return tuple(int(x) for x in v.strip().split("."))
+    except Exception:
+        return (0, 0, 0)
+
+
 @app.route("/api/check-ytdlp-update")
 def api_check_ytdlp_update() -> Response:
     def _check() -> dict:
@@ -241,9 +370,11 @@ def api_check_ytdlp_update() -> Response:
             latest = payload["info"]["version"]
         except (URLError, KeyError, Exception) as exc:
             return {"error": str(exc), "installed": installed, "latest": None, "current": installed}
+        update_available = _parse_ytdlp_ver(latest) > _parse_ytdlp_ver(installed)
+        print(f"[YTDLP CHECK] installed={installed} latest={latest} update={update_available}", flush=True)
         return {
             "installed": installed, "latest": latest, "current": installed,
-            "update_available": latest != installed,
+            "update_available": update_available,
         }
     return jsonify(_check())
 
@@ -376,8 +507,8 @@ def api_download() -> Response:
         "concurrent_fragments": cfg.get("concurrent_fragments", 4),
         "sleep_interval": cfg.get("sleep_interval", 0),
     }
-    _active_thread = downloader.download_in_thread(url, output_dir, opts, _push_progress)
-    return jsonify({"status": "started"})
+    job = _enqueue_job(url, output_dir, opts, job_type="feed", label=url)
+    return jsonify({"status": "started", "job_id": job["id"]})
 
 
 @app.route("/api/cancel", methods=["POST"])
@@ -412,6 +543,37 @@ def api_progress() -> Response:
                 yield 'data: {"status":"ping"}\n\n'
     return Response(generate(), mimetype="text/event-stream",
                     headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+@app.route("/api/queue/status")
+def api_queue_status() -> Response:
+    with _dl_jobs_lock:
+        jobs = [
+            {k: v for k, v in j.items() if k not in ("opts", "multi_urls")}
+            for j in _dl_jobs
+        ]
+    return jsonify({
+        "jobs": jobs,
+        "queued": sum(1 for j in jobs if j["status"] == "queued"),
+        "active": sum(1 for j in jobs if j["status"] == "active"),
+    })
+
+
+# ── Webhooks ──────────────────────────────────────────────────────────────────
+
+@app.route("/api/webhooks", methods=["GET"])
+def api_webhooks_get() -> Response:
+    cfg = _load_config()
+    return jsonify(cfg.get("webhooks", {"complete": [], "error": []}))
+
+
+@app.route("/api/webhooks", methods=["POST"])
+def api_webhooks_post() -> Response:
+    data = request.get_json(force=True) or {}
+    cfg = _load_config()
+    cfg["webhooks"] = data
+    _save_config(cfg)
+    return jsonify({"ok": True})
 
 
 # ── History ───────────────────────────────────────────────────────────────────
@@ -846,10 +1008,14 @@ def api_vault_sync() -> Response:
     output_dir = path
     sync_quality = data.get("quality") or (lib["quality"] if lib else cfg.get("quality_default", "1080p"))
     sync_container = (data.get("container") or "mp4").lower()
+    sync_audio = data.get("sync_audio", False)
+    sync_audio_fmt = data.get("audio_format", "mp3")
     opts = {
         "mode": "library",
         "quality": sync_quality,
         "container": sync_container,
+        "sync_audio": sync_audio,
+        "audio_format": sync_audio_fmt,
         "embed_thumbnail": lib["embed_thumbnail"] if lib else cfg.get("embed_thumbnail", True),
         "embed_chapters": lib["embed_chapters"] if lib else True,
         "embed_metadata": lib["embed_metadata"] if lib else True,
@@ -862,18 +1028,12 @@ def api_vault_sync() -> Response:
     }
     library_id = lib["id"] if lib else None
 
-    # Run all linked playlists sequentially in one thread
+    # Enqueue all linked playlists as a single sync job (processed sequentially)
     playlist_urls = list(vp)
-
-    def _sync_all() -> None:
-        for playlist_url in playlist_urls:
-            print(f"[SYNC] syncing playlist: {playlist_url}", flush=True)
-            try:
-                downloader.download_video(playlist_url, output_dir, opts, _push_progress, library_id)
-            except Exception as exc:
-                print(f"[SYNC] error on {playlist_url}: {exc}", flush=True)
-
-    threading.Thread(target=_sync_all, daemon=True).start()
+    label = f"Sync — {Path(path).name} ({len(playlist_urls)} playlist(s))"
+    _enqueue_job(playlist_urls[0] if len(playlist_urls) == 1 else path,
+                 output_dir, opts, library_id, job_type="sync", label=label,
+                 multi_urls=playlist_urls)
     vault_sync_times = cfg.get("vault_sync_times", {})
     vault_sync_times[path] = time.strftime("%Y-%m-%dT%H:%M:%S")
     cfg["vault_sync_times"] = vault_sync_times
@@ -907,25 +1067,45 @@ def api_vault_mirror_preview() -> Response:
         except Exception as exc:
             print(f"[MIRROR-PREVIEW] failed to fetch {playlist_url}: {exc}", flush=True)
 
-    # Scan local media files: only delete files whose ID is confirmed NOT in any playlist
+    # Collect local video IDs from filenames and archive files
     import re as _re
     p = Path(path)
     media_exts = {'.mp3', '.mp4', '.mkv', '.webm', '.flac', '.m4a', '.wav', '.opus', '.aac', '.ogg', '.avi', '.mov'}
-    to_delete = []
+    local_ids: dict[str, str] = {}  # video_id -> filename
     for f in p.iterdir():
         if not f.is_file() or f.suffix.lower() not in media_exts:
             continue
         m = _re.search(r'\[([A-Za-z0-9_-]{11})\]', f.name)
-        if not m:
-            # No video ID in filename — cannot confirm it belongs to or is missing from playlist, skip
-            continue
-        vid_id = m.group(1)
-        if vid_id in playlist_ids:
-            continue  # ID confirmed in playlist — keep
-        if playlist_ids:  # only flag if we successfully fetched at least one playlist
-            to_delete.append({"path": str(f), "name": f.name, "size": f.stat().st_size})
+        if m:
+            local_ids[m.group(1)] = f.name
+    for archive_file in p.glob(".mellow_archive_*.txt"):
+        try:
+            for line in archive_file.read_text(encoding="utf-8", errors="ignore").splitlines():
+                parts = line.strip().split()
+                if len(parts) == 2:
+                    local_ids.setdefault(parts[1], parts[1])
+        except Exception:
+            pass
 
-    return jsonify({"to_delete": to_delete, "playlist_count": len(vp), "playlist_ids_found": len(playlist_ids)})
+    # Compute diff
+    to_delete = []
+    for vid_id, fname in local_ids.items():
+        if vid_id not in playlist_ids and playlist_ids:
+            f_path = p / fname
+            size = f_path.stat().st_size if f_path.exists() else 0
+            to_delete.append({"path": str(f_path) if f_path.exists() else fname,
+                               "name": fname, "size": size, "video_id": vid_id})
+
+    to_add_count = len(playlist_ids - set(local_ids.keys()))
+    unchanged_count = len(playlist_ids & set(local_ids.keys()))
+
+    return jsonify({
+        "to_delete": to_delete,
+        "to_add_count": to_add_count,
+        "unchanged_count": unchanged_count,
+        "playlist_count": len(vp),
+        "playlist_ids_found": len(playlist_ids),
+    })
 
 
 @app.route("/api/vault/mirror-confirm", methods=["POST"])
@@ -1099,12 +1279,10 @@ def api_library_sync(entry_id: str) -> Response:
         "sleep_interval": cfg.get("sleep_interval", 1),
     }
 
-    def _sync() -> None:
-        analytics.update_library_last_synced(entry_id)
-        downloader.download_video(entry["url"], output_dir, opts, _push_progress, entry_id)
-
-    threading.Thread(target=_sync, daemon=True).start()
-    return jsonify({"status": "started", "library_id": entry_id})
+    analytics.update_library_last_synced(entry_id)
+    job = _enqueue_job(entry["url"], output_dir, opts, entry_id,
+                       job_type="sync", label=f"Library sync — {entry.get('name','')}")
+    return jsonify({"status": "started", "library_id": entry_id, "job_id": job["id"]})
 
 
 # ── App init ──────────────────────────────────────────────────────────────────

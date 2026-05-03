@@ -2203,6 +2203,57 @@ function SignalApiPage() {
   const [result, setResult] = React.useState(null);
   const [running, setRunning] = React.useState(false);
   const [schemaOpen, setSchemaOpen] = React.useState(false);
+  const [docsOpen, setDocsOpen] = React.useState(false);
+  const [webhooksOpen, setWebhooksOpen] = React.useState(false);
+  const [eventsOpen, setEventsOpen] = React.useState(false);
+  const [webhooks, setWebhooks] = React.useState({ complete: [], error: [] });
+  const [whCompleteUrl, setWhCompleteUrl] = React.useState('');
+  const [whErrorUrl, setWhErrorUrl] = React.useState('');
+  const [whSaving, setWhSaving] = React.useState(false);
+  const [liveEvents, setLiveEvents] = React.useState([]);
+  const liveEventsRef = React.useRef(null);
+  const liveEsRef = React.useRef(null);
+
+  React.useEffect(() => {
+    API.get('/api/webhooks').then(setWebhooks).catch(() => {});
+  }, []);
+
+  React.useEffect(() => {
+    if (!eventsOpen) {
+      if (liveEsRef.current) { liveEsRef.current.close(); liveEsRef.current = null; }
+      return;
+    }
+    const es = new EventSource('/api/progress');
+    liveEsRef.current = es;
+    es.onmessage = (e) => {
+      try {
+        const d = JSON.parse(e.data);
+        if (d.status === 'ping') return;
+        setLiveEvents(prev => {
+          const entry = { ts: new Date().toLocaleTimeString(), ...d };
+          return [entry, ...prev].slice(0, 50);
+        });
+      } catch {}
+    };
+    return () => { es.close(); liveEsRef.current = null; };
+  }, [eventsOpen]);
+
+  const saveWebhooks = () => {
+    const updated = {
+      complete: whCompleteUrl.trim() ? [whCompleteUrl.trim()] : webhooks.complete,
+      error: whErrorUrl.trim() ? [whErrorUrl.trim()] : webhooks.error,
+    };
+    setWhSaving(true);
+    API.post('/api/webhooks', updated)
+      .then(() => { setWebhooks(updated); setWhCompleteUrl(''); setWhErrorUrl(''); })
+      .catch(() => {})
+      .finally(() => setWhSaving(false));
+  };
+
+  const removeWebhook = (type, url) => {
+    const updated = { ...webhooks, [type]: webhooks[type].filter(u => u !== url) };
+    API.post('/api/webhooks', updated).then(() => setWebhooks(updated)).catch(() => {});
+  };
 
   const runQuery = React.useCallback(() => {
     if (!sql.trim()) return;
@@ -2320,16 +2371,111 @@ function SignalApiPage() {
 
       {/* SCHEMA */}
       <div style={{ marginTop: 16 }}>
-        <div
-          className="opts-adv-toggle"
-          style={{ padding: '10px 0', borderTop: '1px solid var(--border)' }}
-          onClick={() => setSchemaOpen(o => !o)}
-        >
+        <div className="opts-adv-toggle" style={{ padding: '10px 0', borderTop: '1px solid var(--border)' }}
+          onClick={() => setSchemaOpen(o => !o)}>
           <span dangerouslySetInnerHTML={{ __html: schemaOpen ? SVG.chevron_down : SVG.chevron_right }} />
           SCHEMA REFERENCE
         </div>
-        {schemaOpen && (
-          <div className="schema-block">{SCHEMA_TEXT}</div>
+        {schemaOpen && <div className="schema-block">{SCHEMA_TEXT}</div>}
+      </div>
+
+      {/* REST API DOCS */}
+      <div style={{ marginTop: 4 }}>
+        <div className="opts-adv-toggle" style={{ padding: '10px 0', borderTop: '1px solid var(--border)' }}
+          onClick={() => setDocsOpen(o => !o)}>
+          <span dangerouslySetInnerHTML={{ __html: docsOpen ? SVG.chevron_down : SVG.chevron_right }} />
+          API REFERENCE
+        </div>
+        {docsOpen && (
+          <div className="schema-block" style={{ fontSize: 10, lineHeight: 1.8 }}>
+            {[
+              ['GET',  '/api/status',        'System status + yt-dlp version'],
+              ['GET',  '/api/stats',          'Download statistics'],
+              ['GET',  '/api/queue/status',   'Current job queue'],
+              ['POST', '/api/download',       'Start download  {url, mode, quality, container, audio_format, ...}'],
+              ['POST', '/api/cancel',         'Cancel active download'],
+              ['POST', '/api/download/pause', 'Pause active download'],
+              ['POST', '/api/download/resume','Resume paused download'],
+              ['GET',  '/api/vault',          'Vault folder list'],
+              ['POST', '/api/vault/sync',     'Sync vault folder  {path, quality, container, sync_audio, audio_format}'],
+              ['GET',  '/api/history',        'Download history  ?limit=50&offset=0&search='],
+              ['GET',  '/api/progress',       'SSE event stream (text/event-stream)'],
+            ].map(([method, path, desc]) => (
+              <div key={path} style={{ display: 'flex', gap: 8, padding: '2px 0' }}>
+                <span style={{ color: method === 'GET' ? 'var(--cyan)' : 'var(--amber)', minWidth: 36 }}>{method}</span>
+                <span style={{ color: 'var(--t1)', minWidth: 220 }}>{path}</span>
+                <span style={{ color: 'var(--t4)' }}>{desc}</span>
+              </div>
+            ))}
+            <div style={{ marginTop: 8, color: 'var(--t3)' }}>
+              Base URL: <span style={{ color: 'var(--cyan)' }}>{window.location.origin}</span>
+              <button className="btn btn-secondary btn-sm" style={{ marginLeft: 12 }}
+                onClick={() => navigator.clipboard.writeText(window.location.origin).catch(() => {})}>
+                COPY
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* OUTBOUND WEBHOOKS */}
+      <div style={{ marginTop: 4 }}>
+        <div className="opts-adv-toggle" style={{ padding: '10px 0', borderTop: '1px solid var(--border)' }}
+          onClick={() => setWebhooksOpen(o => !o)}>
+          <span dangerouslySetInnerHTML={{ __html: webhooksOpen ? SVG.chevron_down : SVG.chevron_right }} />
+          OUTBOUND WEBHOOKS
+        </div>
+        {webhooksOpen && (
+          <div style={{ padding: '8px 0', fontFamily: 'Share Tech Mono, monospace', fontSize: 10 }}>
+            <div style={{ color: 'var(--t4)', marginBottom: 8 }}>POST JSON to external URLs on download events</div>
+            {[['complete', whCompleteUrl, setWhCompleteUrl], ['error', whErrorUrl, setWhErrorUrl]].map(([evt, val, setVal]) => (
+              <div key={evt} style={{ marginBottom: 12 }}>
+                <div style={{ color: 'var(--t3)', marginBottom: 4 }}>ON {evt.toUpperCase()}</div>
+                {(webhooks[evt] || []).map(url => (
+                  <div key={url} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 4 }}>
+                    <span style={{ flex: 1, color: 'var(--cyan)', overflow: 'hidden', textOverflow: 'ellipsis' }}>{url}</span>
+                    <span style={{ cursor: 'pointer', color: 'var(--red)' }} onClick={() => removeWebhook(evt, url)}>✕</span>
+                  </div>
+                ))}
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <input className="form-input" style={{ flex: 1 }} value={val}
+                    onChange={e => setVal(e.target.value)} placeholder="https://hooks.example.com/..." />
+                </div>
+              </div>
+            ))}
+            <button className="btn btn-primary btn-sm" onClick={saveWebhooks} disabled={whSaving}>
+              {whSaving ? 'SAVING...' : 'SAVE WEBHOOKS'}
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* LIVE EVENT STREAM */}
+      <div style={{ marginTop: 4 }}>
+        <div className="opts-adv-toggle" style={{ padding: '10px 0', borderTop: '1px solid var(--border)' }}
+          onClick={() => setEventsOpen(o => !o)}>
+          <span dangerouslySetInnerHTML={{ __html: eventsOpen ? SVG.chevron_down : SVG.chevron_right }} />
+          LIVE EVENT STREAM {eventsOpen && <span style={{ color: 'var(--cyan)', fontSize: 9, marginLeft: 8 }}>● CONNECTED</span>}
+        </div>
+        {eventsOpen && (
+          <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', padding: 8 }}>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 4 }}>
+              <button className="btn btn-secondary btn-sm" onClick={() => setLiveEvents([])}>CLEAR</button>
+            </div>
+            <div ref={liveEventsRef} style={{ maxHeight: 220, overflow: 'auto', fontFamily: 'Share Tech Mono, monospace', fontSize: 9 }}>
+              {liveEvents.length === 0
+                ? <div style={{ color: 'var(--t4)', textAlign: 'center', padding: 12 }}>Waiting for events...</div>
+                : liveEvents.map((ev, i) => (
+                  <div key={i} style={{ display: 'flex', gap: 10, padding: '2px 0', borderBottom: '1px solid var(--border)' }}>
+                    <span style={{ color: 'var(--t4)', flexShrink: 0 }}>{ev.ts}</span>
+                    <span style={{ color: 'var(--amber)', flexShrink: 0, minWidth: 80 }}>{ev.status}</span>
+                    <span style={{ color: 'var(--t2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {ev.title || ev.message || ev.current_item_title || (ev.pct !== undefined ? ev.pct + '%' : '')}
+                    </span>
+                  </div>
+                ))}
+            </div>
+          </div>
         )}
       </div>
     </div>
@@ -2854,9 +3000,23 @@ function App() {
         if (data.video_id && processedCompletions.current.has(data.video_id)) return;
         if (data.video_id) processedCompletions.current.add(data.video_id);
         const idx = data.playlist_index;
+        const vid = data.video_id;
+        const title = data.title;
         setPlaylistItems(prev => {
           if (!prev) return prev;
-          if (idx !== undefined && idx !== null) return prev.filter(x => x.idx !== idx);
+          // Try most specific match first, then fall back
+          if (vid) {
+            const byId = prev.filter(x => x.video_id !== vid);
+            if (byId.length < prev.length) return byId;
+          }
+          if (idx !== undefined && idx !== null) {
+            const byIdx = prev.filter(x => x.idx !== idx);
+            if (byIdx.length < prev.length) return byIdx;
+          }
+          if (title) {
+            const byTitle = prev.filter(x => x.title !== title);
+            if (byTitle.length < prev.length) return byTitle;
+          }
           return prev.length > 0 ? prev.slice(1) : prev;
         });
         setCompletedItems(prev => {
@@ -3197,13 +3357,14 @@ function LinkPlaylistModal({ folder, onClose, showNotif }) {
         if (!d.path) { setImporting(false); return; }
         return API.post('/api/read-url-file', { path: d.path })
           .then(r => {
-            const urls = (r.urls || []).filter(u => u.startsWith('http'));
-            if (!urls.length) { showNotif('No URLs', 'No valid URLs found in file', 'error'); setImporting(false); return; }
+            const urls = r.urls || [];
+            if (!urls.length) { showNotif('No URLs', 'No valid URLs found in file (format: http... or "youtube VIDEO_ID")', 'error'); setImporting(false); return; }
+            const fmt = r.format === 'archive' ? 'archive' : 'URL list';
             return urls.reduce((chain, url) =>
               chain.then(() => API.post('/api/vault/playlists', { path: folder.path, url }))
             , Promise.resolve())
               .then(() => API.get('/api/vault/playlists?path=' + encodeURIComponent(folder.path)))
-              .then(d2 => { setPlaylists(d2.playlists || []); showNotif('Imported', urls.length + ' URL(s) linked', 'success'); });
+              .then(d2 => { setPlaylists(d2.playlists || []); showNotif('Imported', urls.length + ' URL(s) from ' + fmt, 'success'); });
           });
       })
       .catch(e => showNotif('Error', e.message || 'Import failed', 'error'))
@@ -3248,8 +3409,10 @@ function LinkPlaylistModal({ folder, onClose, showNotif }) {
 function SyncPlaylistModal({ folder, onClose, showNotif, onRefreshVault }) {
   const [playlists, setPlaylists] = React.useState(null);
   const [syncMode, setSyncMode] = React.useState('add');
+  const [syncMediaType, setSyncMediaType] = React.useState('video'); // 'video' | 'audio'
   const [syncQuality, setSyncQuality] = React.useState('1080p');
   const [syncContainer, setSyncContainer] = React.useState('mp4');
+  const [syncAudioFmt, setSyncAudioFmt] = React.useState('mp3');
   const [syncing, setSyncing] = React.useState(false);
   const [mirrorPreview, setMirrorPreview] = React.useState(null); // files to delete
   const [previewing, setPreviewing] = React.useState(false);
@@ -3262,7 +3425,9 @@ function SyncPlaylistModal({ folder, onClose, showNotif, onRefreshVault }) {
   }, [folder.path]);
 
   const handleSync = () => {
-    const fmtOpts = { quality: syncQuality, container: syncContainer };
+    const fmtOpts = syncMediaType === 'audio'
+      ? { sync_audio: true, audio_format: syncAudioFmt }
+      : { quality: syncQuality, container: syncContainer };
     if (syncMode === 'mirror') {
       // For mirror: fetch preview first, then show confirm step
       setPreviewing(true);
@@ -3303,22 +3468,25 @@ function SyncPlaylistModal({ folder, onClose, showNotif, onRefreshVault }) {
   // Mirror confirm step
   if (mirrorPreview) {
     const toDelete = mirrorPreview.to_delete || [];
+    const toAddCount = mirrorPreview.to_add_count || 0;
+    const unchangedCount = mirrorPreview.unchanged_count || 0;
     return (
-      <Modal title={'CONFIRM MIRROR — ' + folder.name.toUpperCase()} onClose={onClose} footer={
+      <Modal title={'MIRROR DIFF — ' + folder.name.toUpperCase()} onClose={onClose} footer={
         <>
           <button className="btn btn-secondary btn-sm" onClick={() => setMirrorPreview(null)}>BACK</button>
           <button className="btn btn-danger btn-sm" onClick={handleMirrorConfirm} disabled={confirming}>
-            {confirming ? 'DELETING...' : 'CONFIRM MIRROR (' + toDelete.length + ' DELETE)'}
+            {confirming ? 'APPLYING...' : 'APPLY MIRROR'}
           </button>
         </>
       }>
-        <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 10, color: 'var(--amber)', padding: '8px 0' }}>
-          {toDelete.length === 0
-            ? 'No local files to delete — all files are in the playlist.'
-            : toDelete.length + ' local file(s) not found in linked playlist(s) will be deleted:'}
+        <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 10, padding: '6px 0', borderBottom: '1px solid var(--border)', marginBottom: 8 }}>
+          {toAddCount > 0 && <div style={{ color: 'var(--cyan)' }}>+ {toAddCount} new item(s) will be downloaded</div>}
+          {toDelete.length > 0 && <div style={{ color: 'var(--red)' }}>− {toDelete.length} item(s) will be deleted (not in any playlist)</div>}
+          {unchangedCount > 0 && <div style={{ color: 'var(--t4)' }}>= {unchangedCount} item(s) unchanged</div>}
+          {toAddCount === 0 && toDelete.length === 0 && <div style={{ color: 'var(--t3)' }}>No changes — folder matches all linked playlists.</div>}
         </div>
         {toDelete.length > 0 && (
-          <div style={{ maxHeight: 200, overflow: 'auto' }}>
+          <div style={{ maxHeight: 180, overflow: 'auto' }}>
             {toDelete.map((f, i) => (
               <div key={i} style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: 'var(--red)', padding: '2px 0', borderBottom: '1px solid var(--border)' }}>
                 {f.name} <span style={{ color: 'var(--t4)' }}>({fmtBytes(f.size)})</span>
@@ -3360,21 +3528,41 @@ function SyncPlaylistModal({ folder, onClose, showNotif, onRefreshVault }) {
             </div>
           </div>
           <div className="form-row">
-            <div className="form-label">QUALITY</div>
-            <div className="pills">
-              {['best','1080p','720p','480p'].map(q => (
-                <div key={q} className={'pill' + (syncQuality === q ? ' active' : '')} onClick={() => setSyncQuality(q)}>{q.toUpperCase()}</div>
-              ))}
+            <div className="form-label">MEDIA TYPE</div>
+            <div className="opts-tabs" style={{ marginTop: 0 }}>
+              <div className={'opts-tab' + (syncMediaType === 'video' ? ' active' : '')} onClick={() => setSyncMediaType('video')}>VIDEO</div>
+              <div className={'opts-tab' + (syncMediaType === 'audio' ? ' active' : '')} onClick={() => setSyncMediaType('audio')}>AUDIO ONLY</div>
             </div>
           </div>
-          <div className="form-row">
-            <div className="form-label">CONTAINER</div>
-            <div className="pills">
-              {['mp4','mkv','webm'].map(c => (
-                <div key={c} className={'pill' + (syncContainer === c ? ' active' : '')} onClick={() => setSyncContainer(c)}>{c.toUpperCase()}</div>
-              ))}
+          {syncMediaType === 'video' ? (
+            <>
+              <div className="form-row">
+                <div className="form-label">QUALITY</div>
+                <div className="pills">
+                  {['best','1080p','720p','480p'].map(q => (
+                    <div key={q} className={'pill' + (syncQuality === q ? ' active' : '')} onClick={() => setSyncQuality(q)}>{q.toUpperCase()}</div>
+                  ))}
+                </div>
+              </div>
+              <div className="form-row">
+                <div className="form-label">CONTAINER</div>
+                <div className="pills">
+                  {['mp4','mkv','webm'].map(c => (
+                    <div key={c} className={'pill' + (syncContainer === c ? ' active' : '')} onClick={() => setSyncContainer(c)}>{c.toUpperCase()}</div>
+                  ))}
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="form-row">
+              <div className="form-label">FORMAT</div>
+              <div className="pills">
+                {['mp3','aac','flac','m4a','opus','wav'].map(f => (
+                  <div key={f} className={'pill' + (syncAudioFmt === f ? ' active' : '')} onClick={() => setSyncAudioFmt(f)}>{f.toUpperCase()}</div>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
           <div className="form-row">
             <div className="form-label">SYNC MODE</div>
             <div className="pills">

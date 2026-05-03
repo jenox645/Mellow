@@ -297,18 +297,36 @@ def download_video(
         }
     elif mode == "library":
         archive_path = str(out_dir / f".mellow_archive_{library_id or 'archive'}.txt")
-        lib_fmt = custom_format if custom_format else QUALITY_MAP.get(quality, "bestvideo+bestaudio/best")
+        sync_audio = opts.get("sync_audio", False)
         pps = _build_postprocessors(opts)
-        ydl_opts = {
-            "format": lib_fmt,
-            "merge_output_format": container,
-            "outtmpl": outtmpl,
-            "postprocessors": pps,
-            "progress_hooks": [hook],
-            "download_archive": archive_path,
-            "ignoreerrors": True,
-            "windows_filenames": True,
-        }
+        if sync_audio:
+            lib_audio_fmt = opts.get("audio_format", "mp3")
+            pps = [{
+                "key": "FFmpegExtractAudio",
+                "preferredcodec": AUDIO_FORMAT_MAP.get(lib_audio_fmt, "mp3"),
+                "preferredquality": "0",
+            }] + _build_postprocessors(opts)
+            ydl_opts = {
+                "format": "bestaudio/best",
+                "outtmpl": outtmpl,
+                "postprocessors": pps,
+                "progress_hooks": [hook],
+                "download_archive": archive_path,
+                "ignoreerrors": True,
+                "windows_filenames": True,
+            }
+        else:
+            lib_fmt = custom_format if custom_format else QUALITY_MAP.get(quality, "bestvideo+bestaudio/best")
+            ydl_opts = {
+                "format": lib_fmt,
+                "merge_output_format": container,
+                "outtmpl": outtmpl,
+                "postprocessors": pps,
+                "progress_hooks": [hook],
+                "download_archive": archive_path,
+                "ignoreerrors": True,
+                "windows_filenames": True,
+            }
     else:
         fmt = custom_format if custom_format else QUALITY_MAP.get(quality, "bestvideo+bestaudio/best")
         pps = _build_postprocessors(opts)
