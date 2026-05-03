@@ -1248,9 +1248,11 @@ function QueuePage({ dlState, showNotif, playlistItems, setPlaylistItems, comple
           </div>
           <div className="q-item row-active">
             <span className="q-drag">⋮⋮</span>
-            <div className="q-thumb-ph">▶</div>
+            {dlState.current_item_thumb
+              ? <img src={dlState.current_item_thumb} style={{ width: 64, height: 36, objectFit: 'cover', display: 'block', borderRadius: 0, flexShrink: 0 }} onError={e => { e.target.style.display = 'none'; }} />
+              : <div className="q-thumb-ph">▶</div>}
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div className="q-name" style={{ marginBottom: 4 }}>{dlState.filename || 'Downloading...'}</div>
+              <div className="q-name" style={{ marginBottom: 4 }}>{dlState.current_item_title || dlState.filename || 'Downloading...'}</div>
               <div className="prog-bar" style={{ height: 4 }}>
                 <div className="prog-bar-fill" style={{ width: (dlState.pct || 0) + '%' }} />
               </div>
@@ -1373,6 +1375,8 @@ function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, config, sh
   const [linkPlModal, setLinkPlModal] = React.useState(null);
   const [renameModal, setRenameModal] = React.useState(null);
   const [syncModal, setSyncModal] = React.useState(null);
+  const [folderStatsModal, setFolderStatsModal] = React.useState(null); // folder stats modal
+  const [folderStatsData, setFolderStatsData] = React.useState(null);
   const [fileThumbs, setFileThumbs] = React.useState({});
 
   React.useEffect(() => {
@@ -1578,6 +1582,7 @@ function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, config, sh
             style={{ top: cardMenuData.top, right: cardMenuData.right }}
             onClick={e => e.stopPropagation()}
           >
+            <div className="vfc-menu-item" onClick={() => { const f = cardMenuData.folder; setCardMenuData(null); setFolderStatsData(null); setFolderStatsModal(f); API.get('/api/vault/folder-stats?path=' + encodeURIComponent(f.path)).then(setFolderStatsData).catch(() => {}); }}>Stats</div>
             <div className="vfc-menu-item" onClick={() => { setCardMenuData(null); setLinkPlModal(cardMenuData.folder); }}>Link Playlist</div>
             <div className="vfc-menu-item" onClick={() => { setCardMenuData(null); setSyncModal(cardMenuData.folder); }}>Sync</div>
             <div className="vfc-menu-item" onClick={() => { setCardMenuData(null); API.post('/api/open-folder', { path: cardMenuData.folder.path }).catch(() => {}); }}>Open in Explorer</div>
@@ -1614,6 +1619,33 @@ function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, config, sh
             onClose={() => setRenameModal(null)}
             onSave={(name) => handleVaultRename(renameModal.folder, name)}
           />
+        )}
+
+        {folderStatsModal && (
+          <Modal title={'STATS — ' + folderStatsModal.name.toUpperCase()} onClose={() => setFolderStatsModal(null)}>
+            {!folderStatsData ? (
+              <div style={{ padding: 24, textAlign: 'center', color: 'var(--t3)', fontFamily: 'Share Tech Mono, monospace', fontSize: 11 }}>Loading...</div>
+            ) : folderStatsData.error ? (
+              <div style={{ padding: 24, color: 'var(--red)', fontFamily: 'Share Tech Mono, monospace', fontSize: 11 }}>{folderStatsData.error}</div>
+            ) : (
+              <div style={{ padding: '8px 0', fontFamily: 'Share Tech Mono, monospace', fontSize: 11 }}>
+                {[
+                  ['Path', folderStatsData.path],
+                  ['Files', folderStatsData.file_count + ' items'],
+                  ['Total Size', fmtBytes(folderStatsData.total_size_bytes)],
+                  ['Formats', Object.entries(folderStatsData.formats || {}).sort((a,b)=>b[1]-a[1]).map(([ext,n])=>ext.toUpperCase()+'('+n+')').join('  ')],
+                ].map(([label, val]) => (
+                  <div key={label} style={{ display: 'flex', gap: 12, padding: '6px 0', borderBottom: '1px solid var(--border)' }}>
+                    <span style={{ color: 'var(--t3)', minWidth: 100 }}>{label}</span>
+                    <span style={{ color: 'var(--cyan)', wordBreak: 'break-all' }}>{val || '—'}</span>
+                  </div>
+                ))}
+                <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+                  <button className="btn btn-secondary btn-sm" onClick={() => { setFolderStatsModal(null); API.post('/api/open-folder', { path: folderStatsModal.path }).catch(() => {}); }}>OPEN IN EXPLORER</button>
+                </div>
+              </div>
+            )}
+          </Modal>
         )}
       </div>
     );
@@ -2756,6 +2788,11 @@ function App() {
   }, []);
 
   React.useEffect(() => {
+    const iv = setInterval(refreshStats, (appState === 'downloading' || appState === 'processing') ? 3000 : 30000);
+    return () => clearInterval(iv);
+  }, [appState, refreshStats]);
+
+  React.useEffect(() => {
     const es = new EventSource('/api/progress');
     es.onmessage = (e) => {
       let data;
@@ -2771,6 +2808,19 @@ function App() {
       } else if (data.status === 'processing') {
         setAppState('processing');
         setDlState(prev => prev ? { ...prev, status: 'processing' } : { status: 'processing', pct: 100 });
+      } else if (data.status === 'item_done') {
+        const idx = data.playlist_index;
+        setPlaylistItems(prev => {
+          if (!prev) return prev;
+          if (idx !== undefined && idx !== null) return prev.filter(x => x.idx !== idx);
+          return prev.length > 0 ? prev.slice(1) : prev;
+        });
+        setCompletedItems(prev => [{
+          title: data.title,
+          thumbnail: data.thumbnail,
+          completedAt: Date.now(),
+        }, ...prev].slice(0, 200));
+        setPlaylistCompletedCount(c => c + 1);
       } else if (data.status === 'complete') {
         setDlState(null);
         setAppState('idle');
@@ -2778,15 +2828,7 @@ function App() {
         showNotif('Download Complete', data.title || 'File saved successfully', 'success');
         refreshStats();
         refreshVault();
-        if (data.title) {
-          setCompletedItems(prev => [{
-            title: data.title,
-            file_path: data.file_path,
-            file_size: data.file_size,
-            completedAt: Date.now(),
-          }, ...prev].slice(0, 100));
-        }
-        setPlaylistCompletedCount(c => c + 1);
+        setPlaylistItems(null);
         if (playlistActiveRef.current) {
           playlistActiveRef.current = false;
           if (configRef.current.ui_victory_animation !== false && MASCOT_VICTORY_SAFE) {

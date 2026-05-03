@@ -427,7 +427,9 @@ def api_stats() -> Response:
     vault_pl_count = sum(1 for urls in vault_playlists.values() if urls)
     # Use the larger of the two counts (library table vs vault_playlists config)
     result["library_playlists"] = max(result.get("library_playlists", 0), vault_pl_count)
-    return jsonify(result)
+    resp = jsonify(result)
+    resp.headers["Cache-Control"] = "no-cache"
+    return resp
 
 
 @app.route("/api/analytics/export")
@@ -844,6 +846,30 @@ def api_vault_file_thumbs() -> Response:
                 if row and row[0]:
                     result[p] = row[0]
     return jsonify({"thumbs": result})
+
+
+@app.route("/api/vault/folder-stats")
+def api_vault_folder_stats() -> Response:
+    path = request.args.get("path", "")
+    if not path or not os.path.isdir(path):
+        return jsonify({"error": "Invalid path"}), 400
+    p = Path(path)
+    try:
+        files = [f for f in p.rglob("*") if f.is_file() and not f.name.startswith(".")]
+        total_size = sum(f.stat().st_size for f in files if f.exists())
+        format_counts: dict = {}
+        for f in files:
+            ext = f.suffix.lower().lstrip(".")
+            if ext:
+                format_counts[ext] = format_counts.get(ext, 0) + 1
+        return jsonify({
+            "path": str(p),
+            "file_count": len(files),
+            "total_size_bytes": total_size,
+            "formats": format_counts,
+        })
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
 
 
 # ── Library ───────────────────────────────────────────────────────────────────

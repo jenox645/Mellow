@@ -76,6 +76,14 @@ def _make_progress_hook(progress_cb: Callable, library_id: str | None, speed_tra
                 "current_item_thumb": current_thumb,
             })
         elif status == "finished":
+            info_dict = d.get("info_dict") or {}
+            progress_cb({
+                "status": "item_done",
+                "title": info_dict.get("title") or Path(d.get("filename", "")).stem,
+                "thumbnail": info_dict.get("thumbnail"),
+                "playlist_index": info_dict.get("playlist_index"),
+                "library_id": library_id,
+            })
             progress_cb({"status": "processing", "library_id": library_id})
 
     return hook
