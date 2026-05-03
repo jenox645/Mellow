@@ -597,7 +597,7 @@ function StatusBar({ sysInfo, speedHistory, config }) {
 
 // ── FEED Page ─────────────────────────────────────────────────────────────────
 
-function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats, showNotif, switchPage, config, onPlaylistDownload, playlistItems, setPlaylistItems }) {
+function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats, showNotif, switchPage, config, onPlaylistDownload, playlistItems, setPlaylistItems, completedItems, playlistTotalCount, playlistCompletedCount }) {
   const ss = (k, fb) => { try { const v = sessionStorage.getItem(k); return v !== null ? v : fb; } catch { return fb; } };
   const ssJ = (k, fb) => { try { const v = sessionStorage.getItem(k); return v ? JSON.parse(v) : fb; } catch { return fb; } };
 
@@ -650,6 +650,8 @@ function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats, showN
   const [vaultName, setVaultName] = React.useState('');
   const [vaultFolder, setVaultFolder] = React.useState('');
   const [vaultLinkPrompt, setVaultLinkPrompt] = React.useState(false);
+  const [feedQTab, setFeedQTab] = React.useState('pending');
+  const [removingFeedItems, setRemovingFeedItems] = React.useState(new Set());
 
   // Ref to always call the latest startDownload (avoids stale closure in handleDownload)
   const startDownloadRef = React.useRef(null);
@@ -686,7 +688,7 @@ function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats, showN
   const handleDownload = React.useCallback(() => {
     if (!url.trim()) return;
     if (info && info.is_playlist) {
-      if (onPlaylistDownload) onPlaylistDownload();
+      if (onPlaylistDownload) onPlaylistDownload(info.playlist_count || 0, info.title || '');
       setVaultLinkPrompt(true);
       return;
     }
@@ -958,24 +960,38 @@ function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats, showN
         </div>
       </div>
 
+      {/* SYNC IN PROGRESS BANNER */}
+      {isDownloading && dlState && dlState.library_id && info && (
+        <div className="sync-banner">⚠ SYNC IN PROGRESS — Your previous analysis is on standby</div>
+      )}
+
       {/* ACTIVE DOWNLOAD PANEL */}
       <div className={'dl-panel panel' + (isDownloading ? ' open' : '')} style={{ marginBottom: 16 }}>
         <div className="panel-hud" /><div className="panel-hud-br" />
         <div className="ph">
           <span className="ptag">ACTIVE</span>
           <span className="ptitle">NOW PROCESSING — 処理中</span>
-          <span className="psub">1 / 1 ACTIVE</span>
+          <span className="psub">
+            {playlistTotalCount > 1
+              ? `${playlistCompletedCount + 1} / ${playlistTotalCount} ACTIVE`
+              : isDownloading ? 'DOWNLOADING' : 'WAITING'}
+          </span>
         </div>
         {dlState && (
           <>
             <div className="dl-card">
               <div className="dl-inner">
-                {info && info.thumbnail
-                  ? <img src={info.thumbnail} className="dl-thumb" alt="" />
+                {(dlState.current_item_thumb || (info && info.thumbnail))
+                  ? <img src={dlState.current_item_thumb || info.thumbnail} className="dl-thumb" alt="" onError={e => { e.target.style.display = 'none'; }} />
                   : <div className="dl-thumb-ph">▶</div>
                 }
                 <div className="dl-info">
-                  <div className="dl-title">{info && info.title || dlState.filename || 'Downloading...'}</div>
+                  {info && info.is_playlist && dlState.current_item_title && (
+                    <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: '#8899aa', marginBottom: 3, letterSpacing: '0.1em' }}>
+                      FROM: {(info.title || '').toUpperCase().slice(0, 32)}
+                    </div>
+                  )}
+                  <div className="dl-title">{dlState.current_item_title || (info && info.title) || dlState.filename || 'Downloading...'}</div>
                   <div className="dl-ch">{[info && info.uploader, info && info.platform, info && info.duration ? fmtDuration(info.duration) : null].filter(Boolean).join(' · ')}</div>
                   <div className="dl-tags">
                     <span className="tag cyan">{mode === 'audio' ? audioFmt.toUpperCase() : container.toUpperCase()}</span>
@@ -1020,51 +1036,91 @@ function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats, showN
           <div className="ph">
             <span className="ptag">QUEUE</span>
             <span className="ptitle">WAITING — 待機中</span>
-            <span className="psub">{playlistItems ? playlistItems.length + ' ITEMS' : 'EMPTY'}</span>
+            <span className="psub">{feedQTab === 'pending' ? (playlistItems ? playlistItems.length : 0) + ' ITEMS' : (completedItems ? completedItems.length : 0) + ' DONE'}</span>
           </div>
-          {playlistItems && playlistItems.length > 0 ? (
-            <div>
-              <div className="queue-list-header">
-                <span className="qlh-left">PENDING ITEMS — 待機中</span>
-                <span className="qlh-right">{playlistItems.length} TRACKS · CLICK ✕ TO REMOVE</span>
+          {((playlistItems && playlistItems.length > 0) || (completedItems && completedItems.length > 0)) && (
+            <div className="q-tabs">
+              <div className={'q-tab' + (feedQTab === 'pending' ? ' active' : '')} onClick={() => setFeedQTab('pending')}>
+                PENDING ({playlistItems ? playlistItems.length : 0})
               </div>
-              <div className="pl-queue-list" style={{ maxHeight: 216 }}>
-                {playlistItems.slice(0, 12).map(item => (
-                  <div key={item.idx} className="pl-queue-item">
-                    <span className="pl-queue-drag">⠿</span>
-                    <span className="pl-queue-idx">{item.idx}</span>
-                    {item.thumbnail
-                      ? <img src={item.thumbnail} className="pl-queue-thumb" alt="" onError={e => { e.target.style.display = 'none'; }} />
-                      : <div className="pl-queue-thumb-ph">▶</div>
-                    }
-                    <div className="pl-queue-info">
-                      <div className="pl-queue-title">{item.title || 'Unknown'}</div>
-                      {item.uploader && <div className="pl-queue-sub">{item.uploader}</div>}
-                    </div>
-                    <span className="pl-queue-dur">{item.duration ? fmtDuration(item.duration) : '—'}</span>
-                    <div className="pl-queue-st"><span className="q-st-badge queued">QUEUED</span></div>
-                    <div className="pl-queue-remove" onClick={() => setPlaylistItems && setPlaylistItems(prev => prev ? prev.filter(x => x.idx !== item.idx) : prev)}>
-                      <Ico name="x" size={10} />
-                    </div>
-                  </div>
-                ))}
-                {playlistItems.length > 12 && (
-                  <div style={{ padding: '6px 14px', fontFamily: 'Share Tech Mono', fontSize: 9, color: 'var(--t4)', textAlign: 'center' }}>
-                    +{playlistItems.length - 12} more ·{' '}
-                    <span style={{ color: 'var(--cyan)', cursor: 'pointer' }} onClick={() => switchPage('queue')}>VIEW ALL →</span>
-                  </div>
-                )}
+              <div className={'q-tab' + (feedQTab === 'completed' ? ' active' : '')} onClick={() => setFeedQTab('completed')}>
+                COMPLETED ({completedItems ? completedItems.length : 0})
               </div>
             </div>
-          ) : fetchingItems ? (
-            <div style={{ padding: '20px', fontFamily: 'Share Tech Mono', fontSize: 9, color: 'var(--t3)', textAlign: 'center' }}>
-              FETCHING PLAYLIST ITEMS...
-            </div>
+          )}
+          {feedQTab === 'pending' ? (
+            playlistItems && playlistItems.length > 0 ? (
+              <div>
+                <div className="queue-list-header">
+                  <span className="qlh-left">PENDING ITEMS — 待機中</span>
+                  <span className="qlh-right">{playlistItems.length} TRACKS · CLICK ✕ TO REMOVE</span>
+                </div>
+                <div className="pl-queue-list" style={{ maxHeight: 216 }}>
+                  {playlistItems.slice(0, 12).map(item => (
+                    <div
+                      key={item.idx}
+                      className={'pl-queue-item' + (removingFeedItems.has(item.idx) ? ' completing' : '')}
+                      onAnimationEnd={removingFeedItems.has(item.idx) ? () => {
+                        setPlaylistItems(prev => prev ? prev.filter(x => x.idx !== item.idx) : prev);
+                        setRemovingFeedItems(prev => { const n = new Set(prev); n.delete(item.idx); return n; });
+                      } : undefined}
+                    >
+                      <span className="pl-queue-drag">⠿</span>
+                      <span className="pl-queue-idx">{item.idx}</span>
+                      {item.thumbnail
+                        ? <img src={item.thumbnail} className="pl-queue-thumb" alt="" onError={e => { e.target.style.display = 'none'; }} />
+                        : <div className="pl-queue-thumb-ph">▶</div>
+                      }
+                      <div className="pl-queue-info">
+                        <div className="pl-queue-title">{item.title || 'Unknown'}</div>
+                        {item.uploader && <div className="pl-queue-sub">{item.uploader}</div>}
+                      </div>
+                      <span className="pl-queue-dur">{item.duration ? fmtDuration(item.duration) : '—'}</span>
+                      <div className="pl-queue-st"><span className="q-st-badge queued">QUEUED</span></div>
+                      <div className="pl-queue-remove" onClick={() => {
+                        setRemovingFeedItems(prev => new Set([...prev, item.idx]));
+                      }}>
+                        <Ico name="x" size={10} />
+                      </div>
+                    </div>
+                  ))}
+                  {playlistItems.length > 12 && (
+                    <div style={{ padding: '6px 14px', fontFamily: 'Share Tech Mono', fontSize: 9, color: 'var(--t4)', textAlign: 'center' }}>
+                      +{playlistItems.length - 12} more ·{' '}
+                      <span style={{ color: 'var(--cyan)', cursor: 'pointer' }} onClick={() => switchPage('queue')}>VIEW ALL →</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : fetchingItems ? (
+              <div style={{ padding: '20px', fontFamily: 'Share Tech Mono', fontSize: 9, color: 'var(--t3)', textAlign: 'center' }}>
+                FETCHING PLAYLIST ITEMS...
+              </div>
+            ) : (
+              <div className="empty-state" style={{ padding: '24px' }}>
+                <Mascot src={MASCOT_CHILLING} className="empty-mascot" wrapClass="empty-mascot-wrap" />
+                <div className="empty-title">QUEUE EMPTY</div>
+                <div className="empty-sub" onClick={() => switchPage('queue')}>VIEW QUEUE →</div>
+              </div>
+            )
           ) : (
-            <div className="empty-state" style={{ padding: '24px' }}>
-              <Mascot src={MASCOT_CHILLING} className="empty-mascot" wrapClass="empty-mascot-wrap" />
-              <div className="empty-title">QUEUE EMPTY</div>
-              <div className="empty-sub" onClick={() => switchPage('queue')}>VIEW QUEUE →</div>
+            <div className="pl-queue-list" style={{ maxHeight: 216 }}>
+              {(completedItems || []).slice(0, 12).map((item, i) => (
+                <div key={i} className="q-completed-item">
+                  <div className="q-comp-thumb-ph">✓</div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div className="q-comp-title">{item.title || 'Unknown'}</div>
+                    <div className="q-comp-meta">
+                      <span className="q-st-badge completed">DONE</span>
+                      {' '}{item.file_size ? fmtBytes(item.file_size) : ''}
+                      {' · '}{timeAgo(item.completedAt)}
+                    </div>
+                  </div>
+                </div>
+              ))}
+              {(!completedItems || completedItems.length === 0) && (
+                <div style={{ padding: '20px', fontFamily: 'Share Tech Mono', fontSize: 9, color: 'var(--t4)', textAlign: 'center' }}>NO COMPLETED ITEMS YET</div>
+              )}
             </div>
           )}
         </div>
@@ -1140,7 +1196,7 @@ function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats, showN
 
 // ── QUEUE Page ────────────────────────────────────────────────────────────────
 
-function QueuePage({ dlState, showNotif, playlistItems, setPlaylistItems, completedItems }) {
+function QueuePage({ dlState, showNotif, playlistItems, setPlaylistItems, completedItems, playlistTotalCount, playlistCompletedCount }) {
   const isDownloading = dlState && dlState.pct !== undefined;
   const queueCount = playlistItems ? playlistItems.length : 0;
   const [qTab, setQTab] = React.useState('pending');
@@ -1152,10 +1208,7 @@ function QueuePage({ dlState, showNotif, playlistItems, setPlaylistItems, comple
 
   const handleRemove = (idx) => {
     setRemovingItems(prev => new Set([...prev, idx]));
-    setTimeout(() => {
-      setPlaylistItems && setPlaylistItems(prev => prev ? prev.filter(x => x.idx !== idx) : prev);
-      setRemovingItems(prev => { const n = new Set(prev); n.delete(idx); return n; });
-    }, 350);
+    // Actual removal from state happens in onAnimationEnd
   };
 
   return (
@@ -1187,7 +1240,11 @@ function QueuePage({ dlState, showNotif, playlistItems, setPlaylistItems, comple
           <div className="ph">
             <span className="ptag">ACTIVE</span>
             <span className="ptitle">NOW DOWNLOADING</span>
-            <span className="psub" style={{ color: 'var(--cyan)' }}>{(dlState.pct || 0).toFixed(1)}% COMPLETE</span>
+            <span className="psub" style={{ color: 'var(--cyan)' }}>
+            {playlistTotalCount > 1
+              ? `${playlistCompletedCount + 1} / ${playlistTotalCount} — ${(dlState.pct || 0).toFixed(1)}%`
+              : `${(dlState.pct || 0).toFixed(1)}% COMPLETE`}
+          </span>
           </div>
           <div className="q-item row-active">
             <span className="q-drag">⋮⋮</span>
@@ -1230,7 +1287,14 @@ function QueuePage({ dlState, showNotif, playlistItems, setPlaylistItems, comple
               </div>
               <div className="pl-queue-list">
                 {(playlistItems || []).map(item => (
-                  <div key={item.idx} className={'pl-queue-item' + (removingItems.has(item.idx) ? ' removing' : '')}>
+                  <div
+                    key={item.idx}
+                    className={'pl-queue-item' + (removingItems.has(item.idx) ? ' completing' : '')}
+                    onAnimationEnd={removingItems.has(item.idx) ? () => {
+                      setPlaylistItems(prev => prev ? prev.filter(x => x.idx !== item.idx) : prev);
+                      setRemovingItems(prev => { const n = new Set(prev); n.delete(item.idx); return n; });
+                    } : undefined}
+                  >
                     <span className="pl-queue-drag">⠿</span>
                     <span className="pl-queue-idx">{item.idx}</span>
                     {item.thumbnail
@@ -1305,7 +1369,7 @@ function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, config, sh
   const [vaultSearch, setVaultSearch] = React.useState('');
   const [vaultSort, setVaultSort] = React.useState('name');
   const [folderMosaics, setFolderMosaics] = React.useState({});
-  const [cardMenu, setCardMenu] = React.useState(null);
+  const [cardMenuData, setCardMenuData] = React.useState(null); // { folder, top, right }
   const [linkPlModal, setLinkPlModal] = React.useState(null);
   const [renameModal, setRenameModal] = React.useState(null);
   const [syncModal, setSyncModal] = React.useState(null);
@@ -1385,7 +1449,7 @@ function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, config, sh
   const isVideoExt = (ext) => ['mp4','mkv','webm','avi','mov'].includes(ext);
 
   React.useEffect(() => {
-    const close = () => { setCtxMenu(null); setCardMenu(null); };
+    const close = () => { setCtxMenu(null); setCardMenuData(null); };
     document.addEventListener('click', close);
     return () => document.removeEventListener('click', close);
   }, []);
@@ -1394,7 +1458,7 @@ function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, config, sh
     API.post('/api/vault/remove', { path: folder.path })
       .then(() => { showNotif('Removed', folder.name); onRefreshVault && onRefreshVault(); })
       .catch(e => showNotif('Error', e.message, 'error'));
-    setCardMenu(null);
+    setCardMenuData(null);
   }, [showNotif, onRefreshVault]);
 
   const handleVaultRename = React.useCallback((folder, name) => {
@@ -1480,16 +1544,15 @@ function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, config, sh
                   )}
 
                   {/* Three-dot menu button */}
-                  <div className="vfc-menu-btn" onClick={e => { e.stopPropagation(); setCardMenu(cardMenu === folder.path ? null : folder.path); }}>⋮</div>
-                  {cardMenu === folder.path && (
-                    <div className="vfc-menu-popup" onClick={e => e.stopPropagation()}>
-                      <div className="vfc-menu-item" onClick={() => { setCardMenu(null); setLinkPlModal(folder); }}>Link Playlist</div>
-                      <div className="vfc-menu-item" onClick={() => { setCardMenu(null); setSyncModal(folder); }}>Sync</div>
-                      <div className="vfc-menu-item" onClick={() => { setCardMenu(null); API.post('/api/open-folder', { path: folder.path }).catch(() => {}); }}>Open in Explorer</div>
-                      <div className="vfc-menu-item" onClick={() => { setCardMenu(null); setRenameModal({ folder, name: folder.name }); }}>Rename</div>
-                      <div className="vfc-menu-item danger" onClick={() => handleVaultRemove(folder)}>Remove from Vault</div>
-                    </div>
-                  )}
+                  <div className="vfc-menu-btn" onClick={e => {
+                    e.stopPropagation();
+                    if (cardMenuData && cardMenuData.folder.path === folder.path) {
+                      setCardMenuData(null);
+                      return;
+                    }
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    setCardMenuData({ folder, top: rect.bottom + 4, right: window.innerWidth - rect.right });
+                  }}>⋮</div>
 
                   {folder.watched && <span className="vfc-watched-badge">WATCHED</span>}
                   <div className="vfc-bottom">
@@ -1505,6 +1568,21 @@ function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, config, sh
                 </div>
               );
             })}
+          </div>
+        )}
+
+        {/* Fixed-position folder card menu (renders above overflow:hidden) */}
+        {cardMenuData && (
+          <div
+            className="vfc-menu-popup"
+            style={{ top: cardMenuData.top, right: cardMenuData.right }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="vfc-menu-item" onClick={() => { setCardMenuData(null); setLinkPlModal(cardMenuData.folder); }}>Link Playlist</div>
+            <div className="vfc-menu-item" onClick={() => { setCardMenuData(null); setSyncModal(cardMenuData.folder); }}>Sync</div>
+            <div className="vfc-menu-item" onClick={() => { setCardMenuData(null); API.post('/api/open-folder', { path: cardMenuData.folder.path }).catch(() => {}); }}>Open in Explorer</div>
+            <div className="vfc-menu-item" onClick={() => { setCardMenuData(null); setRenameModal({ folder: cardMenuData.folder, name: cardMenuData.folder.name }); }}>Rename</div>
+            <div className="vfc-menu-item danger" onClick={() => handleVaultRemove(cardMenuData.folder)}>Remove from Vault</div>
           </div>
         )}
 
@@ -2461,6 +2539,25 @@ function ConfigPage({ config, setConfig, showNotif, sysInfo, refreshStats }) {
             </div>
           </div>
 
+          {/* UI PREFERENCES */}
+          <div className="cfg-panel">
+            <div className="cfg-ph">
+              <span className="ptag" style={{ background: 'var(--purple)' }}>UI</span>
+              <span className="ptitle">UI PREFERENCES</span>
+            </div>
+            <div className="cfg-body">
+              <div className="settings-row">
+                <div className="settings-label">
+                  <div className="sl-name">Playlist Completion Animation</div>
+                  <div className="sl-sub">Show victory overlay when a playlist finishes</div>
+                </div>
+                <div className="settings-ctrl">
+                  <Toggle checked={local.ui_victory_animation !== false} onChange={v => set('ui_victory_animation', v)} />
+                </div>
+              </div>
+            </div>
+          </div>
+
           {/* DANGER ZONE */}
           <div className="cfg-panel cfg-danger">
             <div className="cfg-ph">
@@ -2614,11 +2711,18 @@ function App() {
   const [selectedVaultFolder, setSelectedVaultFolder] = React.useState(null);
   const [addVaultModal, setAddVaultModal] = React.useState(false);
   const [showVictory, setShowVictory] = React.useState(false);
+  const [victoryData, setVictoryData] = React.useState(null);
   const [playlistItems, setPlaylistItems] = React.useState(null);
   const [completedItems, setCompletedItems] = React.useState([]);
+  const [playlistTotalCount, setPlaylistTotalCount] = React.useState(0);
+  const [playlistCompletedCount, setPlaylistCompletedCount] = React.useState(0);
   const playlistActiveRef = React.useRef(false);
+  const currentPlaylistRef = React.useRef({ name: '', count: 0 });
+  const configRef = React.useRef(config);
   const notifTimer = React.useRef(null);
   const victoryTimer = React.useRef(null);
+
+  React.useEffect(() => { configRef.current = config; }, [config]);
 
   const showNotif = React.useCallback((title, body, type = 'info') => {
     setNotif({ title, body, type });
@@ -2682,11 +2786,18 @@ function App() {
             completedAt: Date.now(),
           }, ...prev].slice(0, 100));
         }
-        if (playlistActiveRef.current && MASCOT_VICTORY_SAFE) {
+        setPlaylistCompletedCount(c => c + 1);
+        if (playlistActiveRef.current) {
           playlistActiveRef.current = false;
-          setShowVictory(true);
-          if (victoryTimer.current) clearTimeout(victoryTimer.current);
-          victoryTimer.current = setTimeout(() => setShowVictory(false), 4500);
+          if (configRef.current.ui_victory_animation !== false && MASCOT_VICTORY_SAFE) {
+            setVictoryData({
+              playlistName: currentPlaylistRef.current.name,
+              itemCount: currentPlaylistRef.current.count,
+            });
+            setShowVictory(true);
+            if (victoryTimer.current) clearTimeout(victoryTimer.current);
+            victoryTimer.current = setTimeout(() => setShowVictory(false), 5000);
+          }
         }
       } else if (data.status === 'error') {
         setDlState(null);
@@ -2737,9 +2848,17 @@ function App() {
             showNotif={showNotif}
             switchPage={switchPage}
             config={config}
-            onPlaylistDownload={() => { playlistActiveRef.current = true; }}
+            onPlaylistDownload={(count, name) => {
+              playlistActiveRef.current = true;
+              currentPlaylistRef.current = { name: name || '', count: count || 0 };
+              setPlaylistTotalCount(count || 0);
+              setPlaylistCompletedCount(0);
+            }}
             playlistItems={playlistItems}
             setPlaylistItems={setPlaylistItems}
+            completedItems={completedItems}
+            playlistTotalCount={playlistTotalCount}
+            playlistCompletedCount={playlistCompletedCount}
           />
         )}
         {page === 'queue' && (
@@ -2749,6 +2868,8 @@ function App() {
             playlistItems={playlistItems}
             setPlaylistItems={setPlaylistItems}
             completedItems={completedItems}
+            playlistTotalCount={playlistTotalCount}
+            playlistCompletedCount={playlistCompletedCount}
           />
         )}
         {page === 'vault' && (
@@ -2783,13 +2904,35 @@ function App() {
 
       {showVictory && MASCOT_VICTORY_SAFE && (
         <div className="victory-overlay" onClick={() => setShowVictory(false)}>
+          {[
+            { delay: '0s',    tx: '80px',   ty: '-60px'  },
+            { delay: '0.1s',  tx: '-70px',  ty: '-80px'  },
+            { delay: '0.15s', tx: '100px',  ty: '20px'   },
+            { delay: '0.2s',  tx: '-90px',  ty: '30px'   },
+            { delay: '0.05s', tx: '40px',   ty: '100px'  },
+            { delay: '0.25s', tx: '-40px',  ty: '90px'   },
+            { delay: '0.3s',  tx: '120px',  ty: '-30px'  },
+            { delay: '0.12s', tx: '-110px', ty: '-20px'  },
+            { delay: '0.18s', tx: '60px',   ty: '-110px' },
+            { delay: '0.22s', tx: '-60px',  ty: '-100px' },
+            { delay: '0.08s', tx: '90px',   ty: '80px'   },
+            { delay: '0.35s', tx: '-80px',  ty: '70px'   },
+          ].map((s, i) => (
+            <div key={i} className="victory-sparkle" style={{ '--delay': s.delay, '--tx': s.tx, '--ty': s.ty, top: '50%', left: '50%' }} />
+          ))}
           <Mascot src={MASCOT_VICTORY_SAFE} className="victory-mascot" wrapClass="victory-mascot" />
-          <div className="victory-text">PLAYLIST COMPLETE!</div>
-          {completedItems.length > 0 && (
-            <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 13, color: 'var(--cyan)', letterSpacing: '0.15em', opacity: 0.85 }}>
-              {completedItems.length} ITEMS SAVED
+          <div className="victory-text">✦ PLAYLIST COMPLETE ✦</div>
+          {victoryData && victoryData.playlistName && (
+            <div style={{ fontFamily: "'Exo 2', sans-serif", fontSize: 16, color: '#e0e8f0', fontStyle: 'italic', textAlign: 'center', maxWidth: 400 }}>
+              "{victoryData.playlistName}"
             </div>
           )}
+          {victoryData && (victoryData.itemCount > 0) && (
+            <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 13, color: '#8899aa', letterSpacing: '0.1em' }}>
+              {victoryData.itemCount} ITEMS DOWNLOADED
+            </div>
+          )}
+          <div className="victory-dismiss">click anywhere or wait 5s to dismiss</div>
         </div>
       )}
 

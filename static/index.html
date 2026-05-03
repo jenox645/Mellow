@@ -417,10 +417,15 @@
     .db-info{font-family:'Share Tech Mono',monospace;font-size:9px;color:var(--t3);display:flex;align-items:center;gap:8px}
     .db-val{color:var(--cyan)}
     /* VICTORY OVERLAY */
-    .victory-overlay{position:fixed;inset:0;background:rgba(0,216,255,0.05);z-index:9000;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;animation:fadein 0.4s ease-out;pointer-events:none}
-    .victory-mascot{width:280px;height:auto;animation:mascot-float 2s ease-in-out infinite;color:var(--cyan)}
-    .victory-mascot svg{width:280px;height:auto;display:block}
-    .victory-text{font-family:'Oxanium',sans-serif;font-size:28px;font-weight:800;color:var(--cyan);letter-spacing:0.15em;text-shadow:0 0 24px rgba(0,216,255,0.6)}
+    .victory-overlay{position:fixed;inset:0;background:rgba(10,15,26,0.95);backdrop-filter:blur(4px);z-index:9000;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;animation:fadein 0.4s ease-out;cursor:pointer;overflow:hidden}
+    .victory-mascot{width:340px;height:auto;animation:mascot-float 2s ease-in-out infinite;color:var(--cyan);mix-blend-mode:screen;filter:sepia(1) saturate(6.7) hue-rotate(151deg) brightness(0.87)}
+    .victory-mascot svg{width:340px;height:auto;display:block}
+    .victory-text{font-family:'Oxanium',sans-serif;font-size:24px;font-weight:800;color:var(--cyan);letter-spacing:6px;text-shadow:0 0 24px rgba(0,216,255,0.6);text-transform:uppercase}
+    .victory-sparkle{position:absolute;width:4px;height:4px;background:var(--cyan);border-radius:50%;animation:sparklePop 1.2s ease forwards;animation-delay:var(--delay)}
+    @keyframes sparklePop{0%{transform:scale(0) translate(0,0);opacity:1}100%{transform:scale(1.5) translate(var(--tx),var(--ty));opacity:0}}
+    .victory-dismiss{position:absolute;bottom:20px;left:50%;transform:translateX(-50%);font-family:'Share Tech Mono',monospace;font-size:11px;color:#445566;pointer-events:none;letter-spacing:0.08em}
+    /* SYNC BANNER */
+    .sync-banner{background:var(--amber2);border:1px solid rgba(249,169,0,0.3);padding:8px 14px;font-family:'Share Tech Mono',monospace;font-size:9px;color:var(--amber);letter-spacing:0.08em;margin-bottom:8px}
     /* TINT UTILITIES */
     .tint-cyan{filter:sepia(1) saturate(6.7) hue-rotate(151deg) brightness(0.87)}
     .tint-amber{filter:sepia(1) saturate(3) hue-rotate(10deg) brightness(0.9)}
@@ -471,7 +476,7 @@
 
     /* ── VAULT FOLDER CARDS ─────────────────────────────────────────────────── */
     .vault-folder-grid{display:flex;flex-wrap:wrap;gap:16px;margin-bottom:16px}
-    .vault-folder-card{width:200px;height:160px;background:var(--bg2);border:1px solid var(--border);cursor:pointer;transition:border-color 0.2s,box-shadow 0.2s;position:relative;overflow:hidden;display:flex;flex-direction:column}
+    .vault-folder-card{width:200px;height:160px;background:var(--bg2);border:1px solid var(--border);cursor:pointer;transition:border-color 0.2s,box-shadow 0.2s;position:relative;display:flex;flex-direction:column}
     .vault-folder-card:hover{border-color:var(--cyan);box-shadow:0 0 0 1px var(--cyan),0 4px 20px rgba(0,0,0,0.35)}
     .vault-folder-card:hover .vfc-icon-svg{transform:scale(1.1)}
     .vfc-icon{flex:1;display:flex;align-items:center;justify-content:center;background:var(--bg3);color:var(--cyan)}
@@ -483,6 +488,7 @@
     .vfc-watched-badge{position:absolute;top:7px;right:7px;font-family:'Share Tech Mono',monospace;font-size:7px;background:var(--amber2);color:var(--amber);padding:2px 6px;letter-spacing:0.08em;z-index:2}
     .vfc-meta{display:none}
     /* Thumbnail mosaic */
+    .vfc-icon{overflow:hidden}
     .vfc-mosaic{flex:1;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;overflow:hidden}
     .vfc-mosaic-cell{width:100%;height:100%;object-fit:cover;display:block}
     .vfc-mosaic-ph{width:100%;height:100%;background:#111820;display:flex;align-items:center;justify-content:center}
@@ -490,7 +496,7 @@
     .vfc-menu-btn{position:absolute;bottom:8px;right:8px;z-index:4;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:16px;line-height:1;color:var(--t2);background:rgba(0,0,0,0.55);cursor:pointer;border-radius:2px;transition:color 0.15s,background 0.15s;opacity:0}
     .vault-folder-card:hover .vfc-menu-btn{opacity:1}
     .vfc-menu-btn:hover{color:var(--cyan);background:rgba(0,0,0,0.8)}
-    .vfc-menu-popup{position:absolute;bottom:32px;right:5px;z-index:10;background:var(--bg2);border:1px solid var(--border2);min-width:160px;box-shadow:0 8px 24px rgba(0,0,0,0.5)}
+    .vfc-menu-popup{position:fixed;z-index:9999;background:var(--bg2);border:1px solid var(--border2);min-width:160px;box-shadow:0 8px 24px rgba(0,0,0,0.5)}
     .vfc-menu-item{padding:8px 14px;font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--t2);cursor:pointer;letter-spacing:0.06em;transition:background 0.12s,color 0.12s}
     .vfc-menu-item:hover{background:var(--bg3);color:var(--t1)}
     .vfc-menu-item.danger{color:var(--red)}
@@ -519,7 +525,8 @@
     .vfc-synced{font-family:'Share Tech Mono',monospace;font-size:9px;color:#7a8fa6;margin-top:3px}
 
     /* ── QUEUE SLIDE-OUT ANIMATION ───────────────────────────────────────────── */
-    .pl-queue-item.removing{transform:translateX(-110%);opacity:0;pointer-events:none;max-height:0;transition:transform 0.3s ease,opacity 0.3s ease,max-height 0.3s ease 0.25s}
+    .pl-queue-item.completing{animation:slideOutLeft 300ms ease forwards;pointer-events:none}
+    @keyframes slideOutLeft{from{transform:translateX(0);opacity:1;max-height:72px}to{transform:translateX(-60px);opacity:0;max-height:0;padding:0;margin:0}}
 
     /* ── QUEUE COMPLETED TAB ─────────────────────────────────────────────────── */
     .q-tabs{display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:0}

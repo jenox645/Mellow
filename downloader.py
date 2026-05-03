@@ -58,6 +58,9 @@ def _make_progress_hook(progress_cb: Callable, library_id: str | None, speed_tra
             speed = d.get("speed") or 0
             eta = d.get("eta") or 0
             filename = Path(d.get("filename", "")).name
+            info_dict = d.get("info_dict") or {}
+            current_title = info_dict.get("title") or Path(d.get("filename", "")).stem
+            current_thumb = info_dict.get("thumbnail")
             if speed:
                 speed_tracker["samples"].append(speed)
             progress_cb({
@@ -69,6 +72,8 @@ def _make_progress_hook(progress_cb: Callable, library_id: str | None, speed_tra
                 "eta": eta,
                 "filename": filename,
                 "library_id": library_id,
+                "current_item_title": current_title,
+                "current_item_thumb": current_thumb,
             })
         elif status == "finished":
             progress_cb({"status": "processing", "library_id": library_id})
@@ -100,6 +105,19 @@ def _build_postprocessors(opts: dict) -> list[dict]:
     if opts.get("split_chapters"):
         pps.append({"key": "FFmpegSplitChapters"})
     return pps
+
+
+def _save_thumbnail_sidecar(filepath: str, thumb_url: str | None) -> None:
+    if not thumb_url or not filepath:
+        return
+    try:
+        from urllib.request import urlretrieve
+        p = Path(filepath)
+        sidecar = p.with_suffix(".jpg")
+        if not sidecar.exists():
+            urlretrieve(thumb_url, str(sidecar))
+    except Exception:
+        pass
 
 
 def _detect_platform(url: str) -> str:
@@ -333,6 +351,9 @@ def download_video(
                     sz = Path(fp).stat().st_size if fp else 0
                 except OSError:
                     sz = entry.get("filesize") or 0
+                entry_thumb = entry.get("thumbnail")
+                if fp and entry_thumb:
+                    _save_thumbnail_sidecar(fp, entry_thumb)
                 analytics.record_download({
                     "url": entry.get("webpage_url") or entry.get("url", ""),
                     "title": entry.get("title"),
@@ -344,12 +365,14 @@ def download_video(
                     "quality": quality,
                     "container": audio_fmt if mode == "audio" else container,
                     "file_path": fp,
-                    "thumbnail_url": entry.get("thumbnail"),
+                    "thumbnail_url": entry_thumb,
                     "status": "success",
                     "download_speed_avg_bps": avg_speed,
                     "elapsed_seconds": elapsed_int,
                 })
         else:
+            if final_path and final_thumbnail:
+                _save_thumbnail_sidecar(final_path, final_thumbnail)
             analytics.record_download({
                 "url": url, "title": final_title, "uploader": final_uploader,
                 "platform": _detect_platform(url), "duration_seconds": final_duration,

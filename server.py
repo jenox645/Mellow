@@ -67,15 +67,7 @@ def _open_in_explorer(path: str) -> None:
     target = str(p if p.is_dir() else p.parent)
     system = platform.system()
     if system == "Windows":
-        proc = subprocess.Popen(["explorer", target])
-        try:
-            import ctypes
-            time.sleep(0.3)
-            hwnd = ctypes.windll.user32.FindWindowW(None, None)
-            ctypes.windll.user32.SetForegroundWindow(hwnd)
-        except Exception:
-            pass
-        _ = proc
+        subprocess.Popen(["explorer", target])
     elif system == "Darwin":
         subprocess.Popen(["open", target])
     else:
@@ -222,10 +214,13 @@ def api_system() -> Response:
 def api_check_ytdlp_update() -> Response:
     def _check() -> dict:
         try:
-            import yt_dlp
-            installed = yt_dlp.version.__version__
+            import importlib
+            import yt_dlp as _ydlp
+            importlib.reload(_ydlp.version)
+            installed = _ydlp.version.__version__
         except Exception:
             installed = "unknown"
+        print(f"[YTDLP CHECK] version returned: {installed}", flush=True)
         try:
             with urlopen("https://pypi.org/pypi/yt-dlp/json", timeout=30) as resp:
                 payload = json.loads(resp.read().decode())
@@ -246,7 +241,8 @@ def api_update_ytdlp() -> Response:
         try:
             import yt_dlp as _ytdlp_mod_check
             ytdlp_file = Path(_ytdlp_mod_check.__file__).parent
-            print(f"[YT-DLP PATH] yt_dlp module at {ytdlp_file}", flush=True)
+            old_ver = _ytdlp_mod_check.version.__version__
+            print(f"[YTDLP UPDATE] module at {ytdlp_file}, current version: {old_ver}", flush=True)
         except Exception:
             pass
 
@@ -257,33 +253,38 @@ def api_update_ytdlp() -> Response:
         exe = sys.executable
         frozen = getattr(sys, "frozen", False)
         guard = frozen or "mellowdlp" in exe.lower()
+        print(f"[YTDLP UPDATE] exe={exe!r} frozen={frozen} guard={guard}", flush=True)
 
         try:
             if guard:
                 ytdlp_bin = _sh.which("yt-dlp") or _sh.which("yt-dlp.exe")
                 if ytdlp_bin and "mellowdlp" not in ytdlp_bin.lower():
-                    print(f"[YT-DLP UPDATE] Running: {ytdlp_bin} -U", flush=True)
+                    print(f"[YTDLP UPDATE] running standalone binary: {ytdlp_bin} -U", flush=True)
                     subprocess.run([ytdlp_bin, "-U"], check=True, **_kw)
                 else:
                     python = _sh.which("python") or _sh.which("python3")
                     if not python or "mellowdlp" in python.lower():
                         raise RuntimeError("No suitable Python found for yt-dlp update")
+                    print(f"[YTDLP UPDATE] pip via {python}", flush=True)
                     subprocess.run([python, "-m", "pip", "install", "--upgrade", "yt-dlp"], check=True, **_kw)
             else:
-                print(f"[YT-DLP UPDATE] Using: {exe} -m pip install --upgrade yt-dlp", flush=True)
+                print(f"[YTDLP UPDATE] pip via {exe}", flush=True)
                 subprocess.run([exe, "-m", "pip", "install", "--upgrade", "yt-dlp"], check=True, **_kw)
 
-            # Re-check version after update
+            # Re-check version after update (force reload of version submodule)
             try:
                 import importlib
                 import yt_dlp as _ytdlp_mod
                 importlib.reload(_ytdlp_mod.version)
+                importlib.reload(_ytdlp_mod)
                 new_ver = _ytdlp_mod.version.__version__
-                print(f"[YT-DLP UPDATE] New version: {new_ver}", flush=True)
+                print(f"[YTDLP UPDATE] new version after update: {new_ver}", flush=True)
                 _push_progress({"status": "ytdlp_updated", "ok": True, "new_version": new_ver})
-            except Exception:
+            except Exception as reload_exc:
+                print(f"[YTDLP UPDATE] reload error: {reload_exc}", flush=True)
                 _push_progress({"status": "ytdlp_updated", "ok": True})
         except Exception as exc:
+            print(f"[YTDLP UPDATE] failed: {exc}", flush=True)
             _push_progress({"status": "ytdlp_updated", "ok": False, "error": str(exc)})
 
     threading.Thread(target=_update, daemon=True).start()
@@ -826,15 +827,22 @@ def api_vault_file_thumbs() -> Response:
     result = {}
     with analytics.get_conn() as con:
         for p in paths[:100]:
-            row = con.execute("SELECT thumbnail_url FROM downloads WHERE file_path=? LIMIT 1", [p]).fetchone()
-            if row and row[0]:
-                result[p] = row[0]
+            fp = Path(p)
+            # Prefer local sidecar (never expires)
+            local_thumb = None
+            for ext in (".jpg", ".jpeg", ".png", ".webp"):
+                if fp.with_suffix(ext).exists():
+                    local_thumb = f"/api/vault/thumb?path={p}"
+                    break
+            if local_thumb:
+                result[p] = local_thumb
             else:
-                fp = Path(p)
-                for ext in (".jpg", ".jpeg", ".png", ".webp"):
-                    if fp.with_suffix(ext).exists():
-                        result[p] = f"/api/vault/thumb?path={p}"
-                        break
+                # Fall back to DB URL (may expire for remote URLs)
+                row = con.execute(
+                    "SELECT thumbnail_url FROM downloads WHERE file_path=? LIMIT 1", [p]
+                ).fetchone()
+                if row and row[0]:
+                    result[p] = row[0]
     return jsonify({"thumbs": result})
 
 
