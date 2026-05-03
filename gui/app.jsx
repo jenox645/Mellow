@@ -597,7 +597,7 @@ function StatusBar({ sysInfo, speedHistory, config }) {
 
 // ── FEED Page ─────────────────────────────────────────────────────────────────
 
-function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats, showNotif, switchPage, config, onPlaylistDownload, playlistItems, setPlaylistItems, completedItems, failedItems, playlistTotalCount, playlistCompletedCount, isPaused, onPause, onResume }) {
+function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats, showNotif, switchPage, config, onPlaylistDownload, playlistItems, setPlaylistItems, completedItems, failedItems, playlistTotalCount, playlistCompletedCount, isPaused, onPause, onResume, onClearCompleted }) {
   const ss = (k, fb) => { try { const v = sessionStorage.getItem(k); return v !== null ? v : fb; } catch { return fb; } };
   const ssJ = (k, fb) => { try { const v = sessionStorage.getItem(k); return v ? JSON.parse(v) : fb; } catch { return fb; } };
 
@@ -1043,13 +1043,16 @@ function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats, showN
             {url && <span style={{ marginLeft: 'auto', cursor: 'pointer', color: 'var(--t3)', fontSize: 13, padding: '0 4px' }} title="Refresh queue" onClick={() => { if (url.trim()) { API.post('/api/playlist-items', { url: url.trim() }).then(r => { if (r.items && setPlaylistItems) setPlaylistItems(r.items.map(i => ({ ...i, selected: true }))); }).catch(() => {}); } }}>↻</span>}
           </div>
           {((playlistItems && playlistItems.length > 0) || (completedItems && completedItems.length > 0)) && (
-            <div className="q-tabs">
+            <div className="q-tabs" style={{ display: 'flex', alignItems: 'center' }}>
               <div className={'q-tab' + (feedQTab === 'pending' ? ' active' : '')} onClick={() => setFeedQTab('pending')}>
                 PENDING ({playlistItems ? playlistItems.length : 0})
               </div>
               <div className={'q-tab' + (feedQTab === 'completed' ? ' active' : '')} onClick={() => setFeedQTab('completed')}>
                 COMPLETED ({completedItems ? completedItems.length : 0})
               </div>
+              {feedQTab === 'completed' && completedItems && completedItems.length > 0 && onClearCompleted && (
+                <span style={{ marginLeft: 'auto', cursor: 'pointer', fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: 'var(--red)', padding: '0 10px' }} onClick={onClearCompleted}>CLEAR ✕</span>
+              )}
             </div>
           )}
           {feedQTab === 'pending' ? (
@@ -1111,7 +1114,9 @@ function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats, showN
             <div className="pl-queue-list" style={{ maxHeight: 216 }}>
               {(completedItems || []).slice(0, 12).map((item, i) => (
                 <div key={i} className="q-completed-item">
-                  <div className="q-comp-thumb-ph">✓</div>
+                  {item.thumbnail
+                    ? <img src={item.thumbnail} style={{ width: 64, height: 36, objectFit: 'cover', flexShrink: 0, borderRadius: 2 }} alt="" onError={e => { e.target.style.display='none'; }} />
+                    : <div className="q-comp-thumb-ph">✓</div>}
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div className="q-comp-title">{item.title || 'Unknown'}</div>
                     <div className="q-comp-meta">
@@ -1200,7 +1205,7 @@ function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats, showN
 
 // ── QUEUE Page ────────────────────────────────────────────────────────────────
 
-function QueuePage({ dlState, showNotif, playlistItems, setPlaylistItems, completedItems, failedItems, playlistTotalCount, playlistCompletedCount, isPaused, pausedCount, failedCount, onPause, onResume }) {
+function QueuePage({ dlState, showNotif, playlistItems, setPlaylistItems, completedItems, failedItems, playlistTotalCount, playlistCompletedCount, isPaused, pausedCount, failedCount, onPause, onResume, onClearCompleted }) {
   const isDownloading = dlState && dlState.pct !== undefined;
   const queueCount = playlistItems ? playlistItems.length : 0;
   const [qTab, setQTab] = React.useState('pending');
@@ -1284,9 +1289,12 @@ function QueuePage({ dlState, showNotif, playlistItems, setPlaylistItems, comple
             <span className="ptitle">DOWNLOAD QUEUE</span>
             <span className="psub">{qTab === 'pending' ? (playlistItems ? playlistItems.length : 0) + ' PENDING' : (completedItems ? completedItems.length : 0) + ' DONE'}</span>
           </div>
-          <div className="q-tabs">
+          <div className="q-tabs" style={{ display: 'flex', alignItems: 'center' }}>
             <div className={'q-tab' + (qTab === 'pending' ? ' active' : '')} onClick={() => setQTab('pending')}>PENDING</div>
             <div className={'q-tab' + (qTab === 'completed' ? ' active' : '')} onClick={() => setQTab('completed')}>COMPLETED</div>
+            {qTab === 'completed' && completedItems && completedItems.length > 0 && onClearCompleted && (
+              <span style={{ marginLeft: 'auto', cursor: 'pointer', fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: 'var(--red)', padding: '0 10px' }} onClick={onClearCompleted}>CLEAR ✕</span>
+            )}
           </div>
           {qTab === 'pending' ? (
             <>
@@ -1327,7 +1335,9 @@ function QueuePage({ dlState, showNotif, playlistItems, setPlaylistItems, comple
             <div className="pl-queue-list">
               {(completedItems || []).map((item, i) => (
                 <div key={i} className="q-completed-item">
-                  <div className="q-comp-thumb-ph">✓</div>
+                  {item.thumbnail
+                    ? <img src={item.thumbnail} style={{ width: 64, height: 36, objectFit: 'cover', flexShrink: 0, borderRadius: 2 }} alt="" onError={e => { e.target.style.display='none'; }} />
+                    : <div className="q-comp-thumb-ph">✓</div>}
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div className="q-comp-title">{item.title || 'Unknown'}</div>
                     <div className="q-comp-meta">
@@ -1568,7 +1578,7 @@ function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, config, sh
                   {folder.watched && <span className="vfc-watched-badge">WATCHED</span>}
                   <div className="vfc-bottom">
                     <div className="vfc-name">{folder.name}</div>
-                    <div className="vfc-meta-text">{folder.item_count || 0} FILES · {fmtBytes(folder.size_bytes)}</div>
+                    <div className="vfc-meta-text">{folder.item_count || 0} MEDIA · {fmtBytes(folder.size_bytes)}</div>
                     {folder.library_name && (
                       <div className="vfc-lib-tag"><Ico name="sync" size={9} />{folder.library_name}</div>
                     )}
@@ -1638,8 +1648,8 @@ function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, config, sh
               <div style={{ padding: '8px 0', fontFamily: 'Share Tech Mono, monospace', fontSize: 11 }}>
                 {[
                   ['Path', folderStatsData.path],
-                  ['Files', folderStatsData.file_count + ' items'],
-                  ['Total Size', fmtBytes(folderStatsData.total_size_bytes)],
+                  ['Media Files', (folderStatsData.media_count !== undefined ? folderStatsData.media_count : folderStatsData.file_count) + ' items' + (folderStatsData.video_count !== undefined ? ' (' + folderStatsData.audio_count + ' audio · ' + folderStatsData.video_count + ' video)' : '')],
+                  ['Total Media Size', fmtBytes(folderStatsData.total_size_bytes)],
                   ['Formats', Object.entries(folderStatsData.formats || {}).sort((a,b)=>b[1]-a[1]).map(([ext,n])=>ext.toUpperCase()+'('+n+')').join('  ')],
                 ].map(([label, val]) => (
                   <div key={label} style={{ display: 'flex', gap: 12, padding: '6px 0', borderBottom: '1px solid var(--border)' }}>
@@ -1770,9 +1780,9 @@ function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, config, sh
                     onError={e => { e.target.style.display = 'none'; }}
                   />
                 )}
-              </div>
-              <div className={'lib-fmt ' + (isVideoExt(file.ext) ? 'video' : 'audio')}>
-                {file.ext.toUpperCase()}
+                <div className={'lib-fmt ' + (isVideoExt(file.ext) ? 'video' : 'audio')} style={{ position: 'absolute', top: 6, left: 6, zIndex: 2, margin: 0 }}>
+                  {file.ext.toUpperCase()}
+                </div>
               </div>
               <div className="lib-body">
                 <div className="lib-title">{file.name.replace(/\.[^.]+$/, '')}</div>
@@ -2955,6 +2965,7 @@ function App() {
             isPaused={isPaused}
             onPause={() => API.post('/api/download/pause', {}).catch(() => {})}
             onResume={() => API.post('/api/download/resume', {}).catch(() => {})}
+            onClearCompleted={() => setCompletedItems([])}
           />
         )}
         {page === 'queue' && (
@@ -2972,6 +2983,7 @@ function App() {
             failedCount={failedCount}
             onPause={() => API.post('/api/download/pause', {}).catch(() => {})}
             onResume={() => API.post('/api/download/resume', {}).catch(() => {})}
+            onClearCompleted={() => setCompletedItems([])}
           />
         )}
         {page === 'vault' && (
@@ -3199,6 +3211,9 @@ function SyncPlaylistModal({ folder, onClose, showNotif, onRefreshVault }) {
   const [playlists, setPlaylists] = React.useState(null);
   const [syncMode, setSyncMode] = React.useState('add');
   const [syncing, setSyncing] = React.useState(false);
+  const [mirrorPreview, setMirrorPreview] = React.useState(null); // files to delete
+  const [previewing, setPreviewing] = React.useState(false);
+  const [confirming, setConfirming] = React.useState(false);
 
   React.useEffect(() => {
     API.get('/api/vault/playlists?path=' + encodeURIComponent(folder.path))
@@ -3207,26 +3222,79 @@ function SyncPlaylistModal({ folder, onClose, showNotif, onRefreshVault }) {
   }, [folder.path]);
 
   const handleSync = () => {
-    setSyncing(true);
-    API.post('/api/vault/sync', { path: folder.path, mode: syncMode })
-      .then(d => {
-        showNotif('Sync Started', folder.name + ' — ' + syncMode.toUpperCase() + ' mode', 'success');
+    if (syncMode === 'mirror') {
+      // For mirror: fetch preview first, then show confirm step
+      setPreviewing(true);
+      API.post('/api/vault/mirror-preview', { path: folder.path })
+        .then(d => { setMirrorPreview(d); setPreviewing(false); })
+        .catch(e => { showNotif('Error', e.message || 'Preview failed', 'error'); setPreviewing(false); });
+    } else {
+      setSyncing(true);
+      API.post('/api/vault/sync', { path: folder.path, mode: syncMode })
+        .then(() => {
+          showNotif('Sync Started', folder.name + ' — ' + playlists.length + ' playlist(s)', 'success');
+          onRefreshVault && onRefreshVault();
+          onClose();
+        })
+        .catch(e => showNotif('Error', e.message || 'Sync failed', 'error'))
+        .finally(() => setSyncing(false));
+    }
+  };
+
+  const handleMirrorConfirm = () => {
+    setConfirming(true);
+    const pathsToDelete = (mirrorPreview?.to_delete || []).map(f => f.path);
+    // First delete files, then start add sync
+    API.post('/api/vault/mirror-confirm', { paths: pathsToDelete })
+      .then(() => API.post('/api/vault/sync', { path: folder.path, mode: 'add' }))
+      .then(() => {
+        showNotif('Mirror Done', 'Deleted ' + pathsToDelete.length + ' file(s), syncing new items', 'success');
         onRefreshVault && onRefreshVault();
         onClose();
       })
-      .catch(e => showNotif('Error', e.message || 'Sync failed', 'error'))
-      .finally(() => setSyncing(false));
+      .catch(e => showNotif('Error', e.message || 'Mirror failed', 'error'))
+      .finally(() => setConfirming(false));
   };
 
   const hasPlaylist = playlists && playlists.length > 0;
+
+  // Mirror confirm step
+  if (mirrorPreview) {
+    const toDelete = mirrorPreview.to_delete || [];
+    return (
+      <Modal title={'CONFIRM MIRROR — ' + folder.name.toUpperCase()} onClose={onClose} footer={
+        <>
+          <button className="btn btn-secondary btn-sm" onClick={() => setMirrorPreview(null)}>BACK</button>
+          <button className="btn btn-danger btn-sm" onClick={handleMirrorConfirm} disabled={confirming}>
+            {confirming ? 'DELETING...' : 'CONFIRM MIRROR (' + toDelete.length + ' DELETE)'}
+          </button>
+        </>
+      }>
+        <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 10, color: 'var(--amber)', padding: '8px 0' }}>
+          {toDelete.length === 0
+            ? 'No local files to delete — all files are in the playlist.'
+            : toDelete.length + ' local file(s) not found in linked playlist(s) will be deleted:'}
+        </div>
+        {toDelete.length > 0 && (
+          <div style={{ maxHeight: 200, overflow: 'auto' }}>
+            {toDelete.map((f, i) => (
+              <div key={i} style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: 'var(--red)', padding: '2px 0', borderBottom: '1px solid var(--border)' }}>
+                {f.name} <span style={{ color: 'var(--t4)' }}>({fmtBytes(f.size)})</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </Modal>
+    );
+  }
 
   return (
     <Modal title={'SYNC — ' + folder.name.toUpperCase()} onClose={onClose} footer={
       hasPlaylist ? (
         <>
           <button className="btn btn-secondary btn-sm" onClick={onClose}>CANCEL</button>
-          <button className="btn btn-primary btn-sm" onClick={handleSync} disabled={syncing}>
-            {syncing ? 'SYNCING...' : 'SYNC NOW'}
+          <button className="btn btn-primary btn-sm" onClick={handleSync} disabled={syncing || previewing}>
+            {previewing ? 'CHECKING...' : syncing ? 'SYNCING...' : syncMode === 'mirror' ? 'PREVIEW MIRROR' : 'SYNC NOW'}
           </button>
         </>
       ) : (
@@ -3242,8 +3310,12 @@ function SyncPlaylistModal({ folder, onClose, showNotif, onRefreshVault }) {
       ) : (
         <>
           <div className="form-row">
-            <div className="form-label">LINKED PLAYLIST</div>
-            <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 10, color: 'var(--cyan)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', padding: '4px 0' }}>{playlists[0]}</div>
+            <div className="form-label">LINKED PLAYLISTS ({playlists.length})</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 2, padding: '4px 0' }}>
+              {playlists.map((pl, i) => (
+                <div key={i} style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: 'var(--cyan)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{pl}</div>
+              ))}
+            </div>
           </div>
           <div className="form-row">
             <div className="form-label">SYNC MODE</div>

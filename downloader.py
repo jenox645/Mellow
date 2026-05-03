@@ -277,6 +277,7 @@ def download_video(
         outtmpl = str(out_dir / "%(title)s.%(ext)s")
 
     print(f"[MellowDLP] yt-dlp outtmpl={outtmpl!r}  output_dir={output_dir!r}", flush=True)
+    print(f"[DOWNLOAD] mode={mode} audio_format={audio_fmt} quality={quality} container={container}", flush=True)
     hook = _make_progress_hook(progress_cb, library_id, speed_tracker)
 
     if mode == "audio":
@@ -292,7 +293,6 @@ def download_video(
             "outtmpl": outtmpl,
             "postprocessors": pps,
             "progress_hooks": [hook],
-            "noplaylist": True,
             "windows_filenames": True,
         }
     elif mode == "library":
@@ -319,6 +319,8 @@ def download_video(
             "progress_hooks": [hook],
             "windows_filenames": True,
         }
+
+    print(f"[DOWNLOAD] ydl format={ydl_opts.get('format')} postprocessors={ydl_opts.get('postprocessors')}", flush=True)
 
     if embed_subs and mode != "audio":
         ydl_opts["writesubtitles"] = True

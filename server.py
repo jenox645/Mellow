@@ -807,7 +807,6 @@ def api_vault_sync() -> Response:
     vp = cfg.get("vault_playlists", {}).get(path, [])
     if not vp:
         return jsonify({"error": "No playlist linked to this folder"}), 400
-    playlist_url = vp[0]  # use first linked playlist
     library_entries = analytics.get_library_entries()
     lib = next((e for e in library_entries if e.get("folder") == path or
                 str(Path(e.get("folder", "")) / (e.get("folder_name") or "")) == path), None)
@@ -825,15 +824,93 @@ def api_vault_sync() -> Response:
         "concurrent_fragments": cfg.get("concurrent_fragments", 4),
         "sleep_interval": cfg.get("sleep_interval", 0),
     }
-    if mode == "mirror":
-        opts["sync_mode"] = "mirror"
     library_id = lib["id"] if lib else None
-    downloader.download_in_thread(playlist_url, output_dir, opts, _push_progress, library_id)
+
+    # Run all linked playlists sequentially in one thread
+    playlist_urls = list(vp)
+
+    def _sync_all() -> None:
+        for playlist_url in playlist_urls:
+            print(f"[SYNC] syncing playlist: {playlist_url}", flush=True)
+            try:
+                downloader.download_video(playlist_url, output_dir, opts, _push_progress, library_id)
+            except Exception as exc:
+                print(f"[SYNC] error on {playlist_url}: {exc}", flush=True)
+
+    threading.Thread(target=_sync_all, daemon=True).start()
     vault_sync_times = cfg.get("vault_sync_times", {})
     vault_sync_times[path] = time.strftime("%Y-%m-%dT%H:%M:%S")
     cfg["vault_sync_times"] = vault_sync_times
     _save_config(cfg)
-    return jsonify({"ok": True, "synced_at": vault_sync_times[path]})
+    return jsonify({"ok": True, "synced_at": vault_sync_times[path], "playlists_synced": len(playlist_urls)})
+
+
+@app.route("/api/vault/mirror-preview", methods=["POST"])
+def api_vault_mirror_preview() -> Response:
+    """Return local media files NOT present in any linked playlist (for mirror confirm)."""
+    data = request.get_json(force=True) or {}
+    path = data.get("path", "").strip()
+    if not path or not os.path.isdir(path):
+        return jsonify({"error": "Invalid path"}), 400
+    cfg = _load_config()
+    vp = cfg.get("vault_playlists", {}).get(path, [])
+    if not vp:
+        return jsonify({"error": "No playlist linked"}), 400
+
+    # Collect all video IDs from all linked playlists via yt-dlp flat extraction
+    playlist_ids: set[str] = set()
+    for playlist_url in vp:
+        try:
+            import yt_dlp as _ydl
+            with _ydl.YoutubeDL({"quiet": True, "extract_flat": True, "skip_download": True}) as ydl:
+                info = ydl.extract_info(playlist_url, download=False)
+                if info and "entries" in info:
+                    for entry in (info["entries"] or []):
+                        if entry and entry.get("id"):
+                            playlist_ids.add(entry["id"])
+        except Exception as exc:
+            print(f"[MIRROR-PREVIEW] failed to fetch {playlist_url}: {exc}", flush=True)
+
+    # Scan local media files and check which are not in the playlist
+    p = Path(path)
+    media_exts = {'.mp3', '.mp4', '.mkv', '.webm', '.flac', '.m4a', '.wav', '.opus', '.aac', '.ogg', '.avi', '.mov'}
+    to_delete = []
+    for f in p.iterdir():
+        if not f.is_file() or f.suffix.lower() not in media_exts:
+            continue
+        # Try to find video ID in filename (yt-dlp often appends [VIDEO_ID])
+        import re as _re
+        m = _re.search(r'\[([A-Za-z0-9_-]{11})\]', f.name)
+        if m and m.group(1) in playlist_ids:
+            continue
+        # If we can't confirm it belongs to the playlist, flag for deletion
+        if playlist_ids:  # only flag if we successfully fetched the playlist
+            to_delete.append({"path": str(f), "name": f.name, "size": f.stat().st_size})
+
+    return jsonify({"to_delete": to_delete, "playlist_count": len(vp), "playlist_ids_found": len(playlist_ids)})
+
+
+@app.route("/api/vault/mirror-confirm", methods=["POST"])
+def api_vault_mirror_confirm() -> Response:
+    """Delete confirmed mirror files and their sidecar thumbnails."""
+    data = request.get_json(force=True) or {}
+    paths = data.get("paths", [])
+    deleted = []
+    errors = []
+    for fp in paths:
+        try:
+            f = Path(fp)
+            if f.exists() and f.is_file():
+                f.unlink()
+                deleted.append(fp)
+                # Delete sidecar thumbnail
+                for ext in (".jpg", ".jpeg", ".png", ".webp"):
+                    sidecar = f.with_suffix(ext)
+                    if sidecar.exists():
+                        sidecar.unlink()
+        except Exception as exc:
+            errors.append({"path": fp, "error": str(exc)})
+    return jsonify({"deleted": len(deleted), "errors": errors})
 
 
 @app.route("/api/vault/file-thumbs", methods=["POST"])
@@ -862,6 +939,11 @@ def api_vault_file_thumbs() -> Response:
     return jsonify({"thumbs": result})
 
 
+_STATS_MEDIA_EXTS = {'.mp3', '.mp4', '.mkv', '.webm', '.flac', '.m4a',
+                    '.wav', '.opus', '.aac', '.ogg', '.avi', '.mov'}
+_STATS_VIDEO_EXTS = {'.mp4', '.mkv', '.webm', '.avi', '.mov'}
+
+
 @app.route("/api/vault/folder-stats")
 def api_vault_folder_stats() -> Response:
     path = request.args.get("path", "")
@@ -869,16 +951,22 @@ def api_vault_folder_stats() -> Response:
         return jsonify({"error": "Invalid path"}), 400
     p = Path(path)
     try:
-        files = [f for f in p.rglob("*") if f.is_file() and not f.name.startswith(".")]
-        total_size = sum(f.stat().st_size for f in files if f.exists())
+        all_files = [f for f in p.rglob("*") if f.is_file() and not f.name.startswith(".")]
+        media_files = [f for f in all_files if f.suffix.lower() in _STATS_MEDIA_EXTS]
+        total_size = sum(f.stat().st_size for f in media_files if f.exists())
+        video_count = sum(1 for f in media_files if f.suffix.lower() in _STATS_VIDEO_EXTS)
+        audio_count = len(media_files) - video_count
         format_counts: dict = {}
-        for f in files:
+        for f in media_files:
             ext = f.suffix.lower().lstrip(".")
             if ext:
                 format_counts[ext] = format_counts.get(ext, 0) + 1
         return jsonify({
             "path": str(p),
-            "file_count": len(files),
+            "file_count": len(all_files),
+            "media_count": len(media_files),
+            "video_count": video_count,
+            "audio_count": audio_count,
             "total_size_bytes": total_size,
             "formats": format_counts,
         })

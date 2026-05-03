@@ -335,6 +335,10 @@ def export_csv() -> str:
     return buf.getvalue()
 
 
+_VAULT_MEDIA_EXTS = {'.mp3', '.mp4', '.mkv', '.webm', '.flac', '.m4a',
+                    '.wav', '.opus', '.aac', '.ogg', '.avi', '.mov'}
+
+
 def get_vault_folders(base_path: str) -> list[dict]:
     root = Path(base_path)
     if not root.exists():
@@ -344,15 +348,16 @@ def get_vault_folders(base_path: str) -> list[dict]:
         for item in sorted(root.iterdir()):
             if item.is_dir() and not item.name.startswith("."):
                 try:
-                    files = [f for f in item.rglob("*") if f.is_file() and not f.name.startswith(".")]
-                    size = sum(f.stat().st_size for f in files if f.exists())
+                    all_files = [f for f in item.rglob("*") if f.is_file() and not f.name.startswith(".")]
+                    media_files = [f for f in all_files if f.suffix.lower() in _VAULT_MEDIA_EXTS]
+                    size = sum(f.stat().st_size for f in media_files if f.exists())
                     st = item.stat()
                 except PermissionError:
-                    files, size, st = [], 0, None
+                    all_files, media_files, size, st = [], [], 0, None
                 result.append({
                     "name": item.name,
                     "path": str(item),
-                    "item_count": len(files),
+                    "item_count": len(media_files),
                     "size_bytes": size,
                     "created_at": st.st_ctime if st else None,
                     "modified_at": st.st_mtime if st else None,
