@@ -597,7 +597,7 @@ function StatusBar({ sysInfo, speedHistory, config }) {
 
 // ── FEED Page ─────────────────────────────────────────────────────────────────
 
-function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats, showNotif, switchPage, config, onPlaylistDownload, playlistItems, setPlaylistItems, completedItems, failedItems, playlistTotalCount, playlistCompletedCount, isPaused, onPause, onResume, onClearCompleted }) {
+function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats, showNotif, switchPage, config, onPlaylistDownload, playlistItems, setPlaylistItems, completedItems, failedItems, playlistTotalCount, playlistCompletedCount, isPaused, syncJobLabel, fetchingPlaylistItems, onPause, onResume, onClearCompleted }) {
   const ss = (k, fb) => { try { const v = sessionStorage.getItem(k); return v !== null ? v : fb; } catch { return fb; } };
   const ssJ = (k, fb) => { try { const v = sessionStorage.getItem(k); return v ? JSON.parse(v) : fb; } catch { return fb; } };
 
@@ -644,6 +644,8 @@ function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats, showN
       prevUrl.current = url;
       setInfo(null);
       setPlaylistItems && setPlaylistItems(null);
+      setImportedUrls(null);
+      setImportedFileName('');
     }
   }, [url, setPlaylistItems]);
 
@@ -652,6 +654,8 @@ function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats, showN
   const [vaultLinkPrompt, setVaultLinkPrompt] = React.useState(false);
   const [feedQTab, setFeedQTab] = React.useState('pending');
   const [removingFeedItems, setRemovingFeedItems] = React.useState(new Set());
+  const [importedUrls, setImportedUrls] = React.useState(null);
+  const [importedFileName, setImportedFileName] = React.useState('');
 
   // Ref to always call the latest startDownload (avoids stale closure in handleDownload)
   const startDownloadRef = React.useRef(null);
@@ -684,16 +688,71 @@ function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats, showN
       .finally(() => setAnalyzing(false));
   }, [url, showNotif, setPlaylistItems]);
 
+  const handleImportFile = React.useCallback(() => {
+    API.post('/api/browse-file', { filter: '.txt' })
+      .then(d => {
+        if (!d.path) return;
+        API.post('/api/read-url-file', { path: d.path })
+          .then(r => {
+            const urls = r.urls || [];
+            if (!urls.length) { showNotif('No URLs', 'No valid URLs found in file', 'error'); return; }
+            const fname = d.path.split(/[\\/]/).pop();
+            if (urls.length === 1) {
+              setUrl(urls[0]);
+              setImportedUrls(null);
+              setImportedFileName('');
+            } else {
+              setImportedUrls(urls);
+              setImportedFileName(fname);
+              const fakeItems = urls.map((u, i) => ({ idx: i + 1, title: u, url: u, selected: true }));
+              setPlaylistItems && setPlaylistItems(fakeItems);
+              setInfo({ is_playlist: true, is_imported: true, title: fname, playlist_count: urls.length });
+            }
+          })
+          .catch(e => showNotif('Error', e.message, 'error'));
+      })
+      .catch(() => {});
+  }, [showNotif, setPlaylistItems]);
+
+  const startImportDownload = React.useCallback(() => {
+    if (!importedUrls || !importedUrls.length) return;
+    if (onPlaylistDownload) onPlaylistDownload(importedUrls.length, importedFileName || 'Imported URLs');
+    API.post('/api/download', {
+      url: importedUrls[0],
+      multi_urls: importedUrls,
+      mode,
+      quality,
+      container,
+      audio_format: audioFmt,
+      embed_thumbnail: embedThumb,
+      embed_chapters: embedChapters,
+      embed_metadata: embedMeta,
+      embed_subs: embedSubs,
+      sponsorblock,
+      ...(downloadPath ? { output_dir: downloadPath } : {}),
+    }).then(d => {
+      if (d.error) showNotif('Error', d.error, 'error');
+    }).catch(e => showNotif('Error', e.message, 'error'));
+  }, [importedUrls, importedFileName, mode, quality, container, audioFmt, embedThumb, embedChapters, embedMeta, embedSubs, sponsorblock, downloadPath, onPlaylistDownload, showNotif]);
+
+  // Ref so handleDownload/handleUrlKeyDown can call latest startImportDownload without stale closure
+  const startImportDownloadRef = React.useRef(null);
+  startImportDownloadRef.current = startImportDownload;
+
   // handleDownload uses a ref so it always calls the latest startDownload without stale closure
   const handleDownload = React.useCallback(() => {
-    if (!url.trim()) return;
+    if (!url.trim() && !importedUrls) return;
+    if (info && info.is_imported && importedUrls) {
+      startImportDownloadRef.current && startImportDownloadRef.current();
+      return;
+    }
     if (info && info.is_playlist) {
       if (onPlaylistDownload) onPlaylistDownload(info.playlist_count || 0, info.title || '');
       setVaultLinkPrompt(true);
       return;
     }
     if (startDownloadRef.current) startDownloadRef.current();
-  }, [url, info, onPlaylistDownload]);
+  }, [url, info, importedUrls, onPlaylistDownload]);
 
   const browseDownloadPath = React.useCallback(() => {
     API.post('/api/browse-folder', {}).then(d => { if (d.path) setDownloadPath(d.path); }).catch(() => {});
@@ -742,6 +801,22 @@ function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats, showN
       if (d.text) setUrl(d.text);
     }).catch(() => {});
   }, []);
+
+  const handleUrlKeyDown = React.useCallback((e) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    if (!url.trim()) {
+      API.get('/api/clipboard').then(d => { if (d.text) setUrl(d.text); }).catch(() => {});
+    } else if (!info && !analyzing) {
+      handleAnalyze();
+    } else if (info && !isDownloading) {
+      if (info.is_imported && importedUrls) {
+        startImportDownloadRef.current && startImportDownloadRef.current();
+      } else {
+        handleDownload();
+      }
+    }
+  }, [url, info, analyzing, isDownloading, importedUrls, handleAnalyze, handleDownload]);
 
   const browseVaultFolder = React.useCallback(() => {
     API.post('/api/browse-folder', {}).then(d => {
@@ -808,7 +883,7 @@ function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats, showN
               type="text"
               value={url}
               onChange={e => setUrl(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleAnalyze()}
+              onKeyDown={handleUrlKeyDown}
               placeholder="https://www.youtube.com/watch?v=... or any supported platform URL"
             />
           </div>
@@ -824,6 +899,11 @@ function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats, showN
             </button>
           )}
           <button className="btn btn-secondary btn-sm" onClick={handlePaste}>PASTE</button>
+          <button className="btn btn-secondary btn-sm" onClick={handleImportFile} title="Import URLs from .txt file">IMPORT FILE</button>
+        </div>
+        <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: 'var(--t4)', paddingTop: 3 }}>
+          ENTER: {!url.trim() ? 'paste' : !info && !analyzing ? 'analyze' : 'download'}
+          {importedFileName && <span style={{ color: 'var(--cyan)', marginLeft: 10 }}>↑ {importedFileName} ({importedUrls ? importedUrls.length : 0} URLs)</span>}
         </div>
 
         {/* OPTIONS PANEL */}
@@ -1062,6 +1142,12 @@ function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats, showN
                   <span className="qlh-left">PENDING ITEMS — 待機中</span>
                   <span className="qlh-right">{playlistItems.length} TRACKS · CLICK ✕ TO REMOVE</span>
                 </div>
+                {syncJobLabel && (
+                  <div style={{ padding: '6px 14px', background: 'var(--bg3)', borderBottom: '1px solid var(--border)', fontFamily: 'Share Tech Mono', fontSize: 9, color: 'var(--cyan)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ animation: 'spin 1s linear infinite', display: 'inline-block' }}>⟳</span>
+                    SYNC QUEUED: {syncJobLabel}
+                  </div>
+                )}
                 <div className="pl-queue-list" style={{ maxHeight: 216 }}>
                   {playlistItems.slice(0, 12).map(item => (
                     <div
@@ -1099,7 +1185,7 @@ function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats, showN
                   )}
                 </div>
               </div>
-            ) : fetchingItems ? (
+            ) : (fetchingItems || fetchingPlaylistItems) ? (
               <div style={{ padding: '20px', fontFamily: 'Share Tech Mono', fontSize: 9, color: 'var(--t3)', textAlign: 'center' }}>
                 FETCHING PLAYLIST ITEMS...
               </div>
@@ -1205,7 +1291,7 @@ function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats, showN
 
 // ── QUEUE Page ────────────────────────────────────────────────────────────────
 
-function QueuePage({ dlState, showNotif, playlistItems, setPlaylistItems, completedItems, failedItems, playlistTotalCount, playlistCompletedCount, isPaused, pausedCount, failedCount, onPause, onResume, onClearCompleted }) {
+function QueuePage({ dlState, showNotif, playlistItems, setPlaylistItems, completedItems, failedItems, playlistTotalCount, playlistCompletedCount, isPaused, pausedCount, failedCount, syncJobLabel, fetchingPlaylistItems, onPause, onResume, onClearCompleted }) {
   const isDownloading = dlState && dlState.pct !== undefined;
   const queueCount = playlistItems ? playlistItems.length : 0;
   const [qTab, setQTab] = React.useState('pending');
@@ -1302,6 +1388,12 @@ function QueuePage({ dlState, showNotif, playlistItems, setPlaylistItems, comple
                 <span className="qlh-left">PENDING ITEMS — 待機中</span>
                 <span className="qlh-right">{(playlistItems ? playlistItems.length : 0)} TRACKS · CLICK ✕ TO REMOVE</span>
               </div>
+              {syncJobLabel && (
+                <div style={{ padding: '6px 14px', background: 'var(--bg3)', borderBottom: '1px solid var(--border)', fontFamily: 'Share Tech Mono', fontSize: 9, color: 'var(--cyan)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ animation: 'spin 1s linear infinite', display: 'inline-block' }}>⟳</span>
+                  SYNC QUEUED: {syncJobLabel}
+                </div>
+              )}
               <div className="pl-queue-list">
                 {(playlistItems || []).map(item => (
                   <div
@@ -1363,11 +1455,17 @@ function QueuePage({ dlState, showNotif, playlistItems, setPlaylistItems, comple
             <span className="ptag">QUEUE</span>
             <span className="ptitle">PENDING DOWNLOADS — 待機中</span>
           </div>
-          <div className="empty-state">
-            <Mascot src={MASCOT_TIRED} className="empty-mascot tint-cyan" wrapClass="empty-mascot-wrap" style={{ width: 180 }} />
-            <div className="empty-title">QUEUE EMPTY</div>
-            <div className="empty-sub">PASTE A URL IN FEED TO START DOWNLOADING</div>
-          </div>
+          {fetchingPlaylistItems ? (
+            <div style={{ padding: '20px', fontFamily: 'Share Tech Mono', fontSize: 9, color: 'var(--t3)', textAlign: 'center' }}>
+              FETCHING PLAYLIST ITEMS...
+            </div>
+          ) : (
+            <div className="empty-state">
+              <Mascot src={MASCOT_TIRED} className="empty-mascot tint-cyan" wrapClass="empty-mascot-wrap" style={{ width: 180 }} />
+              <div className="empty-title">QUEUE EMPTY</div>
+              <div className="empty-sub">PASTE A URL IN FEED TO START DOWNLOADING</div>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -1376,7 +1474,7 @@ function QueuePage({ dlState, showNotif, playlistItems, setPlaylistItems, comple
 
 // ── VAULT Page ────────────────────────────────────────────────────────────────
 
-function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, config, showNotif, onAddVault, onRefreshVault }) {
+function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, config, showNotif, onAddVault, onRefreshVault, isDownloading, onSyncStart, onSyncItems }) {
   const [files, setFiles] = React.useState([]);
   const [loading, setLoading] = React.useState(false);
   const [ctxMenu, setCtxMenu] = React.useState(null);
@@ -1395,9 +1493,18 @@ function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, config, sh
   const [folderStatsModal, setFolderStatsModal] = React.useState(null); // folder stats modal
   const [folderStatsData, setFolderStatsData] = React.useState(null);
   const [fileThumbs, setFileThumbs] = React.useState({});
+  const [vaultScale, setVaultScale] = React.useState(() => { try { return localStorage.getItem('vault_scale') || 'md'; } catch { return 'md'; } });
+  const [selectedFiles, setSelectedFiles] = React.useState(new Set());
+  const [selectionMode, setSelectionMode] = React.useState(false);
+  const [randomizerCount, setRandomizerCount] = React.useState(5);
+  const [randomizedFiles, setRandomizedFiles] = React.useState(null);
+
+  const refreshLibraryEntries = React.useCallback(() => {
+    API.get('/api/library').then(setLibraryEntries).catch(() => {});
+  }, []);
 
   React.useEffect(() => {
-    API.get('/api/library').then(setLibraryEntries).catch(() => {});
+    refreshLibraryEntries();
   }, []);
 
   React.useEffect(() => {
@@ -1436,12 +1543,59 @@ function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, config, sh
 
   const handleSync = React.useCallback(() => {
     if (!libEntry) return;
+    if (isDownloading) showNotif('Note', 'Sync will queue after current download', 'info');
     setSyncingId(libEntry.id);
     API.post('/api/library/' + libEntry.id + '/sync', { mode: libEntry.sync_mode || 'add' })
       .then(() => showNotif('Sync started', libEntry.name))
       .catch(e => showNotif('Error', e.message, 'error'))
       .finally(() => setSyncingId(null));
-  }, [libEntry, showNotif]);
+  }, [libEntry, isDownloading, showNotif]);
+
+  const handleRandomize = React.useCallback(() => {
+    const mediaFiles = files.filter(f => /\.(mp4|mkv|webm|mp3|m4a|flac|wav|aac|avi|mov|opus)$/i.test(f.name));
+    if (!mediaFiles.length) { showNotif('No media', 'No media files in this folder', 'error'); return; }
+    const count = Math.min(randomizerCount, mediaFiles.length);
+    const shuffled = [...mediaFiles].sort(() => Math.random() - 0.5).slice(0, count);
+    setRandomizedFiles(shuffled);
+    // Merge random picks into selection — activates selectionMode so user can add/remove manually
+    setSelectedFiles(prev => {
+      const next = new Set(prev);
+      shuffled.forEach(f => next.add(f.path));
+      return next;
+    });
+    setSelectionMode(true);
+  }, [files, randomizerCount, showNotif]);
+
+  const handlePlayRandom = React.useCallback(() => {
+    // Play whatever is currently in selectedFiles (randomized + any manual additions)
+    const paths = selectedFiles.size > 0
+      ? files.filter(f => selectedFiles.has(f.path)).map(f => f.path)
+      : (randomizedFiles || []).map(f => f.path);
+    if (!paths.length) return;
+    API.post('/api/vault/play-files', { paths })
+      .then(() => showNotif('Playing', paths.length + ' files opened in player', 'success'))
+      .catch(e => showNotif('Error', e.message, 'error'));
+  }, [randomizedFiles, selectedFiles, files, showNotif]);
+
+  const handlePlaySelected = React.useCallback(() => {
+    if (!selectedFiles.size) return;
+    const paths = files.filter(f => selectedFiles.has(f.path)).map(f => f.path);
+    API.post('/api/vault/play-files', { paths })
+      .then(() => showNotif('Playing', paths.length + ' files opened in player', 'success'))
+      .catch(e => showNotif('Error', e.message, 'error'));
+  }, [selectedFiles, files, showNotif]);
+
+  const handleDeleteSelected = React.useCallback(() => {
+    if (!selectedFiles.size) return;
+    const paths = [...selectedFiles];
+    Promise.all(paths.map(p => API.del('/api/vault/file', { path: p }).catch(() => null)))
+      .then(() => {
+        setFiles(f => f.filter(x => !selectedFiles.has(x.path)));
+        showNotif('Deleted', paths.length + ' file(s)');
+        setSelectedFiles(new Set());
+        setSelectionMode(false);
+      });
+  }, [selectedFiles, showNotif]);
 
   const handleOpenFile = React.useCallback((path) => {
     API.post('/api/vault/open-file', { path }).catch(() => {});
@@ -1477,17 +1631,27 @@ function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, config, sh
 
   const handleVaultRemove = React.useCallback((folder) => {
     API.post('/api/vault/remove', { path: folder.path })
-      .then(() => { showNotif('Removed', folder.name); onRefreshVault && onRefreshVault(); })
+      .then(() => {
+        showNotif('Removed', folder.name);
+        if (selectedFolder === folder.path) setSelectedFolder(null);
+        setFolderMosaics(prev => { const next = { ...prev }; delete next[folder.path]; return next; });
+        onRefreshVault && onRefreshVault();
+        refreshLibraryEntries();
+      })
       .catch(e => showNotif('Error', e.message, 'error'));
     setCardMenuData(null);
-  }, [showNotif, onRefreshVault]);
+  }, [showNotif, onRefreshVault, selectedFolder, setSelectedFolder, refreshLibraryEntries]);
 
   const handleVaultRename = React.useCallback((folder, name) => {
     API.post('/api/vault/rename', { path: folder.path, name })
-      .then(() => { onRefreshVault && onRefreshVault(); })
+      .then(() => {
+        setFolderMosaics(prev => { const next = { ...prev }; delete next[folder.path]; return next; });
+        onRefreshVault && onRefreshVault();
+        refreshLibraryEntries();
+      })
       .catch(e => showNotif('Error', e.message, 'error'));
     setRenameModal(null);
-  }, [showNotif, onRefreshVault]);
+  }, [showNotif, onRefreshVault, refreshLibraryEntries]);
 
   const handleWatchFolder = React.useCallback(() => {
     API.post('/api/browse-folder', {}).then(d => {
@@ -1526,7 +1690,26 @@ function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, config, sh
             <div className="vlabel">メディアボールト / MEDIA VAULT</div>
             <div className="vtitle">VAULT <span className="c">BROWSER</span></div>
           </div>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+            <div className="pills" style={{ marginBottom: 0 }}>
+              {['sm','md','lg'].map(s => (
+                <div key={s} className={'pill' + (vaultScale === s ? ' active' : '')}
+                  onClick={() => { setVaultScale(s); try { localStorage.setItem('vault_scale', s); } catch {} }}>
+                  {s.toUpperCase()}
+                </div>
+              ))}
+            </div>
+            <button className="btn btn-secondary btn-sm" onClick={() => { onRefreshVault && onRefreshVault(); refreshLibraryEntries(); }} title="Refresh vault">↻ REFRESH</button>
+            {vaultFolders.some(f => f.last_synced !== undefined || f.library_id) && (
+              <button className="btn btn-secondary btn-sm" title="Sync all linked folders"
+                onClick={() => {
+                  const linked = vaultFolders.filter(f => f.library_id || f.last_synced);
+                  if (!linked.length) { showNotif('Nothing to sync', 'No linked folders found', 'info'); return; }
+                  API.post('/api/vault/sync-all', {})
+                    .then(d => showNotif('Sync All Queued', d.count + ' folder(s) queued', 'success'))
+                    .catch(e => showNotif('Sync Error', e.message, 'error'));
+                }}>↻ SYNC ALL</button>
+            )}
             <button className="btn btn-secondary btn-sm" onClick={handleWatchFolder}>
               <Ico name="folder" /> WATCH FOLDER
             </button>
@@ -1541,7 +1724,7 @@ function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, config, sh
             <div className="empty-sub" onClick={onAddVault}>Add a playlist or watch folder to get started</div>
           </div>
         ) : (
-          <div className="vault-folder-grid">
+          <div className="vault-folder-grid" style={{ '--vault-card-width': vaultScale === 'sm' ? '160px' : vaultScale === 'lg' ? '280px' : '200px' }}>
             {vaultFolders.map(folder => {
               const thumbs = folderMosaics[folder.path] || [];
               const showMosaic = thumbs.length > 0;
@@ -1580,6 +1763,11 @@ function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, config, sh
                     const rect = e.currentTarget.getBoundingClientRect();
                     setCardMenuData({ folder, top: rect.bottom + 4, right: window.innerWidth - rect.right });
                   }}>⋮</div>
+
+                  {/* Quick sync button — only shows when folder has a linked playlist */}
+                  {folder.library_id && (
+                    <div className="vfc-sync-btn" title="Sync" onClick={e => { e.stopPropagation(); setSyncModal(folder); }}>↻</div>
+                  )}
 
                   {folder.watched && <span className="vfc-watched-badge">WATCHED</span>}
                   <div className="vfc-bottom">
@@ -1633,7 +1821,7 @@ function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, config, sh
 
         {linkPlModal && <LinkPlaylistModal folder={linkPlModal} onClose={() => setLinkPlModal(null)} showNotif={showNotif} />}
 
-        {syncModal && <SyncPlaylistModal folder={syncModal} onClose={() => setSyncModal(null)} showNotif={showNotif} onRefreshVault={onRefreshVault} />}
+        {syncModal && <SyncPlaylistModal folder={syncModal} onClose={() => setSyncModal(null)} showNotif={showNotif} onRefreshVault={onRefreshVault} isDownloading={isDownloading} onSyncStart={onSyncStart} onSyncItems={onSyncItems} />}
 
         {renameModal && (
           <RenameVaultModal
@@ -1652,17 +1840,27 @@ function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, config, sh
               <div style={{ padding: 24, color: 'var(--red)', fontFamily: 'Share Tech Mono, monospace', fontSize: 11 }}>{folderStatsData.error}</div>
             ) : (
               <div style={{ padding: '8px 0', fontFamily: 'Share Tech Mono, monospace', fontSize: 11 }}>
-                {[
-                  ['Path', folderStatsData.path],
-                  ['Media Files', (folderStatsData.media_count !== undefined ? folderStatsData.media_count : folderStatsData.file_count) + ' items' + (folderStatsData.video_count !== undefined ? ' (' + folderStatsData.audio_count + ' audio · ' + folderStatsData.video_count + ' video)' : '')],
-                  ['Total Media Size', fmtBytes(folderStatsData.total_size_bytes)],
-                  ['Formats', Object.entries(folderStatsData.formats || {}).sort((a,b)=>b[1]-a[1]).map(([ext,n])=>ext.toUpperCase()+'('+n+')').join('  ')],
-                ].map(([label, val]) => (
-                  <div key={label} style={{ display: 'flex', gap: 12, padding: '6px 0', borderBottom: '1px solid var(--border)' }}>
-                    <span style={{ color: 'var(--t3)', minWidth: 100 }}>{label}</span>
-                    <span style={{ color: 'var(--cyan)', wordBreak: 'break-all' }}>{val || '—'}</span>
-                  </div>
-                ))}
+                {(() => {
+                  const s = folderStatsData;
+                  const rows = [
+                    ['Path', s.path],
+                    ['Media Files', (s.media_count || 0) + ' items  (' + (s.audio_count || 0) + ' audio · ' + (s.video_count || 0) + ' video)'],
+                    ['Total Size', fmtBytes(s.total_size_bytes)],
+                    ['Avg File Size', fmtBytes(s.avg_size_bytes)],
+                    ['Linked Playlists', (s.linked_playlists || 0) + ' playlist(s)'],
+                    ['Formats', Object.entries(s.formats || {}).sort((a,b)=>b[1]-a[1]).map(([ext,n])=>ext.toUpperCase()+'('+n+')').join('  ')],
+                    ['Largest File', s.largest_file ? s.largest_file.name + '  · ' + fmtBytes(s.largest_file.size) : '—'],
+                    ['Smallest File', s.smallest_file ? s.smallest_file.name + '  · ' + fmtBytes(s.smallest_file.size) : '—'],
+                    ['Newest File', s.newest_file ? s.newest_file.name + '  · ' + timeAgo(s.newest_file.ts * 1000) : '—'],
+                    ['Oldest File', s.oldest_file ? s.oldest_file.name + '  · ' + timeAgo(s.oldest_file.ts * 1000) : '—'],
+                  ];
+                  return rows.map(([label, val]) => (
+                    <div key={label} style={{ display: 'flex', gap: 12, padding: '5px 0', borderBottom: '1px solid var(--border)' }}>
+                      <span style={{ color: 'var(--t3)', minWidth: 120, flexShrink: 0 }}>{label}</span>
+                      <span style={{ color: 'var(--cyan)', wordBreak: 'break-all', fontSize: 10 }}>{val || '—'}</span>
+                    </div>
+                  ));
+                })()}
                 <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
                   <button className="btn btn-secondary btn-sm" onClick={() => { setFolderStatsModal(null); API.post('/api/open-folder', { path: folderStatsModal.path }).catch(() => {}); }}>OPEN IN EXPLORER</button>
                 </div>
@@ -1689,11 +1887,23 @@ function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, config, sh
           <div className="vlabel">メディアボールト / MEDIA VAULT</div>
           <div className="vtitle">VAULT <span className="c">{folderName.toUpperCase().slice(0, 16)}</span></div>
         </div>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+          <div className="pills" style={{ marginBottom: 0 }}>
+            {['sm','md','lg'].map(s => (
+              <div key={s} className={'pill' + (vaultScale === s ? ' active' : '')}
+                onClick={() => { setVaultScale(s); try { localStorage.setItem('vault_scale', s); } catch {} }}>
+                {s.toUpperCase()}
+              </div>
+            ))}
+          </div>
           {libEntry && (
             <button className="btn btn-amber btn-sm" onClick={handleSync} disabled={!!syncingId}>
               {syncingId ? 'SYNCING...' : (<><Ico name="sync" /> SYNC NOW</>)}
             </button>
+          )}
+          {selectedFolderMeta && (selectedFolderMeta.library_id || selectedFolderMeta.last_synced) && (
+            <button className="btn btn-secondary btn-sm" title="Sync options / selective playlist sync"
+              onClick={() => setSyncModal(selectedFolderMeta)}>SYNC OPTIONS</button>
           )}
           <button className="btn btn-secondary btn-sm" onClick={() => {
             setLoading(true);
@@ -1751,6 +1961,40 @@ function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, config, sh
             </select>
           </div>
           <div className="vault-lib-count">TOTAL: <span>{files.filter(f => !vaultSearch || f.name.toLowerCase().includes(vaultSearch.toLowerCase())).length} ITEMS</span></div>
+          <div className="randomizer-bar">
+            <span className="opts-label">RANDOMIZE</span>
+            <div className="rand-stepper">
+              <button className="rand-step-btn" onClick={() => setRandomizerCount(c => Math.max(1, c - 1))}>−</button>
+              <span className="rand-step-val">{randomizerCount}</span>
+              <button className="rand-step-btn" onClick={() => setRandomizerCount(c => Math.min(files.length || 99, c + 1))}>+</button>
+            </div>
+            <button className="btn btn-secondary btn-sm" onClick={handleRandomize}>PICK</button>
+            {randomizedFiles && (
+              <>
+                <span style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: 'var(--cyan)' }}>
+                  {selectedFiles.size > randomizedFiles.length ? selectedFiles.size : randomizedFiles.length} selected
+                </span>
+                <button className="btn btn-primary btn-sm" onClick={handlePlayRandom}>
+                  ▶ PLAY ({selectedFiles.size || randomizedFiles.length})
+                </button>
+                <button className="btn btn-secondary btn-sm" onClick={() => { setRandomizedFiles(null); setSelectedFiles(new Set()); setSelectionMode(false); }}>✕</button>
+              </>
+            )}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingBottom: 4 }}>
+            <button className={'btn btn-sm ' + (selectionMode ? 'btn-primary' : 'btn-secondary')}
+              onClick={() => { setSelectionMode(s => !s); setSelectedFiles(new Set()); }}>
+              {selectionMode ? 'EXIT SELECT' : 'SELECT'}
+            </button>
+            {selectionMode && selectedFiles.size > 0 && (
+              <>
+                <button className="btn btn-secondary btn-sm" onClick={() => setSelectedFiles(new Set(files.map(f => f.path)))}>ALL</button>
+                <button className="btn btn-secondary btn-sm" onClick={() => setSelectedFiles(new Set())}>NONE</button>
+                <button className="btn btn-primary btn-sm" onClick={handlePlaySelected}>▶ PLAY ({selectedFiles.size})</button>
+                <button className="btn btn-danger btn-sm" onClick={handleDeleteSelected}>DELETE ({selectedFiles.size})</button>
+              </>
+            )}
+          </div>
         </>
       )}
 
@@ -1766,7 +2010,7 @@ function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, config, sh
           <div className="empty-sub">Download something to this folder</div>
         </div>
       ) : (
-        <div className="lib-grid">
+        <div className="lib-grid" style={{ '--lib-card-min': vaultScale === 'sm' ? '130px' : vaultScale === 'lg' ? '240px' : '175px' }}>
           {files
             .filter(f => !vaultSearch || f.name.toLowerCase().includes(vaultSearch.toLowerCase()))
             .sort((a, b) => {
@@ -1774,8 +2018,19 @@ function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, config, sh
               if (vaultSort === 'date') return (b.created || 0) - (a.created || 0);
               return a.name.localeCompare(b.name);
             })
-            .map(file => (
-            <div key={file.path} className="lib-card" onDoubleClick={() => handleOpenFile(file.path)}>
+            .map(file => {
+              const isRandSelected = randomizedFiles && randomizedFiles.some(f => f.path === file.path);
+              const isFileSelected = selectedFiles.has(file.path);
+              return (
+            <div key={file.path}
+              className={'lib-card' + (isRandSelected ? ' rand-selected' : '') + (isFileSelected ? ' file-selected' : '')}
+              onClick={() => {
+                if (selectionMode) {
+                  setSelectedFiles(prev => { const next = new Set(prev); next.has(file.path) ? next.delete(file.path) : next.add(file.path); return next; });
+                } else {
+                  handleOpenFile(file.path);
+                }
+              }}>
               <div style={{ position: 'relative', width: '100%', height: 100, overflow: 'hidden', background: 'linear-gradient(135deg,var(--bg3),var(--bg2))', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 32, color: 'var(--t4)' }}>
                 <span style={{ position: 'relative', zIndex: 0 }}>{isVideoExt(file.ext) ? '▶' : '♫'}</span>
                 {(fileThumbs[file.path] || '/api/vault/thumb?path=' + encodeURIComponent(file.path)) && (
@@ -1789,6 +2044,11 @@ function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, config, sh
                 <div className={'lib-fmt ' + (isVideoExt(file.ext) ? 'video' : 'audio')} style={{ position: 'absolute', top: 6, left: 6, zIndex: 2, margin: 0 }}>
                   {file.ext.toUpperCase()}
                 </div>
+                {selectionMode && (
+                  <div style={{ position: 'absolute', top: 6, right: 6, zIndex: 3, width: 16, height: 16, borderRadius: 3, border: '2px solid var(--cyan)', background: isFileSelected ? 'var(--cyan)' : 'var(--bg1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, color: 'var(--bg1)' }}>
+                    {isFileSelected && '✓'}
+                  </div>
+                )}
               </div>
               <div className="lib-body">
                 <div className="lib-title">{file.name.replace(/\.[^.]+$/, '')}</div>
@@ -1808,7 +2068,8 @@ function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, config, sh
                 <Ico name="dots" />
               </div>
             </div>
-          ))}
+              );
+            })}
         </div>
       )}
 
@@ -2172,6 +2433,13 @@ const PRESET_QUERIES = [
   { label: 'Downloads by hour', sql: "SELECT EXTRACT(hour FROM timestamp)::INTEGER as hour, COUNT(*) as count\nFROM downloads\nWHERE status='success'\nGROUP BY hour\nORDER BY hour" },
   { label: 'Platform breakdown', sql: "SELECT platform, COUNT(*) as downloads,\n  ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER (), 1) as pct\nFROM downloads\nWHERE status='success'\nGROUP BY platform\nORDER BY downloads DESC" },
   { label: 'All downloads', sql: "SELECT id, title, platform, format, quality,\n  file_size_bytes, timestamp, status\nFROM downloads\nORDER BY timestamp DESC\nLIMIT 50" },
+  { label: 'Library folders & linked playlists', sql: "SELECT l.name, l.folder, l.quality, l.mode,\n  l.embed_thumbnail, l.embed_subs, l.sponsorblock,\n  l.last_synced,\n  (SELECT COUNT(*) FROM sync_log sl WHERE sl.library_id = l.id) as total_syncs\nFROM library l\nORDER BY l.last_synced DESC NULLS LAST" },
+  { label: 'Sync history (all runs)', sql: "SELECT l.name as folder, sl.synced_at, sl.new_items,\n  sl.skipped, sl.errors, sl.duration_seconds\nFROM sync_log sl\nJOIN library l ON l.id = sl.library_id\nORDER BY sl.synced_at DESC\nLIMIT 30" },
+  { label: 'Downloads per library folder', sql: "SELECT l.name as library, l.folder,\n  COUNT(d.id) as downloads,\n  SUM(d.file_size_bytes) as total_bytes,\n  MAX(d.timestamp) as last_download\nFROM library l\nLEFT JOIN downloads d ON d.file_path LIKE l.folder || '%'\n  AND d.status='success'\nGROUP BY l.id, l.name, l.folder\nORDER BY downloads DESC" },
+  { label: 'Duplicates by title', sql: "SELECT title, COUNT(*) as count, SUM(file_size_bytes) as wasted_bytes\nFROM downloads\nWHERE status='success' AND title IS NOT NULL\nGROUP BY title\nHAVING COUNT(*) > 1\nORDER BY wasted_bytes DESC\nLIMIT 20" },
+  { label: 'Audio vs Video split', sql: "SELECT\n  CASE WHEN format IN ('mp3','aac','flac','m4a','opus','wav') THEN 'audio' ELSE 'video' END as type,\n  COUNT(*) as count,\n  SUM(file_size_bytes) as total_bytes\nFROM downloads\nWHERE status='success'\nGROUP BY type" },
+  { label: 'Download speed stats', sql: "SELECT\n  DATE_TRUNC('day', timestamp) as day,\n  AVG(download_speed_avg_bps) / 1048576.0 as avg_mbps,\n  MAX(download_speed_avg_bps) / 1048576.0 as peak_mbps,\n  COUNT(*) as count\nFROM downloads\nWHERE status='success' AND download_speed_avg_bps IS NOT NULL\nGROUP BY day\nORDER BY day DESC\nLIMIT 14" },
+  { label: 'Longest downloads (time)', sql: "SELECT title, platform, format, elapsed_seconds,\n  file_size_bytes, timestamp\nFROM downloads\nWHERE status='success' AND elapsed_seconds IS NOT NULL\nORDER BY elapsed_seconds DESC\nLIMIT 10" },
 ];
 
 const SCHEMA_TEXT = `-- downloads
@@ -2509,7 +2777,7 @@ function ConfigPage({ config, setConfig, showNotif, sysInfo, refreshStats }) {
     API.post('/api/config', {
       output_dir: '', cookies_browser: 'none', cookies_file: '',
       rate_limit: '', proxy: '', external_downloader: '',
-      concurrent_fragments: 4, sleep_interval: 1, retries: 3,
+      concurrent_fragments: 4, sleep_interval: 0, retries: 3,
       write_metadata: true, extract_chapters: true, filename_template: '',
     }).then(() => API.get('/api/config').then(c => { setLocal(c); setConfig(c); showNotif('Reset', 'Defaults restored', 'success'); }));
   };
@@ -2762,10 +3030,19 @@ function ConfigPage({ config, setConfig, showNotif, sysInfo, refreshStats }) {
               <div className="settings-row">
                 <div className="settings-label">
                   <div className="sl-name">Playlist Completion Animation</div>
-                  <div className="sl-sub">Show victory overlay when a playlist finishes</div>
+                  <div className="sl-sub">Show victory overlay when a feed playlist finishes</div>
                 </div>
                 <div className="settings-ctrl">
                   <Toggle checked={local.ui_victory_animation !== false} onChange={v => set('ui_victory_animation', v)} />
+                </div>
+              </div>
+              <div className="settings-row">
+                <div className="settings-label">
+                  <div className="sl-name">Sync Completion Animation</div>
+                  <div className="sl-sub">Show victory overlay when a vault sync finishes</div>
+                </div>
+                <div className="settings-ctrl">
+                  <Toggle checked={local.ui_victory_sync !== false} onChange={v => set('ui_victory_sync', v)} />
                 </div>
               </div>
             </div>
@@ -2934,6 +3211,8 @@ function App() {
   const [failedCount, setFailedCount] = React.useState(0);
   const [isPaused, setIsPaused] = React.useState(false);
   const [pausedCount, setPausedCount] = React.useState(0);
+  const [syncJobLabel, setSyncJobLabel] = React.useState(null);
+  const [fetchingPlaylistItems, setFetchingPlaylistItems] = React.useState(false);
   const playlistActiveRef = React.useRef(false);
   const currentPlaylistRef = React.useRef({ name: '', count: 0 });
   const configRef = React.useRef(config);
@@ -3049,14 +3328,22 @@ function App() {
         setAppState('idle');
         setIsPaused(false);
         setPausedCount(0);
+        // Only clear sync label when it's a non-library (feed) completion
+        if (!data.library_id) setSyncJobLabel(null);
+        else setSyncJobLabel(null); // clear for library too — job is fully done now
         setSpeedHistory(h => [...h.slice(1), 0]);
         showNotif('Download Complete', data.title || 'File saved successfully', 'success');
         refreshStats();
         refreshVault();
         setPlaylistItems(null);
+        setFetchingPlaylistItems(false);
         if (playlistActiveRef.current) {
           playlistActiveRef.current = false;
-          if (configRef.current.ui_victory_animation !== false && MASCOT_VICTORY_SAFE) {
+          const isSyncCompletion = !!data.library_id;
+          const victoryEnabled = isSyncCompletion
+            ? configRef.current.ui_victory_sync !== false
+            : configRef.current.ui_victory_animation !== false;
+          if (victoryEnabled && MASCOT_VICTORY_SAFE) {
             setVictoryData({
               playlistName: currentPlaylistRef.current.name,
               itemCount: currentPlaylistRef.current.count,
@@ -3137,6 +3424,8 @@ function App() {
             playlistTotalCount={playlistTotalCount}
             playlistCompletedCount={playlistCompletedCount}
             isPaused={isPaused}
+            syncJobLabel={syncJobLabel}
+            fetchingPlaylistItems={fetchingPlaylistItems}
             onPause={() => API.post('/api/download/pause', {}).catch(() => {})}
             onResume={() => API.post('/api/download/resume', {}).catch(() => {})}
             onClearCompleted={() => setCompletedItems([])}
@@ -3155,6 +3444,8 @@ function App() {
             isPaused={isPaused}
             pausedCount={pausedCount}
             failedCount={failedCount}
+            syncJobLabel={syncJobLabel}
+            fetchingPlaylistItems={fetchingPlaylistItems}
             onPause={() => API.post('/api/download/pause', {}).catch(() => {})}
             onResume={() => API.post('/api/download/resume', {}).catch(() => {})}
             onClearCompleted={() => setCompletedItems([])}
@@ -3169,6 +3460,24 @@ function App() {
             showNotif={showNotif}
             onAddVault={() => setAddVaultModal(true)}
             onRefreshVault={refreshVault}
+            isDownloading={!!(dlState && dlState.status !== 'complete' && dlState.status !== 'error')}
+            onSyncStart={setSyncJobLabel}
+            onSyncItems={(items, count, name) => {
+              if (items === null) {
+                setFetchingPlaylistItems(true);
+                playlistActiveRef.current = true;
+                currentPlaylistRef.current = { name: name || '', count: 0 };
+                setPlaylistTotalCount(0);
+                setPlaylistCompletedCount(0);
+                setFailedCount(0);
+                setFailedItems([]);
+              } else {
+                setPlaylistItems(items.map(i => ({ ...i, selected: true })));
+                setFetchingPlaylistItems(false);
+                setPlaylistTotalCount(count);
+                currentPlaylistRef.current = { name: name || '', count };
+              }
+            }}
           />
         )}
         {page === 'analytics' && (
@@ -3243,10 +3552,18 @@ function App() {
 
 function AddVaultModal({ onClose, onSaved, showNotif }) {
   const [name, setName] = React.useState('');
-  const [url, setUrl] = React.useState('');
+  const [urls, setUrls] = React.useState(['']);
   const [folder, setFolder] = React.useState('');
+  const [mediaType, setMediaType] = React.useState('video');
   const [quality, setQuality] = React.useState('1080p');
+  const [container, setContainer] = React.useState('mp4');
+  const [audioFmt, setAudioFmt] = React.useState('mp3');
   const [mode, setMode] = React.useState('add');
+  const [embedThumb, setEmbedThumb] = React.useState(true);
+  const [embedChapters, setEmbedChapters] = React.useState(true);
+  const [embedMeta, setEmbedMeta] = React.useState(true);
+  const [embedSubs, setEmbedSubs] = React.useState(false);
+  const [sponsorblock, setSponsorblock] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
 
   const browseFolder = () => {
@@ -3255,17 +3572,25 @@ function AddVaultModal({ onClose, onSaved, showNotif }) {
 
   const handleSave = () => {
     if (!name.trim()) { showNotif('Error', 'Name is required', 'error'); return; }
+    const validUrls = urls.map(u => u.trim()).filter(Boolean);
     setSaving(true);
+    // Save library entry with the first URL (primary), link all URLs to vault_playlists
     API.post('/api/library', {
       name: name.trim(),
-      url: url.trim(),
+      url: validUrls[0] || '',
+      extra_urls: validUrls.slice(1),
       folder: folder,
       folder_name: name.trim(),
       use_subfolder: !!folder,
-      quality,
-      mode: 'VIDEO',
+      quality: mediaType === 'audio' ? 'best' : quality,
+      container: mediaType === 'audio' ? audioFmt : container,
+      mode: mediaType === 'audio' ? 'AUDIO' : 'VIDEO',
       sync_mode: mode,
-      embed_thumbnail: true, embed_chapters: true, embed_metadata: true,
+      embed_thumbnail: embedThumb,
+      embed_chapters: embedChapters,
+      embed_metadata: embedMeta,
+      embed_subs: embedSubs,
+      sponsorblock,
     }).then(() => onSaved())
       .catch(e => showNotif('Error', e.message, 'error'))
       .finally(() => setSaving(false));
@@ -3289,8 +3614,20 @@ function AddVaultModal({ onClose, onSaved, showNotif }) {
         <input className="form-input" value={name} onChange={e => setName(e.target.value)} placeholder="My Playlist" />
       </div>
       <div className="form-row">
-        <div className="form-label">YOUTUBE / SOURCE URL</div>
-        <input className="form-input" value={url} onChange={e => setUrl(e.target.value)} placeholder="https://youtube.com/playlist?list=..." />
+        <div className="form-label">PLAYLIST URL(S)</div>
+        {urls.map((u, i) => (
+          <div key={i} className="input-row" style={{ marginBottom: 4 }}>
+            <input className="form-input" value={u}
+              onChange={e => setUrls(prev => prev.map((x, j) => j === i ? e.target.value : x))}
+              placeholder="https://youtube.com/playlist?list=..." />
+            {urls.length > 1 && (
+              <button className="btn btn-secondary btn-sm" style={{ flexShrink: 0 }}
+                onClick={() => setUrls(prev => prev.filter((_, j) => j !== i))}>✕</button>
+            )}
+          </div>
+        ))}
+        <button className="btn btn-secondary btn-sm" style={{ marginTop: 4 }}
+          onClick={() => setUrls(prev => [...prev, ''])}>+ ADD URL</button>
       </div>
       <div className="form-row">
         <div className="form-label">SAVE FOLDER</div>
@@ -3300,13 +3637,41 @@ function AddVaultModal({ onClose, onSaved, showNotif }) {
         </div>
       </div>
       <div className="form-row">
-        <div className="form-label">QUALITY</div>
-        <select className="sel" value={quality} onChange={e => setQuality(e.target.value)}>
-          {['best','4k','1080p','720p','480p','360p'].map(q => (
-            <option key={q} value={q}>{q.toUpperCase()}</option>
-          ))}
-        </select>
+        <div className="form-label">MEDIA TYPE</div>
+        <div className="opts-tabs" style={{ marginTop: 0 }}>
+          <div className={'opts-tab' + (mediaType === 'video' ? ' active' : '')} onClick={() => setMediaType('video')}>VIDEO</div>
+          <div className={'opts-tab' + (mediaType === 'audio' ? ' active' : '')} onClick={() => setMediaType('audio')}>AUDIO ONLY</div>
+        </div>
       </div>
+      {mediaType === 'video' ? (
+        <>
+          <div className="form-row">
+            <div className="form-label">QUALITY</div>
+            <div className="pills">
+              {['best','1080p','720p','480p'].map(q => (
+                <div key={q} className={'pill' + (quality === q ? ' active' : '')} onClick={() => setQuality(q)}>{q.toUpperCase()}</div>
+              ))}
+            </div>
+          </div>
+          <div className="form-row">
+            <div className="form-label">CONTAINER</div>
+            <div className="pills">
+              {['mp4','mkv','webm'].map(c => (
+                <div key={c} className={'pill' + (container === c ? ' active' : '')} onClick={() => setContainer(c)}>{c.toUpperCase()}</div>
+              ))}
+            </div>
+          </div>
+        </>
+      ) : (
+        <div className="form-row">
+          <div className="form-label">FORMAT</div>
+          <div className="pills">
+            {['mp3','aac','flac','m4a','opus','wav'].map(f => (
+              <div key={f} className={'pill' + (audioFmt === f ? ' active' : '')} onClick={() => setAudioFmt(f)}>{f.toUpperCase()}</div>
+            ))}
+          </div>
+        </div>
+      )}
       <div className="form-row">
         <div className="form-label">SYNC MODE</div>
         <div className="pills">
@@ -3314,6 +3679,23 @@ function AddVaultModal({ onClose, onSaved, showNotif }) {
           <div className={'pill' + (mode === 'mirror' ? ' active' : '')} onClick={() => setMode('mirror')}>
             MIRROR <span style={{ color: 'var(--amber)', fontSize: 8 }}> DESTRUCTIVE</span>
           </div>
+        </div>
+      </div>
+      <div className="form-row">
+        <div className="form-label">OPTIONS</div>
+        <div className="opts-toggles">
+          {[
+            { label: 'Embed Thumbnail', val: embedThumb, set: setEmbedThumb },
+            { label: 'Subtitles', val: embedSubs, set: setEmbedSubs },
+            { label: 'Chapters', val: embedChapters, set: setEmbedChapters },
+            { label: 'Metadata', val: embedMeta, set: setEmbedMeta },
+            { label: 'SponsorBlock', val: sponsorblock, set: setSponsorblock },
+          ].map(item => (
+            <label key={item.label} className="opts-toggle-item">
+              <input type="checkbox" checked={item.val} onChange={e => item.set(e.target.checked)} />
+              {item.label}
+            </label>
+          ))}
         </div>
       </div>
     </Modal>
@@ -3406,56 +3788,111 @@ function LinkPlaylistModal({ folder, onClose, showNotif }) {
 
 // ── Sync Playlist Modal ───────────────────────────────────────────────────────
 
-function SyncPlaylistModal({ folder, onClose, showNotif, onRefreshVault }) {
+function SyncPlaylistModal({ folder, onClose, showNotif, onRefreshVault, isDownloading, onSyncStart, onSyncItems }) {
   const [playlists, setPlaylists] = React.useState(null);
+  const [selectedPlaylists, setSelectedPlaylists] = React.useState(null);
   const [syncMode, setSyncMode] = React.useState('add');
-  const [syncMediaType, setSyncMediaType] = React.useState('video'); // 'video' | 'audio'
+  const [syncMediaType, setSyncMediaType] = React.useState('video');
   const [syncQuality, setSyncQuality] = React.useState('1080p');
   const [syncContainer, setSyncContainer] = React.useState('mp4');
   const [syncAudioFmt, setSyncAudioFmt] = React.useState('mp3');
+  const [syncEmbedThumb, setSyncEmbedThumb] = React.useState(true);
+  const [syncEmbedSubs, setSyncEmbedSubs] = React.useState(false);
+  const [syncEmbedChapters, setSyncEmbedChapters] = React.useState(true);
+  const [syncEmbedMeta, setSyncEmbedMeta] = React.useState(true);
+  const [syncSponsorblock, setSyncSponsorblock] = React.useState(false);
   const [syncing, setSyncing] = React.useState(false);
-  const [mirrorPreview, setMirrorPreview] = React.useState(null); // files to delete
+  const [mirrorPreview, setMirrorPreview] = React.useState(null);
   const [previewing, setPreviewing] = React.useState(false);
   const [confirming, setConfirming] = React.useState(false);
+  const [conflictDialog, setConflictDialog] = React.useState(false);
 
   React.useEffect(() => {
     API.get('/api/vault/playlists?path=' + encodeURIComponent(folder.path))
-      .then(d => setPlaylists(d.playlists || []))
-      .catch(() => setPlaylists([]));
+      .then(d => {
+        const pls = d.playlists || [];
+        setPlaylists(pls);
+        setSelectedPlaylists(new Set(pls));
+      })
+      .catch(() => { setPlaylists([]); setSelectedPlaylists(new Set()); });
   }, [folder.path]);
 
-  const handleSync = () => {
-    const fmtOpts = syncMediaType === 'audio'
+  const buildFmtOpts = () => ({
+    ...(syncMediaType === 'audio'
       ? { sync_audio: true, audio_format: syncAudioFmt }
-      : { quality: syncQuality, container: syncContainer };
+      : { quality: syncQuality, container: syncContainer }),
+    embed_thumbnail: syncEmbedThumb,
+    embed_subs: syncEmbedSubs,
+    embed_chapters: syncEmbedChapters,
+    embed_metadata: syncEmbedMeta,
+    sponsorblock: syncSponsorblock,
+  });
+
+  const doSync = (fmtOpts) => {
+    const activePlaylists = playlists.filter(p => !selectedPlaylists || selectedPlaylists.has(p));
+    if (!activePlaylists.length) { showNotif('No Playlists', 'Select at least one playlist', 'error'); return; }
+    setSyncing(true);
+    API.post('/api/vault/sync', { path: folder.path, mode: syncMode, playlist_urls: activePlaylists, ...fmtOpts })
+      .then(() => {
+        const label = folder.name + ' — ' + activePlaylists.length + ' playlist(s)';
+        showNotif('Sync Queued', label, 'success');
+        onSyncStart && onSyncStart(label);
+        if (onSyncItems) {
+          onSyncItems(null, 0, folder.name);
+          Promise.all(
+            activePlaylists.map(url =>
+              API.post('/api/playlist-items', { url }).then(r => r.items || []).catch(() => [])
+            )
+          ).then(results => {
+            const allItems = results.flat();
+            onSyncItems(allItems, allItems.length, folder.name + ' sync');
+          });
+        }
+        onRefreshVault && onRefreshVault();
+        onClose();
+      })
+      .catch(e => showNotif('Error', e.message || 'Sync failed', 'error'))
+      .finally(() => setSyncing(false));
+  };
+
+  const handleSync = () => {
+    const fmtOpts = buildFmtOpts();
     if (syncMode === 'mirror') {
-      // For mirror: fetch preview first, then show confirm step
       setPreviewing(true);
       API.post('/api/vault/mirror-preview', { path: folder.path })
         .then(d => { setMirrorPreview({ ...d, fmtOpts }); setPreviewing(false); })
         .catch(e => { showNotif('Error', e.message || 'Preview failed', 'error'); setPreviewing(false); });
-    } else {
-      setSyncing(true);
-      API.post('/api/vault/sync', { path: folder.path, mode: syncMode, ...fmtOpts })
-        .then(() => {
-          showNotif('Sync Started', folder.name + ' — ' + playlists.length + ' playlist(s)', 'success');
-          onRefreshVault && onRefreshVault();
-          onClose();
-        })
-        .catch(e => showNotif('Error', e.message || 'Sync failed', 'error'))
-        .finally(() => setSyncing(false));
+      return;
     }
+    if (isDownloading) {
+      setConflictDialog(true);
+      return;
+    }
+    doSync(fmtOpts);
   };
 
   const handleMirrorConfirm = () => {
     setConfirming(true);
     const pathsToDelete = (mirrorPreview?.to_delete || []).map(f => f.path);
-    const fmtOpts = mirrorPreview?.fmtOpts || { quality: syncQuality, container: syncContainer };
-    // First delete files, then start add sync
+    const fmtOpts = mirrorPreview?.fmtOpts || buildFmtOpts();
+    const activePlaylists = playlists ? playlists.filter(p => !selectedPlaylists || selectedPlaylists.has(p)) : [];
     API.post('/api/vault/mirror-confirm', { paths: pathsToDelete })
-      .then(() => API.post('/api/vault/sync', { path: folder.path, mode: 'add', ...fmtOpts }))
+      .then(() => API.post('/api/vault/sync', { path: folder.path, mode: 'add', playlist_urls: activePlaylists.length ? activePlaylists : undefined, ...fmtOpts }))
       .then(() => {
+        const label = folder.name + ' — mirror sync';
         showNotif('Mirror Done', 'Deleted ' + pathsToDelete.length + ' file(s), syncing new items', 'success');
+        onSyncStart && onSyncStart(label);
+        if (onSyncItems && activePlaylists.length) {
+          onSyncItems(null, 0, folder.name);
+          Promise.all(
+            activePlaylists.map(url =>
+              API.post('/api/playlist-items', { url }).then(r => r.items || []).catch(() => [])
+            )
+          ).then(results => {
+            const allItems = results.flat();
+            onSyncItems(allItems, allItems.length, folder.name + ' sync');
+          });
+        }
         onRefreshVault && onRefreshVault();
         onClose();
       })
@@ -3521,10 +3958,22 @@ function SyncPlaylistModal({ folder, onClose, showNotif, onRefreshVault }) {
         <>
           <div className="form-row">
             <div className="form-label">LINKED PLAYLISTS ({playlists.length})</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 2, padding: '4px 0' }}>
-              {playlists.map((pl, i) => (
-                <div key={i} style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: 'var(--cyan)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{pl}</div>
-              ))}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 3, padding: '4px 0' }}>
+              {playlists.map((pl, i) => {
+                const checked = !selectedPlaylists || selectedPlaylists.has(pl);
+                return (
+                  <label key={i} style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                    <input type="checkbox" checked={checked} onChange={e => {
+                      setSelectedPlaylists(prev => {
+                        const next = new Set(prev);
+                        e.target.checked ? next.add(pl) : next.delete(pl);
+                        return next;
+                      });
+                    }} />
+                    <span style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: checked ? 'var(--cyan)' : 'var(--t4)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{pl}</span>
+                  </label>
+                );
+              })}
             </div>
           </div>
           <div className="form-row">
@@ -3572,7 +4021,39 @@ function SyncPlaylistModal({ folder, onClose, showNotif, onRefreshVault }) {
               </div>
             </div>
           </div>
+          <div className="form-row">
+            <div className="form-label">OPTIONS</div>
+            <div className="opts-toggles">
+              {[
+                { label: 'Embed Thumbnail', val: syncEmbedThumb, set: setSyncEmbedThumb },
+                { label: 'Subtitles', val: syncEmbedSubs, set: setSyncEmbedSubs },
+                { label: 'Chapters', val: syncEmbedChapters, set: setSyncEmbedChapters },
+                { label: 'Metadata', val: syncEmbedMeta, set: setSyncEmbedMeta },
+                { label: 'SponsorBlock', val: syncSponsorblock, set: setSyncSponsorblock },
+              ].map(item => (
+                <label key={item.label} className="opts-toggle-item">
+                  <input type="checkbox" checked={item.val} onChange={e => item.set(e.target.checked)} />
+                  {item.label}
+                </label>
+              ))}
+            </div>
+          </div>
         </>
+      )}
+      {conflictDialog && (
+        <div style={{ marginTop: 12, padding: '10px 12px', background: 'var(--bg3)', border: '1px solid var(--amber)', borderRadius: 4 }}>
+          <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 10, color: 'var(--amber)', marginBottom: 8 }}>
+            ⚠ A download is in progress. Sync will be queued after it completes.
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button className="btn btn-primary btn-sm" onClick={() => { setConflictDialog(false); doSync(buildFmtOpts()); }}>
+              QUEUE SYNC
+            </button>
+            <button className="btn btn-secondary btn-sm" onClick={() => setConflictDialog(false)}>
+              CANCEL
+            </button>
+          </div>
+        </div>
       )}
     </Modal>
   );

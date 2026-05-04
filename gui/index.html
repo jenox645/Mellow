@@ -302,7 +302,7 @@
     /* Watched folder badge */
     .vt-watched{font-family:'Share Tech Mono',monospace;font-size:7px;padding:1px 4px;background:var(--amber2);color:var(--amber);letter-spacing:0.08em;flex-shrink:0}
     /* VAULT GRID */
-    .lib-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(175px,1fr));gap:14px;margin-bottom:16px}
+    .lib-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--lib-card-min,175px),1fr));gap:14px;margin-bottom:16px}
     .lib-card{background:var(--bg2);border:1px solid var(--border);overflow:hidden;cursor:pointer;transition:all 0.18s;position:relative}
     .lib-card:hover{border-color:rgba(0,216,255,0.4);transform:translateY(-3px);box-shadow:0 6px 20px rgba(0,0,0,0.3)}
     .lib-thumb{width:100%;height:100px;object-fit:cover;background:var(--bg3);display:block}
@@ -477,7 +477,7 @@
 
     /* ── VAULT FOLDER CARDS ─────────────────────────────────────────────────── */
     .vault-folder-grid{display:flex;flex-wrap:wrap;gap:16px;margin-bottom:16px}
-    .vault-folder-card{width:200px;height:160px;background:var(--bg2);border:1px solid var(--border);cursor:pointer;transition:border-color 0.2s,box-shadow 0.2s;position:relative;display:flex;flex-direction:column}
+    .vault-folder-card{width:var(--vault-card-width,200px);height:160px;background:var(--bg2);border:1px solid var(--border);cursor:pointer;transition:border-color 0.2s,box-shadow 0.2s;position:relative;display:flex;flex-direction:column}
     .vault-folder-card:hover{border-color:var(--cyan);box-shadow:0 0 0 1px var(--cyan),0 4px 20px rgba(0,0,0,0.35)}
     .vault-folder-card:hover .vfc-icon-svg{transform:scale(1.1)}
     .vfc-icon{flex:1;display:flex;align-items:center;justify-content:center;background:var(--bg3);color:var(--cyan)}
@@ -524,6 +524,18 @@
 
     /* ── VAULT SYNCED BADGE ──────────────────────────────────────────────────── */
     .vfc-synced{font-family:'Share Tech Mono',monospace;font-size:9px;color:#7a8fa6;margin-top:3px}
+    /* ── VAULT QUICK SYNC BUTTON ─────────────────────────────────────────────── */
+    .vfc-sync-btn{position:absolute;bottom:8px;left:8px;z-index:4;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:13px;color:var(--cyan);background:rgba(0,0,0,0.55);cursor:pointer;border-radius:2px;transition:color 0.15s,background 0.15s;opacity:0}
+    .vault-folder-card:hover .vfc-sync-btn{opacity:1}
+    .vfc-sync-btn:hover{background:rgba(0,216,255,0.15)}
+    /* ── VAULT RANDOMIZER ────────────────────────────────────────────────────── */
+    .randomizer-bar{display:flex;align-items:center;gap:8px;padding:6px 0;flex-wrap:wrap;margin-bottom:8px}
+    .rand-stepper{display:flex;align-items:center;background:var(--bg3);border:1px solid var(--border)}
+    .rand-step-btn{width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:14px;font-family:'Share Tech Mono',monospace;color:var(--t2);background:none;border:none;cursor:pointer;transition:color 0.12s,background 0.12s;line-height:1}
+    .rand-step-btn:hover{color:var(--cyan);background:var(--bg2)}
+    .rand-step-val{min-width:28px;text-align:center;font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--t1);padding:0 4px;border-left:1px solid var(--border);border-right:1px solid var(--border)}
+    .rand-selected{outline:2px solid var(--cyan);outline-offset:2px}
+    .file-selected{outline:2px solid var(--amber);outline-offset:2px}
 
     /* ── QUEUE SLIDE-OUT ANIMATION ───────────────────────────────────────────── */
     .pl-queue-item.completing{animation:slideOutLeft 300ms ease forwards;pointer-events:none}

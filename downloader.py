@@ -364,6 +364,9 @@ def download_video(
         ydl_opts["concurrent_fragment_downloads"] = int(concurrent_frags)
     if sleep_interval and int(sleep_interval) > 0:
         ydl_opts["sleep_interval"] = int(sleep_interval)
+    retries = opts.get("retries")
+    if retries is not None:
+        ydl_opts["retries"] = int(retries)
 
     if start_time or end_time:
         start_sec = _parse_time(start_time) if start_time else None
