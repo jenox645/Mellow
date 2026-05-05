@@ -1,0 +1,7 @@
+mellow_datalake:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      path: "{{ env_var('DATALAKE_ROOT', '/mnt/c/Users/jenis/Desktop/Work Space/PROJET/MellowDLP/datalake/data') }}/datalake.duckdb"
+      threads: 4

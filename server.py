@@ -9,8 +9,13 @@ import subprocess
 import sys
 import threading
 import time
-import tkinter
-import tkinter.filedialog
+try:
+    import tkinter
+    import tkinter.filedialog
+    _tkinter_available = True
+except ModuleNotFoundError:
+    tkinter = None  # type: ignore[assignment]
+    _tkinter_available = False
 import uuid
 from pathlib import Path
 from typing import Any
@@ -194,7 +199,7 @@ def _open_file(path: str) -> None:
 def _get_clipboard_text() -> str:
     system = platform.system()
     try:
-        if system == "Windows":
+        if system == "Windows" and _tkinter_available:
             # Use tkinter clipboard — no shell window, no PowerShell spawned
             root = tkinter.Tk()
             root.withdraw()
@@ -218,6 +223,8 @@ def _get_clipboard_text() -> str:
 
 
 def _tk_dialog(dialog_fn: Any, **kwargs: Any) -> str:
+    if not _tkinter_available:
+        return ""
     result: list[str] = []
 
     def _run() -> None:

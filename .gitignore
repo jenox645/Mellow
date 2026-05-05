@@ -14,3 +14,12 @@ assets/wizard_small.bmp
 *.duckdb.wal
 *.json
 !package.json
+
+# Datalake — actual data files (keep folder structure via .gitkeep)
+datalake/data/raw/**/*.json
+datalake/data/formatted/**/*.parquet
+datalake/data/usage/**/*.parquet
+datalake/.env
+datalake/dbt/target/
+datalake/dbt/dbt_packages/
+datalake/.venv/

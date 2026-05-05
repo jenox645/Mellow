@@ -1557,20 +1557,14 @@ function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, config, sh
     const count = Math.min(randomizerCount, mediaFiles.length);
     const shuffled = [...mediaFiles].sort(() => Math.random() - 0.5).slice(0, count);
     setRandomizedFiles(shuffled);
-    // Merge random picks into selection — activates selectionMode so user can add/remove manually
-    setSelectedFiles(prev => {
-      const next = new Set(prev);
-      shuffled.forEach(f => next.add(f.path));
-      return next;
-    });
+    setSelectedFiles(new Set());
     setSelectionMode(true);
   }, [files, randomizerCount, showNotif]);
 
   const handlePlayRandom = React.useCallback(() => {
-    // Play whatever is currently in selectedFiles (randomized + any manual additions)
-    const paths = selectedFiles.size > 0
-      ? files.filter(f => selectedFiles.has(f.path)).map(f => f.path)
-      : (randomizedFiles || []).map(f => f.path);
+    const randPaths = (randomizedFiles || []).map(f => f.path);
+    const manualPaths = files.filter(f => selectedFiles.has(f.path)).map(f => f.path);
+    const paths = [...new Set([...randPaths, ...manualPaths])];
     if (!paths.length) return;
     API.post('/api/vault/play-files', { paths })
       .then(() => showNotif('Playing', paths.length + ' files opened in player', 'success'))
@@ -1972,10 +1966,10 @@ function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, config, sh
             {randomizedFiles && (
               <>
                 <span style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: 'var(--cyan)' }}>
-                  {selectedFiles.size > randomizedFiles.length ? selectedFiles.size : randomizedFiles.length} selected
+                  {new Set([...randomizedFiles.map(f => f.path), ...selectedFiles]).size} selected
                 </span>
                 <button className="btn btn-primary btn-sm" onClick={handlePlayRandom}>
-                  ▶ PLAY ({selectedFiles.size || randomizedFiles.length})
+                  ▶ PLAY ({new Set([...randomizedFiles.map(f => f.path), ...selectedFiles]).size})
                 </button>
                 <button className="btn btn-secondary btn-sm" onClick={() => { setRandomizedFiles(null); setSelectedFiles(new Set()); setSelectionMode(false); }}>✕</button>
               </>
@@ -2023,7 +2017,7 @@ function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, config, sh
               const isFileSelected = selectedFiles.has(file.path);
               return (
             <div key={file.path}
-              className={'lib-card' + (isRandSelected ? ' rand-selected' : '') + (isFileSelected ? ' file-selected' : '')}
+              className={'lib-card' + (isRandSelected && !isFileSelected ? ' rand-selected' : '') + (isFileSelected ? ' file-selected' : '')}
               onClick={() => {
                 if (selectionMode) {
                   setSelectedFiles(prev => { const next = new Set(prev); next.has(file.path) ? next.delete(file.path) : next.add(file.path); return next; });

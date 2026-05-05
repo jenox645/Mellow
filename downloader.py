@@ -136,6 +136,7 @@ def _make_progress_hook(progress_cb: Callable, library_id: str | None, speed_tra
                 "status": "item_done",
                 "title": info_dict.get("title") or Path(filename).stem,
                 "thumbnail": thumb_url,
+                "video_id": info_dict.get("id"),
                 "playlist_index": info_dict.get("playlist_index"),
                 "library_id": library_id,
             })
