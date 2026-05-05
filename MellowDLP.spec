@@ -1,8 +1,10 @@
+import importlib.util as _iu
 import os as _os
 import platform as _platform
 
 _is_windows = _platform.system() == "Windows"
 _is_linux   = _platform.system() == "Linux"
+_has_tkinter = _iu.find_spec("tkinter") is not None
 
 _ytdlp_bin = "yt-dlp.exe" if _is_windows else "yt-dlp"
 _icon = _os.path.join("assets", "mellow.ico") if _is_windows else None
@@ -34,9 +36,7 @@ a = Analysis(
         "itsdangerous",
         "duckdb",
         "analytics",
-        "tkinter",
-        "tkinter.filedialog",
-    ],
+    ] + (["tkinter", "tkinter.filedialog"] if _has_tkinter else []),
     hookspath=[],
     runtime_hooks=[],
     excludes=["matplotlib", "numpy", "pandas", "pywebview", "pythonnet"],

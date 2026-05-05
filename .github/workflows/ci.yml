@@ -53,7 +53,7 @@ jobs:
           python-version: '3.11'
 
       - name: Install system deps
-        run: sudo apt-get install -y ffmpeg wget
+        run: sudo apt-get install -y ffmpeg wget python3-tk
 
       - name: Install Node.js
         uses: actions/setup-node@v4
