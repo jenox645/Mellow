@@ -124,6 +124,7 @@ def _load_config() -> dict:
         "output_dir": str(Path.home() / "Downloads" / "MellowDLP"),
         "cookies_browser": "none",
         "cookies_file": "",
+        "cookies_browser_profile": "",
         "rate_limit": "",
         "proxy": "",
         "external_downloader": "",
@@ -484,8 +485,14 @@ def api_info() -> Response:
     url = data.get("url", "").strip()
     if not url:
         return jsonify({"error": "No URL"}), 400
+    cfg = _load_config()
+    cookie_opts = {
+        "cookies_browser": cfg.get("cookies_browser", "none"),
+        "cookies_file": cfg.get("cookies_file", ""),
+        "cookies_browser_profile": cfg.get("cookies_browser_profile", ""),
+    }
     try:
-        info = downloader.get_video_info(url)
+        info = downloader.get_video_info(url, cookie_opts=cookie_opts)
         return jsonify(info)
     except Exception as exc:
         return jsonify({"error": str(exc)}), 500
@@ -525,6 +532,7 @@ def api_download() -> Response:
         "filename_template": data.get("filename_template", "") or cfg.get("filename_template", ""),
         "cookies_browser": cfg.get("cookies_browser", "none"),
         "cookies_file": cfg.get("cookies_file", ""),
+        "cookies_browser_profile": cfg.get("cookies_browser_profile", ""),
         "rate_limit": cfg.get("rate_limit", ""),
         "proxy": cfg.get("proxy", ""),
         "external_downloader": cfg.get("external_downloader", ""),
@@ -824,7 +832,43 @@ def api_vault_watch_post() -> Response:
         watched.append(folder)
     cfg["watched_folders"] = watched
     _save_config(cfg)
-    return jsonify({"ok": True, "watched_folders": watched})
+    archive_created = False
+    if data.get("create_archive"):
+        archive_path = p / "mellow_archive.txt"
+        if not archive_path.exists():
+            try:
+                archive_path.touch()
+                archive_created = True
+            except OSError:
+                pass
+    return jsonify({"ok": True, "watched_folders": watched, "archive_created": archive_created})
+
+
+@app.route("/api/vault/archive-generate", methods=["POST"])
+def api_vault_archive_generate() -> Response:
+    """Create or migrate mellow_archive.txt for a vault folder."""
+    data = request.get_json(force=True) or {}
+    folder = data.get("path", "").strip()
+    if not folder or not os.path.isdir(folder):
+        return jsonify({"error": "Invalid path"}), 400
+    p = Path(folder)
+    archive_path = p / "mellow_archive.txt"
+    migrated = False
+    if not archive_path.exists():
+        import glob as _glob
+        for old in _glob.glob(str(p / ".mellow_archive_*.txt")):
+            try:
+                Path(old).rename(archive_path)
+                migrated = True
+                break
+            except OSError:
+                pass
+        if not migrated:
+            try:
+                archive_path.touch()
+            except OSError as exc:
+                return jsonify({"error": str(exc)}), 500
+    return jsonify({"ok": True, "path": str(archive_path), "migrated": migrated})
 
 
 @app.route("/api/vault/watch", methods=["DELETE"])
@@ -902,8 +946,14 @@ def api_playlist_items() -> Response:
     url = data.get("url", "").strip()
     if not url:
         return jsonify({"error": "No URL"}), 400
+    cfg = _load_config()
+    cookie_opts = {
+        "cookies_browser": cfg.get("cookies_browser", "none"),
+        "cookies_file": cfg.get("cookies_file", ""),
+        "cookies_browser_profile": cfg.get("cookies_browser_profile", ""),
+    }
     try:
-        items = downloader.get_playlist_items(url)
+        items = downloader.get_playlist_items(url, cookie_opts=cookie_opts)
         return jsonify({"items": items})
     except Exception as exc:
         return jsonify({"error": str(exc)}), 500
@@ -1176,6 +1226,7 @@ def api_vault_sync() -> Response:
         "sponsorblock": data.get("sponsorblock", lib_sponsorblock),
         "cookies_browser": cfg.get("cookies_browser", "none"),
         "cookies_file": cfg.get("cookies_file", ""),
+        "cookies_browser_profile": cfg.get("cookies_browser_profile", ""),
         "rate_limit": cfg.get("rate_limit", ""),
         "proxy": cfg.get("proxy", ""),
         "concurrent_fragments": cfg.get("concurrent_fragments", 4),
@@ -1235,6 +1286,7 @@ def api_vault_sync_all() -> Response:
             "sponsorblock": lib.get("sponsorblock", False) if lib else False,
             "cookies_browser": cfg.get("cookies_browser", "none"),
             "cookies_file": cfg.get("cookies_file", ""),
+            "cookies_browser_profile": cfg.get("cookies_browser_profile", ""),
             "rate_limit": cfg.get("rate_limit", ""),
             "proxy": cfg.get("proxy", ""),
             "concurrent_fragments": cfg.get("concurrent_fragments", 4),

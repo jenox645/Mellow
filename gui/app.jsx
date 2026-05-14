@@ -695,18 +695,24 @@ function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats, showN
         API.post('/api/read-url-file', { path: d.path })
           .then(r => {
             const urls = r.urls || [];
-            if (!urls.length) { showNotif('No URLs', 'No valid URLs found in file', 'error'); return; }
             const fname = d.path.split(/[\\/]/).pop();
+            const isArchive = r.format === 'archive';
+            if (!urls.length) {
+              showNotif('No URLs', fname + ' contains no valid URLs or archive entries', 'error');
+              return;
+            }
             if (urls.length === 1) {
               setUrl(urls[0]);
               setImportedUrls(null);
               setImportedFileName('');
+              if (isArchive) showNotif('Archive imported', '1 URL from ' + fname, 'success');
             } else {
               setImportedUrls(urls);
               setImportedFileName(fname);
               const fakeItems = urls.map((u, i) => ({ idx: i + 1, title: u, url: u, selected: true }));
               setPlaylistItems && setPlaylistItems(fakeItems);
               setInfo({ is_playlist: true, is_imported: true, title: fname, playlist_count: urls.length });
+              showNotif('Imported', urls.length + ' URLs from ' + fname + (isArchive ? ' (archive format)' : ''), 'success');
             }
           })
           .catch(e => showNotif('Error', e.message, 'error'));
@@ -1498,6 +1504,7 @@ function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, config, sh
   const [selectionMode, setSelectionMode] = React.useState(false);
   const [randomizerCount, setRandomizerCount] = React.useState(5);
   const [randomizedFiles, setRandomizedFiles] = React.useState(null);
+  const [watchArchivePrompt, setWatchArchivePrompt] = React.useState(null); // { path }
 
   const refreshLibraryEntries = React.useCallback(() => {
     API.get('/api/library').then(setLibraryEntries).catch(() => {});
@@ -1650,13 +1657,18 @@ function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, config, sh
   const handleWatchFolder = React.useCallback(() => {
     API.post('/api/browse-folder', {}).then(d => {
       if (!d.path) return;
-      API.post('/api/vault/watch', { path: d.path })
-        .then(() => {
-          showNotif('Watch Folder Added', d.path.split(/[\\/]/).pop(), 'success');
-          onRefreshVault && onRefreshVault();
-        })
-        .catch(e => showNotif('Error', e.message, 'error'));
+      setWatchArchivePrompt({ path: d.path });
     }).catch(() => {});
+  }, []);
+
+  const confirmWatchFolder = React.useCallback((folderPath, createArchive) => {
+    setWatchArchivePrompt(null);
+    API.post('/api/vault/watch', { path: folderPath, create_archive: createArchive })
+      .then(() => {
+        showNotif('Watch Folder Added', folderPath.split(/[\\/]/).pop() + (createArchive ? ' · mellow_archive.txt created' : ''), 'success');
+        onRefreshVault && onRefreshVault();
+      })
+      .catch(e => showNotif('Error', e.message, 'error'));
   }, [showNotif, onRefreshVault]);
 
   const handleDragOver = (e) => { e.preventDefault(); e.stopPropagation(); setDragOver(true); };
@@ -1792,6 +1804,13 @@ function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, config, sh
             <div className="vfc-menu-item" onClick={() => { setCardMenuData(null); setSyncModal(cardMenuData.folder); }}>Sync</div>
             <div className="vfc-menu-item" onClick={() => { setCardMenuData(null); API.post('/api/open-folder', { path: cardMenuData.folder.path }).catch(() => {}); }}>Open in Explorer</div>
             <div className="vfc-menu-item" onClick={() => { setCardMenuData(null); setRenameModal({ folder: cardMenuData.folder, name: cardMenuData.folder.name }); }}>Rename</div>
+            <div className="vfc-menu-item" onClick={() => {
+              const f = cardMenuData.folder;
+              setCardMenuData(null);
+              API.post('/api/vault/archive-generate', { path: f.path })
+                .then(d => showNotif('Archive Ready', d.migrated ? 'Migrated old archive → mellow_archive.txt' : 'mellow_archive.txt ready in ' + f.name, 'success'))
+                .catch(e => showNotif('Error', e.message, 'error'));
+            }}>Generate Archive File</div>
             <div className="vfc-menu-item danger" onClick={() => handleVaultRemove(cardMenuData.folder)}>Remove from Vault</div>
           </div>
         )}
@@ -1824,6 +1843,27 @@ function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, config, sh
             onClose={() => setRenameModal(null)}
             onSave={(name) => handleVaultRename(renameModal.folder, name)}
           />
+        )}
+
+        {watchArchivePrompt && (
+          <Modal title="WATCH FOLDER — ARCHIVE FILE" onClose={() => setWatchArchivePrompt(null)}
+            footer={
+              <>
+                <button className="btn btn-secondary btn-sm" onClick={() => setWatchArchivePrompt(null)}>CANCEL</button>
+                <button className="btn btn-secondary btn-sm" onClick={() => confirmWatchFolder(watchArchivePrompt.path, false)}>NO ARCHIVE</button>
+                <button className="btn btn-primary btn-sm" onClick={() => confirmWatchFolder(watchArchivePrompt.path, true)}>YES, CREATE FILE</button>
+              </>
+            }
+          >
+            <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 10, color: 'var(--t2)', lineHeight: 2 }}>
+              <div style={{ color: 'var(--cyan)', marginBottom: 6 }}>{watchArchivePrompt.path}</div>
+              <div>Create a <span style={{ color: 'var(--amber)' }}>mellow_archive.txt</span> in this folder?</div>
+              <div style={{ color: 'var(--t4)', fontSize: 9, marginTop: 4 }}>
+                This file tracks downloaded items so syncs skip duplicates,<br />
+                and can be imported as a URL list in the Feed section.
+              </div>
+            </div>
+          </Modal>
         )}
 
         {folderStatsModal && (
@@ -2033,6 +2073,7 @@ function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, config, sh
                     style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', zIndex: 1 }}
                     alt=""
                     onError={e => { e.target.style.display = 'none'; }}
+                    onLoad={e => { e.target.style.display = ''; }}
                   />
                 )}
                 <div className={'lib-fmt ' + (isVideoExt(file.ext) ? 'video' : 'audio')} style={{ position: 'absolute', top: 6, left: 6, zIndex: 2, margin: 0 }}>
@@ -2769,7 +2810,7 @@ function ConfigPage({ config, setConfig, showNotif, sysInfo, refreshStats }) {
 
   const handleReset = () => {
     API.post('/api/config', {
-      output_dir: '', cookies_browser: 'none', cookies_file: '',
+      output_dir: '', cookies_browser: 'none', cookies_file: '', cookies_browser_profile: '',
       rate_limit: '', proxy: '', external_downloader: '',
       concurrent_fragments: 4, sleep_interval: 0, retries: 3,
       write_metadata: true, extract_chapters: true, filename_template: '',
@@ -2866,6 +2907,22 @@ function ConfigPage({ config, setConfig, showNotif, sysInfo, refreshStats }) {
                   <input className="inp-sm" style={{ width: 220 }} value={local.filename_template || ''} onChange={e => set('filename_template', e.target.value)} placeholder="%(title)s [%(id)s].%(ext)s" />
                 </div>
               </div>
+              <div className="settings-row">
+                <div className="settings-label">
+                  <div className="sl-name">Download Archive File</div>
+                  <div className="sl-sub">mellow_archive.txt — tracks downloaded items, import as URL list</div>
+                </div>
+                <div className="settings-ctrl" style={{ display: 'flex', gap: 6 }}>
+                  <span style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: 'var(--t3)' }}>
+                    {local.output_dir ? (local.output_dir.replace(/\\/g, '/').split('/').pop() || local.output_dir) + '/mellow_archive.txt' : 'mellow_archive.txt (in download folder)'}
+                  </span>
+                  <button className="btn btn-secondary btn-sm" onClick={() => {
+                    const dir = local.output_dir;
+                    if (dir) API.post('/api/open-folder', { path: dir }).catch(() => {});
+                    else showNotif('No folder', 'Set a download path first', 'info');
+                  }}>OPEN FOLDER</button>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -2879,24 +2936,53 @@ function ConfigPage({ config, setConfig, showNotif, sysInfo, refreshStats }) {
               <div className="settings-row">
                 <div className="settings-label">
                   <div className="sl-name">Browser Cookies</div>
-                  <div className="sl-sub">Uses your current browser login session</div>
+                  <div className="sl-sub">
+                    Uses your browser login session — <span style={{ color: 'var(--amber)' }}>close browser before use if locked</span>
+                  </div>
                 </div>
-                <div className="settings-ctrl">
+                <div className="settings-ctrl" style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                   <select className="sel" value={local.cookies_browser || 'none'} onChange={e => set('cookies_browser', e.target.value)}>
                     {['none','chrome','firefox','edge','brave','safari'].map(b => (
                       <option key={b} value={b}>{b === 'none' ? 'Disabled' : b.charAt(0).toUpperCase() + b.slice(1)}</option>
                     ))}
                   </select>
+                  {local.cookies_browser && local.cookies_browser !== 'none' && (
+                    <span style={{ fontSize: 9, color: 'var(--green)', fontFamily: 'Share Tech Mono, monospace' }}>● ACTIVE</span>
+                  )}
+                </div>
+              </div>
+              <div className="settings-row">
+                <div className="settings-label">
+                  <div className="sl-name">Browser Profile Path</div>
+                  <div className="sl-sub">Optional: path to profile folder (e.g. …\Brave-Browser\User Data\Default)</div>
+                </div>
+                <div className="settings-ctrl" style={{ display: 'flex', gap: 6 }}>
+                  <input className="inp-sm" style={{ width: 200 }} value={local.cookies_browser_profile || ''} onChange={e => set('cookies_browser_profile', e.target.value)} placeholder="Leave empty for auto-detect" />
+                  <button className="btn btn-secondary btn-sm" onClick={() => API.post('/api/browse-folder', {}).then(d => { if (d.path) set('cookies_browser_profile', d.path); })}>BROWSE</button>
                 </div>
               </div>
               <div className="settings-row">
                 <div className="settings-label">
                   <div className="sl-name">Cookies File</div>
-                  <div className="sl-sub">Export via "Get cookies.txt LOCALLY" extension</div>
+                  <div className="sl-sub">Export via "Get cookies.txt LOCALLY" extension — used when Browser is Disabled</div>
                 </div>
                 <div className="settings-ctrl" style={{ display: 'flex', gap: 6 }}>
                   <input className="inp-sm" style={{ width: 160 }} value={local.cookies_file || ''} onChange={e => set('cookies_file', e.target.value)} placeholder="cookies.txt" />
                   <button className="btn btn-secondary btn-sm" onClick={browseCookies}>BROWSE</button>
+                </div>
+              </div>
+              <div className="settings-row">
+                <div className="settings-label">
+                  <div className="sl-name">Auth Status</div>
+                  <div className="sl-sub">Current authentication method active</div>
+                </div>
+                <div className="settings-ctrl">
+                  {(local.cookies_browser && local.cookies_browser !== 'none')
+                    ? <span style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: 'var(--green)' }}>Browser cookies ({local.cookies_browser}){local.cookies_browser_profile ? ' · custom profile' : ''}</span>
+                    : local.cookies_file
+                    ? <span style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: 'var(--cyan)' }}>Cookies file active</span>
+                    : <span style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: 'var(--t4)' }}>No auth — public videos only</span>
+                  }
                 </div>
               </div>
             </div>
@@ -3266,6 +3352,16 @@ function App() {
         setAppState('downloading');
         setDlState(data);
         setSpeedHistory(h => [...h.slice(1), data.speed || 0]);
+        if (data.current_item_title) {
+          setPlaylistItems(prev => {
+            if (!prev || !prev.length) return prev;
+            const first = prev[0];
+            if (first.url && first.title === first.url) {
+              return [{ ...first, title: data.current_item_title, thumbnail: data.current_item_thumb || first.thumbnail }, ...prev.slice(1)];
+            }
+            return prev;
+          });
+        }
       } else if (data.status === 'processing') {
         setAppState('processing');
         setDlState(prev => prev ? { ...prev, status: 'processing' } : { status: 'processing', pct: 100 });

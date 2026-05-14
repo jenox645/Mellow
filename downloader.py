@@ -259,6 +259,7 @@ def download_video(
     end_time = opts.get("end_time", "").strip()
     cookies_browser = opts.get("cookies_browser", "")
     cookies_file = opts.get("cookies_file", "")
+    cookies_browser_profile = opts.get("cookies_browser_profile", "").strip() or None
     rate_limit = opts.get("rate_limit", "")
     proxy = opts.get("proxy", "")
     ext_downloader = opts.get("external_downloader", "")
@@ -297,7 +298,16 @@ def download_video(
             "windows_filenames": True,
         }
     elif mode == "library":
-        archive_path = str(out_dir / f".mellow_archive_{library_id or 'archive'}.txt")
+        # Use public mellow_archive.txt; migrate old hidden files if present
+        archive_path = str(out_dir / "mellow_archive.txt")
+        if not Path(archive_path).exists():
+            import glob as _glob
+            for old in _glob.glob(str(out_dir / ".mellow_archive_*.txt")):
+                try:
+                    Path(old).rename(archive_path)
+                    break
+                except OSError:
+                    pass
         sync_audio = opts.get("sync_audio", False)
         pps = _build_postprocessors(opts)
         if sync_audio:
@@ -350,10 +360,7 @@ def download_video(
             {"key": "FFmpegEmbedSubtitle", "already_have_subtitle": False}
         )
 
-    if cookies_browser and cookies_browser.lower() not in ("none", ""):
-        ydl_opts["cookiesfrombrowser"] = (cookies_browser.lower(),)
-    elif cookies_file:
-        ydl_opts["cookiefile"] = cookies_file
+    _apply_cookie_opts(ydl_opts, {"cookies_browser": cookies_browser, "cookies_file": cookies_file, "cookies_browser_profile": cookies_browser_profile or ""})
 
     if rate_limit:
         ydl_opts["ratelimit"] = rate_limit
@@ -514,7 +521,17 @@ def download_video(
         })
 
 
-def get_video_info(url: str) -> dict:
+def _apply_cookie_opts(ydl_opts: dict, cookie_opts: dict) -> None:
+    browser = cookie_opts.get("cookies_browser", "")
+    profile = cookie_opts.get("cookies_browser_profile", "").strip() or None
+    cookie_file = cookie_opts.get("cookies_file", "")
+    if browser and browser.lower() not in ("none", ""):
+        ydl_opts["cookiesfrombrowser"] = (browser.lower(), profile, None, None)
+    elif cookie_file:
+        ydl_opts["cookiefile"] = cookie_file
+
+
+def get_video_info(url: str, cookie_opts: dict | None = None) -> dict:
     ydl_opts = {
         "quiet": True,
         "no_warnings": True,
@@ -522,6 +539,8 @@ def get_video_info(url: str) -> dict:
         "extract_flat": "in_playlist",
         "noplaylist": False,
     }
+    if cookie_opts:
+        _apply_cookie_opts(ydl_opts, cookie_opts)
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=False)
     if not info:
@@ -548,7 +567,7 @@ def get_video_info(url: str) -> dict:
     }
 
 
-def get_playlist_items(url: str) -> list[dict]:
+def get_playlist_items(url: str, cookie_opts: dict | None = None) -> list[dict]:
     ydl_opts = {
         "quiet": True,
         "no_warnings": True,
@@ -556,6 +575,8 @@ def get_playlist_items(url: str) -> list[dict]:
         "skip_download": True,
         "noplaylist": False,
     }
+    if cookie_opts:
+        _apply_cookie_opts(ydl_opts, cookie_opts)
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=False)
     if not info:
