@@ -33,7 +33,8 @@ def test_single_complete_for_multi_url_job():
 
 
 def test_sleep_interval_default_is_zero():
-    cfg = server._load_config()
+    from config import load_config
+    cfg = load_config()
     assert cfg.get('sleep_interval', 0) == 0, "sleep_interval default must be 0 for speed"
 
 

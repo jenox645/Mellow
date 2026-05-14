@@ -25,7 +25,7 @@ def app():
     with tempfile.TemporaryDirectory() as tmp:
         cfg_path = pathlib.Path(tmp) / 'config.json'
         db_path = pathlib.Path(tmp) / 'analytics.duckdb'
-        with patch('server.CONFIG_PATH', cfg_path):
+        with patch('config.CONFIG_PATH', cfg_path):
             with patch('analytics.DB_PATH', db_path):
                 import analytics
                 analytics.init_db()

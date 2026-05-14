@@ -10,6 +10,8 @@ from typing import Any
 
 import duckdb
 
+from constants import MEDIA_EXTS
+
 DB_PATH = Path.home() / ".mellow_dlp.duckdb"
 
 
@@ -335,10 +337,6 @@ def export_csv() -> str:
     return buf.getvalue()
 
 
-_VAULT_MEDIA_EXTS = {'.mp3', '.mp4', '.mkv', '.webm', '.flac', '.m4a',
-                    '.wav', '.opus', '.aac', '.ogg', '.avi', '.mov'}
-
-
 def get_vault_folders(base_path: str) -> list[dict]:
     root = Path(base_path)
     if not root.exists():
@@ -349,7 +347,7 @@ def get_vault_folders(base_path: str) -> list[dict]:
             if item.is_dir() and not item.name.startswith("."):
                 try:
                     all_files = [f for f in item.rglob("*") if f.is_file() and not f.name.startswith(".")]
-                    media_files = [f for f in all_files if f.suffix.lower() in _VAULT_MEDIA_EXTS]
+                    media_files = [f for f in all_files if f.suffix.lower() in MEDIA_EXTS]
                     size = sum(f.stat().st_size for f in media_files if f.exists())
                     st = item.stat()
                 except PermissionError:

@@ -27,8 +27,10 @@ from flask import Flask, Response, jsonify, request, send_from_directory
 
 import analytics
 import downloader
-
-CONFIG_PATH = Path.home() / ".mellow_dlp.json"
+import vault as _vault
+import library as _library
+from config import CONFIG_PATH, load_config, save_config
+from constants import THUMB_CACHE_SECS
 STATIC_DIR = Path(__file__).parent / "static"
 
 app = Flask(__name__, static_folder=None)
@@ -114,37 +116,11 @@ _worker_thread = threading.Thread(target=_queue_worker, daemon=True)
 _worker_thread.start()
 
 
-def _load_config() -> dict:
-    if CONFIG_PATH.exists():
-        try:
-            return json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
-        except Exception:
-            pass
-    return {
-        "output_dir": str(Path.home() / "Downloads" / "MellowDLP"),
-        "cookies_browser": "none",
-        "cookies_file": "",
-        "cookies_browser_profile": "",
-        "rate_limit": "",
-        "proxy": "",
-        "external_downloader": "",
-        "concurrent_fragments": 4,
-        "sleep_interval": 0,
-        "retries": 3,
-        "write_metadata": True,
-        "extract_chapters": True,
-        "filename_template": "",
-    }
-
-
-def _save_config(cfg: dict) -> None:
-    CONFIG_PATH.write_text(json.dumps(cfg, indent=2), encoding="utf-8")
-
 
 def _fire_webhooks(event_type: str, payload: dict) -> None:
     try:
         from urllib.request import Request as _Req, urlopen as _urlopen
-        cfg = _load_config()
+        cfg = load_config()
         urls = cfg.get("webhooks", {}).get(event_type, [])
         body = json.dumps({"event": event_type,
                            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
@@ -465,15 +441,15 @@ def api_update_ytdlp() -> Response:
 
 @app.route("/api/config", methods=["GET"])
 def api_config_get() -> Response:
-    return jsonify(_load_config())
+    return jsonify(load_config())
 
 
 @app.route("/api/config", methods=["POST"])
 def api_config_post() -> Response:
     data = request.get_json(force=True) or {}
-    cfg = _load_config()
+    cfg = load_config()
     cfg.update(data)
-    _save_config(cfg)
+    save_config(cfg)
     return jsonify({"ok": True})
 
 
@@ -485,7 +461,7 @@ def api_info() -> Response:
     url = data.get("url", "").strip()
     if not url:
         return jsonify({"error": "No URL"}), 400
-    cfg = _load_config()
+    cfg = load_config()
     cookie_opts = {
         "cookies_browser": cfg.get("cookies_browser", "none"),
         "cookies_file": cfg.get("cookies_file", ""),
@@ -505,7 +481,7 @@ def api_download() -> Response:
     url = data.get("url", "").strip()
     if not url:
         return jsonify({"error": "No URL provided"}), 400
-    cfg = _load_config()
+    cfg = load_config()
     output_dir = data.get("output_dir") or cfg.get("output_dir") or str(Path.home() / "Downloads" / "MellowDLP")
     print(f"[MellowDLP] download -> output_dir={output_dir!r}", flush=True)
     opts = {
@@ -601,16 +577,16 @@ def api_queue_status() -> Response:
 
 @app.route("/api/webhooks", methods=["GET"])
 def api_webhooks_get() -> Response:
-    cfg = _load_config()
+    cfg = load_config()
     return jsonify(cfg.get("webhooks", {"complete": [], "error": []}))
 
 
 @app.route("/api/webhooks", methods=["POST"])
 def api_webhooks_post() -> Response:
     data = request.get_json(force=True) or {}
-    cfg = _load_config()
+    cfg = load_config()
     cfg["webhooks"] = data
-    _save_config(cfg)
+    save_config(cfg)
     return jsonify({"ok": True})
 
 
@@ -637,9 +613,9 @@ def api_history_delete() -> Response:
     )
     if delete_all:
         analytics.clear_library()
-        cfg = _load_config()
+        cfg = load_config()
         cfg["stat_overrides"] = {}
-        _save_config(cfg)
+        save_config(cfg)
     return jsonify({"deleted": count})
 
 
@@ -650,7 +626,7 @@ def api_stats() -> Response:
     time_range = request.args.get("range", "30d")
     result = analytics.get_stats(time_range)
     # Fix library count: combine library entries + vault_playlists with URLs
-    cfg = _load_config()
+    cfg = load_config()
     vault_playlists = cfg.get("vault_playlists", {})
     vault_pl_count = sum(1 for urls in vault_playlists.values() if urls)
     # Use the larger of the two counts (library table vs vault_playlists config)
@@ -682,18 +658,18 @@ def api_analytics_query() -> Response:
 
 @app.route("/api/analytics/overrides", methods=["GET"])
 def api_analytics_overrides_get() -> Response:
-    cfg = _load_config()
+    cfg = load_config()
     return jsonify(cfg.get("stat_overrides", {}))
 
 
 @app.route("/api/analytics/overrides", methods=["POST"])
 def api_analytics_overrides_post() -> Response:
     data = request.get_json(force=True) or {}
-    cfg = _load_config()
+    cfg = load_config()
     overrides = cfg.get("stat_overrides", {})
     overrides.update(data)
     cfg["stat_overrides"] = overrides
-    _save_config(cfg)
+    save_config(cfg)
     return jsonify({"ok": True, "overrides": overrides})
 
 
@@ -706,111 +682,19 @@ def api_analytics_vacuum() -> Response:
         return jsonify({"error": str(exc)}), 500
 
 
-_FOLDER_MEDIA_EXTS = {'.mp3', '.mp4', '.mkv', '.webm', '.flac', '.m4a',
-                      '.wav', '.opus', '.aac', '.ogg', '.avi', '.mov'}
-
-
-def _get_folder_media_stats(path: str) -> dict:
-    p = Path(path)
-    if not p.is_dir():
-        return {"item_count": 0, "size_bytes": 0}
-    total, count = 0, 0
-    try:
-        for entry in p.rglob("*"):
-            if entry.is_file() and not entry.name.startswith(".") and entry.suffix.lower() in _FOLDER_MEDIA_EXTS:
-                total += entry.stat().st_size
-                count += 1
-    except PermissionError:
-        pass
-    return {"item_count": count, "size_bytes": total}
-
-
 # ── Vault ─────────────────────────────────────────────────────────────────────
 
 @app.route("/api/vault")
 def api_vault() -> Response:
-    cfg = _load_config()
+    cfg = load_config()
     base_path = request.args.get("path") or cfg.get("output_dir", str(Path.home() / "Downloads" / "MellowDLP"))
-    all_folders = analytics.get_vault_folders(base_path)
-    all_paths: set[str] = {f["path"] for f in all_folders}
-
-    # Include watched folders
-    for wp in cfg.get("watched_folders", []):
-        p = Path(wp)
-        norm = str(p)
-        if norm not in all_paths and p.exists() and p.is_dir():
-            try:
-                ms = _get_folder_media_stats(norm)
-                st = p.stat()
-            except Exception:
-                ms, st = {"item_count": 0, "size_bytes": 0}, None
-            all_folders.append({
-                "path": norm, "name": p.name,
-                "item_count": ms["item_count"], "size_bytes": ms["size_bytes"],
-                "watched": True,
-                "created_at": st.st_ctime if st else None,
-                "modified_at": st.st_mtime if st else None,
-            })
-            all_paths.add(norm)
-
-    # Tag existing folders with library info and add missing library folders
-    for entry in analytics.get_library_entries():
-        folder = entry.get("folder") or ""
-        folder_name = entry.get("folder_name") or ""
-        use_sub = entry.get("use_subfolder", True)
-        if use_sub and folder and folder_name:
-            actual_path = str(Path(folder) / folder_name)
-        elif folder:
-            actual_path = folder
-        else:
-            continue
-        norm = str(Path(actual_path))
-        found = False
-        for f in all_folders:
-            if f["path"] == norm:
-                f.setdefault("library_id", entry["id"])
-                f.setdefault("library_name", entry["name"])
-                found = True
-                break
-        if not found and norm not in all_paths:
-            p = Path(actual_path)
-            if p.exists() and p.is_dir():
-                try:
-                    ms = _get_folder_media_stats(actual_path)
-                    st = p.stat()
-                except Exception:
-                    ms, st = {"item_count": 0, "size_bytes": 0}, None
-            else:
-                ms, st = {"item_count": 0, "size_bytes": 0}, None
-            all_folders.append({
-                "path": actual_path,
-                "name": folder_name or Path(actual_path).name,
-                "item_count": ms["item_count"], "size_bytes": ms["size_bytes"],
-                "library_id": entry["id"], "library_name": entry["name"],
-                "created_at": st.st_ctime if st else None,
-                "modified_at": st.st_mtime if st else None,
-            })
-            all_paths.add(norm)
-
-    # Apply custom names and filter hidden
-    vault_names = cfg.get("vault_names", {})
-    vault_hidden = set(cfg.get("vault_hidden", []))
-    vault_sync_times = cfg.get("vault_sync_times", {})
-    for f in all_folders:
-        if f["path"] in vault_names:
-            f["name"] = vault_names[f["path"]]
-        # Only show last_synced for folders that still have linked playlists
-        has_playlists = bool(cfg.get("vault_playlists", {}).get(f["path"]))
-        if has_playlists and f["path"] in vault_sync_times:
-            f["last_synced"] = vault_sync_times[f["path"]]
-    all_folders = [f for f in all_folders if f["path"] not in vault_hidden]
-
-    return jsonify({"folders": all_folders, "base_path": base_path})
+    folders = _vault.build_folder_list(base_path, cfg)
+    return jsonify({"folders": folders, "base_path": base_path})
 
 
 @app.route("/api/vault/watch", methods=["GET"])
 def api_vault_watch_get() -> Response:
-    cfg = _load_config()
+    cfg = load_config()
     return jsonify({"watched_folders": cfg.get("watched_folders", [])})
 
 
@@ -826,12 +710,12 @@ def api_vault_watch_post() -> Response:
             p.mkdir(parents=True, exist_ok=True)
         except Exception as exc:
             return jsonify({"error": str(exc)}), 400
-    cfg = _load_config()
+    cfg = load_config()
     watched = cfg.get("watched_folders", [])
     if folder not in watched:
         watched.append(folder)
     cfg["watched_folders"] = watched
-    _save_config(cfg)
+    save_config(cfg)
     archive_created = False
     if data.get("create_archive"):
         archive_path = p / "mellow_archive.txt"
@@ -846,40 +730,25 @@ def api_vault_watch_post() -> Response:
 
 @app.route("/api/vault/archive-generate", methods=["POST"])
 def api_vault_archive_generate() -> Response:
-    """Create or migrate mellow_archive.txt for a vault folder."""
     data = request.get_json(force=True) or {}
     folder = data.get("path", "").strip()
     if not folder or not os.path.isdir(folder):
         return jsonify({"error": "Invalid path"}), 400
-    p = Path(folder)
-    archive_path = p / "mellow_archive.txt"
-    migrated = False
-    if not archive_path.exists():
-        import glob as _glob
-        for old in _glob.glob(str(p / ".mellow_archive_*.txt")):
-            try:
-                Path(old).rename(archive_path)
-                migrated = True
-                break
-            except OSError:
-                pass
-        if not migrated:
-            try:
-                archive_path.touch()
-            except OSError as exc:
-                return jsonify({"error": str(exc)}), 500
-    return jsonify({"ok": True, "path": str(archive_path), "migrated": migrated})
+    result = _vault.generate_archive(folder)
+    if not result["ok"]:
+        return jsonify({"error": result.get("error")}), 500
+    return jsonify(result)
 
 
 @app.route("/api/vault/watch", methods=["DELETE"])
 def api_vault_watch_delete() -> Response:
     data = request.get_json(force=True) or {}
     folder = data.get("path", "").strip()
-    cfg = _load_config()
+    cfg = load_config()
     watched = cfg.get("watched_folders", [])
     watched = [w for w in watched if w != folder]
     cfg["watched_folders"] = watched
-    _save_config(cfg)
+    save_config(cfg)
     return jsonify({"ok": True, "watched_folders": watched})
 
 
@@ -888,27 +757,8 @@ def api_vault_folder() -> Response:
     path = request.args.get("path", "")
     if not path or not Path(path).exists():
         return jsonify({"files": [], "path": path})
-    root = Path(path)
-    files = []
-    media_exts = {".mp4", ".mkv", ".webm", ".avi", ".mov", ".mp3", ".flac", ".m4a", ".aac", ".opus", ".wav", ".ogg"}
-    try:
-        for f in sorted(root.iterdir()):
-            if f.is_file() and f.suffix.lower() in media_exts and not f.name.startswith("."):
-                try:
-                    stat = f.stat()
-                    files.append({
-                        "name": f.name,
-                        "path": str(f),
-                        "size_bytes": stat.st_size,
-                        "modified": stat.st_mtime,
-                        "created": stat.st_ctime,
-                        "ext": f.suffix.lower().lstrip("."),
-                    })
-                except OSError:
-                    pass
-    except PermissionError:
-        pass
-    return jsonify({"files": files, "path": path, "folder_name": root.name})
+    files = _vault.list_folder_files(path)
+    return jsonify({"files": files, "path": path, "folder_name": Path(path).name})
 
 
 @app.route("/api/vault/thumb")
@@ -916,28 +766,11 @@ def api_vault_thumb() -> Response:
     path = request.args.get("path", "")
     if not path:
         return Response("", 404)
-    p = Path(path)
-    # If path itself is already an image (direct sidecar request), serve it
-    if p.suffix.lower() in (".jpg", ".jpeg", ".png", ".webp") and p.exists():
-        mime = "image/jpeg" if p.suffix.lower() in (".jpg", ".jpeg") else ("image/png" if p.suffix.lower() == ".png" else "image/webp")
-        try:
-            return Response(p.read_bytes(), mimetype=mime, headers={"Cache-Control": "max-age=86400"})
-        except Exception:
-            return Response("", 404)
-    if not p.exists():
+    result = _vault.get_thumb_bytes(path)
+    if result is None:
         return Response("", 404)
-    base = p.with_suffix("")
-    for ext in (".jpg", ".jpeg", ".png", ".webp"):
-        thumb = base.with_suffix(ext)
-        if thumb.exists():
-            mime = "image/jpeg" if ext in (".jpg", ".jpeg") else ("image/png" if ext == ".png" else "image/webp")
-            try:
-                # Use read_bytes() to bypass Flask's safe_join which can reject filenames
-                # with certain Unicode characters (⧸, ：, quotes) on Windows
-                return Response(thumb.read_bytes(), mimetype=mime, headers={"Cache-Control": "max-age=86400"})
-            except Exception:
-                return Response("", 404)
-    return Response("", 404)
+    content, mime = result
+    return Response(content, mimetype=mime, headers={"Cache-Control": f"max-age={THUMB_CACHE_SECS}"})
 
 
 @app.route("/api/playlist-items", methods=["POST"])
@@ -946,7 +779,7 @@ def api_playlist_items() -> Response:
     url = data.get("url", "").strip()
     if not url:
         return jsonify({"error": "No URL"}), 400
-    cfg = _load_config()
+    cfg = load_config()
     cookie_opts = {
         "cookies_browser": cfg.get("cookies_browser", "none"),
         "cookies_file": cfg.get("cookies_file", ""),
@@ -968,94 +801,13 @@ def api_vault_open_file() -> Response:
     return jsonify({"ok": True})
 
 
-_VLC_PATHS = [
-    # Windows
-    r"C:\Program Files\VideoLAN\VLC\vlc.exe",
-    r"C:\Program Files (x86)\VideoLAN\VLC\vlc.exe",
-    # Linux (package manager / snap)
-    "/usr/bin/vlc",
-    "/usr/local/bin/vlc",
-    "/snap/bin/vlc",
-    "/flatpak/exports/bin/org.videolan.VLC",
-]
-
-_MPV_PATHS = [
-    # Linux
-    "/usr/bin/mpv",
-    "/usr/local/bin/mpv",
-    "/snap/bin/mpv",
-    # Windows (common install locations)
-    r"C:\Program Files\mpv\mpv.exe",
-    r"C:\Program Files (x86)\mpv\mpv.exe",
-]
-
-_MPC_PATHS = [
-    r"C:\Program Files\MPC-HC\mpc-hc64.exe",
-    r"C:\Program Files\MPC-HC\mpc-hc.exe",
-    r"C:\Program Files (x86)\MPC-HC\mpc-hc.exe",
-    r"C:\Program Files\MPC-BE x64\mpc-be64.exe",
-    r"C:\Program Files (x86)\MPC-BE\mpc-be.exe",
-]
-
-
-def _launch_playlist(paths: list) -> str:
-    """Open a list of media files as a playlist. Returns method used."""
-    import tempfile, shutil
-    valid = [p for p in paths if Path(p).exists()]
-    if not valid:
-        return "no_files"
-
-    def _find(candidates):
-        return next((p for p in candidates if os.path.exists(p)), None)
-
-    # Try VLC (best Unicode support, direct file list)
-    vlc = _find(_VLC_PATHS) or shutil.which("vlc")
-    if vlc:
-        threading.Thread(
-            target=lambda: subprocess.Popen([vlc, "--playlist-enqueue"] + valid),
-            daemon=True,
-        ).start()
-        return "vlc_direct"
-
-    # Try mpv (Linux-friendly, reads file list from stdin or playlist file)
-    mpv = _find(_MPV_PATHS) or shutil.which("mpv")
-    if mpv:
-        threading.Thread(
-            target=lambda: subprocess.Popen([mpv] + valid),
-            daemon=True,
-        ).start()
-        return "mpv_direct"
-
-    # Try MPC-HC/MPC-BE (Windows)
-    mpc = _find(_MPC_PATHS)
-    if mpc:
-        threading.Thread(
-            target=lambda: subprocess.Popen([mpc] + valid),
-            daemon=True,
-        ).start()
-        return "mpc_direct"
-
-    # Fallback: write m3u8 (UTF-8 with BOM — required for VLC to parse Unicode paths)
-    lines = ["#EXTM3U"]
-    for p in valid:
-        lines.append(p.replace("\\", "/"))   # forward slashes: wider media player compat
-    content = "\n".join(lines)
-    with tempfile.NamedTemporaryFile(
-        mode='wb', suffix='.m3u8', delete=False
-    ) as f:
-        f.write(b'\xef\xbb\xbf' + content.encode('utf-8'))  # UTF-8 BOM
-        temp_path = f.name
-    threading.Thread(target=_open_file, args=(temp_path,), daemon=True).start()
-    return temp_path
-
-
 @app.route("/api/vault/play-files", methods=["POST"])
 def api_vault_play_files() -> Response:
     data = request.get_json(force=True) or {}
     paths = data.get("paths", [])
     if not paths:
         return jsonify({"error": "No files provided"}), 400
-    result = _launch_playlist(paths)
+    result = _vault.launch_playlist(paths, _open_file)
     return jsonify({"status": "ok", "method": result})
 
 
@@ -1064,30 +816,13 @@ def api_vault_folder_previews() -> Response:
     path = request.args.get("path", "")
     if not path or not Path(path).exists():
         return jsonify({"thumbs": []})
-    root = Path(path)
-    media_exts = {".mp4", ".mkv", ".webm", ".avi", ".mov", ".mp3", ".flac", ".m4a", ".aac", ".opus", ".wav", ".ogg"}
-    img_exts = {".jpg", ".jpeg", ".png", ".webp"}
-    thumb_urls: list[str] = []
-    try:
-        all_files = list(root.iterdir())
-        # Build stem→image map using OS-native enumeration (handles all Unicode)
-        img_map = {f.stem.lower(): f for f in all_files if f.is_file() and f.suffix.lower() in img_exts}
-        for f in sorted(all_files):
-            if f.is_file() and f.suffix.lower() in media_exts and not f.name.startswith("."):
-                match = img_map.get(f.stem.lower())
-                if match:
-                    thumb_urls.append(f"/api/vault/thumb?path={quote(str(match))}")
-                if len(thumb_urls) >= 4:
-                    break
-    except PermissionError:
-        pass
-    return jsonify({"thumbs": thumb_urls})
+    return jsonify({"thumbs": _vault.get_folder_previews(path)})
 
 
 @app.route("/api/vault/playlists", methods=["GET"])
 def api_vault_playlists_get() -> Response:
     path = request.args.get("path", "")
-    cfg = _load_config()
+    cfg = load_config()
     return jsonify({"playlists": cfg.get("vault_playlists", {}).get(path, [])})
 
 
@@ -1098,14 +833,14 @@ def api_vault_playlists_post() -> Response:
     url_val = data.get("url", "").strip()
     if not path or not url_val:
         return jsonify({"error": "path and url required"}), 400
-    cfg = _load_config()
+    cfg = load_config()
     vp = cfg.get("vault_playlists", {})
     if path not in vp:
         vp[path] = []
     if url_val not in vp[path]:
         vp[path].append(url_val)
     cfg["vault_playlists"] = vp
-    _save_config(cfg)
+    save_config(cfg)
     return jsonify({"ok": True, "playlists": vp[path]})
 
 
@@ -1114,7 +849,7 @@ def api_vault_playlists_delete() -> Response:
     data = request.get_json(force=True) or {}
     path = data.get("path", "").strip()
     url_val = data.get("url", "").strip()
-    cfg = _load_config()
+    cfg = load_config()
     vp = cfg.get("vault_playlists", {})
     if path in vp:
         vp[path] = [u for u in vp[path] if u != url_val]
@@ -1122,7 +857,7 @@ def api_vault_playlists_delete() -> Response:
         if not vp[path]:
             cfg.get("vault_sync_times", {}).pop(path, None)
     cfg["vault_playlists"] = vp
-    _save_config(cfg)
+    save_config(cfg)
     return jsonify({"ok": True})
 
 
@@ -1133,14 +868,14 @@ def api_vault_rename() -> Response:
     name = data.get("name", "").strip()
     if not path:
         return jsonify({"error": "path required"}), 400
-    cfg = _load_config()
+    cfg = load_config()
     vault_names = cfg.get("vault_names", {})
     if name:
         vault_names[path] = name
     else:
         vault_names.pop(path, None)
     cfg["vault_names"] = vault_names
-    _save_config(cfg)
+    save_config(cfg)
     return jsonify({"ok": True})
 
 
@@ -1150,7 +885,7 @@ def api_vault_remove() -> Response:
     path = data.get("path", "").strip()
     if not path:
         return jsonify({"error": "path required"}), 400
-    cfg = _load_config()
+    cfg = load_config()
     # Remove from watched_folders if present
     watched = cfg.get("watched_folders", [])
     cfg["watched_folders"] = [w for w in watched if w != path]
@@ -1159,7 +894,7 @@ def api_vault_remove() -> Response:
     if path not in hidden:
         hidden.append(path)
     cfg["vault_hidden"] = hidden
-    _save_config(cfg)
+    save_config(cfg)
     return jsonify({"ok": True})
 
 
@@ -1196,7 +931,7 @@ def api_vault_sync() -> Response:
     mode = data.get("mode", "add")  # 'add' or 'mirror'
     if not path:
         return jsonify({"error": "path required"}), 400
-    cfg = _load_config()
+    cfg = load_config()
     vp = cfg.get("vault_playlists", {}).get(path, [])
     if not vp:
         return jsonify({"error": "No playlist linked to this folder"}), 400
@@ -1204,35 +939,7 @@ def api_vault_sync() -> Response:
     lib = next((e for e in library_entries if e.get("folder") == path or
                 str(Path(e.get("folder", "")) / (e.get("folder_name") or "")) == path), None)
     output_dir = path
-    sync_quality = data.get("quality") or (lib["quality"] if lib else cfg.get("quality_default", "1080p"))
-    sync_container = (data.get("container") or "mp4").lower()
-    sync_audio = data.get("sync_audio", False)
-    sync_audio_fmt = data.get("audio_format", "mp3")
-    lib_embed_thumb = lib["embed_thumbnail"] if lib else cfg.get("embed_thumbnail", True)
-    lib_embed_chap = lib["embed_chapters"] if lib else True
-    lib_embed_meta = lib["embed_metadata"] if lib else True
-    lib_embed_subs = lib.get("embed_subs", False) if lib else False
-    lib_sponsorblock = lib.get("sponsorblock", False) if lib else False
-    opts = {
-        "mode": "library",
-        "quality": sync_quality,
-        "container": sync_container,
-        "sync_audio": sync_audio,
-        "audio_format": sync_audio_fmt,
-        "embed_thumbnail": data.get("embed_thumbnail", lib_embed_thumb),
-        "embed_chapters": data.get("embed_chapters", lib_embed_chap),
-        "embed_metadata": data.get("embed_metadata", lib_embed_meta),
-        "embed_subs": data.get("embed_subs", lib_embed_subs),
-        "sponsorblock": data.get("sponsorblock", lib_sponsorblock),
-        "cookies_browser": cfg.get("cookies_browser", "none"),
-        "cookies_file": cfg.get("cookies_file", ""),
-        "cookies_browser_profile": cfg.get("cookies_browser_profile", ""),
-        "rate_limit": cfg.get("rate_limit", ""),
-        "proxy": cfg.get("proxy", ""),
-        "concurrent_fragments": cfg.get("concurrent_fragments", 4),
-        "sleep_interval": cfg.get("sleep_interval", 0),
-        "retries": cfg.get("retries", 3),
-    }
+    opts = _vault.build_sync_opts(data, lib, cfg)
     library_id = lib["id"] if lib else None
 
     # Enqueue all linked playlists as a single sync job (processed sequentially)
@@ -1247,7 +954,7 @@ def api_vault_sync() -> Response:
     vault_sync_times = cfg.get("vault_sync_times", {})
     vault_sync_times[path] = time.strftime("%Y-%m-%dT%H:%M:%S")
     cfg["vault_sync_times"] = vault_sync_times
-    _save_config(cfg)
+    save_config(cfg)
     return jsonify({"ok": True, "synced_at": vault_sync_times[path], "playlists_synced": len(playlist_urls)})
 
 
@@ -1258,7 +965,7 @@ def api_vault_sync_all() -> Response:
     # Optional: client sends list of specific paths to sync; omit for all
     only_paths = data.get("paths")  # None = all linked folders
     mode = data.get("mode", "add")
-    cfg = _load_config()
+    cfg = load_config()
     vp = cfg.get("vault_playlists", {})
     folders_to_sync = [
         path for path, urls in vp.items()
@@ -1272,27 +979,7 @@ def api_vault_sync_all() -> Response:
         library_entries = analytics.get_library_entries()
         lib = next((e for e in library_entries if e.get("folder") == path or
                     str(Path(e.get("folder", "")) / (e.get("folder_name") or "")) == path), None)
-        sync_quality = lib["quality"] if lib else cfg.get("quality_default", "1080p")
-        opts = {
-            "mode": "library",
-            "quality": sync_quality,
-            "container": "mp4",
-            "sync_audio": False,
-            "audio_format": "mp3",
-            "embed_thumbnail": lib["embed_thumbnail"] if lib else cfg.get("embed_thumbnail", True),
-            "embed_chapters": lib["embed_chapters"] if lib else True,
-            "embed_metadata": lib["embed_metadata"] if lib else True,
-            "embed_subs": lib.get("embed_subs", False) if lib else False,
-            "sponsorblock": lib.get("sponsorblock", False) if lib else False,
-            "cookies_browser": cfg.get("cookies_browser", "none"),
-            "cookies_file": cfg.get("cookies_file", ""),
-            "cookies_browser_profile": cfg.get("cookies_browser_profile", ""),
-            "rate_limit": cfg.get("rate_limit", ""),
-            "proxy": cfg.get("proxy", ""),
-            "concurrent_fragments": cfg.get("concurrent_fragments", 4),
-            "sleep_interval": cfg.get("sleep_interval", 0),
-            "retries": cfg.get("retries", 3),
-        }
+        opts = _vault.build_sync_opts({}, lib, cfg)
         library_id = lib["id"] if lib else None
         label = f"Sync — {Path(path).name} ({len(playlist_urls)} playlist(s))"
         _enqueue_job(playlist_urls[0] if len(playlist_urls) == 1 else path,
@@ -1302,142 +989,33 @@ def api_vault_sync_all() -> Response:
         vault_sync_times[path] = time.strftime("%Y-%m-%dT%H:%M:%S")
         cfg["vault_sync_times"] = vault_sync_times
         queued.append(path)
-    _save_config(cfg)
+    save_config(cfg)
     return jsonify({"ok": True, "queued": queued, "count": len(queued)})
 
 
 @app.route("/api/vault/mirror-preview", methods=["POST"])
 def api_vault_mirror_preview() -> Response:
-    """Return local media files NOT present in any linked playlist (for mirror confirm)."""
     data = request.get_json(force=True) or {}
     path = data.get("path", "").strip()
     if not path or not os.path.isdir(path):
         return jsonify({"error": "Invalid path"}), 400
-    cfg = _load_config()
+    cfg = load_config()
     vp = cfg.get("vault_playlists", {}).get(path, [])
     if not vp:
         return jsonify({"error": "No playlist linked"}), 400
-
-    # Collect all video IDs from all linked playlists via yt-dlp flat extraction
-    playlist_ids: set[str] = set()
-    for playlist_url in vp:
-        try:
-            import yt_dlp as _ydl
-            with _ydl.YoutubeDL({"quiet": True, "extract_flat": True, "skip_download": True}) as ydl:
-                info = ydl.extract_info(playlist_url, download=False)
-                if info and "entries" in info:
-                    for entry in (info["entries"] or []):
-                        if entry and entry.get("id"):
-                            playlist_ids.add(entry["id"])
-        except Exception as exc:
-            print(f"[MIRROR-PREVIEW] failed to fetch {playlist_url}: {exc}", flush=True)
-
-    # Collect local video IDs from filenames and archive files
-    import re as _re
-    p = Path(path)
-    media_exts = {'.mp3', '.mp4', '.mkv', '.webm', '.flac', '.m4a', '.wav', '.opus', '.aac', '.ogg', '.avi', '.mov'}
-    local_ids: dict[str, str] = {}  # video_id -> filename
-    for f in p.iterdir():
-        if not f.is_file() or f.suffix.lower() not in media_exts:
-            continue
-        m = _re.search(r'\[([A-Za-z0-9_-]{11})\]', f.name)
-        if m:
-            local_ids[m.group(1)] = f.name
-    for archive_file in p.glob(".mellow_archive_*.txt"):
-        try:
-            for line in archive_file.read_text(encoding="utf-8", errors="ignore").splitlines():
-                parts = line.strip().split()
-                if len(parts) == 2:
-                    local_ids.setdefault(parts[1], parts[1])
-        except Exception:
-            pass
-
-    # Compute diff
-    to_delete = []
-    for vid_id, fname in local_ids.items():
-        if vid_id not in playlist_ids and playlist_ids:
-            f_path = p / fname
-            size = f_path.stat().st_size if f_path.exists() else 0
-            to_delete.append({"path": str(f_path) if f_path.exists() else fname,
-                               "name": fname, "size": size, "video_id": vid_id})
-
-    to_add_count = len(playlist_ids - set(local_ids.keys()))
-    unchanged_count = len(playlist_ids & set(local_ids.keys()))
-
-    return jsonify({
-        "to_delete": to_delete,
-        "to_add_count": to_add_count,
-        "unchanged_count": unchanged_count,
-        "playlist_count": len(vp),
-        "playlist_ids_found": len(playlist_ids),
-    })
+    return jsonify(_vault.get_mirror_preview(path, vp))
 
 
 @app.route("/api/vault/mirror-confirm", methods=["POST"])
 def api_vault_mirror_confirm() -> Response:
-    """Delete confirmed mirror files and their sidecar thumbnails."""
-    data = request.get_json(force=True) or {}
-    paths = data.get("paths", [])
-    deleted = []
-    errors = []
-    for fp in paths:
-        try:
-            f = Path(fp)
-            if f.exists() and f.is_file():
-                f.unlink()
-                deleted.append(fp)
-                # Delete sidecar thumbnail
-                for ext in (".jpg", ".jpeg", ".png", ".webp"):
-                    sidecar = f.with_suffix(ext)
-                    if sidecar.exists():
-                        sidecar.unlink()
-        except Exception as exc:
-            errors.append({"path": fp, "error": str(exc)})
-    return jsonify({"deleted": len(deleted), "errors": errors})
+    paths = (request.get_json(force=True) or {}).get("paths", [])
+    return jsonify(_vault.confirm_mirror_delete(paths))
 
 
 @app.route("/api/vault/file-thumbs", methods=["POST"])
 def api_vault_file_thumbs() -> Response:
-    data = request.get_json(force=True) or {}
-    paths = data.get("paths", [])
-    result = {}
-    _img_exts = {".jpg", ".jpeg", ".png", ".webp"}
-    _dir_cache: dict = {}  # parent_path → {stem_lower: Path}
-
-    def _get_dir_images(parent: Path) -> dict:
-        key = str(parent)
-        if key not in _dir_cache:
-            try:
-                _dir_cache[key] = {
-                    f.stem.lower(): f
-                    for f in parent.iterdir()
-                    if f.is_file() and f.suffix.lower() in _img_exts
-                }
-            except Exception:
-                _dir_cache[key] = {}
-        return _dir_cache[key]
-
-    with analytics.get_conn() as con:
-        for p in paths[:100]:
-            fp = Path(p)
-            # Use iterdir() + case-insensitive stem matching — handles all Unicode filenames
-            # (avoids Path.with_suffix().exists() which can fail with NFC/NFD differences)
-            match = _get_dir_images(fp.parent).get(fp.stem.lower())
-            if match:
-                result[p] = f"/api/vault/thumb?path={quote(str(match))}"
-            else:
-                # Fall back to DB URL (may expire for remote URLs)
-                row = con.execute(
-                    "SELECT thumbnail_url FROM downloads WHERE file_path=? LIMIT 1", [p]
-                ).fetchone()
-                if row and row[0]:
-                    result[p] = row[0]
-    return jsonify({"thumbs": result})
-
-
-_STATS_MEDIA_EXTS = {'.mp3', '.mp4', '.mkv', '.webm', '.flac', '.m4a',
-                    '.wav', '.opus', '.aac', '.ogg', '.avi', '.mov'}
-_STATS_VIDEO_EXTS = {'.mp4', '.mkv', '.webm', '.avi', '.mov'}
+    paths = (request.get_json(force=True) or {}).get("paths", [])
+    return jsonify({"thumbs": _vault.resolve_file_thumbs(paths, analytics.get_conn)})
 
 
 @app.route("/api/vault/folder-stats")
@@ -1445,45 +1023,9 @@ def api_vault_folder_stats() -> Response:
     path = request.args.get("path", "")
     if not path or not os.path.isdir(path):
         return jsonify({"error": "Invalid path"}), 400
-    p = Path(path)
     try:
-        all_files = [f for f in p.rglob("*") if f.is_file() and not f.name.startswith(".")]
-        media_files = [f for f in all_files if f.suffix.lower() in _STATS_MEDIA_EXTS]
-        total_size = sum(f.stat().st_size for f in media_files if f.exists())
-        video_count = sum(1 for f in media_files if f.suffix.lower() in _STATS_VIDEO_EXTS)
-        audio_count = len(media_files) - video_count
-        format_counts: dict = {}
-        for f in media_files:
-            ext = f.suffix.lower().lstrip(".")
-            if ext:
-                format_counts[ext] = format_counts.get(ext, 0) + 1
-        sizes = [(f.stat().st_size, f) for f in media_files if f.exists()]
-        sizes.sort(key=lambda x: x[0], reverse=True)
-        avg_size = int(total_size / len(sizes)) if sizes else 0
-        largest = {"name": sizes[0][1].name, "size": sizes[0][0]} if sizes else None
-        smallest = {"name": sizes[-1][1].name, "size": sizes[-1][0]} if sizes else None
-
-        mtimes = [(f.stat().st_mtime, f) for f in media_files if f.exists()]
-        newest = {"name": max(mtimes, key=lambda x: x[0])[1].name, "ts": max(mtimes, key=lambda x: x[0])[0]} if mtimes else None
-        oldest = {"name": min(mtimes, key=lambda x: x[0])[1].name, "ts": min(mtimes, key=lambda x: x[0])[0]} if mtimes else None
-
-        linked_playlists = _load_config().get("vault_playlists", {}).get(path, [])
-
-        return jsonify({
-            "path": str(p),
-            "file_count": len(all_files),
-            "media_count": len(media_files),
-            "video_count": video_count,
-            "audio_count": audio_count,
-            "total_size_bytes": total_size,
-            "avg_size_bytes": avg_size,
-            "formats": format_counts,
-            "largest_file": largest,
-            "smallest_file": smallest,
-            "newest_file": newest,
-            "oldest_file": oldest,
-            "linked_playlists": len(linked_playlists),
-        })
+        linked_playlists = load_config().get("vault_playlists", {}).get(path, [])
+        return jsonify(_vault.get_folder_stats(path, linked_playlists))
     except Exception as exc:
         return jsonify({"error": str(exc)}), 500
 
@@ -1500,26 +1042,7 @@ def api_library_post() -> Response:
     data = request.get_json(force=True) or {}
     entry_id = str(uuid.uuid4())
     now = time.strftime("%Y-%m-%d %H:%M:%S")
-    entry = {
-        "id": entry_id,
-        "name": data.get("name", ""),
-        "url": data.get("url", ""),
-        "folder": data.get("folder", ""),
-        "folder_name": data.get("folder_name", ""),
-        "use_subfolder": data.get("use_subfolder", True),
-        "quality": data.get("quality", "1080p"),
-        "mode": data.get("mode", "VIDEO"),
-        "embed_thumbnail": data.get("embed_thumbnail", True),
-        "embed_chapters": data.get("embed_chapters", True),
-        "embed_metadata": data.get("embed_metadata", True),
-        "embed_subs": data.get("embed_subs", False),
-        "sub_langs": data.get("sub_langs", "en"),
-        "sponsorblock": data.get("sponsorblock", False),
-        "filename_template": data.get("filename_template", ""),
-        "sync_mode": data.get("sync_mode", "add"),
-        "last_synced": None,
-        "created_at": now,
-    }
+    entry = _library.build_entry(data, entry_id, now)
     analytics.upsert_library_entry(entry)
     # Link all extra URLs to vault_playlists for the folder
     extra_urls = data.get("extra_urls", [])
@@ -1527,7 +1050,7 @@ def api_library_post() -> Response:
     if all_urls and (entry["folder"] or entry["folder_name"]):
         folder_path = str(Path(entry["folder"]) / entry["folder_name"]) if entry.get("use_subfolder") and entry["folder"] and entry["folder_name"] else entry["folder"]
         if folder_path:
-            cfg = _load_config()
+            cfg = load_config()
             vp = cfg.get("vault_playlists", {})
             existing_urls = vp.get(folder_path, [])
             for u in all_urls:
@@ -1535,7 +1058,7 @@ def api_library_post() -> Response:
                     existing_urls.append(u)
             vp[folder_path] = existing_urls
             cfg["vault_playlists"] = vp
-            _save_config(cfg)
+            save_config(cfg)
     return jsonify(entry), 201
 
 
@@ -1566,30 +1089,8 @@ def api_library_sync(entry_id: str) -> Response:
     entry = next((e for e in entries if e["id"] == entry_id), None)
     if not entry:
         return jsonify({"error": "Not found"}), 404
-    cfg = _load_config()
-    base_folder = entry.get("folder") or cfg.get("output_dir", str(Path.home() / "Downloads"))
-    if entry.get("use_subfolder") and entry.get("folder_name"):
-        output_dir = str(Path(base_folder) / entry["folder_name"])
-    else:
-        output_dir = base_folder
-    opts = {
-        "mode": "library",
-        "quality": entry.get("quality", "1080p"),
-        "embed_thumbnail": entry.get("embed_thumbnail", True),
-        "embed_chapters": entry.get("embed_chapters", True),
-        "embed_metadata": entry.get("embed_metadata", True),
-        "embed_subs": entry.get("embed_subs", False),
-        "sub_langs": entry.get("sub_langs", "en"),
-        "sponsorblock": entry.get("sponsorblock", False),
-        "filename_template": entry.get("filename_template", ""),
-        "sync_mode": sync_mode,
-        "cookies_browser": cfg.get("cookies_browser", "none"),
-        "cookies_file": cfg.get("cookies_file", ""),
-        "rate_limit": cfg.get("rate_limit", ""),
-        "proxy": cfg.get("proxy", ""),
-        "sleep_interval": cfg.get("sleep_interval", 0),
-        "retries": cfg.get("retries", 3),
-    }
+    cfg = load_config()
+    opts, output_dir = _library.build_sync_opts(entry, cfg, sync_mode)
 
     analytics.update_library_last_synced(entry_id)
     job = _enqueue_job(entry["url"], output_dir, opts, entry_id,
