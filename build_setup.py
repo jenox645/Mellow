@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import json
+import os
 import platform
 import py_compile
 import re
@@ -372,7 +373,9 @@ if IS_LINUX:
 
     if appimagetool and appimagetool.exists():
         appimage_out = HERE / "dist" / f"MellowDLP-{VERSION}-x86_64.AppImage"
-        run([str(appimagetool), str(appdir), str(appimage_out)])
+        # APPIMAGE_EXTRACT_AND_RUN=1 lets appimagetool run without FUSE (needed in CI)
+        run([str(appimagetool), str(appdir), str(appimage_out)],
+            env={**os.environ, "APPIMAGE_EXTRACT_AND_RUN": "1"})
         if appimage_out.exists():
             print(f"  {appimage_out.name} ({appimage_out.stat().st_size:,} bytes) — OK")
     else:
