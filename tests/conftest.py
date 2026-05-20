@@ -40,9 +40,9 @@ def client(app):
 @pytest.fixture(autouse=True)
 def reset_cancel_state():
     import downloader
-    downloader._reset_cancel()
+    downloader._current_cancel_event = None
     yield
-    downloader._reset_cancel()
+    downloader._current_cancel_event = None
 
 
 @pytest.fixture

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import mimetypes
 import os
 import platform
 import queue
@@ -20,7 +19,6 @@ import uuid
 from pathlib import Path
 from typing import Any
 from urllib.error import URLError
-from urllib.parse import quote
 from urllib.request import urlopen
 
 from flask import Flask, Response, jsonify, request, send_from_directory
@@ -29,8 +27,8 @@ import analytics
 import downloader
 import vault as _vault
 import library as _library
-from config import CONFIG_PATH, load_config, save_config
-from constants import THUMB_CACHE_SECS
+from config import load_config, save_config
+from constants import MEDIA_EXTS, THUMB_CACHE_SECS
 STATIC_DIR = Path(__file__).parent / "static"
 
 app = Flask(__name__, static_folder=None)
@@ -71,7 +69,7 @@ def _run_job(job: dict) -> None:
     urls = job.get("multi_urls") or [job["url"]]
     last_idx = len(urls) - 1
     for i, url in enumerate(urls):
-        if downloader._is_cancelled():
+        if downloader._current_cancel_event is not None and downloader._current_cancel_event.is_set():
             break
         is_last = (i == last_idx)
 
@@ -149,11 +147,10 @@ def _open_in_explorer(path: str) -> None:
     if system == "Windows":
         norm = os.path.normpath(str(p))
         if p.is_file():
-            # Quoted path handles spaces; shell=True routes through Explorer properly
-            subprocess.Popen(f'explorer /select,"{norm}"', shell=True)
+            subprocess.Popen(["explorer", f"/select,{norm}"])
         else:
             target = os.path.normpath(str(p if p.is_dir() else p.parent))
-            subprocess.Popen(f'explorer "{target}"', shell=True)
+            subprocess.Popen(["explorer", target])
     elif system == "Darwin":
         if p.is_file():
             subprocess.Popen(["open", "-R", str(p)])
@@ -166,7 +163,7 @@ def _open_in_explorer(path: str) -> None:
 def _open_file(path: str) -> None:
     system = platform.system()
     if system == "Windows":
-        os.startfile(path)  # type: ignore[attr-defined]
+        getattr(os, "startfile")(path)
     elif system == "Darwin":
         subprocess.Popen(["open", path])
     else:
@@ -269,11 +266,17 @@ def api_browse_file() -> Response:
 
 
 _ARCHIVE_PLATFORM_MAP = {
-    "youtube": "https://www.youtube.com/watch?v={}",
-    "soundcloud": "https://soundcloud.com/track/{}",
-    "twitter": "https://twitter.com/i/status/{}",
-    "vimeo": "https://vimeo.com/{}",
-    "twitch": "https://www.twitch.tv/videos/{}",
+    # yt-dlp extractor key → reconstructable public URL
+    "youtube":     "https://www.youtube.com/watch?v={}",
+    "vimeo":       "https://vimeo.com/{}",
+    "twitter":     "https://twitter.com/i/status/{}",
+    "twitch":      "https://www.twitch.tv/videos/{}",
+    "twitchvod":   "https://www.twitch.tv/videos/{}",
+    "bilibili":    "https://www.bilibili.com/video/{}",
+    "dailymotion": "https://www.dailymotion.com/video/{}",
+    "nicovideo":   "https://www.nicovideo.jp/watch/{}",
+    # soundcloud / tiktok / instagram / bandcamp: numeric IDs stored by yt-dlp
+    # cannot be turned back into a working public URL — entries are skipped.
 }
 
 
@@ -306,6 +309,8 @@ def api_read_url_file() -> Response:
     path = data.get("path", "").strip()
     if not path or not os.path.isfile(path):
         return jsonify({"error": "File not found"}), 400
+    if Path(path).suffix.lower() != ".txt":
+        return jsonify({"error": "Only .txt files are supported"}), 400
     try:
         content = open(path, "r", encoding="utf-8", errors="ignore").read()
         urls, fmt = _parse_url_file(content)
@@ -334,7 +339,7 @@ def api_system() -> Response:
     try:
         _kw: dict = {"capture_output": True, "timeout": 5}
         if platform.system() == "Windows":
-            _kw["creationflags"] = subprocess.CREATE_NO_WINDOW
+            _kw["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
         result = subprocess.run(["ffmpeg", "-version"], **_kw)
         ffmpeg_ok = result.returncode == 0
     except Exception:
@@ -394,7 +399,7 @@ def api_update_ytdlp() -> Response:
 
         _kw: dict = {"capture_output": True}
         if platform.system() == "Windows":
-            _kw["creationflags"] = subprocess.CREATE_NO_WINDOW
+            _kw["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
 
         exe = sys.executable
         frozen = getattr(sys, "frozen", False)
@@ -718,13 +723,8 @@ def api_vault_watch_post() -> Response:
     save_config(cfg)
     archive_created = False
     if data.get("create_archive"):
-        archive_path = p / "mellow_archive.txt"
-        if not archive_path.exists():
-            try:
-                archive_path.touch()
-                archive_created = True
-            except OSError:
-                pass
+        result = _vault.generate_archive(folder)
+        archive_created = result.get("ok", False)
     return jsonify({"ok": True, "watched_folders": watched, "archive_created": archive_created})
 
 
@@ -734,7 +734,7 @@ def api_vault_archive_generate() -> Response:
     folder = data.get("path", "").strip()
     if not folder or not os.path.isdir(folder):
         return jsonify({"error": "Invalid path"}), 400
-    result = _vault.generate_archive(folder)
+    result = _vault.generate_archive(folder, prune=True)
     if not result["ok"]:
         return jsonify({"error": result.get("error")}), 500
     return jsonify(result)
@@ -909,6 +909,8 @@ def api_vault_delete_file() -> Response:
         return jsonify({"error": "File not found"}), 404
     if not p.is_file():
         return jsonify({"error": "Not a file"}), 400
+    if p.suffix.lower() not in MEDIA_EXTS:
+        return jsonify({"error": "Only media files can be deleted via this endpoint"}), 400
     try:
         p.unlink()
         for sidecar_ext in (".jpg", ".jpeg", ".png", ".webp"):
@@ -928,7 +930,6 @@ def api_vault_delete_file() -> Response:
 def api_vault_sync() -> Response:
     data = request.get_json(force=True) or {}
     path = data.get("path", "").strip()
-    mode = data.get("mode", "add")  # 'add' or 'mirror'
     if not path:
         return jsonify({"error": "path required"}), 400
     cfg = load_config()
@@ -964,7 +965,6 @@ def api_vault_sync_all() -> Response:
     data = request.get_json(force=True) or {}
     # Optional: client sends list of specific paths to sync; omit for all
     only_paths = data.get("paths")  # None = all linked folders
-    mode = data.get("mode", "add")
     cfg = load_config()
     vp = cfg.get("vault_playlists", {})
     folders_to_sync = [
@@ -1009,6 +1009,7 @@ def api_vault_mirror_preview() -> Response:
 @app.route("/api/vault/mirror-confirm", methods=["POST"])
 def api_vault_mirror_confirm() -> Response:
     paths = (request.get_json(force=True) or {}).get("paths", [])
+    paths = [p for p in paths if isinstance(p, str) and Path(p).suffix.lower() in MEDIA_EXTS]
     return jsonify(_vault.confirm_mirror_delete(paths))
 
 

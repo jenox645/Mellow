@@ -58,12 +58,12 @@ def resume() -> None:
     _pause_event.clear()
 
 QUALITY_MAP: dict[str, str] = {
-    "best": "bestvideo+bestaudio/best",
-    "4k": "bestvideo[height<=2160]+bestaudio/best",
-    "1080p": "bestvideo[height<=1080]+bestaudio/best",
-    "720p": "bestvideo[height<=720]+bestaudio/best",
-    "480p": "bestvideo[height<=480]+bestaudio/best",
-    "360p": "bestvideo[height<=360]+bestaudio/best",
+    "best":  "bestvideo+bestaudio[ext=m4a]/bestvideo+bestaudio/best",
+    "4k":    "bestvideo[height<=2160]+bestaudio[ext=m4a]/bestvideo[height<=2160]+bestaudio/best",
+    "1080p": "bestvideo[height<=1080]+bestaudio[ext=m4a]/bestvideo[height<=1080]+bestaudio/best",
+    "720p":  "bestvideo[height<=720]+bestaudio[ext=m4a]/bestvideo[height<=720]+bestaudio/best",
+    "480p":  "bestvideo[height<=480]+bestaudio[ext=m4a]/bestvideo[height<=480]+bestaudio/best",
+    "360p":  "bestvideo[height<=360]+bestaudio[ext=m4a]/bestvideo[height<=360]+bestaudio/best",
 }
 
 AUDIO_FORMAT_MAP: dict[str, str] = {
@@ -75,30 +75,23 @@ AUDIO_FORMAT_MAP: dict[str, str] = {
     "wav": "wav",
 }
 
-_cancel_event = threading.Event()
+_current_cancel_event: threading.Event | None = None
 _lock = threading.Lock()
 
 
 def cancel_download() -> None:
-    _cancel_event.set()
+    if _current_cancel_event is not None:
+        _current_cancel_event.set()
 
 
-def _is_cancelled() -> bool:
-    return _cancel_event.is_set()
-
-
-def _reset_cancel() -> None:
-    _cancel_event.clear()
-
-
-def _make_progress_hook(progress_cb: Callable, library_id: str | None, speed_tracker: dict) -> Callable:
+def _make_progress_hook(progress_cb: Callable, library_id: str | None, speed_tracker: dict, cancel_event: threading.Event) -> Callable:
     def hook(d: dict) -> None:
         # Pause support: block here while paused
         while _pause_event.is_set():
-            if _is_cancelled():
+            if cancel_event.is_set():
                 raise yt_dlp.utils.DownloadCancelled()
             time.sleep(0.2)
-        if _is_cancelled():
+        if cancel_event.is_set():
             raise yt_dlp.utils.DownloadCancelled()
         status = d.get("status")
         if status == "downloading":
@@ -184,7 +177,7 @@ def _save_thumbnail_sidecar(filepath: str, thumb_url: str | None) -> None:
     print(f"[THUMB DEBUG] thumbnail_url={thumb_url}", flush=True)
     print(f"[THUMB DEBUG] sidecar={sidecar}", flush=True)
     if sidecar.exists():
-        print(f"[THUMB DEBUG] already exists, skipping", flush=True)
+        print("[THUMB DEBUG] already exists, skipping", flush=True)
         return
     try:
         from urllib.request import urlretrieve
@@ -242,7 +235,10 @@ def download_video(
     progress_cb: Callable,
     library_id: str | None = None,
 ) -> None:
-    _reset_cancel()
+    global _current_cancel_event
+    cancel_event = threading.Event()
+    with _lock:
+        _current_cancel_event = cancel_event
     t_start = time.monotonic()
     speed_tracker: dict = {"samples": []}
     progress_cb({"status": "starting", "url": url, "library_id": library_id})
@@ -280,7 +276,7 @@ def download_video(
 
     print(f"[MellowDLP] yt-dlp outtmpl={outtmpl!r}  output_dir={output_dir!r}", flush=True)
     print(f"[DOWNLOAD] mode={mode} audio_format={audio_fmt} quality={quality} container={container}", flush=True)
-    hook = _make_progress_hook(progress_cb, library_id, speed_tracker)
+    hook = _make_progress_hook(progress_cb, library_id, speed_tracker, cancel_event)
 
     if mode == "audio":
         fmt = "bestaudio/best"
@@ -298,16 +294,11 @@ def download_video(
             "windows_filenames": True,
         }
     elif mode == "library":
-        # Use public mellow_archive.txt; migrate old hidden files if present
+        # Use public mellow_archive.txt; migrate old hidden files and backfill
+        # from existing media files so yt-dlp skips already-downloaded items.
+        import vault as _vault
         archive_path = str(out_dir / "mellow_archive.txt")
-        if not Path(archive_path).exists():
-            import glob as _glob
-            for old in _glob.glob(str(out_dir / ".mellow_archive_*.txt")):
-                try:
-                    Path(old).rename(archive_path)
-                    break
-                except OSError:
-                    pass
+        _vault.generate_archive(str(out_dir))
         sync_audio = opts.get("sync_audio", False)
         pps = _build_postprocessors(opts)
         if sync_audio:
@@ -417,7 +408,6 @@ def download_video(
                 final_uploader = info.get("uploader") or info.get("channel")
                 final_duration = info.get("duration")
                 final_thumbnail = info.get("thumbnail")
-                is_playlist = "entries" in info or info.get("_type") == "playlist"
                 requested = info.get("requested_downloads", [{}])
                 if requested:
                     fp = requested[0].get("filepath") or requested[0].get("_filename")
@@ -433,7 +423,7 @@ def download_video(
         avg_speed = int(sum(samples) / len(samples)) if samples else None
         elapsed_int = int(elapsed)
 
-        if _is_cancelled():
+        if cancel_event.is_set():
             progress_cb({"status": "cancelled"})
             analytics.record_download({
                 "url": url, "title": final_title, "uploader": final_uploader,

@@ -1,21 +1,39 @@
+<div align="center">
+
+![MellowDLP Banner](assets/Ai%20made%20banner.png)
+
 # MellowDLP
 
-A personal desktop GUI for [yt-dlp](https://github.com/yt-dlp/yt-dlp). Download audio and video from YouTube, SoundCloud, and most sites yt-dlp supports — with a queue, a local library browser, and download history.
+Personal desktop GUI for [yt-dlp](https://github.com/yt-dlp/yt-dlp). Download audio and video from YouTube, SoundCloud, and anything yt-dlp supports.
 
-> **Personal project.** Not designed to be a general-purpose tool or maintained for others. Use it if it fits your needs.
+> Personal project, not designed to be maintained for others.
+
+</div>
 
 ---
 
-## What it does
+## Preview
 
-- **Feed** — paste a URL, pick format and quality, download. Supports single videos, full playlists, and audio-only.
-- **Queue** — download jobs run one at a time with live SSE progress (speed, ETA, per-item thumbnails).
-- **Vault** — browse your local media library by folder. Thumbnail previews, file stats, folder size.
-- **Library sync** — link a local folder to a playlist URL and sync new uploads on demand.
-- **Archive file** — each vault folder can have a `mellow_archive.txt` that tracks every URL downloaded into it. Created when you first add a folder to the vault (prompted), or any time via right-click → **Generate Archive File** on an existing folder card. Updates automatically on download, sync, and delete. Import it in the Feed section on any device to reproduce the same library.
-- **Analytics** — download history stored in DuckDB; basic stats on what you've downloaded over time.
+<div align="center">
 
-Formats: MP4, MKV, WebM, MP3, FLAC, M4A, OGG, Opus. Quality: best, 1080p, 720p, 480p, 360p, 128k, 320k.
+![Welcome screen](assets/welcome_screen.png)
+
+</div>
+
+---
+
+## Features
+
+- **Feed**: paste a URL, analyze it, pick format/quality, download. Supports videos, playlists, audio-only, and multi-URL batch jobs.
+- **Queue**: serial download jobs with live progress (speed, ETA, per-item thumbnails). Pause, resume, or cancel mid-download.
+- **Vault**: browse your local media library by folder. Thumbnail previews, file stats, direct media player launch.
+- **Library sync**: link a vault folder to a playlist URL. Add-only or mirror mode (deletes local files no longer in the playlist).
+- **Archive file**: `mellow_archive.txt` per folder tracks downloaded URLs so yt-dlp skips duplicates. Auto-updated on download, sync, and delete. Import in Feed to reproduce the same library on another device.
+- **Analytics**: download history with stats by platform, format, and uploader. CSV export and custom SQL.
+- **Cookies**: pull cookies from your browser for age-restricted content.
+- **yt-dlp self-update**: update yt-dlp from the Config page without rebuilding.
+
+Formats: MP4, MKV, WebM, MP3, FLAC, M4A, OGG, Opus / Quality: best, 4K, 1080p, 720p, 480p, 360p, 128k, 320k.
 
 ---
 
@@ -23,70 +41,57 @@ Formats: MP4, MKV, WebM, MP3, FLAC, M4A, OGG, Opus. Quality: best, 1080p, 720p, 
 
 | Layer | Tech |
 |---|---|
-| Backend | Python 3.11+, Flask, yt-dlp, DuckDB |
-| Frontend | React (UMD, no npm), esbuild for bundling |
-| Desktop window | FlaskWebGUI (Tkinter-based — not Electron) |
-| Analytics | DuckDB (local file at `~/.mellow_dlp.duckdb`) |
-| Config | JSON at `~/.mellow_dlp.json` |
+| Backend | Python 3.11+, Flask, yt-dlp |
+| Frontend | React (UMD, no npm), esbuild |
+| Desktop window | FlaskWebGUI (Tkinter) |
 
 ---
 
 ## Requirements
 
-- Python 3.10+
-- [ffmpeg](https://ffmpeg.org/) (required for audio extraction and postprocessing)
+- Python 3.11+
+- [ffmpeg](https://ffmpeg.org/)
 - Node.js + esbuild (build step only)
-- yt-dlp binary (downloaded automatically by the build scripts)
-- **Linux only:** `python3-tk` for the GUI window (`sudo apt install python3-tk`)
+- **Linux:** `python3-tk` (`sudo apt install python3-tk`)
 
 ---
 
 ## Installation
 
-### Windows
+**Windows** — download the `.exe` installer from Releases. ffmpeg is bundled.
 
-Download the `.exe` installer from Releases and run it. ffmpeg is bundled.
-
-### Linux
-
+**Linux:**
 ```bash
-git clone https://github.com/your-username/MellowDLP
+git clone https://github.com/jenox645/MellowDLP
 cd MellowDLP
 bash setup.sh
 ./dist/MellowDLP
 ```
 
-`setup.sh` installs Python deps, downloads yt-dlp, and runs the build. A `.deb` package can also be built:
-
+Or build a `.deb` package:
 ```bash
 python3 build_linux_deb.py
 sudo dpkg -i dist/mellowdlp_*.deb
 ```
-
-> **Note:** The Linux build runs and produces a binary in CI (GitHub Actions, Ubuntu). Locally it depends on your distro having a working Tkinter/webview setup. If the window doesn't open, make sure `python3-tk` is installed and try running `python3 main.py` directly (Flask dev mode, then open `http://localhost:<port>` in your browser as a fallback).
 
 ---
 
 ## Build from source
 
 ```bash
-# Install Python deps
 pip install -r requirements.txt pyinstaller pillow
-
-# Install esbuild (once)
 npm install -g esbuild
-
-# Full build (bundles JSX, encodes assets, produces binary)
 python3 build_setup.py
+```
 
-# Or just rebuild the frontend after editing gui/app.jsx or gui/index.html:
+Rebuild frontend only (after editing `gui/app.jsx` or `gui/index.html`):
+```bash
 esbuild gui/app.jsx --outfile=static/app.bundle.js --bundle=false --loader:.jsx=jsx \
   --target=es2017 --jsx=transform --jsx-factory=React.createElement --jsx-fragment=React.Fragment
 cp gui/index.html static/index.html
 ```
 
 Run without building a binary:
-
 ```bash
 python3 main.py
 ```
@@ -101,19 +106,9 @@ python -m pytest tests/ -v
 
 ---
 
-## Config
-
-On first launch a config file is created at `~/.mellow_dlp.json`. You can set:
-
-- `output_dir` — default download folder
-- `cookies_browser` — browser to pull cookies from (for age-restricted content)
-- `theme` — `dark` (only dark is implemented)
-
----
-
 ## Limitations
 
-- One download at a time (queue is serial, not parallel).
-- No built-in update mechanism — pull and rebuild manually.
-- The desktop window uses Tkinter via FlaskWebGUI, not a proper browser engine. Complex pages may behave differently than in a real browser; this is a known FlaskWebGUI constraint.
-- yt-dlp can break when platforms change their APIs. Update yt-dlp from the Config page or replace the binary manually.
+- One download at a time (serial queue, no parallelism).
+- No auto-update for MellowDLP itself — pull and rebuild manually.
+- Desktop window uses Tkinter via FlaskWebGUI, not a real browser engine.
+- yt-dlp can break when platforms change their APIs — update it from the Config page.

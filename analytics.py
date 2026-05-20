@@ -3,8 +3,8 @@ from __future__ import annotations
 import contextlib
 import csv
 import io
-import os
 import time
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -121,13 +121,20 @@ def record_download(meta: dict) -> None:
 
 
 def get_stats(time_range: str = "30d") -> dict[str, Any]:
-    intervals = {"7d": "7 days", "30d": "30 days"}
-    interval = intervals.get(time_range)
-    ts_filter = f"AND timestamp >= now() - INTERVAL '{interval}'" if interval else ""
+    _days_map = {"7d": 7, "30d": 30}
+    _days = _days_map.get(time_range)
+    if _days:
+        cutoff = datetime.now() - timedelta(days=_days)
+        ts_filter = "AND timestamp >= ?"
+        ts_params: list = [cutoff]
+    else:
+        ts_filter = ""
+        ts_params = []
 
     with get_conn() as con:
         r = con.execute(
-            f"SELECT COUNT(*), COALESCE(SUM(file_size_bytes),0) FROM downloads WHERE status='success' {ts_filter}"
+            f"SELECT COUNT(*), COALESCE(SUM(file_size_bytes),0) FROM downloads WHERE status='success' {ts_filter}",
+            ts_params,
         ).fetchone()
         total_downloads = r[0] if r else 0
         total_size = r[1] if r else 0
@@ -136,31 +143,31 @@ def get_stats(time_range: str = "30d") -> dict[str, Any]:
             SELECT platform, COUNT(*) as cnt FROM downloads
             WHERE status='success' AND platform IS NOT NULL {ts_filter}
             GROUP BY platform ORDER BY cnt DESC
-        """).fetchall()
+        """, ts_params).fetchall()
 
         by_format = con.execute(f"""
             SELECT format, COUNT(*) as cnt FROM downloads
             WHERE status='success' AND format IS NOT NULL {ts_filter}
             GROUP BY format ORDER BY cnt DESC
-        """).fetchall()
+        """, ts_params).fetchall()
 
         by_day = con.execute(f"""
             SELECT strftime(timestamp,'%Y-%m-%d') as day, COUNT(*) as cnt
             FROM downloads WHERE status='success' {ts_filter}
             GROUP BY day ORDER BY day
-        """).fetchall()
+        """, ts_params).fetchall()
 
         top_uploaders = con.execute(f"""
             SELECT uploader, COUNT(*) as cnt FROM downloads
             WHERE status='success' AND uploader IS NOT NULL {ts_filter}
             GROUP BY uploader ORDER BY cnt DESC LIMIT 10
-        """).fetchall()
+        """, ts_params).fetchall()
 
         storage_by_format = con.execute(f"""
             SELECT format, COALESCE(SUM(file_size_bytes),0) as sz FROM downloads
             WHERE status='success' AND format IS NOT NULL {ts_filter}
             GROUP BY format ORDER BY sz DESC
-        """).fetchall()
+        """, ts_params).fetchall()
 
         recent_errors = con.execute("""
             SELECT title, url, error_message, timestamp FROM downloads
@@ -171,23 +178,24 @@ def get_stats(time_range: str = "30d") -> dict[str, Any]:
             SELECT EXTRACT(hour FROM timestamp)::INTEGER as hr, COUNT(*) as cnt
             FROM downloads WHERE status='success' {ts_filter}
             GROUP BY hr ORDER BY hr
-        """).fetchall()
+        """, ts_params).fetchall()
 
         sp = con.execute(f"""
             SELECT AVG(download_speed_avg_bps), MAX(download_speed_avg_bps)
             FROM downloads WHERE status='success'
             AND download_speed_avg_bps IS NOT NULL {ts_filter}
-        """).fetchone()
+        """, ts_params).fetchone()
 
         lib_row = con.execute("SELECT COUNT(*) FROM library").fetchone()
         lib_count = lib_row[0] if lib_row else 0
 
+        where_recent = f"WHERE status='success' {ts_filter}" if ts_filter else ""
         recent_records = con.execute(f"""
             SELECT id, title, url, platform, format, quality,
                    file_size_bytes, timestamp, status
-            FROM downloads {"WHERE status='success' " + ts_filter if ts_filter else ""}
+            FROM downloads {where_recent}
             ORDER BY timestamp DESC LIMIT 10
-        """).fetchall()
+        """, ts_params).fetchall()
 
     hour_map = {row[0]: row[1] for row in by_hour}
     hourly = [hour_map.get(h, 0) for h in range(24)]
@@ -270,14 +278,12 @@ def delete_history(
             con.execute("DELETE FROM downloads")
             return count
         if older_than_days is not None:
-            days = int(older_than_days)
+            cutoff = datetime.now() - timedelta(days=int(older_than_days))
             result = con.execute(
-                f"SELECT COUNT(*) FROM downloads WHERE timestamp < now() - INTERVAL '{days} days'"
+                "SELECT COUNT(*) FROM downloads WHERE timestamp < ?", [cutoff]
             ).fetchone()
             count = result[0] if result else 0
-            con.execute(
-                f"DELETE FROM downloads WHERE timestamp < now() - INTERVAL '{days} days'"
-            )
+            con.execute("DELETE FROM downloads WHERE timestamp < ?", [cutoff])
             return count
         if ids:
             placeholders = ",".join(["?" for _ in ids])
@@ -292,15 +298,13 @@ def delete_history(
 
 def run_query(sql: str) -> dict:
     stripped = sql.strip()
-    upper = stripped.upper()
-    if not upper.startswith("SELECT"):
+    if not stripped.upper().startswith("SELECT"):
         return {"error": "Only SELECT statements are permitted.", "columns": [], "rows": [], "time_ms": 0}
-    for kw in ["DROP", "DELETE", "INSERT", "UPDATE", "CREATE", "ALTER", "TRUNCATE", "ATTACH", "DETACH"]:
-        if kw in upper:
-            return {"error": f"Forbidden keyword: {kw}", "columns": [], "rows": [], "time_ms": 0}
     t0 = time.monotonic()
     try:
-        with get_conn() as con:
+        # Read-only connection: DuckDB enforces this at the engine level, so COPY,
+        # ATTACH, DELETE, and other write operations are rejected unconditionally.
+        with duckdb.connect(str(DB_PATH), read_only=True) as con:
             res = con.execute(stripped)
             columns = [d[0] for d in res.description] if res.description else []
             rows = res.fetchall()

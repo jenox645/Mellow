@@ -12,9 +12,12 @@ from urllib.parse import quote
 
 import analytics
 from constants import (
-    AUDIO_EXTS, IMAGE_EXTS, MEDIA_EXTS, THUMB_CACHE_SECS,
+    IMAGE_EXTS, MEDIA_EXTS,
     THUMB_PREVIEW_LIMIT, FILE_THUMBS_LIMIT, VIDEO_EXTS,
 )
+
+# Matches yt-dlp's YouTube ID embedded in filenames: [dQw4w9WgXcW]
+_YT_ID_RE = _re.compile(r'\[([A-Za-z0-9_-]{11})\]')
 
 # ── Media player paths ────────────────────────────────────────────────────────
 
@@ -315,7 +318,9 @@ def get_mirror_preview(path: str, vp: list[str]) -> dict:
         m = _re.search(r'\[([A-Za-z0-9_-]{11})\]', f.name)
         if m:
             local_ids[m.group(1)] = f.name
-    for archive_file in p.glob(".mellow_archive_*.txt"):
+    for archive_file in [p / "mellow_archive.txt", *p.glob(".mellow_archive_*.txt")]:
+        if not archive_file.exists():
+            continue
         try:
             for line in archive_file.read_text(encoding="utf-8", errors="ignore").splitlines():
                 parts = line.strip().split()
@@ -361,25 +366,93 @@ def confirm_mirror_delete(paths: list[str]) -> dict:
 
 # ── Archive file ──────────────────────────────────────────────────────────────
 
-def generate_archive(folder: str) -> dict:
-    """Create mellow_archive.txt (or migrate old hidden archive). Returns status dict."""
+def generate_archive(folder: str, prune: bool = False) -> dict:
+    """Create or update mellow_archive.txt.
+
+    prune=False (default): only writes if the file is missing or empty —
+      merges old hidden archives and backfills from media files on disk.
+      Used by the downloader and initial vault-watch setup so yt-dlp can
+      skip files that are already present.
+
+    prune=True: always rewrites — backfills new entries AND removes entries
+      whose files have been deleted. Only YouTube IDs can be verified from
+      filenames; other extractor entries are left untouched.
+    """
     p = Path(folder)
     archive_path = p / "mellow_archive.txt"
+
+    file_has_content = archive_path.exists() and archive_path.stat().st_size > 0
+    if not prune and file_has_content:
+        return {"ok": True, "path": str(archive_path), "migrated": False, "backfilled": 0, "pruned": 0}
+
+    # Read existing archive lines
+    existing_lines: list[str] = []
+    if archive_path.exists():
+        existing_lines = [
+            ln.strip()
+            for ln in archive_path.read_text(encoding="utf-8", errors="ignore").splitlines()
+            if ln.strip()
+        ]
+
+    # Merge + remove all old hidden archives
     migrated = False
-    if not archive_path.exists():
-        for old in _glob.glob(str(p / ".mellow_archive_*.txt")):
-            try:
-                Path(old).rename(archive_path)
-                migrated = True
-                break
-            except OSError:
-                pass
-        if not migrated:
-            try:
-                archive_path.touch()
-            except OSError as exc:
-                return {"ok": False, "error": str(exc)}
-    return {"ok": True, "path": str(archive_path), "migrated": migrated}
+    seen = set(existing_lines)
+    for old in sorted(_glob.glob(str(p / ".mellow_archive_*.txt"))):
+        try:
+            old_path = Path(old)
+            for ln in old_path.read_text(encoding="utf-8", errors="ignore").splitlines():
+                ln = ln.strip()
+                if ln and ln not in seen:
+                    existing_lines.append(ln)
+                    seen.add(ln)
+            old_path.unlink()
+            migrated = True
+        except OSError:
+            pass
+
+    # Split YouTube entries (verifiable via filename) from everything else
+    yt_in_archive: dict[str, str] = {}  # youtube_id → full line
+    other_lines: list[str] = []
+    for line in existing_lines:
+        parts = line.split()
+        if len(parts) >= 2 and parts[0].lower() == "youtube":
+            yt_in_archive[parts[1]] = line
+        else:
+            other_lines.append(line)
+
+    # Scan disk for media files whose names contain a YouTube ID
+    disk_yt_ids: set[str] = set()
+    try:
+        for f in p.iterdir():
+            if f.is_file() and f.suffix.lower() in MEDIA_EXTS:
+                m = _YT_ID_RE.search(f.name)
+                if m:
+                    disk_yt_ids.add(m.group(1))
+    except PermissionError:
+        pass
+
+    # Keep or prune existing YouTube entries; backfill new ones
+    pruned = 0
+    backfilled = 0
+    final_yt_lines: list[str] = []
+    for vid_id, line in yt_in_archive.items():
+        if prune and vid_id not in disk_yt_ids:
+            pruned += 1
+        else:
+            final_yt_lines.append(line)
+    for vid_id in disk_yt_ids:
+        if vid_id not in yt_in_archive:
+            final_yt_lines.append(f"youtube {vid_id}")
+            backfilled += 1
+
+    try:
+        with archive_path.open("w", encoding="utf-8") as fh:
+            for line in other_lines + final_yt_lines:
+                fh.write(line + "\n")
+    except OSError as exc:
+        return {"ok": False, "error": str(exc)}
+
+    return {"ok": True, "path": str(archive_path), "migrated": migrated, "backfilled": backfilled, "pruned": pruned}
 
 
 # ── Media player launch ───────────────────────────────────────────────────────

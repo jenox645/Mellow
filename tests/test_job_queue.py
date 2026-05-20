@@ -1,4 +1,5 @@
 import tempfile
+import threading
 import pytest
 from unittest.mock import patch
 import server
@@ -57,15 +58,15 @@ def test_run_job_cancelled_mid_loop():
             'library_id': None,
             'status': 'active',
         }
-        cancel_after = [0]
+        def fake_dl_cancel(url, out, opts, cb, lib_id=None):
+            called.append(url)
+            e = threading.Event()
+            e.set()
+            downloader._current_cancel_event = e
+            cb({'status': 'complete', 'title': url})
 
-        def is_cancelled():
-            cancel_after[0] += 1
-            return cancel_after[0] > 1
-
-        with patch('downloader.download_video', side_effect=fake_dl):
+        with patch('downloader.download_video', side_effect=fake_dl_cancel):
             with patch('server._push_progress'):
-                with patch.object(downloader, '_is_cancelled', side_effect=is_cancelled):
-                    server._run_job(job)
+                server._run_job(job)
 
     assert len(called) == 1, f"Should stop after cancel, but called: {called}"
