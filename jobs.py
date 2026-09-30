@@ -258,8 +258,10 @@ class JobManager:
                     if self._active_count == 0:
                         downloader.resume()
                     self._trim_finished()
+                    # Saved before waking waiters, so an idle queue is also
+                    # an up-to-date file (the lock is re-entrant)
+                    self._persist()
                     self._cv.notify_all()
-                self._persist()
 
     def wait_idle(self, timeout: float | None = None) -> bool:
         """Block until nothing is queued or running. False on timeout."""
