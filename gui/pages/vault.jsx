@@ -160,11 +160,15 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
   const canSync = !!(libEntry || (selectedFolderMeta && selectedFolderMeta.playlist_count > 0));
 
   const handleRandomize = React.useCallback(() => {
-    const mediaFiles = files.filter(f => /\.(mp4|mkv|webm|mp3|m4a|flac|wav|aac|avi|mov|opus)$/i.test(f.name));
-    if (!mediaFiles.length) { showNotif('No media', 'No media files in this folder', 'error'); return; }
-    const count = Math.min(randomizerCount, mediaFiles.length);
-    const shuffled = [...mediaFiles].sort(() => Math.random() - 0.5).slice(0, count);
-    setRandomizedFiles(shuffled);
+    // The folder listing holds media files only
+    if (!files.length) { showNotif('No media', 'No media files in this folder', 'error'); return; }
+    // Fisher–Yates: sort() with a random comparator favours some orders
+    const shuffled = [...files];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    setRandomizedFiles(shuffled.slice(0, Math.min(randomizerCount, shuffled.length)));
     setSelectedFiles(new Set());
     setSelectionMode(true);
   }, [files, randomizerCount, showNotif]);
@@ -226,7 +230,7 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
       .finally(() => setDeleteConfirm(null));
   }, [deleteConfirm, showNotif]);
 
-  const isVideoExt = (ext) => ['mp4','mkv','webm','avi','mov'].includes(ext);
+  const isVideoExt = (ext) => VIDEO_PREVIEW_EXTS.includes((ext || '').toLowerCase());
 
   React.useEffect(() => {
     const close = () => { setCtxMenu(null); setCardMenuData(null); };
