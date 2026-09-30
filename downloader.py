@@ -749,8 +749,13 @@ def _download_video(
         if info and ("entries" in info or info.get("_type") == "playlist"):
             rows = _playlist_records(info, base, speed_tracker.get("items", {}), wanted_ext,
                                      avg_speed, elapsed)
+        elif not (saved["path"] and Path(saved["path"]).is_file()):
+            # Nothing was saved: the archive already had it (a sync that is up
+            # to date). A "success" row without a file inflated the stats and
+            # made "already downloaded" report the file as moved.
+            rows = []
         else:
-            if saved["path"] and saved["thumbnail"]:
+            if saved["thumbnail"]:
                 _save_thumbnail_sidecar(saved["path"], saved["thumbnail"])
             rows = [{
                 **base, "title": saved["title"], "uploader": saved["uploader"],

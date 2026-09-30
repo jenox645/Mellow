@@ -97,3 +97,35 @@ def test_download_warns_when_disk_is_low(client, tmp_dir):
         data = client.post('/api/download', json={'url': 'https://youtu.be/x', 'output_dir': tmp_dir}).get_json()
         assert jobs.manager.wait_idle(10)
     assert 'disk_warning' not in data
+
+
+def test_nothing_saved_writes_no_history_row(tmp_dir):
+    """An up-to-date sync (the archive already has the video) saves nothing.
+    It recorded a "success" row without a file, which inflated the stats and
+    made "already downloaded" say the file was moved."""
+    from unittest.mock import MagicMock
+
+    import analytics
+    import downloader
+    ydl = MagicMock()
+    ydl.extract_info.return_value = {'title': 'T', 'id': 'abc'}  # no requested_downloads
+    ydl._download_retcode = 0
+    cls = MagicMock()
+    cls.return_value.__enter__.return_value = ydl
+    events = []
+    with patch('downloader.yt_dlp.YoutubeDL', cls), patch('downloader.find_ffmpeg', return_value=None):
+        assert downloader.download_video('https://youtu.be/abc', tmp_dir, {'mode': 'library'},
+                                         events.append) == 'success'
+    assert events[-1]['status'] == 'complete'
+    assert analytics.get_history(10) == []
+
+
+def test_fileless_success_rows_do_not_count_as_already_downloaded(tmp_dir):
+    import analytics
+    f = Path(tmp_dir) / 'Song.mp3'
+    f.write_bytes(b'x')
+    url = 'https://youtu.be/bbbbbbbbbbb'
+    analytics.record_download({'url': url, 'status': 'success', 'file_path': str(f)})
+    analytics.record_download({'url': url, 'status': 'success', 'file_path': None})  # older builds
+    prev = analytics.find_previous_download([url], 'bbbbbbbbbbb')
+    assert prev['file_path'] == str(f) and prev['exists'] is True

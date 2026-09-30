@@ -111,7 +111,10 @@ def test_history_records_the_file_that_was_actually_saved(tmp_dir):
 
 def test_audio_library_sync_is_recorded_as_audio(tmp_dir):
     import analytics
-    _run(tmp_dir, {'mode': 'library', 'sync_audio': True, 'audio_format': 'opus'})
+    saved = Path(tmp_dir) / 'T.opus'
+    saved.write_bytes(b'x')
+    _run(tmp_dir, {'mode': 'library', 'sync_audio': True, 'audio_format': 'opus'},
+         info={**DEFAULT_INFO, 'requested_downloads': [{'filepath': str(saved)}]})
     row = analytics.get_history()[0]
     assert (row['format'], row['container']) == ('audio', 'opus')
 

@@ -193,12 +193,29 @@ function HistoryPanel({ showNotif, refreshStats }) {
   );
 }
 
+// Per-day counts with the days that had none filled in as 0. The query only
+// returns active days, so a line through them drew 1 Jan next to 20 Jan.
+function dailySeries(rows, range) {
+  if (!rows || !rows.length) return [];
+  const counts = new Map(rows.map(r => [r.day, r.count]));
+  const key = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const span = { '7d': 7, '30d': 30 }[range];
+  const day = span ? new Date(today) : new Date(rows[0].day + 'T00:00:00');
+  if (span) day.setDate(day.getDate() - (span - 1));
+  const out = [];
+  for (; day <= today; day.setDate(day.getDate() + 1)) {
+    out.push({ x: key(day), y: counts.get(key(day)) || 0 });
+  }
+  return out.length ? out : rows.map(r => ({ x: r.day, y: r.count }));
+}
+
 export function AnalyticsPage({ stats, refreshStats, showNotif }) {
   const [range, setRange] = React.useState('30d');
   const [wrappedOpen, setWrappedOpen] = React.useState(false);
   const [localStats, setLocalStats] = React.useState(stats);
   const [overrides, setOverrides] = React.useState({});
-  const trendRef = React.useRef(null);
   const platformRef = React.useRef(null);
   const donutRef = React.useRef(null);
 
@@ -224,53 +241,6 @@ export function AnalyticsPage({ stats, refreshStats, showNotif }) {
 
   // Use override value if present, else computed value
   const statVal = (key, computed) => (key in overrides && overrides[key] !== '' && overrides[key] !== null) ? overrides[key] : computed;
-
-  // Draw trend chart
-  React.useEffect(() => {
-    const c = trendRef.current;
-    if (!c || !localStats.by_day_last_30) return;
-    const data = localStats.by_day_last_30;
-    if (!data.length) return;
-    const w = c.offsetWidth; c.width = w; c.height = 120;
-    const ctx = c.getContext('2d');
-    const pts = data.map(d => d.count);
-    const labels = data.map(d => d.day.slice(5));
-    const maxV = Math.max(...pts, 1);
-    const pad = { l: 28, r: 8, t: 8, b: 22 };
-    const cw = w - pad.l - pad.r, ch = 120 - pad.t - pad.b;
-    ctx.clearRect(0, 0, w, 120);
-    [0, 0.5, 1].forEach(f => {
-      const y = pad.t + ch * (1 - f);
-      ctx.strokeStyle = 'rgba(61,96,112,0.25)'; ctx.lineWidth = 0.5; ctx.setLineDash([2, 3]);
-      ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(pad.l + cw, y); ctx.stroke();
-      ctx.setLineDash([]);
-      ctx.fillStyle = 'rgba(61,96,112,0.6)'; ctx.font = '8px Share Tech Mono';
-      ctx.fillText(Math.round(maxV * f), 0, y + 3);
-    });
-    const grad = ctx.createLinearGradient(0, pad.t, 0, pad.t + ch);
-    grad.addColorStop(0, 'rgba(0,216,255,0.2)'); grad.addColorStop(1, 'rgba(0,216,255,0.01)');
-    ctx.fillStyle = grad; ctx.beginPath();
-    pts.forEach((v, i) => {
-      const x = pad.l + i * (cw / (pts.length - 1));
-      const y = pad.t + ch * (1 - v / maxV);
-      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
-    });
-    ctx.lineTo(pad.l + cw, pad.t + ch); ctx.lineTo(pad.l, pad.t + ch); ctx.closePath(); ctx.fill();
-    ctx.strokeStyle = 'rgba(0,216,255,0.85)'; ctx.lineWidth = 1.5; ctx.beginPath();
-    pts.forEach((v, i) => {
-      const x = pad.l + i * (cw / (pts.length - 1));
-      const y = pad.t + ch * (1 - v / maxV);
-      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
-    });
-    ctx.stroke();
-    ctx.fillStyle = 'rgba(61,96,112,0.6)'; ctx.font = '7px Share Tech Mono'; ctx.textAlign = 'center';
-    labels.forEach((l, i) => {
-      if (i % Math.ceil(labels.length / 8) === 0) {
-        const x = pad.l + i * (cw / (pts.length - 1));
-        ctx.fillText(l, x, 120 - 5);
-      }
-    });
-  }, [localStats.by_day_last_30]);
 
   // Draw platform bars
   React.useEffect(() => {
@@ -435,8 +405,8 @@ export function AnalyticsPage({ stats, refreshStats, showNotif }) {
       <div className="g2" style={{ marginBottom: 0 }}>
         <div className="chart-panel">
           <div className="chart-title">Download Trend</div>
-          <div className="chart-sub">DOWNLOADS PER DAY — LAST {range.toUpperCase()}</div>
-          <canvas ref={trendRef} className="chart" height={120} />
+          <div className="chart-sub">DOWNLOADS PER DAY — {range === 'all' ? 'ALL TIME' : 'LAST ' + range.toUpperCase()}</div>
+          <LineChart data={dailySeries(localStats.by_day_last_30, range)} />
         </div>
         <div className="chart-panel">
           <div className="chart-title">Storage by Format</div>
@@ -509,7 +479,7 @@ export function AnalyticsPage({ stats, refreshStats, showNotif }) {
           <div className="chart-sub">ERRORED DOWNLOADS PER DAY</div>
           {(localStats.failures_by_day || []).length ? (
             <LineChart
-              data={(localStats.failures_by_day || []).map(d => ({ x: d.day, y: d.count }))}
+              data={dailySeries(localStats.failures_by_day, range)}
               color="rgba(255,59,97,0.85)"
             />
           ) : (

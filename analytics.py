@@ -518,7 +518,8 @@ def find_previous_download(urls: list[str], video_id: str | None = None) -> dict
     with get_conn() as con:
         row = con.execute(f"""
             SELECT title, file_path, timestamp FROM downloads
-            WHERE status = 'success' AND ({' OR '.join(conditions)})
+            WHERE status = 'success' AND file_path IS NOT NULL
+              AND ({' OR '.join(conditions)})
             ORDER BY timestamp DESC LIMIT 1
         """, params).fetchone()
     if not row:
