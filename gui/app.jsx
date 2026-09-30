@@ -470,6 +470,10 @@ function App() {
         setAppState('idle');
         setIsPaused(false);
         setPausedCount(0);
+      } else if (data.status === 'queue_done') {
+        // The last one finished: its own "Download Complete" already said so
+        if (data.count > 1) showNotif('Queue Finished', data.count + ' downloads done', 'success');
+        desktopNotify('All downloads finished', data.count + ' download(s) done');
       } else if (data.status === 'warning') {
         showNotif('Heads Up', data.message || '', 'warn');
       } else if (data.status === 'ytdlp_updated') {

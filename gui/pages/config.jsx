@@ -35,7 +35,7 @@ export function ConfigPage({ config, setConfig, showNotif, sysInfo, refreshStats
     'write_metadata', 'skip_shorts', 'skip_live',
     'ui_victory_animation', 'ui_victory_sync',
     'default_mode', 'default_quality', 'default_container', 'default_audio_format', 'default_audio_quality',
-    'download_workers', 'auto_sync_enabled', 'auto_sync_default_interval',
+    'download_workers', 'schedule_start', 'on_queue_done', 'auto_sync_enabled', 'auto_sync_default_interval',
     'update_check_on_launch', 'clipboard_watch', 'completion_sound', 'desktop_notifications',
   ];
   const NUMERIC_DEFAULTS = { concurrent_fragments: 4, sleep_interval: 0, retries: 3, download_workers: 1 };
@@ -469,6 +469,28 @@ export function ConfigPage({ config, setConfig, showNotif, sysInfo, refreshStats
                 <div className="settings-ctrl">
                   <select className="sel" value={local.download_workers || 1} onChange={e => set('download_workers', parseInt(e.target.value, 10))}>
                     {[1, 2, 3].map(n => <option key={n} value={n}>{n}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div className="settings-row">
+                <div className="settings-label">
+                  <div className="sl-name">"Later" Downloads Start At</div>
+                  <div className="sl-sub">Time of day a download queued with ⏾ LATER starts (the app must be running)</div>
+                </div>
+                <div className="settings-ctrl">
+                  <input type="time" className="inp-sm" style={{ width: 110 }} value={local.schedule_start || '02:00'}
+                    onChange={e => set('schedule_start', e.target.value)} />
+                </div>
+              </div>
+              <div className="settings-row">
+                <div className="settings-label">
+                  <div className="sl-name">When the Queue Finishes</div>
+                  <div className="sl-sub">Once nothing is left to download (after at least one new file)</div>
+                </div>
+                <div className="settings-ctrl">
+                  <select className="sel" value={local.on_queue_done || 'nothing'} onChange={e => set('on_queue_done', e.target.value)}>
+                    <option value="nothing">Do nothing</option>
+                    <option value="open_folder">Open the download folder</option>
                   </select>
                 </div>
               </div>

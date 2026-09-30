@@ -16,6 +16,7 @@ import logging
 import threading
 import time
 import uuid
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Callable
 
@@ -23,8 +24,10 @@ from . import analytics, downloader, errors
 from .config import download_root, load_config, update_config
 from .constants import (
     DEFAULT_DOWNLOAD_WORKERS,
+    DEFAULT_SCHEDULE_START,
     JOB_HISTORY_KEEP,
     MAX_DOWNLOAD_WORKERS,
+    WORKER_POLL_SECS,
 )
 
 log = logging.getLogger(__name__)
@@ -32,13 +35,31 @@ log = logging.getLogger(__name__)
 QUEUE_STATE_PATH = Path.home() / ".mellow_dlp_queue.json"
 
 _PERSIST_KEYS = ("id", "type", "label", "url", "multi_urls",
-                 "output_dir", "opts", "library_id", "sync_path")
+                 "output_dir", "opts", "library_id", "sync_path", "not_before")
 # Internal fields stripped from /api/queue/status responses
 PUBLIC_SKIP_KEYS = ("opts", "multi_urls", "cancel_event", "_t0")
 
 TERMINAL_STATUSES = ("complete", "failed", "cancelled")
 # SSE events that end a job; the UI expects exactly one per job
 TERMINAL_EVENTS = ("complete", "error", "cancelled")
+
+
+def next_time_of_day(hhmm: str, now: float | None = None) -> float:
+    """Epoch seconds of the next local HH:MM (later today, else tomorrow).
+
+    An unreadable value falls back to the default start time.
+    """
+    try:
+        hour, minute = (int(x) for x in str(hhmm).split(":"))
+        if not (0 <= hour < 24 and 0 <= minute < 60):
+            raise ValueError(hhmm)
+    except ValueError:
+        hour, minute = (int(x) for x in DEFAULT_SCHEDULE_START.split(":"))
+    now_dt = datetime.fromtimestamp(now if now is not None else time.time())
+    target = now_dt.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    if target <= now_dt:
+        target += timedelta(days=1)
+    return target.timestamp()
 
 
 def configured_workers() -> int:
@@ -57,15 +78,25 @@ class JobManager:
         self._jobs: list[dict] = []      # everything: pending + active + finished
         self._active_count = 0
         self._push: Callable[[dict], None] = lambda event: None
+        self._on_idle: Callable[[list[dict]], None] = lambda done: None
+        # Jobs that saved something since the queue was last idle
+        self._done_since_idle: list[dict] = []
         self._started = False
         self.restorable: list[dict] = []
         self._load_restorable()
 
     # ── Lifecycle ──────────────────────────────────────────────────────────────
 
-    def start(self, push_fn: Callable[[dict], None]) -> None:
-        """Attach the SSE broadcast function and spawn the worker pool."""
+    def start(self, push_fn: Callable[[dict], None],
+              on_idle: Callable[[list[dict]], None] | None = None) -> None:
+        """Attach the SSE broadcast function and spawn the worker pool.
+
+        on_idle(done) runs (on its own thread) each time the queue runs dry,
+        with the jobs that downloaded something since it last did.
+        """
         self._push = push_fn
+        if on_idle is not None:
+            self._on_idle = on_idle
         if self._started:
             return
         self._started = True
@@ -79,7 +110,9 @@ class JobManager:
                 job_type: str = "feed",
                 label: str = "",
                 multi_urls: list | None = None,
-                sync_path: str | None = None) -> dict:
+                sync_path: str | None = None,
+                not_before: float | None = None) -> dict:
+        """Queue a job. not_before (epoch seconds) holds it until that time."""
         job: dict = {
             "id": str(uuid.uuid4()),
             "type": job_type,
@@ -90,6 +123,7 @@ class JobManager:
             "opts": opts,
             "library_id": library_id,
             "sync_path": sync_path,
+            "not_before": not_before,
             "status": "queued",
             "cancel_event": threading.Event(),
             "counts": {"new": 0, "errors": 0},
@@ -133,6 +167,30 @@ class JobManager:
         return self.enqueue(job["url"], job["output_dir"], dict(job["opts"]), job.get("library_id"),
                             job_type=job["type"], label=job["label"],
                             multi_urls=job.get("multi_urls"), sync_path=job.get("sync_path"))
+
+    def start_now(self, job_id: str) -> bool:
+        """Drop a queued job's scheduled start time. False if it isn't queued."""
+        with self._cv:
+            job = next((j for j in self._pending if j["id"] == job_id), None)
+            if job is None:
+                return False
+            job["not_before"] = None
+            self._cv.notify_all()
+        self._persist()
+        return True
+
+    def _next_runnable(self) -> int | None:
+        """Index in the pending order of the first job due to run (lock held)."""
+        now = time.time()
+        return next((i for i, j in enumerate(self._pending)
+                     if not j.get("not_before") or j["not_before"] <= now), None)
+
+    def _seconds_to_next_due(self) -> float:
+        """How long a worker may sleep (lock held): until the earliest scheduled
+        job is due, at most WORKER_POLL_SECS (config changes, missed wakeups)."""
+        now = time.time()
+        due = [j["not_before"] - now for j in self._pending if j.get("not_before")]
+        return max(0.05, min([WORKER_POLL_SECS, *due]))
 
     def has_sync_for(self, sync_path: str) -> bool:
         """True when a sync for this folder is already queued or running."""
@@ -220,7 +278,8 @@ class JobManager:
                 j["url"], j.get("output_dir") or download_root(load_config()),
                 j.get("opts") or {}, j.get("library_id"),
                 job_type=j.get("type", "feed"), label=j.get("label", ""),
-                multi_urls=j.get("multi_urls"), sync_path=j.get("sync_path"))
+                multi_urls=j.get("multi_urls"), sync_path=j.get("sync_path"),
+                not_before=j.get("not_before"))  # a scheduled job keeps its time
             restored.append(job["id"])
         self.restorable = []
         return restored
@@ -238,11 +297,10 @@ class JobManager:
     def _worker(self) -> None:
         while True:
             with self._cv:
-                while not (self._pending and self._active_count < configured_workers()):
-                    self._cv.wait(timeout=5)
-                    if not self._pending:
-                        continue
-                job = self._pending.pop(0)
+                # Scheduled jobs wait for their time: wake when the next one is due
+                while self._active_count >= configured_workers() or self._next_runnable() is None:
+                    self._cv.wait(timeout=self._seconds_to_next_due())
+                job = self._pending.pop(self._next_runnable())
                 if job["cancel_event"].is_set() or job["status"] == "cancelled":
                     job["status"] = "cancelled"
                     self._cv.notify_all()
@@ -266,6 +324,8 @@ class JobManager:
                         {"status": "error", "message": str(exc), "url": job.get("url")})
                 with self._cv:
                     job["status"] = status
+                    if status == "complete" and job["counts"]["new"]:
+                        self._done_since_idle.append(job)
                 self._on_finished(job, status)
             except Exception as exc:
                 log.warning(f"post-job bookkeeping failed: {exc}")
@@ -278,13 +338,25 @@ class JobManager:
                     # Saved before waking waiters, so an idle queue is also
                     # an up-to-date file (the lock is re-entrant)
                     self._persist()
+                    done: list[dict] = []
+                    if self._active_count == 0 and self._next_runnable() is None:
+                        done, self._done_since_idle = self._done_since_idle, []
                     self._cv.notify_all()
+                if done:
+                    threading.Thread(target=self._report_idle, args=(done,), daemon=True).start()
+
+    def _report_idle(self, done: list[dict]) -> None:
+        try:
+            self._on_idle(done)
+        except Exception as exc:
+            log.warning(f"queue-finished action failed: {exc}")
 
     def wait_idle(self, timeout: float | None = None) -> bool:
-        """Block until nothing is queued or running. False on timeout."""
+        """Block until nothing is running or due to run (scheduled jobs don't
+        count). False on timeout."""
         with self._cv:
             return self._cv.wait_for(
-                lambda: not self._pending and self._active_count == 0, timeout)
+                lambda: self._next_runnable() is None and self._active_count == 0, timeout)
 
     def _trim_finished(self) -> None:
         done = [j for j in self._jobs if j["status"] in TERMINAL_STATUSES]

@@ -121,7 +121,16 @@ def _push_progress(event: dict) -> None:
         threading.Thread(target=_fire_webhooks, args=(status, event), daemon=True).start()
 
 
-jobs.manager.start(_push_progress)
+def _queue_finished(done: list[dict]) -> None:
+    """The queue ran dry after downloading something: tell the UI, and open
+    the folder when Config asks for it."""
+    _push_progress({"status": "queue_done", "count": len(done),
+                    "folders": sorted({j["output_dir"] for j in done})})
+    if load_config().get("on_queue_done") == "open_folder":
+        desktop.show_in_folder(done[-1]["output_dir"])
+
+
+jobs.manager.start(_push_progress, on_idle=_queue_finished)
 
 
 def _library_entry_for(path: str, cfg: dict) -> dict | None:
@@ -412,13 +421,16 @@ def api_download() -> Response:
         "filename_template": data.get("filename_template", "") or cfg.get("filename_template", ""),
         **download_settings(cfg),
     }
+    # "Later": held until the Config start time (see jobs.next_time_of_day)
+    not_before = jobs.next_time_of_day(cfg.get("schedule_start", "")) if data.get("scheduled") else None
     multi_urls = data.get("multi_urls")
     if multi_urls and isinstance(multi_urls, list) and len(multi_urls) > 1:
         job = _enqueue_job(multi_urls[0], output_dir, opts, job_type="feed",
-                           label=multi_urls[0], multi_urls=multi_urls)
+                           label=multi_urls[0], multi_urls=multi_urls, not_before=not_before)
     else:
-        job = _enqueue_job(url, output_dir, opts, job_type="feed", label=url)
-    resp = {"status": "started", "job_id": job["id"]}
+        job = _enqueue_job(url, output_dir, opts, job_type="feed", label=url, not_before=not_before)
+    resp = {"status": "scheduled" if not_before else "started", "job_id": job["id"],
+            "not_before": not_before}
     free = _free_bytes_near(output_dir)
     if free is not None and free < LOW_DISK_WARN_BYTES:
         # Queued anyway; the user decides whether it will fit
@@ -464,6 +476,14 @@ def api_queue_retry(job_id: str) -> Response:
     if job is None:
         return jsonify({"error": "That job is no longer in the queue history"}), 404
     return jsonify({"ok": True, "job_id": job["id"]})
+
+
+@app.route("/api/queue/<job_id>/start-now", methods=["POST"])
+def api_queue_start_now(job_id: str) -> Response:
+    """Run a job queued for later without waiting for its time."""
+    if not jobs.manager.start_now(job_id):
+        return jsonify({"error": "Job not queued (already running or unknown)"}), 404
+    return jsonify({"ok": True})
 
 
 @app.route("/api/queue/<job_id>/reorder", methods=["POST"])

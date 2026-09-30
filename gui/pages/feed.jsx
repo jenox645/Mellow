@@ -86,6 +86,17 @@ export function FeedPage({ dlState, setDlState, setAppState, stats, sysInfo, ref
   // Between POST /api/download and the first 'starting' SSE event isDownloading
   // is still false — block the window so rapid clicks can't enqueue duplicates
   const [submitting, setSubmitting] = React.useState(false);
+  // ⏾ LATER: the next download waits for the Config start time
+  const [scheduleLater, setScheduleLater] = React.useState(false);
+  const scheduleStart = config.schedule_start || '02:00';
+  const onQueued = React.useCallback((d) => {
+    if (d.status === 'scheduled') {
+      setSubmitting(false);
+      setScheduleLater(false);
+      showNotif('Scheduled', 'Starts at ' + scheduleStart + ' — see the Queue page to start it sooner', 'success');
+    }
+    if (d.disk_warning) showNotif('Low Disk Space', d.disk_warning, 'warn');
+  }, [scheduleStart, showNotif]);
   React.useEffect(() => { setSubmitting(false); }, [dlState]);
 
   // explicitUrl lets callers analyze a URL the `url` state hasn't caught up
@@ -239,11 +250,10 @@ export function FeedPage({ dlState, setDlState, setAppState, stats, sysInfo, ref
       embed_metadata: embedMeta,
       embed_subs: embedSubs,
       sponsorblock,
+      scheduled: scheduleLater,
       ...(downloadPath ? { output_dir: downloadPath } : {}),
-    }).then(d => {
-      if (d.disk_warning) showNotif('Low Disk Space', d.disk_warning, 'warn');
-    }).catch(e => { showNotif('Error', e.message, 'error'); setSubmitting(false); });
-  }, [importedUrls, importedFileName, mode, quality, container, audioFmt, audioQuality, embedThumb, embedChapters, embedMeta, embedSubs, sponsorblock, downloadPath, onPlaylistDownload, showNotif]);
+    }).then(onQueued).catch(e => { showNotif('Error', e.message, 'error'); setSubmitting(false); });
+  }, [importedUrls, importedFileName, mode, quality, container, audioFmt, audioQuality, embedThumb, embedChapters, embedMeta, embedSubs, sponsorblock, downloadPath, onPlaylistDownload, showNotif, scheduleLater, onQueued]);
 
   // Ref so handleDownload/handleUrlKeyDown can call latest startImportDownload without stale closure
   const startImportDownloadRef = React.useRef(null);
@@ -294,11 +304,10 @@ export function FeedPage({ dlState, setDlState, setAppState, stats, sysInfo, ref
       custom_format: customFmt,
       ...(downloadPath ? { output_dir: downloadPath } : {}),
       ...(playlistItemsParam ? { playlist_items: playlistItemsParam } : {}),
+      scheduled: scheduleLater,
       ...extra,
-    }).then(d => {
-      if (d.disk_warning) showNotif('Low Disk Space', d.disk_warning, 'warn');
-    }).catch(e => { showNotif('Error', e.message, 'error'); setSubmitting(false); });
-  }, [url, mode, quality, container, audioFmt, audioQuality, embedThumb, embedChapters, embedMeta, embedSubs, sponsorblock, startTime, endTime, customFmt, downloadPath, playlistItems, info, showNotif]);
+    }).then(onQueued).catch(e => { showNotif('Error', e.message, 'error'); setSubmitting(false); });
+  }, [url, mode, quality, container, audioFmt, audioQuality, embedThumb, embedChapters, embedMeta, embedSubs, sponsorblock, startTime, endTime, customFmt, downloadPath, playlistItems, info, showNotif, scheduleLater, onQueued]);
 
   // Keep ref in sync with latest startDownload (assigned during render, safe to read in callbacks)
   startDownloadRef.current = startDownload;
@@ -585,8 +594,15 @@ export function FeedPage({ dlState, setDlState, setAppState, stats, sysInfo, ref
               </div>
               {/* RIGHT: action area */}
               <div className="info-actions">
-                <button className="btn btn-primary btn-sm" onClick={handleDownload} disabled={isDownloading || submitting} style={{ width: '100%' }}>
-                  {isDownloading ? 'ACTIVE...' : submitting ? 'STARTING...' : 'DOWNLOAD'}
+                <button className="btn btn-primary btn-sm" onClick={handleDownload}
+                  disabled={(isDownloading && !scheduleLater) || submitting} style={{ width: '100%' }}>
+                  {submitting ? 'STARTING...' : scheduleLater ? '⏾ AT ' + scheduleStart
+                    : isDownloading ? 'ACTIVE...' : 'DOWNLOAD'}
+                </button>
+                <button className={'btn btn-sm ' + (scheduleLater ? 'btn-amber' : 'btn-secondary')} style={{ width: '100%' }}
+                  title={'Queue it to start at ' + scheduleStart + ' (Config → Behavior)'}
+                  onClick={() => setScheduleLater(v => !v)}>
+                  ⏾ LATER{scheduleLater ? ' ✓' : ''}
                 </button>
                 <button className="btn btn-secondary btn-sm" onClick={handleAnalyze} disabled={analyzing || isDownloading} style={{ width: '100%' }} title="Re-analyze URL">
                   ↺ RESCAN

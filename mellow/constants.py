@@ -38,6 +38,8 @@ THUMB_FFMPEG_WIDTH: int = 480        # generated thumbnail width
 # ── Job queue ─────────────────────────────────────────────────────────────────
 MAX_DOWNLOAD_WORKERS: int = 3        # hard ceiling for concurrent downloads
 DEFAULT_DOWNLOAD_WORKERS: int = 1    # config default (sequential, original behavior)
+DEFAULT_SCHEDULE_START: str = "02:00"  # queued-for-later downloads start at (local time)
+WORKER_POLL_SECS: float = 5.0       # idle download workers re-check the queue this often
 JOB_HISTORY_KEEP: int = 20           # finished jobs retained in /api/queue/status
 SSE_QUEUE_MAXSIZE: int = 500         # per-subscriber event buffer
 SSE_PING_INTERVAL_SECS: int = 25     # keepalive ping cadence

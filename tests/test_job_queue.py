@@ -323,3 +323,101 @@ def test_retrying_a_whole_job_reruns_it_as_it_was(client, tmp_path):
     assert [c[0][0] for c in dl.call_args_list] == urls + urls
     again = next(j for j in jobs_mod.manager.status()['jobs'] if j['id'] == r.get_json()['job_id'])
     assert (again['type'], again['sync_path'], again['label']) == ('sync', str(tmp_path), 'Sync — Mix')
+
+
+def test_scheduled_job_waits_for_its_time_and_start_now_runs_it(tmp_path):
+    import time as _time
+    ran = threading.Event()
+
+    def fake_dl(url, out, opts, cb, lib_id=None, cancel_event=None, pause_event=None):
+        ran.set()
+        return 'success'
+
+    with patch.object(jobs, 'QUEUE_STATE_PATH', tmp_path / 'queue.json'), \
+            patch('mellow.downloader.download_video', side_effect=fake_dl):
+        m = jobs.JobManager()
+        m.start(lambda e: None)
+        later = m.enqueue('https://youtu.be/later', str(tmp_path), {}, not_before=_time.time() + 3600)
+        assert not ran.wait(1), 'a job scheduled for later ran right away'
+        assert later['status'] == 'queued'
+        now = m.enqueue('https://youtu.be/now', str(tmp_path), {})
+        assert ran.wait(10), 'a scheduled job held up the one queued after it'
+        assert m.wait_idle(10) and now['status'] == 'complete' and later['status'] == 'queued'
+        assert m.start_now(later['id'])
+        assert m.wait_idle(10) and later['status'] == 'complete'
+        assert not m.start_now(later['id'])
+
+
+def test_download_for_later_is_held_until_the_configured_time(client, tmp_dir):
+    from mellow import jobs as jobs_mod
+    client.post('/api/config', json={'schedule_start': '03:30'})
+    with patch('mellow.downloader.download_video') as dl:
+        data = client.post('/api/download', json={'url': 'https://youtu.be/x', 'output_dir': tmp_dir,
+                                                  'scheduled': True}).get_json()
+        assert data['status'] == 'scheduled'
+        job = next(j for j in jobs_mod.manager.status()['jobs'] if j['id'] == data['job_id'])
+        assert job['not_before'] == data['not_before'] == jobs_mod.next_time_of_day('03:30')
+        assert jobs_mod.manager.wait_idle(5)
+        dl.assert_not_called()
+        jobs_mod.manager.cancel(data['job_id'])
+
+
+def test_queue_finished_reports_the_jobs_that_downloaded_something(tmp_path):
+    finished = []
+    done_event = threading.Event()
+
+    def fake_dl(url, out, opts, cb, lib_id=None, cancel_event=None, pause_event=None):
+        if 'nothing' not in url:
+            cb({'status': 'item_done', 'title': url})
+        cb({'status': 'complete', 'title': url})
+        return 'success'
+
+    def on_idle(done):
+        finished.append([j['url'] for j in done])
+        done_event.set()
+
+    with patch.object(jobs, 'QUEUE_STATE_PATH', tmp_path / 'queue.json'), \
+            patch('mellow.downloader.download_video', side_effect=fake_dl):
+        m = jobs.JobManager()
+        for url in ('https://youtu.be/a', 'https://youtu.be/nothing', 'https://youtu.be/b'):
+            m.enqueue(url, str(tmp_path), {})
+        m.start(lambda e: None, on_idle=on_idle)
+        assert done_event.wait(10)
+    assert finished == [['https://youtu.be/a', 'https://youtu.be/b']]
+
+
+def test_queue_finished_opens_the_folder_when_configured(client, tmp_dir):
+    from mellow import server
+    client.post('/api/config', json={'on_queue_done': 'open_folder'})
+    events = []
+    with patch('mellow.desktop.show_in_folder') as show, \
+            patch('mellow.server._push_progress', side_effect=events.append):
+        server._queue_finished([{'output_dir': tmp_dir}])
+    show.assert_called_once_with(tmp_dir)
+    assert events == [{'status': 'queue_done', 'count': 1, 'folders': [tmp_dir]}]
+    client.post('/api/config', json={'on_queue_done': 'nothing'})
+    with patch('mellow.desktop.show_in_folder') as show, patch('mellow.server._push_progress'):
+        server._queue_finished([{'output_dir': tmp_dir}])
+    show.assert_not_called()
+
+
+def test_scheduled_job_starts_by_itself_when_due(tmp_path):
+    import time as _time
+    started_at = []
+
+    def fake_dl(url, out, opts, cb, lib_id=None, cancel_event=None, pause_event=None):
+        started_at.append(_time.time())
+        return 'success'
+
+    with patch.object(jobs, 'QUEUE_STATE_PATH', tmp_path / 'queue.json'), \
+            patch('mellow.downloader.download_video', side_effect=fake_dl):
+        m = jobs.JobManager()
+        m.start(lambda e: None)
+        due = _time.time() + 1.0
+        job = m.enqueue('https://youtu.be/x', str(tmp_path), {}, not_before=due)
+        for _ in range(60):
+            if job['status'] == 'complete':
+                break
+            _time.sleep(0.1)
+    assert job['status'] == 'complete'
+    assert due <= started_at[0] < due + 1.0, 'should start right when due, not a poll interval later'

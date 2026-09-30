@@ -136,7 +136,19 @@ export function QueuePage({ dlState, showNotif, activeJobs, playlistItems, setPl
                   )}
                 </div>
                 {job.error && <span style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 8, color: 'var(--red)', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={job.error}>{job.error}</span>}
-                <span className={'q-st-badge ' + (JOB_BADGE[job.status] || 'queued')} style={{ color: JOB_COLOR[job.status] }}>{(job.status || '').toUpperCase()}</span>
+                {job.status === 'queued' && job.not_before && job.not_before * 1000 > Date.now() ? (
+                  <>
+                    <span className="q-st-badge queued" style={{ color: 'var(--purple)' }}
+                      title={'Starts ' + new Date(job.not_before * 1000).toLocaleString()}>
+                      ⏾ {new Date(job.not_before * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                    <button className="btn btn-secondary btn-sm" style={{ padding: '3px 8px', fontSize: 8 }}
+                      onClick={() => API.post('/api/queue/' + encodeURIComponent(job.id) + '/start-now', {})
+                        .then(loadJobs).catch(e => showNotif('Error', e.message, 'error'))}>▶ START NOW</button>
+                  </>
+                ) : (
+                  <span className={'q-st-badge ' + (JOB_BADGE[job.status] || 'queued')} style={{ color: JOB_COLOR[job.status] }}>{(job.status || '').toUpperCase()}</span>
+                )}
                 {job.status === 'queued' && queuedJobsCount > 1 && (
                   <span style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
                     <button className="rand-step-btn" title="Run earlier" style={{ padding: '0 5px', fontSize: 8 }}

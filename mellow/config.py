@@ -54,6 +54,8 @@ _DEFAULTS: dict = {
     "default_audio_quality": "best",  # best | 320 | 256 | 192 | 128 (kbps)
     # Behavior
     "download_workers": 1,            # concurrent downloads (1 = sequential)
+    "schedule_start": "02:00",        # when a download queued "for later" starts (HH:MM, local)
+    "on_queue_done": "nothing",       # nothing | open_folder — once the queue runs dry
     "auto_sync_enabled": False,       # vault auto-sync scheduler master switch
     "auto_sync_default_interval": "daily",
     "vault_sync_schedule": {},        # per-folder interval overrides
