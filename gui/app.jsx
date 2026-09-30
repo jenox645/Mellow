@@ -18,6 +18,7 @@ import {
   SPEED_HISTORY_LEN,
   STATS_POLL_ACTIVE_MS,
   STATS_POLL_IDLE_MS,
+  APP_UPDATE_CHECK_STORAGE_KEY,
   UPDATE_CHECK_EVERY_MS,
   UPDATE_CHECK_STORAGE_KEY,
   VICTORY_AUTO_DISMISS_MS,
@@ -199,6 +200,20 @@ function App() {
           .catch(() => {});
       }
       if (c.update_check_on_launch !== false) {
+        // Once a day: is there a newer MellowDLP?
+        let lastApp = 0;
+        try { lastApp = parseInt(localStorage.getItem(APP_UPDATE_CHECK_STORAGE_KEY) || '0', 10) || 0; } catch {}
+        if (Date.now() - lastApp > UPDATE_CHECK_EVERY_MS) {
+          try { localStorage.setItem(APP_UPDATE_CHECK_STORAGE_KEY, String(Date.now())); } catch {}
+          API.get('/api/check-app-update').then(u => {
+            if (u && u.update_available) {
+              showNotif('MellowDLP ' + u.latest + ' Available', 'You have ' + u.current + '.', 'info', [{
+                label: 'GET IT', primary: true,
+                onClick: () => API.post('/api/open-release', {}).catch(() => {}),
+              }]);
+            }
+          }).catch(() => {});
+        }
         let last = 0;
         try { last = parseInt(localStorage.getItem(UPDATE_CHECK_STORAGE_KEY) || '0', 10) || 0; } catch {}
         if (Date.now() - last > UPDATE_CHECK_EVERY_MS) {

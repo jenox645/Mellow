@@ -15,7 +15,17 @@ from urllib.request import Request, urlopen
 
 from flask import Flask, Response, jsonify, request, send_file, send_from_directory
 
-from . import analytics, applog, desktop, downloader, errors, jobs, scheduler, ytdlp_update
+from . import (
+    analytics,
+    app_update,
+    applog,
+    desktop,
+    downloader,
+    errors,
+    jobs,
+    scheduler,
+    ytdlp_update,
+)
 from . import backup as _backup
 from . import library as _library
 from . import vault as _vault
@@ -28,6 +38,7 @@ from .config import (
     update_config,
 )
 from .constants import (
+    APP_RELEASES_PAGE,
     HISTORY_DEFAULT_LIMIT,
     HISTORY_MAX_LIMIT,
     LOW_DISK_WARN_BYTES,
@@ -281,6 +292,18 @@ def api_open_log() -> Response:
     if not applog.LOG_PATH.exists():
         return jsonify({"error": "No log file yet"}), 404
     threading.Thread(target=desktop.open_file, args=(str(applog.LOG_PATH),), daemon=True).start()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/check-app-update")
+def api_check_app_update() -> Response:
+    return jsonify(app_update.check())
+
+
+@app.route("/api/open-release", methods=["POST"])
+def api_open_release() -> Response:
+    """Open the latest release page (a fixed URL: this can't open arbitrary pages)."""
+    threading.Thread(target=desktop.open_url, args=(APP_RELEASES_PAGE,), daemon=True).start()
     return jsonify({"ok": True})
 
 

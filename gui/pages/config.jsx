@@ -12,6 +12,8 @@ import {
 export function ConfigPage({ config, setConfig, showNotif, sysInfo, refreshStats }) {
   const [local, setLocal] = React.useState({ ...config });
   const [updateInfo, setUpdateInfo] = React.useState(null);
+  const [appUpdate, setAppUpdate] = React.useState(null);
+  const [checkingApp, setCheckingApp] = React.useState(false);
   const [checking, setChecking] = React.useState(false);
   const [updating, setUpdating] = React.useState(false);
   const [vacuuming, setVacuuming] = React.useState(false);
@@ -117,6 +119,14 @@ export function ConfigPage({ config, setConfig, showNotif, sysInfo, refreshStats
       .then(setUpdateInfo)
       .catch(e => setUpdateInfo({ error: e.message }))
       .finally(() => setChecking(false));
+  };
+
+  const checkAppUpdate = () => {
+    setCheckingApp(true);
+    API.get('/api/check-app-update')
+      .then(setAppUpdate)
+      .catch(e => setAppUpdate({ error: e.message }))
+      .finally(() => setCheckingApp(false));
   };
 
   const doVacuum = () => {
@@ -602,6 +612,25 @@ export function ConfigPage({ config, setConfig, showNotif, sysInfo, refreshStats
                     {restoring ? 'RESTORING...' : '⬆ RESTORE'}
                   </button>
                   <input ref={restoreInputRef} type="file" accept=".zip" style={{ display: 'none' }} onChange={handleRestoreFile} />
+                </div>
+              </div>
+              <div className="settings-row">
+                <div className="settings-label">
+                  <div className="sl-name">MellowDLP Version</div>
+                  <div className="sl-sub">
+                    {'v' + (sysInfo.app_version || '?') + ' — '}
+                    {appUpdate && appUpdate.error ? <span style={{ color: 'var(--red)' }}>Check failed: {appUpdate.error}</span>
+                      : appUpdate && appUpdate.update_available ? <span style={{ color: 'var(--amber)' }}>v{appUpdate.latest} is available</span>
+                      : appUpdate && appUpdate.message ? appUpdate.message
+                      : appUpdate ? <span style={{ color: 'var(--green)' }}>Up to date</span>
+                      : 'new versions are published on GitHub'}
+                  </div>
+                </div>
+                <div className="settings-ctrl" style={{ display: 'flex', gap: 6 }}>
+                  <button className="btn btn-secondary btn-sm" onClick={checkAppUpdate} disabled={checkingApp}>{checkingApp ? '...' : 'CHECK'}</button>
+                  {appUpdate && appUpdate.update_available && (
+                    <button className="btn btn-amber btn-sm" onClick={() => API.post('/api/open-release', {}).catch(() => {})}>GET v{appUpdate.latest}</button>
+                  )}
                 </div>
               </div>
               <div className="settings-row">

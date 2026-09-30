@@ -5,6 +5,7 @@ import os
 import platform
 import subprocess
 import threading
+import webbrowser
 from pathlib import Path
 from typing import Any
 
@@ -49,6 +50,11 @@ def open_file(path: str) -> None:
         subprocess.Popen(["open", path])
     else:
         subprocess.Popen(["xdg-open", path])
+
+
+def open_url(url: str) -> None:
+    """Open a web page in the default browser."""
+    webbrowser.open(url)
 
 
 def clipboard_text() -> str:
