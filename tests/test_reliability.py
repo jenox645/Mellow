@@ -344,7 +344,6 @@ def test_cancelling_one_active_job_leaves_the_other_running(client, tmp_dir):
     started = threading.Semaphore(0)
 
     def fake_dl(url, out, opts, cb, lib_id=None, cancel_event=None, pause_event=None):
-        downloader._current_cancel_event = cancel_event  # what the real one does
         started.release()
         release.wait(10)
         return 'cancelled' if cancel_event.is_set() else 'success'

@@ -138,35 +138,6 @@ export function Pipeline({ stage }) {
   return <div className="pipeline">{items}</div>;
 }
 
-export function MiniGraph({ data, color, height = 28 }) {
-  const canvasRef = React.useRef(null);
-
-  React.useEffect(() => {
-    const c = canvasRef.current;
-    if (!c) return;
-    const dpr = window.devicePixelRatio || 1;
-    c.width = c.offsetWidth * dpr;
-    c.height = height * dpr;
-    const ctx = c.getContext('2d');
-    ctx.scale(dpr, dpr);
-    const w = c.offsetWidth, h = height;
-    ctx.clearRect(0, 0, w, h);
-    const pts = data && data.length > 0 ? data : Array(20).fill(0);
-    const maxV = Math.max(...pts, 1);
-    ctx.strokeStyle = color || 'rgba(0,216,255,0.6)';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    pts.forEach((v, i) => {
-      const x = (i / (pts.length - 1)) * w;
-      const y = h - (v / maxV) * h * 0.85 - h * 0.05;
-      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
-    });
-    ctx.stroke();
-  }, [data, color, height]);
-
-  return <canvas ref={canvasRef} style={{ width: '100%', height: height + 'px', display: 'block' }} />;
-}
-
 export function LineChart({ data, color = 'rgba(0,216,255,0.85)', height = 120, yFormat }) {
   const ref = React.useRef(null);
   React.useEffect(() => {

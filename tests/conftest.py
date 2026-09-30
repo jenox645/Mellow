@@ -44,7 +44,6 @@ def isolated_user_files(tmp_path):
             patch.multiple(ffmpeg_locate, _cached=ffmpeg_locate._cached,
                            _last_miss=ffmpeg_locate._last_miss):
         analytics.init_db()
-        downloader._current_cancel_event = None
         downloader.resume()
         scheduler._last_attempt.clear()
         yield tmp_path
@@ -52,7 +51,6 @@ def isolated_user_files(tmp_path):
         # no job outlives its test and lands in the real files.
         jobs.manager.cancel_active()
         jobs.manager.wait_idle(timeout=10)
-        downloader._current_cancel_event = None
         downloader.resume()
         analytics.reset_connections()
 

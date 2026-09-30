@@ -408,7 +408,6 @@ def _free_bytes_near(path: str) -> int | None:
 @app.route("/api/cancel", methods=["POST"])
 def api_cancel() -> Response:
     jobs.manager.cancel_active()
-    downloader.cancel_download()
     return jsonify({"status": "cancelled"})
 
 
@@ -421,8 +420,7 @@ def api_queue_cancel_job(job_id: str) -> Response:
     if job["status"] == "cancelled":
         return jsonify({"ok": True, "status": "cancelled"})
     # Active job: the downloader notices this job's own cancel event via its
-    # progress hook. (downloader.cancel_download() would hit whichever job
-    # started last, which is a different download when workers > 1.)
+    # progress hook
     return jsonify({"ok": True, "status": "cancelling"})
 
 

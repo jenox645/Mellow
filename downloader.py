@@ -128,15 +128,6 @@ AUDIO_QUALITY_MAP: dict[str, str] = {
     "128": "128",
 }
 
-_current_cancel_event: threading.Event | None = None
-_lock = threading.Lock()
-
-
-def cancel_download() -> None:
-    if _current_cancel_event is not None:
-        _current_cancel_event.set()
-
-
 def _make_progress_hook(progress_cb: Callable, library_id: str | None, speed_tracker: dict,
                         cancel_event: threading.Event, pause_event: threading.Event,
                         save_sidecar: bool = True) -> Callable:
@@ -401,9 +392,8 @@ def download_video(
 ) -> str:
     """Run one download. Returns terminal status: 'success' | 'cancelled' | 'error'.
 
-    cancel_event is per-job when called from the queue worker; the
-    module-level fallback keeps cancel_download() working for direct callers.
-    pause_event is the shared pause flag when the job queue passes it (the
+    cancel_event is the job's own (the queue worker passes it; a direct call
+    without one can't be cancelled). pause_event is the shared pause flag when the job queue passes it (the
     queue then owns clearing it); a direct call without one owns its pause.
     """
     try:
@@ -655,14 +645,11 @@ def _download_video(
     cancel_event: threading.Event | None,
     pause_event: threading.Event | None,
 ) -> str:
-    global _current_cancel_event
     owns_pause = pause_event is None
     if cancel_event is None:
         cancel_event = threading.Event()
     if pause_event is None:
         pause_event = _pause_event
-    with _lock:
-        _current_cancel_event = cancel_event
     if owns_pause:
         # A pause left set by a previous download must never carry into this one
         pause_event.clear()

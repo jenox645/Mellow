@@ -10,7 +10,6 @@ MEDIA_EXTS: frozenset[str] = frozenset({
     '.wav', '.opus', '.aac', '.ogg', '.avi', '.mov',
 })
 VIDEO_EXTS: frozenset[str] = frozenset({'.mp4', '.mkv', '.webm', '.avi', '.mov'})
-AUDIO_EXTS: frozenset[str] = MEDIA_EXTS - VIDEO_EXTS
 IMAGE_EXTS: frozenset[str] = frozenset({'.jpg', '.jpeg', '.png', '.webp'})
 
 # Formats an audio download can be converted to (FFmpegExtractAudio codecs)
