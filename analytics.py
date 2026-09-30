@@ -35,12 +35,29 @@ def get_conn() -> duckdb.DuckDBPyConnection:
         return _conns[key].cursor()
 
 
+def _close_all_locked() -> None:
+    for key in list(_conns):
+        with contextlib.suppress(Exception):
+            _conns.pop(key).close()
+
+
 def reset_connections() -> None:
-    """Close all cached connections (used after a DB file restore)."""
+    """Close all cached connections (the next query reopens the file)."""
     with _conns_lock:
-        for key in list(_conns):
-            with contextlib.suppress(Exception):
-                _conns.pop(key).close()
+        _close_all_locked()
+
+
+@contextlib.contextmanager
+def exclusive_file_access():
+    """Hold the DB file closed for the duration of the block.
+
+    DuckDB keeps the file locked on Windows while a connection is open, so
+    backup/restore must read or replace it with every connection closed.
+    Closing also checkpoints the WAL, so the file on disk is complete.
+    """
+    with _conns_lock:
+        _close_all_locked()
+        yield Path(DB_PATH)
 
 
 def init_db() -> None:

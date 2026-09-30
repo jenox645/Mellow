@@ -70,7 +70,6 @@ def test_backup_roundtrip(tmp_path):
     with patch("config.CONFIG_PATH", cfg_path), patch("analytics.DB_PATH", db_path), \
             patch("backup.CONFIG_PATH", cfg_path):
         analytics.init_db()
-        analytics.reset_connections()
         data = backup.create_backup()
         names = zipfile.ZipFile(io.BytesIO(data)).namelist()
         assert backup.CONFIG_MEMBER in names

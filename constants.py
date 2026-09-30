@@ -45,6 +45,7 @@ SYNC_INTERVALS: dict[str, int] = {   # interval key → seconds
     "daily": 24 * 3600,
     "weekly": 7 * 24 * 3600,
 }
+SYNC_RETRY_BACKOFF_SECS: int = 3600  # wait before re-queuing a failed/cancelled auto-sync
 
 # ── History / API limits ──────────────────────────────────────────────────────
 HISTORY_MAX_LIMIT: int = 500
@@ -55,4 +56,5 @@ PAUSE_POLL_SECS: float = 0.2         # progress-hook pause loop cadence
 WEBHOOK_TIMEOUT_SECS: int = 5
 PYPI_CHECK_TIMEOUT_SECS: int = 30
 M3U8_TEMP_MAX_AGE_SECS: int = 86400  # playlist temp files older than this are swept
+FFMPEG_RECHECK_SECS: int = 30        # how often a missing ffmpeg is looked for again
 LOW_DISK_WARN_BYTES: int = 2 * 1024 ** 3  # warn when output drive has < 2 GB free

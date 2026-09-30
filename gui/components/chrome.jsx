@@ -199,7 +199,9 @@ export function StatusBar({ sysInfo, speedHistory, config }) {
       <div className="sb-seg">
         yt-dlp {sysInfo.ytdlp_version || '—'}
       </div>
-      <div className="sb-seg">
+      <div className="sb-seg" title={sysInfo.ffmpeg
+        ? (sysInfo.ffmpeg_path || 'ffmpeg found')
+        : 'ffmpeg is needed to merge, convert and trim. Windows: winget install Gyan.FFmpeg'}>
         <div className={'sb-dot' + (sysInfo.ffmpeg ? ' ok' : ' err')} />
         FFmpeg {sysInfo.ffmpeg ? 'OK' : 'MISSING'}
       </div>

@@ -45,6 +45,7 @@ from constants import (
     THUMB_CACHE_SECS,
     WEBHOOK_TIMEOUT_SECS,
 )
+from ffmpeg_locate import find_ffmpeg
 from version import APP_VERSION
 
 STATIC_DIR = Path(__file__).parent / "static"
@@ -390,15 +391,9 @@ def api_system() -> Response:
         ytdlp_version = yt_dlp.version.__version__
     except Exception:
         pass
-    ffmpeg_ok = False
-    try:
-        _kw: dict = {"capture_output": True, "timeout": 5}
-        if platform.system() == "Windows":
-            _kw["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
-        result = subprocess.run(["ffmpeg", "-version"], **_kw)
-        ffmpeg_ok = result.returncode == 0
-    except Exception:
-        pass
+    # Same lookup the downloader uses, so the status light can't disagree
+    # with what a download will actually do.
+    ffmpeg_path = find_ffmpeg()
     disk_free = None
     try:
         out_dir = load_config().get("output_dir", "")
@@ -407,7 +402,8 @@ def api_system() -> Response:
     except OSError:
         pass
     return jsonify({
-        "ffmpeg": ffmpeg_ok,
+        "ffmpeg": ffmpeg_path is not None,
+        "ffmpeg_path": ffmpeg_path,
         "ytdlp_version": ytdlp_version,
         "python_version": sys.version.split()[0],
         "app_version": APP_VERSION,
@@ -455,6 +451,7 @@ def api_check_ytdlp_update() -> Response:
 def api_update_ytdlp() -> Response:
     def _update() -> None:
         import shutil as _sh
+        old_ver = "unknown"
         try:
             import yt_dlp as _ytdlp_mod_check
             ytdlp_file = Path(_ytdlp_mod_check.__file__).parent
@@ -497,7 +494,27 @@ def api_update_ytdlp() -> Response:
                 importlib.reload(_ytdlp_mod)
                 new_ver = _ytdlp_mod.version.__version__
                 print(f"[YTDLP UPDATE] new version after update: {new_ver}", flush=True)
-                _push_progress({"status": "ytdlp_updated", "ok": True, "new_version": new_ver})
+                if _parse_ytdlp_ver(new_ver) > _parse_ytdlp_ver(old_ver):
+                    # The files on disk are new, but every extractor already
+                    # imported by this process is still the old code.
+                    _push_progress({
+                        "status": "ytdlp_updated", "ok": True, "new_version": new_ver,
+                        "restart_required": True,
+                        "message": f"yt-dlp {new_ver} installed. Restart MellowDLP to start using it.",
+                    })
+                elif frozen:
+                    # The packaged app imports the yt-dlp frozen inside the
+                    # .exe; updating a copy elsewhere on the machine never
+                    # reaches it. Say so instead of reporting success.
+                    _push_progress({
+                        "status": "ytdlp_updated", "ok": False,
+                        "error": (f"This build bundles yt-dlp {old_ver} and cannot replace it "
+                                  "from inside the app. Install a newer MellowDLP build, or "
+                                  "run from source to update yt-dlp."),
+                    })
+                else:
+                    _push_progress({"status": "ytdlp_updated", "ok": True, "new_version": new_ver,
+                                    "message": f"yt-dlp is already up to date ({new_ver})."})
             except Exception as reload_exc:
                 print(f"[YTDLP UPDATE] reload error: {reload_exc}", flush=True)
                 _push_progress({"status": "ytdlp_updated", "ok": True})
@@ -609,8 +626,9 @@ def api_queue_cancel_job(job_id: str) -> Response:
         return jsonify({"error": "Job not found"}), 404
     if job["status"] == "cancelled":
         return jsonify({"ok": True, "status": "cancelled"})
-    # Active job: the downloader notices the event via its progress hook
-    downloader.cancel_download()
+    # Active job: the downloader notices this job's own cancel event via its
+    # progress hook. (downloader.cancel_download() would hit whichever job
+    # started last, which is a different download when workers > 1.)
     return jsonify({"ok": True, "status": "cancelling"})
 
 
@@ -650,6 +668,9 @@ def api_queue_restorable_discard() -> Response:
 
 @app.route("/api/download/pause", methods=["POST"])
 def api_pause() -> Response:
+    if not jobs.manager.has_active():
+        # Nothing to pause; a stray flag would only desync the UI
+        return jsonify({"status": "idle"})
     downloader.pause()
     _push_progress({"status": "paused"})
     return jsonify({"status": "paused"})

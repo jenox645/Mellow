@@ -1,3 +1,6 @@
+from unittest.mock import patch
+
+
 def test_server_imports():
     import server
     assert hasattr(server, 'app')
@@ -46,7 +49,10 @@ def test_item_done_in_progress_hook():
     tracker = {"samples": [], "t0": time.monotonic(), "item_t0": time.monotonic(),
                "item_sample_start": 0, "items": {}}
     hook = _make_progress_hook(events.append, None, tracker, threading.Event(), threading.Event())
-    hook({"status": "finished", "info_dict": {"title": "Test Video", "thumbnail": "http://x.jpg", "playlist_index": 1}, "filename": "test.mp4"})
+    # The hook saves a thumbnail sidecar next to the file; keep that off the network
+    with patch("downloader._save_thumbnail_sidecar") as save_thumb:
+        hook({"status": "finished", "info_dict": {"title": "Test Video", "thumbnail": "http://x.jpg", "playlist_index": 1}, "filename": "test.mp4"})
+    save_thumb.assert_called_once_with("test.mp4", "http://x.jpg")
     statuses = [e.get("status") for e in events]
     assert "item_done" in statuses, f"Expected item_done event, got: {statuses}"
     item = next(e for e in events if e.get("status") == "item_done")

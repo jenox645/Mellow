@@ -22,6 +22,7 @@ from constants import (
     THUMB_PREVIEW_LIMIT,
     VIDEO_EXTS,
 )
+from ffmpeg_locate import find_ffmpeg
 
 # Matches yt-dlp's YouTube ID embedded in filenames: [dQw4w9WgXcW]
 _YT_ID_RE = _re.compile(r'\[([A-Za-z0-9_-]{11})\]')
@@ -171,20 +172,9 @@ def list_folder_files(path: str) -> list[dict]:
 
 # ── Thumbnail serving ─────────────────────────────────────────────────────────
 
-_ffmpeg_path = None
-
-
-def _ffmpeg() -> str | None:
-    global _ffmpeg_path
-    if _ffmpeg_path is None:
-        import shutil
-        _ffmpeg_path = shutil.which("ffmpeg") or ""
-    return _ffmpeg_path or None
-
-
 def _generate_video_thumb(video: Path, sidecar: Path) -> bool:
     """Extract a frame as a cached sidecar .jpg for files with no thumbnail."""
-    ffmpeg = _ffmpeg()
+    ffmpeg = find_ffmpeg()
     if not ffmpeg:
         return False
     scale = f"scale={THUMB_FFMPEG_WIDTH}:-1"

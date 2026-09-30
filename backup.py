@@ -29,9 +29,11 @@ def create_backup() -> bytes:
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         if CONFIG_PATH.exists():
             zf.write(CONFIG_PATH, CONFIG_MEMBER)
-        db_path = Path(analytics.DB_PATH)
-        if db_path.exists():
-            zf.write(db_path, DB_MEMBER)
+        # The live connection locks the file on Windows and may still hold
+        # recent rows in the WAL; read it with everything closed.
+        with analytics.exclusive_file_access() as db_path:
+            if db_path.exists():
+                zf.write(db_path, DB_MEMBER)
     return buf.getvalue()
 
 
@@ -53,16 +55,24 @@ def restore_backup(data: bytes) -> dict:
         return {"ok": False, "error": f"Zip contains none of {', '.join(BACKUP_MEMBERS)}"}
 
     restored: list[str] = []
-    db_path = Path(analytics.DB_PATH)
-    targets = {CONFIG_MEMBER: CONFIG_PATH, DB_MEMBER: db_path}
-    for member in members:
-        target = targets[member]
-        if target.exists():
-            target.with_suffix(target.suffix + ".pre-restore").write_bytes(target.read_bytes())
-        target.write_bytes(zf.read(member))
-        restored.append(member)
-
-    if DB_MEMBER in restored:
-        # Drop the cached connection so the next query opens the new file
-        analytics.reset_connections()
+    try:
+        if CONFIG_MEMBER in members:
+            _replace_file(CONFIG_PATH, zf.read(CONFIG_MEMBER))
+            restored.append(CONFIG_MEMBER)
+        if DB_MEMBER in members:
+            # Swap the file with every connection closed (it is locked on
+            # Windows otherwise); the next query reopens the restored DB.
+            with analytics.exclusive_file_access() as db_path:
+                _replace_file(db_path, zf.read(DB_MEMBER))
+                # A WAL left by the old database must not be replayed onto the new one
+                Path(str(db_path) + ".wal").unlink(missing_ok=True)
+            restored.append(DB_MEMBER)
+    except OSError as exc:
+        return {"ok": False, "error": f"Could not write restored files: {exc}", "restored": restored}
     return {"ok": True, "restored": restored}
+
+
+def _replace_file(target: Path, data: bytes) -> None:
+    if target.exists():
+        target.with_suffix(target.suffix + ".pre-restore").write_bytes(target.read_bytes())
+    target.write_bytes(data)

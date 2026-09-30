@@ -1,5 +1,7 @@
 line-length = 100
 target-version = "py39"
+# Lint the app only, not side projects that live in the same checkout
+extend-exclude = ["datalake", "assignment"]
 
 [lint]
 select = ["E", "F", "W", "I", "N", "UP"]

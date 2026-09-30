@@ -324,7 +324,12 @@ function App() {
           { label: 'OPEN FILE', primary: true, onClick: () => API.post('/api/vault/open-file', { path: data.file_path }).catch(() => {}) },
           { label: 'FOLDER', onClick: () => API.post('/api/open-folder', { path: data.file_path }).catch(() => {}) },
         ] : null;
-        showNotif('Download Complete', data.title || 'File saved successfully', 'success', fileActions);
+        if (data.warning) {
+          // Saved, but not the way it was asked for (e.g. no ffmpeg to convert)
+          showNotif('Downloaded With Limits', data.warning, 'warn', fileActions);
+        } else {
+          showNotif('Download Complete', data.title || 'File saved successfully', 'success', fileActions);
+        }
         refreshStats();
         refreshVault();
         if (!isPrimary) return;  // a background job finished; main panel stays
@@ -365,7 +370,8 @@ function App() {
         }, ...prev].slice(0, FAILED_ITEMS_KEEP));
         setFailedCount(c => c + 1);
         // Extraction failures usually mean yt-dlp is outdated — offer the fix
-        const looksLikeBreakage = BREAKAGE_RE.test(msg);
+        // (unless the backend already pinned it on the missing ffmpeg)
+        const looksLikeBreakage = data.code !== 'ffmpeg_missing' && BREAKAGE_RE.test(msg);
         const errActions = looksLikeBreakage ? [{
           label: 'UPDATE YT-DLP', primary: true,
           onClick: () => API.post('/api/update-ytdlp', {}).catch(() => {}),
@@ -386,8 +392,13 @@ function App() {
         setAppState('idle');
         setIsPaused(false);
         setPausedCount(0);
+      } else if (data.status === 'warning') {
+        showNotif('Heads Up', data.message || '', 'warn');
       } else if (data.status === 'ytdlp_updated') {
-        if (data.ok) showNotif('Updated', 'yt-dlp updated successfully', 'success');
+        if (data.ok) {
+          showNotif(data.restart_required ? 'Restart To Finish' : 'Updated',
+            data.message || 'yt-dlp updated successfully', 'success');
+        }
         else showNotif('Update failed', data.error || '', 'error');
         refreshStats();
       }

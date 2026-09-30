@@ -11,6 +11,7 @@ sync-all, UI saves) don't lose each other's changes.
 """
 from __future__ import annotations
 
+import copy
 import json
 import os
 import tempfile
@@ -30,6 +31,7 @@ _DEFAULTS: dict = {
     "rate_limit": "",
     "proxy": "",
     "external_downloader": "",
+    "ffmpeg_location": "",            # ffmpeg binary or folder; empty = auto-detect
     "concurrent_fragments": 4,
     "sleep_interval": 0,
     "retries": 3,
@@ -55,13 +57,22 @@ _DEFAULTS: dict = {
 
 
 def load_config() -> dict:
+    """Saved config layered over the defaults.
+
+    Layering means a config written by an older version still yields every
+    key a newer version expects, instead of each caller guessing a fallback.
+    """
     with _lock:
+        cfg = copy.deepcopy(_DEFAULTS)
         if CONFIG_PATH.exists():
             try:
-                return json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+                saved = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+                if not isinstance(saved, dict):
+                    raise ValueError("config root is not an object")
+                cfg.update(saved)
             except Exception:
                 _backup_corrupt()
-        return dict(_DEFAULTS)
+        return cfg
 
 
 def _backup_corrupt() -> None:

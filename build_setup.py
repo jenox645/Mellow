@@ -17,6 +17,12 @@ STATIC = HERE / "static"
 ASSETS = HERE / "assets"
 GUI = HERE / "gui"
 
+# The step banners use "·", "→" and "—". When output is piped (CI, an IDE
+# run panel) Windows picks cp1252 and the first arrow crashes the build.
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+
 DESKTOP_SHORTCUT = "--desktop-shortcut" in sys.argv
 # Fast dev loop: rebuild static/ (mascots, bundle, html) and skip pip,
 # PyInstaller and the installer entirely.
@@ -36,6 +42,7 @@ REACT_DOM_URL = f"https://unpkg.com/react-dom@{REACT_VERSION}/umd/react-dom.prod
 PYTHON_FILES = [
     "main.py", "server.py", "downloader.py", "analytics.py",
     "config.py", "constants.py", "vault.py", "library.py",
+    "jobs.py", "scheduler.py", "backup.py", "ffmpeg_locate.py",
     "version.py", "build_setup.py",
 ]
 
@@ -117,7 +124,7 @@ if RUN_TESTS:
     step("Running test suite")
     run([
         sys.executable, "-m", "pip", "install", "--upgrade", "--quiet",
-        "yt-dlp", "flask", "flaskwebgui", "duckdb", "pytest",
+        "-r", str(HERE / "requirements.txt"), "-r", str(HERE / "requirements-dev.txt"),
     ])
     result = subprocess.run([
         sys.executable, "-m", "pytest", "tests/", "-q",
@@ -146,7 +153,7 @@ if FRONTEND_ONLY:
 else:
     run([
         sys.executable, "-m", "pip", "install", "--upgrade",
-        "yt-dlp", "flask", "flaskwebgui", "pyinstaller", "pillow", "duckdb",
+        "-r", str(HERE / "requirements.txt"), "pyinstaller", "pillow",
     ])
 
 

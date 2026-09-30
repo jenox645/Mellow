@@ -4,12 +4,13 @@
 - Backend modules (Python):
   - `server.py` — Flask routes only; business logic lives in the modules below
   - `jobs.py` — download job queue: worker pool (`download_workers` config, max `MAX_DOWNLOAD_WORKERS`), per-job cancel events, reordering, restart persistence (`~/.mellow_dlp_queue.json`)
-  - `downloader.py` — yt-dlp Python API wrapper (returns `success|cancelled|error`)
+  - `downloader.py` — yt-dlp Python API wrapper (returns `success|cancelled|error`; never raises — setup failures become an `error` event)
+  - `ffmpeg_locate.py` — the one ffmpeg lookup (config override → PATH → next to the app → known install folders), shared by downloader, vault and `/api/system`
   - `analytics.py` — DuckDB (shared per-path connection handed out as cursors)
   - `scheduler.py` — vault auto-sync loop (config: `auto_sync_enabled`, `vault_sync_schedule`)
   - `vault.py` / `library.py` — vault & library business logic
-  - `backup.py` — config+DB zip export/restore
-  - `config.py` — atomic config persistence + `update_config()` for read-modify-write
+  - `backup.py` — config+DB zip export/restore (touches the DB file only inside `analytics.exclusive_file_access()`; DuckDB locks an open file on Windows)
+  - `config.py` — atomic config persistence + `update_config()` for read-modify-write; `load_config()` layers the saved file over `_DEFAULTS`, so new keys need no per-caller fallback
   - `constants.py` / `version.py` — all tuning knobs and the single APP_VERSION
 - Frontend (React UMD, bundled by esbuild from ES modules):
   - `gui/app.jsx` — App root: SSE hub, routing, clipboard watcher, shortcuts
@@ -43,8 +44,9 @@ All job-originated events carry `job_id`, `job_type`, `job_label` (multi-worker 
 - `item_done` — one file finished: `title`, `thumbnail`, `video_id`, `playlist_index`
 - `item_failed` — one item failed: `reason` (`geo_blocked`/`error`), `message`
 - `processing` — postprocessing (ffmpeg)
-- `complete` — entire download finished: `title`, `file_path`, `file_size`
-- `error` (includes `url` for retry) / `cancelled` — terminal states
+- `warning` — non-fatal notice with `code` + `message` (today: `ffmpeg_missing`)
+- `complete` — entire download finished: `title`, `file_path`, `file_size`, `warning` (set when it was saved with limits)
+- `error` (includes `url` for retry, `code: ffmpeg_missing` when that is the likely cause) / `cancelled` — terminal states
 - `paused` / `resumed` — pause toggles
 - `ytdlp_updated` — after yt-dlp self-update
 
@@ -57,6 +59,16 @@ All job-originated events carry `job_id`, `job_type`, `job_label` (multi-worker 
 - All magic numbers live in `constants.py` (backend) / `gui/lib/constants.js` (frontend)
 - Stats polling: 3s during active download, 30s idle (frontend constants)
 - Victory overlay at App root (outside all page components), z-index 9999
+- Every job must end in exactly one terminal event (`complete`/`error`/`cancelled`) — the UI has no timeout; `jobs._worker` pushes `error` if a job crashes
+- No ffmpeg → `downloader` requests single-file formats and no ffmpeg postprocessors, and says so via `warning`; never build a `a+b` format or an `FFmpeg*` postprocessor without checking `find_ffmpeg()`
+- Cancel is per job (`job["cancel_event"]`); pause is one flag for all running downloads, owned by `JobManager` (cleared when the queue goes idle)
+- A run where yt-dlp logged errors and no file finished (`_download_retcode` set, `speed_tracker["finished"]` == 0) is an `error`, never `complete` — that is a dead/private playlist or every item refused (HTTP 403 from a stale yt-dlp). No errors and no files is an up-to-date archive sync and stays a success
+- History rows are only written for files that exist on disk; the recorded `container` is the real file extension
+- Cover art: yt-dlp only embeds a thumbnail it wrote itself, so `embed_thumbnail` sets `writethumbnail` + a jpg convertor and adds `_EmbedThumbnailBestEffort` (keeps the `.jpg` as the vault sidecar, never fails the download). Needs `mutagen` for mp4/m4a/flac/opus
+- webm can't hold m4a/h264: `_merged_format()` asks for webm streams and lets an impossible merge fall back to mkv (`merge_output_format="webm/mkv"`)
+- `download_range_func` takes `(start, end)` tuples, not dicts
+- yt-dlp's ffmpeg downloader ignores `ffmpeg_location`; `find_ffmpeg()` therefore also prepends the folder to `PATH`
+- yt-dlp update: a pip upgrade only takes effect after a restart (`restart_required`); the frozen app can't replace its bundled yt-dlp at all and says so
 
 ## Build Sequence
 ```bash
@@ -72,8 +84,12 @@ python build_setup.py --run-tests
 
 ## Tests
 ```bash
-python -m pytest tests/ -v -m "not e2e and not slow"
+pip install -r requirements.txt -r requirements-dev.txt
+python -m pytest tests/ -m "not e2e and not slow"
+python scripts/canary.py        # live-site extraction probe (also the weekly CI canary)
 ```
+- `tests/conftest.py` redirects config, DB and queue files to a temp dir for every test (autouse) and drains `jobs.manager` on teardown — tests must never read or write `~/.mellow_dlp*`
+- When a test enqueues through the API with `downloader.download_video` mocked, call `jobs.manager.wait_idle()` inside the `patch` block so the worker can't run the real downloader afterwards
 
 ## Lint
 ```bash

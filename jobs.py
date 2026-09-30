@@ -119,6 +119,10 @@ class JobManager:
                 for j in self._jobs
             )
 
+    def has_active(self) -> bool:
+        with self._cv:
+            return self._active_count > 0
+
     def cancel_active(self) -> list[str]:
         """Cancel every running job (legacy /api/cancel semantics)."""
         with self._cv:
@@ -211,25 +215,43 @@ class JobManager:
                 job = self._pending.pop(0)
                 if job["cancel_event"].is_set() or job["status"] == "cancelled":
                     job["status"] = "cancelled"
+                    self._cv.notify_all()
                     continue
                 job["status"] = "active"
                 job["_t0"] = time.monotonic()
+                if self._active_count == 0:
+                    # Pause is one flag shared by every running download; a
+                    # pause left over from an idle queue must not freeze this job
+                    downloader.resume()
                 self._active_count += 1
             self._persist()
             try:
-                status = self.run_job(job)
+                try:
+                    status = self.run_job(job)
+                except Exception as exc:
+                    status = "failed"
+                    job["error"] = str(exc)
+                    # The UI is waiting on a terminal event for this job
+                    self._make_cb(job, True)(
+                        {"status": "error", "message": str(exc), "url": job.get("url")})
                 with self._cv:
                     job["status"] = status
                 self._on_finished(job, status)
             except Exception as exc:
-                with self._cv:
-                    job["status"] = "failed"
-                    job["error"] = str(exc)
+                print(f"[QUEUE] post-job bookkeeping failed: {exc}", flush=True)
             finally:
                 with self._cv:
                     self._active_count -= 1
+                    if self._active_count == 0:
+                        downloader.resume()
                     self._trim_finished()
                     self._cv.notify_all()
+
+    def wait_idle(self, timeout: float | None = None) -> bool:
+        """Block until nothing is queued or running. False on timeout."""
+        with self._cv:
+            return self._cv.wait_for(
+                lambda: not self._pending and self._active_count == 0, timeout)
 
     def _trim_finished(self) -> None:
         done = [j for j in self._jobs if j["status"] in TERMINAL_STATUSES]
@@ -256,7 +278,8 @@ class JobManager:
                 break
             results.append(downloader.download_video(
                 url, job["output_dir"], job["opts"], self._make_cb(job, i == last_idx),
-                job.get("library_id"), cancel_event=cancel_event))
+                job.get("library_id"), cancel_event=cancel_event,
+                pause_event=downloader._pause_event))
 
         if any(r == "cancelled" for r in results) or cancel_event.is_set():
             return "cancelled"

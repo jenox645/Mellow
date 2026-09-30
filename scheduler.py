@@ -20,13 +20,14 @@ from datetime import datetime
 from typing import Callable
 
 from config import load_config
-from constants import SCHEDULER_TICK_SECS, SYNC_INTERVALS
+from constants import SCHEDULER_TICK_SECS, SYNC_INTERVALS, SYNC_RETRY_BACKOFF_SECS
 
 DEFAULT_INTERVAL_KEY = "daily"
 SCHEDULE_OFF = "off"
 SCHEDULE_INHERIT = "default"
 
 _thread: threading.Thread | None = None
+_last_attempt: dict[str, float] = {}  # folder → when auto-sync last queued it
 
 
 def _parse_sync_time(stamp: str | None) -> float | None:
@@ -64,6 +65,29 @@ def due_folders(cfg: dict, now: float | None = None) -> list[str]:
     return due
 
 
+def tick(sync_fn: Callable[[str], bool],
+         is_syncing_fn: Callable[[str], bool],
+         now: float | None = None) -> list[str]:
+    """Queue a sync for every due folder; returns the folders queued.
+
+    A folder only stops being due once a sync completes, so one that fails or
+    is cancelled (offline, locked cookie DB, user hit cancel) would otherwise
+    be re-queued on every tick. SYNC_RETRY_BACKOFF_SECS spaces those retries.
+    """
+    now = now if now is not None else time.time()
+    queued: list[str] = []
+    for path in due_folders(load_config(), now):
+        if is_syncing_fn(path):
+            continue
+        if now - _last_attempt.get(path, float("-inf")) < SYNC_RETRY_BACKOFF_SECS:
+            continue
+        if sync_fn(path):
+            _last_attempt[path] = now
+            queued.append(path)
+            print(f"[SCHEDULER] auto-sync queued: {path}", flush=True)
+    return queued
+
+
 def start(sync_fn: Callable[[str], bool],
           is_syncing_fn: Callable[[str], bool]) -> None:
     """Spawn the scheduler loop (idempotent).
@@ -79,12 +103,7 @@ def start(sync_fn: Callable[[str], bool],
         while True:
             time.sleep(SCHEDULER_TICK_SECS)
             try:
-                cfg = load_config()
-                for path in due_folders(cfg):
-                    if is_syncing_fn(path):
-                        continue
-                    if sync_fn(path):
-                        print(f"[SCHEDULER] auto-sync queued: {path}", flush=True)
+                tick(sync_fn, is_syncing_fn)
             except Exception as exc:
                 print(f"[SCHEDULER] tick failed: {exc}", flush=True)
 
