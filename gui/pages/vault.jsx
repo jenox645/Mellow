@@ -131,15 +131,31 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
     ? libraryEntries.find(e => e.id === selectedFolderMeta.library_id)
     : libraryEntries.find(e => e.folder_name && selectedFolder && selectedFolder.endsWith(e.folder_name));
 
+  // Same sync as the folder card: every linked playlist, in the format the
+  // folder remembers. (It used to sync only the library entry's first URL,
+  // with the entry's settings.) Library sync is the fallback for entries
+  // made before playlists were linked to folders.
   const handleSync = React.useCallback(() => {
-    if (!libEntry) return;
+    if (!selectedFolder) return;
     if (isDownloading) showNotif('Note', 'Sync will queue after current download', 'info');
-    setSyncingId(libEntry.id);
-    API.post('/api/library/' + libEntry.id + '/sync', { mode: libEntry.sync_mode || 'add' })
-      .then(() => showNotif('Sync started', libEntry.name))
+    setSyncingId(selectedFolder);
+    const label = libEntry ? libEntry.name : selectedFolder.split(/[\\/]/).pop();
+    API.post('/api/vault/sync', { path: selectedFolder })
+      .then(d => {
+        if (!d.error) return d;
+        if (!libEntry) throw new Error(d.error);
+        return API.post('/api/library/' + libEntry.id + '/sync', { mode: libEntry.sync_mode || 'add' });
+      })
+      .then(() => showNotif('Sync started', label))
       .catch(e => showNotif('Error', e.message, 'error'))
       .finally(() => setSyncingId(null));
-  }, [libEntry, isDownloading, showNotif]);
+  }, [selectedFolder, libEntry, isDownloading, showNotif]);
+
+  // The card and this view read different stamps; show whichever is newer
+  const lastSynced = [libEntry && libEntry.last_synced, selectedFolderMeta && selectedFolderMeta.last_synced]
+    .filter(Boolean)
+    .sort((a, b) => new Date(b) - new Date(a))[0] || null;
+  const canSync = !!(libEntry || (selectedFolderMeta && selectedFolderMeta.last_synced));
 
   const handleRandomize = React.useCallback(() => {
     const mediaFiles = files.filter(f => /\.(mp4|mkv|webm|mp3|m4a|flac|wav|aac|avi|mov|opus)$/i.test(f.name));
@@ -582,12 +598,12 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
               </div>
             ))}
           </div>
-          {libEntry && (
+          {canSync && (
             <button className="btn btn-amber btn-sm" onClick={handleSync} disabled={!!syncingId}>
               {syncingId ? 'SYNCING...' : (<><Ico name="sync" /> SYNC NOW</>)}
             </button>
           )}
-          {selectedFolderMeta && (selectedFolderMeta.library_id || selectedFolderMeta.last_synced) && (
+          {canSync && selectedFolderMeta && (
             <button className="btn btn-secondary btn-sm" title="Sync options / selective playlist sync"
               onClick={() => setSyncModal(selectedFolderMeta)}>SYNC OPTIONS</button>
           )}
@@ -622,7 +638,7 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
             <span className="ptag cyan">SYNCED</span>
             <span className="ptitle">{libEntry.name}</span>
             <span className="psub">
-              {libEntry.last_synced ? 'Last sync: ' + timeAgo(libEntry.last_synced) : 'Never synced'}
+              {lastSynced ? 'Last sync: ' + timeAgo(lastSynced) : 'Never synced'}
             </span>
           </div>
         </div>
@@ -813,6 +829,10 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
       )}
 
       {previewFile && <MediaPreviewModal file={previewFile} onClose={() => setPreviewFile(null)} />}
+
+      {/* Opened by SYNC OPTIONS; it was only mounted in the grid view, so the
+          button in this view did nothing */}
+      {syncModal && <SyncPlaylistModal folder={syncModal} onClose={() => setSyncModal(null)} showNotif={showNotif} onRefreshVault={onRefreshVault} isDownloading={isDownloading} onSyncStart={onSyncStart} onSyncItems={onSyncItems} />}
     </div>
   );
 }

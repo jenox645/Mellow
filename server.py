@@ -124,6 +124,30 @@ def _push_progress(event: dict) -> None:
 jobs.manager.start(_push_progress)
 
 
+def _request_opts(cfg: dict) -> dict:
+    """Cookies and network settings every yt-dlp call must share."""
+    return {
+        "cookies_browser": cfg.get("cookies_browser", "none"),
+        "cookies_file": cfg.get("cookies_file", ""),
+        "cookies_browser_profile": cfg.get("cookies_browser_profile", ""),
+        "proxy": cfg.get("proxy", ""),
+        "force_ipv4": bool(cfg.get("force_ipv4", False)),
+    }
+
+
+def _library_entry_for(path: str) -> dict | None:
+    """The library entry whose download folder is `path`, if any."""
+    return next((e for e in analytics.get_library_entries() if e.get("folder") == path or
+                 str(Path(e.get("folder", "")) / (e.get("folder_name") or "")) == path), None)
+
+
+def _remember_sync_format(path: str, chosen: dict) -> None:
+    def _save(cfg: dict) -> None:
+        formats = cfg.setdefault("vault_sync_formats", {})
+        formats[path] = {**formats.get(path, {}), **chosen}
+    update_config(_save)
+
+
 def _enqueue_vault_sync(path: str, data: dict | None = None,
                         requested_urls: list | None = None) -> dict | None:
     """Build sync opts and enqueue a sync job for a linked vault folder.
@@ -139,11 +163,14 @@ def _enqueue_vault_sync(path: str, data: dict | None = None,
     playlist_urls = [u for u in list(vp) if u in requested_urls] if requested_urls else list(vp)
     if not playlist_urls:
         return None
-    library_entries = analytics.get_library_entries()
-    lib = next((e for e in library_entries if e.get("folder") == path or
-                str(Path(e.get("folder", "")) / (e.get("folder_name") or "")) == path), None)
-    opts = _vault.build_sync_opts(data, lib, cfg)
+    lib = _library_entry_for(path)
+    opts = _vault.build_sync_opts(data, lib, cfg, path)
     library_id = lib["id"] if lib else None
+    chosen = {k: data[k] for k in _vault.SYNC_FORMAT_KEYS if k in data}
+    if chosen:
+        # Remember what the user picked, so auto-sync and "sync all" (which
+        # have no dialog) keep downloading this folder the same way
+        _remember_sync_format(path, chosen)
     label = f"Sync — {Path(path).name} ({len(playlist_urls)} playlist(s))"
     return _enqueue_job(playlist_urls[0] if len(playlist_urls) == 1 else path,
                         path, opts, library_id, job_type="sync", label=label,
@@ -548,14 +575,8 @@ def api_info() -> Response:
     url = data.get("url", "").strip()
     if not url:
         return jsonify({"error": "No URL"}), 400
-    cfg = load_config()
-    cookie_opts = {
-        "cookies_browser": cfg.get("cookies_browser", "none"),
-        "cookies_file": cfg.get("cookies_file", ""),
-        "cookies_browser_profile": cfg.get("cookies_browser_profile", ""),
-    }
     try:
-        info = downloader.get_video_info(url, cookie_opts=cookie_opts)
+        info = downloader.get_video_info(url, cookie_opts=_request_opts(load_config()))
         return jsonify(info)
     except Exception as exc:
         return jsonify({"error": str(exc)}), 500
@@ -575,6 +596,10 @@ def api_download() -> Response:
         "quality": data.get("quality", "best"),
         "container": data.get("container", "mp4"),
         "audio_format": data.get("audio_format", "mp3"),
+        "audio_quality": data.get("audio_quality") or cfg.get("default_audio_quality", "best"),
+        # A Feed download saved into a vault folder runs in library mode;
+        # without this an AUDIO choice was downloaded as video
+        "sync_audio": bool(data.get("sync_audio", False)),
         "embed_thumbnail": data.get("embed_thumbnail", True),
         "embed_chapters": data.get("embed_chapters", True),
         "embed_metadata": data.get("embed_metadata", True),
@@ -597,6 +622,7 @@ def api_download() -> Response:
         "cookies_browser_profile": cfg.get("cookies_browser_profile", ""),
         "rate_limit": cfg.get("rate_limit", ""),
         "proxy": cfg.get("proxy", ""),
+        "force_ipv4": bool(cfg.get("force_ipv4", False)),
         "external_downloader": cfg.get("external_downloader", ""),
         "concurrent_fragments": cfg.get("concurrent_fragments", 4),
         "sleep_interval": cfg.get("sleep_interval", 0),
@@ -904,14 +930,8 @@ def api_playlist_items() -> Response:
     url = data.get("url", "").strip()
     if not url:
         return jsonify({"error": "No URL"}), 400
-    cfg = load_config()
-    cookie_opts = {
-        "cookies_browser": cfg.get("cookies_browser", "none"),
-        "cookies_file": cfg.get("cookies_file", ""),
-        "cookies_browser_profile": cfg.get("cookies_browser_profile", ""),
-    }
     try:
-        items = downloader.get_playlist_items(url, cookie_opts=cookie_opts)
+        items = downloader.get_playlist_items(url, cookie_opts=_request_opts(load_config()))
         return jsonify({"items": items})
     except Exception as exc:
         return jsonify({"error": str(exc)}), 500
@@ -948,7 +968,12 @@ def api_vault_folder_previews() -> Response:
 def api_vault_playlists_get() -> Response:
     path = request.args.get("path", "")
     cfg = load_config()
-    return jsonify({"playlists": cfg.get("vault_playlists", {}).get(path, [])})
+    return jsonify({
+        "playlists": cfg.get("vault_playlists", {}).get(path, []),
+        # What a sync of this folder will use unless told otherwise — the
+        # sync dialog starts from it instead of always offering 1080p video
+        "sync_format": _vault.default_sync_format(path, _library_entry_for(path), cfg) if path else {},
+    })
 
 
 @app.route("/api/vault/playlists", methods=["POST"])
@@ -958,11 +983,17 @@ def api_vault_playlists_post() -> Response:
     url_val = data.get("url", "").strip()
     if not path or not url_val:
         return jsonify({"error": "path and url required"}), 400
+    fmt = data.get("sync_format") if isinstance(data.get("sync_format"), dict) else {}
+    chosen = {k: v for k, v in fmt.items() if k in _vault.SYNC_FORMAT_KEYS}
+
     def _add_pl(cfg: dict) -> None:
         vp = cfg.setdefault("vault_playlists", {})
         urls = vp.setdefault(path, [])
         if url_val not in urls:
             urls.append(url_val)
+        if chosen:
+            formats = cfg.setdefault("vault_sync_formats", {})
+            formats[path] = {**formats.get(path, {}), **chosen}
     cfg = update_config(_add_pl)
     return jsonify({"ok": True, "playlists": cfg["vault_playlists"][path]})
 
@@ -1087,7 +1118,7 @@ def api_vault_mirror_preview() -> Response:
     vp = cfg.get("vault_playlists", {}).get(path, [])
     if not vp:
         return jsonify({"error": "No playlist linked"}), 400
-    return jsonify(_vault.get_mirror_preview(path, vp))
+    return jsonify(_vault.get_mirror_preview(path, vp, _request_opts(cfg)))
 
 
 @app.route("/api/vault/mirror-confirm", methods=["POST"])
@@ -1234,6 +1265,12 @@ def api_library_get() -> Response:
 @app.route("/api/library", methods=["POST"])
 def api_library_post() -> Response:
     data = request.get_json(force=True) or {}
+    if not (data.get("folder") or "").strip():
+        # No folder picked: put it in its own subfolder of the download
+        # folder. Left empty, the entry never showed up in the Vault and its
+        # syncs landed loose in the download folder root.
+        data["folder"] = load_config().get("output_dir") or str(Path.home() / "Downloads" / "MellowDLP")
+        data["use_subfolder"] = True
     entry_id = str(uuid.uuid4())
     now = time.strftime("%Y-%m-%d %H:%M:%S")
     entry = _library.build_entry(data, entry_id, now)
@@ -1241,17 +1278,18 @@ def api_library_post() -> Response:
     # Link all extra URLs to vault_playlists for the folder
     extra_urls = data.get("extra_urls", [])
     all_urls = ([data.get("url", "")] if data.get("url") else []) + [u for u in extra_urls if u]
-    if all_urls and (entry["folder"] or entry["folder_name"]):
-        folder_path = str(Path(entry["folder"]) / entry["folder_name"]) if entry.get("use_subfolder") and entry["folder"] and entry["folder_name"] else entry["folder"]
-        if folder_path:
-            def _link_urls(cfg: dict) -> None:
-                vp = cfg.setdefault("vault_playlists", {})
-                existing_urls = vp.setdefault(folder_path, [])
-                for u in all_urls:
-                    if u and u not in existing_urls:
-                        existing_urls.append(u)
-            update_config(_link_urls)
-    return jsonify(entry), 201
+    folder_path = _library.folder_path_for_entry(entry)
+    if all_urls and folder_path:
+        def _link_urls(cfg: dict) -> None:
+            vp = cfg.setdefault("vault_playlists", {})
+            existing_urls = vp.setdefault(folder_path, [])
+            for u in all_urls:
+                if u and u not in existing_urls:
+                    existing_urls.append(u)
+        update_config(_link_urls)
+    # folder_path: where downloads for this entry go (the client downloads
+    # into exactly the folder the entry and its playlist links point at)
+    return jsonify({**entry, "folder_path": folder_path}), 201
 
 
 @app.route("/api/library/<entry_id>", methods=["PUT"])

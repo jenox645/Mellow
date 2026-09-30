@@ -172,27 +172,56 @@ def list_folder_files(path: str) -> list[dict]:
 
 # ── Thumbnail serving ─────────────────────────────────────────────────────────
 
-def _generate_video_thumb(video: Path, sidecar: Path) -> bool:
-    """Extract a frame as a cached sidecar .jpg for files with no thumbnail."""
+# Media files ffmpeg could not make a thumbnail for. The vault grid asks for
+# every file's thumbnail on each render; without this an audio file with no
+# cover art spawned ffmpeg again every time.
+_thumb_failed: set[tuple[str, float]] = set()
+
+
+def _generate_thumb(media: Path, sidecar: Path) -> bool:
+    """Make a cached sidecar .jpg for a file that has none.
+
+    Video: grab a frame. Audio: pull out the embedded cover art, if any.
+    """
     ffmpeg = find_ffmpeg()
     if not ffmpeg:
         return False
-    scale = f"scale={THUMB_FFMPEG_WIDTH}:-1"
     try:
-        kw: dict = {"capture_output": True, "timeout": THUMB_FFMPEG_TIMEOUT_SECS}
-        if os.name == "nt":
-            kw["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
-        result = subprocess.run(
-            [ffmpeg, "-ss", str(THUMB_FFMPEG_SEEK_SECS), "-i", str(video), "-frames:v", "1",
-             "-vf", scale, "-q:v", "4", "-y", str(sidecar)], **kw)
-        if result.returncode != 0 or not sidecar.exists() or sidecar.stat().st_size == 0:
-            # Short clips: retry from the start
-            result = subprocess.run(
-                [ffmpeg, "-i", str(video), "-frames:v", "1",
-                 "-vf", scale, "-q:v", "4", "-y", str(sidecar)], **kw)
-        return result.returncode == 0 and sidecar.exists() and sidecar.stat().st_size > 0
-    except Exception:
+        key = (str(media), media.stat().st_mtime)
+    except OSError:
         return False
+    if key in _thumb_failed:
+        return False
+    scale = f"scale={THUMB_FFMPEG_WIDTH}:-1"
+    kw: dict = {"capture_output": True, "timeout": THUMB_FFMPEG_TIMEOUT_SECS}
+    if os.name == "nt":
+        kw["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+
+    def made() -> bool:
+        return sidecar.exists() and sidecar.stat().st_size > 0
+
+    try:
+        if media.suffix.lower() in VIDEO_EXTS:
+            result = subprocess.run(
+                [ffmpeg, "-ss", str(THUMB_FFMPEG_SEEK_SECS), "-i", str(media), "-frames:v", "1",
+                 "-vf", scale, "-q:v", "4", "-y", str(sidecar)], **kw)
+            if result.returncode != 0 or not made():
+                # Short clips: retry from the start
+                result = subprocess.run(
+                    [ffmpeg, "-i", str(media), "-frames:v", "1",
+                     "-vf", scale, "-q:v", "4", "-y", str(sidecar)], **kw)
+        else:
+            # The cover art of an audio file is its only "video" stream
+            result = subprocess.run(
+                [ffmpeg, "-i", str(media), "-map", "0:v:0", "-frames:v", "1",
+                 "-vf", scale, "-q:v", "4", "-y", str(sidecar)], **kw)
+        ok = result.returncode == 0 and made()
+    except Exception:
+        ok = False
+    if not ok:
+        _thumb_failed.add(key)
+        sidecar.unlink(missing_ok=True)
+    return ok
 
 
 def get_thumb_bytes(path: str) -> tuple[bytes, str] | None:
@@ -206,19 +235,21 @@ def get_thumb_bytes(path: str) -> tuple[bytes, str] | None:
             return None
     if not p.exists():
         return None
-    base = p.with_suffix("")
+    # Sidecars share the media file's full stem: "Episode.10.mp4" pairs with
+    # "Episode.10.jpg" (with_suffix would look for "Episode.jpg", which is a
+    # different video's thumbnail or nothing)
     for ext in (".jpg", ".jpeg", ".png", ".webp"):
-        thumb = base.with_suffix(ext)
+        thumb = p.parent / (p.stem + ext)
         if thumb.exists():
             try:
                 return thumb.read_bytes(), _mime_for_ext(ext)
             except Exception:
                 return None
-    # No sidecar (pre-existing file / watched folder): generate one frame with
-    # ffmpeg on demand and cache it as the .jpg sidecar.
-    if p.suffix.lower() in VIDEO_EXTS:
-        sidecar = base.with_suffix(".jpg")
-        if _generate_video_thumb(p, sidecar):
+    # No sidecar (pre-existing file / watched folder): make one with ffmpeg on
+    # demand and cache it next to the file.
+    if p.suffix.lower() in MEDIA_EXTS:
+        sidecar = p.parent / (p.stem + ".jpg")
+        if _generate_thumb(p, sidecar):
             try:
                 return sidecar.read_bytes(), "image/jpeg"
             except Exception:
@@ -350,20 +381,30 @@ def get_folder_stats(path: str, linked_playlists: list) -> dict:
 
 # ── Mirror preview & confirm ──────────────────────────────────────────────────
 
-def get_mirror_preview(path: str, vp: list[str]) -> dict:
+def get_mirror_preview(path: str, vp: list[str], request_opts: dict | None = None) -> dict:
     """Return local files not present in any linked playlist."""
     import yt_dlp as _ydl
+
+    import downloader
+    ydl_opts: dict = {"quiet": True, "extract_flat": True, "skip_download": True}
+    if request_opts:
+        # Same cookies/proxy as the sync itself, so private playlists list
+        downloader._apply_cookie_opts(ydl_opts, request_opts)
+        downloader._apply_network_opts(ydl_opts, request_opts)
     playlist_ids: set[str] = set()
+    fetch_errors: list[str] = []
     for playlist_url in vp:
         try:
-            with _ydl.YoutubeDL({"quiet": True, "extract_flat": True, "skip_download": True}) as ydl:
+            with _ydl.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(playlist_url, download=False)
-                if info and "entries" in info:
-                    for entry in (info["entries"] or []):
-                        if entry and entry.get("id"):
-                            playlist_ids.add(entry["id"])
+            if not info:
+                raise ValueError("no playlist data")
+            for entry in (info.get("entries") or []):
+                if entry and entry.get("id"):
+                    playlist_ids.add(entry["id"])
         except Exception as exc:
             print(f"[MIRROR-PREVIEW] failed to fetch {playlist_url}: {exc}", flush=True)
+            fetch_errors.append(playlist_url)
 
     p = Path(path)
     # IDs backed by an actual file on disk (deletable) vs archive-only IDs
@@ -375,6 +416,10 @@ def get_mirror_preview(path: str, vp: list[str]) -> dict:
         m = _re.search(r'\[([A-Za-z0-9_-]{11})\]', f.name)
         if m:
             file_ids[m.group(1)] = f.name
+    # The default "%(title)s" names carry no [id]; recover it from the
+    # download history, or mirror mode could never remove anything.
+    for vid_id, fname in _history_ids_in(p).items():
+        file_ids.setdefault(vid_id, fname)
     archive_ids: set[str] = set()
     for archive_file in [p / "mellow_archive.txt", *p.glob(".mellow_archive_*.txt")]:
         if not archive_file.exists():
@@ -389,7 +434,9 @@ def get_mirror_preview(path: str, vp: list[str]) -> dict:
             pass
 
     to_delete = []
-    if playlist_ids:
+    # A playlist that failed to load would make its files look orphaned:
+    # propose no deletions at all unless every linked playlist was read
+    if playlist_ids and not fetch_errors:
         for vid_id, fname in file_ids.items():
             if vid_id not in playlist_ids:
                 f_path = p / fname
@@ -406,7 +453,32 @@ def get_mirror_preview(path: str, vp: list[str]) -> dict:
         "unchanged_count": len(playlist_ids & known_ids),
         "playlist_count": len(vp),
         "playlist_ids_found": len(playlist_ids),
+        "fetch_errors": fetch_errors,
     }
+
+
+_YT_URL_ID_RE = _re.compile(r'(?:[?&]v=|youtu\.be/|/shorts/)([A-Za-z0-9_-]{11})')
+
+
+def _history_ids_in(folder: Path) -> dict[str, str]:
+    """YouTube id -> file name, for files in `folder` that the download
+    history knows the source URL of."""
+    ids: dict[str, str] = {}
+    try:
+        with analytics.get_conn() as con:
+            rows = con.execute(
+                "SELECT file_path, url FROM downloads WHERE status='success' AND file_path IS NOT NULL"
+            ).fetchall()
+    except Exception:
+        return ids
+    for file_path, url in rows:
+        f = Path(file_path)
+        if f.parent != folder or not f.is_file():
+            continue
+        m = _YT_URL_ID_RE.search(url or "")
+        if m:
+            ids.setdefault(m.group(1), f.name)
+    return ids
 
 
 def confirm_mirror_delete(paths: list[str]) -> dict:
@@ -668,26 +740,96 @@ def launch_playlist(paths: list[str], open_file_fn: Callable[[str], None]) -> st
 
 # ── Sync opts builder ─────────────────────────────────────────────────────────
 
-def build_sync_opts(data: dict, lib: dict | None, cfg: dict) -> dict:
-    """Build a yt-dlp opts dict for a vault sync request."""
-    q = data.get("quality") or (lib["quality"] if lib else cfg.get("quality_default", "1080p"))
-    lib_is_audio = bool(lib) and (lib.get("mode") or "").upper() == "AUDIO"
+# Format choices a folder remembers between syncs (vault_sync_formats in config)
+SYNC_FORMAT_KEYS = (
+    "sync_audio", "audio_format", "audio_quality", "quality", "container",
+    "embed_thumbnail", "embed_subs", "embed_chapters", "embed_metadata", "sponsorblock",
+)
+_AUDIO_SYNC_FORMATS = ("mp3", "m4a", "aac", "flac", "opus", "wav")
+_VIDEO_SYNC_CONTAINERS = ("mp4", "mkv", "webm")
+
+
+def infer_folder_format(path: str) -> dict:
+    """Guess what a folder holds from its media files: a folder of .mp3s syncs
+    as MP3 audio, not as 1080p video."""
+    audio: dict[str, int] = {}
+    video: dict[str, int] = {}
+    try:
+        for f in Path(path).iterdir():
+            ext = f.suffix.lower().lstrip(".")
+            if not f.is_file() or f.suffix.lower() not in MEDIA_EXTS:
+                continue
+            bucket = video if f.suffix.lower() in VIDEO_EXTS else audio
+            bucket[ext] = bucket.get(ext, 0) + 1
+    except OSError:
+        return {}
+    if not audio and not video:
+        return {}
+    if sum(audio.values()) > sum(video.values()):
+        fmt = max(audio, key=audio.get)
+        return {"sync_audio": True, "audio_format": fmt if fmt in _AUDIO_SYNC_FORMATS else "mp3"}
+    ext = max(video, key=video.get)
+    return {"sync_audio": False, "container": ext if ext in _VIDEO_SYNC_CONTAINERS else "mp4"}
+
+
+def default_sync_format(path: str, lib: dict | None, cfg: dict) -> dict:
+    """Format a sync of this folder uses when the request doesn't say.
+
+    Last choice made for the folder, then its library entry, then a guess from
+    the files already in it. Auto-sync and "sync all" have no dialog, so
+    without this an audio folder was synced as 1080p video.
+    """
+    saved = (cfg.get("vault_sync_formats") or {}).get(path) if path else None
+    if saved:
+        return {k: v for k, v in saved.items() if k in SYNC_FORMAT_KEYS}
+    if lib:
+        return {
+            "sync_audio": (lib.get("mode") or "").upper() == "AUDIO",
+            "audio_format": lib.get("audio_format") or "mp3",
+            "quality": lib.get("quality") or cfg.get("default_quality", "1080p"),
+            "container": lib.get("container") or "mp4",
+            "embed_thumbnail": lib.get("embed_thumbnail", True),
+            "embed_subs": lib.get("embed_subs", False),
+            "embed_chapters": lib.get("embed_chapters", True),
+            "embed_metadata": lib.get("embed_metadata", True),
+            "sponsorblock": lib.get("sponsorblock", False),
+        }
+    return infer_folder_format(path) if path else {}
+
+
+def build_sync_opts(data: dict, lib: dict | None, cfg: dict, path: str = "") -> dict:
+    """Build a yt-dlp opts dict for a vault sync request.
+
+    Precedence per option: the request, then default_sync_format(), then the
+    Config defaults.
+    """
+    base = default_sync_format(path, lib, cfg)
+
+    def pick(key: str, fallback):
+        value = data.get(key)
+        if value is None or value == "":
+            value = base.get(key)
+        return fallback if value is None or value == "" else value
+
     return {
         "mode": "library",
-        "quality": q,
-        "container": (data.get("container") or (lib or {}).get("container") or "mp4").lower(),
-        "sync_audio": data.get("sync_audio", lib_is_audio),
-        "audio_format": (data.get("audio_format") or (lib or {}).get("audio_format") or "mp3").lower(),
-        "embed_thumbnail": data.get("embed_thumbnail", lib["embed_thumbnail"] if lib else cfg.get("embed_thumbnail", True)),
-        "embed_chapters": data.get("embed_chapters", lib["embed_chapters"] if lib else True),
-        "embed_metadata": data.get("embed_metadata", lib["embed_metadata"] if lib else True),
-        "embed_subs": data.get("embed_subs", lib.get("embed_subs", False) if lib else False),
-        "sponsorblock": data.get("sponsorblock", lib.get("sponsorblock", False) if lib else False),
+        "quality": pick("quality", cfg.get("default_quality", "1080p")),
+        "container": str(pick("container", cfg.get("default_container", "mp4"))).lower(),
+        "sync_audio": bool(pick("sync_audio", False)),
+        "audio_format": str(pick("audio_format", cfg.get("default_audio_format", "mp3"))).lower(),
+        "audio_quality": pick("audio_quality", cfg.get("default_audio_quality", "best")),
+        "embed_thumbnail": pick("embed_thumbnail", True),
+        "embed_chapters": pick("embed_chapters", True),
+        "embed_metadata": pick("embed_metadata", True),
+        "embed_subs": pick("embed_subs", False),
+        "sponsorblock": pick("sponsorblock", False),
+        "filename_template": (lib or {}).get("filename_template") or cfg.get("filename_template", ""),
         "cookies_browser": cfg.get("cookies_browser", "none"),
         "cookies_file": cfg.get("cookies_file", ""),
         "cookies_browser_profile": cfg.get("cookies_browser_profile", ""),
         "rate_limit": cfg.get("rate_limit", ""),
         "proxy": cfg.get("proxy", ""),
+        "force_ipv4": bool(cfg.get("force_ipv4", False)),
         "concurrent_fragments": cfg.get("concurrent_fragments", 4),
         "sleep_interval": cfg.get("sleep_interval", 0),
         "retries": cfg.get("retries", 3),

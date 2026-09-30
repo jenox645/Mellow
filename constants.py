@@ -59,6 +59,7 @@ SPONSORBLOCK_REMOVE_CATEGORIES: tuple[str, ...] = ("sponsor", "intro", "outro", 
 
 # ── Misc ──────────────────────────────────────────────────────────────────────
 WEBHOOK_TIMEOUT_SECS: int = 5
+SOCKET_TIMEOUT_SECS: int = 20        # yt-dlp per-connection timeout
 PYPI_CHECK_TIMEOUT_SECS: int = 30
 M3U8_TEMP_MAX_AGE_SECS: int = 86400  # playlist temp files older than this are swept
 FFMPEG_RECHECK_SECS: int = 30        # how often a missing ffmpeg is looked for again

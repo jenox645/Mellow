@@ -40,5 +40,14 @@ export const PAGE_ORDER = ['feed', 'queue', 'vault', 'analytics', 'signal', 'con
 // Tooltip of the SponsorBlock option (feed and library entries)
 export const SPONSORBLOCK_HINT = 'Cut sponsor, intro, outro and self-promo segments out of YouTube downloads';
 
+// Download choices — one list for the Feed, the vault dialogs and Config, so
+// they can't drift apart (the vault dialog used to lack 4K and 360P)
+export const QUALITIES = ['best', '4k', '1080p', '720p', '480p', '360p'];
+export const CONTAINERS = ['mp4', 'mkv', 'webm'];
+export const AUDIO_FORMATS = ['mp3', 'aac', 'flac', 'm4a', 'opus', 'wav'];
+export const LOSSLESS_AUDIO = ['flac', 'wav'];
+// [value, label]; 'best' = highest-quality VBR
+export const AUDIO_QUALITIES = [['best', 'BEST'], ['320', '320K'], ['256', '256K'], ['192', '192K'], ['128', '128K']];
+
 // Error patterns that usually mean yt-dlp is outdated
 export const BREAKAGE_RE = /unable to extract|unsupported url|extractor|sign in to confirm|http error 403/i;

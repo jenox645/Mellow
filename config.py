@@ -30,6 +30,7 @@ _DEFAULTS: dict = {
     "cookies_browser_profile": "",
     "rate_limit": "",
     "proxy": "",
+    "force_ipv4": False,              # work around a broken IPv6 route
     "external_downloader": "",
     "ffmpeg_location": "",            # ffmpeg binary or folder; empty = auto-detect
     "concurrent_fragments": 4,
@@ -43,6 +44,7 @@ _DEFAULTS: dict = {
     "default_quality": "1080p",
     "default_container": "mp4",
     "default_audio_format": "mp3",
+    "default_audio_quality": "best",  # best | 320 | 256 | 192 | 128 (kbps)
     # Behavior
     "download_workers": 1,            # concurrent downloads (1 = sequential)
     "auto_sync_enabled": False,       # vault auto-sync scheduler master switch

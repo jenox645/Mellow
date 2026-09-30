@@ -11,6 +11,7 @@ import yt_dlp
 import analytics
 from constants import (
     PAUSE_POLL_SECS,
+    SOCKET_TIMEOUT_SECS,
     SPONSORBLOCK_REMOVE_CATEGORIES,
     THUMB_FETCH_TIMEOUT_SECS,
 )
@@ -118,6 +119,16 @@ AUDIO_FORMAT_MAP: dict[str, str] = {
     "m4a": "m4a",
     "opus": "opus",
     "wav": "wav",
+}
+
+# Audio quality choice -> FFmpegExtractAudio preferredquality ("0" = best VBR).
+# Ignored by lossless targets (flac, wav).
+AUDIO_QUALITY_MAP: dict[str, str] = {
+    "best": "0",
+    "320": "320",
+    "256": "256",
+    "192": "192",
+    "128": "128",
 }
 
 _current_cancel_event: threading.Event | None = None
@@ -468,14 +479,14 @@ def _download_video(
                        "start/end time.")
             progress_cb({"status": "warning", "code": "sponsorblock_skipped",
                          "message": warning, "library_id": library_id})
-        pps = _build_postprocessors(opts, embed_subs=bool(embed_subs and mode != "audio"),
+        pps = _build_postprocessors(opts, embed_subs=bool(embed_subs and not want_audio),
                                     cut_sponsors=cut_sponsors)
         if want_audio:
             fmt = "bestaudio/best"
             pps.insert(0, {
                 "key": "FFmpegExtractAudio",
                 "preferredcodec": AUDIO_FORMAT_MAP.get(audio_fmt, "mp3"),
-                "preferredquality": "0",
+                "preferredquality": AUDIO_QUALITY_MAP.get(_s("audio_quality", "best").lower(), "0"),
             })
         else:
             fmt, ydl_opts["merge_output_format"] = _merged_format(quality, container)
@@ -515,7 +526,7 @@ def _download_video(
 
     print(f"[DOWNLOAD] ydl format={ydl_opts.get('format')} postprocessors={ydl_opts.get('postprocessors')}", flush=True)
 
-    if embed_subs and mode != "audio":
+    if embed_subs and not want_audio:
         ydl_opts["writesubtitles"] = True
         ydl_opts["writeautomaticsub"] = opts.get("auto_subs", False)
         ydl_opts["subtitleslangs"] = [s.strip() for s in sub_langs.split(",") if s.strip()]
@@ -537,8 +548,7 @@ def _download_video(
             ydl_opts["ratelimit"] = parsed_rate
         else:
             print(f"[DOWNLOAD] ignoring unparsable rate_limit {rate_limit!r}", flush=True)
-    if proxy:
-        ydl_opts["proxy"] = proxy
+    _apply_network_opts(ydl_opts, {"proxy": proxy, "force_ipv4": opts.get("force_ipv4")})
     if ext_downloader:
         ydl_opts["external_downloader"] = ext_downloader
     frags = _safe_int(concurrent_frags)
@@ -747,6 +757,19 @@ def _download_video(
             pause_event.clear()
 
 
+def _apply_network_opts(ydl_opts: dict, opts: dict) -> None:
+    """Proxy and IP family — applied to analyze, playlist listing and
+    downloads alike, so a proxy isn't bypassed just for the first request."""
+    proxy = str(opts.get("proxy") or "").strip()
+    if proxy:
+        ydl_opts["proxy"] = proxy
+    if opts.get("force_ipv4"):
+        # A broken IPv6 route makes every request hang for minutes before
+        # falling back; binding to 0.0.0.0 is yt-dlp's --force-ipv4
+        ydl_opts["source_address"] = "0.0.0.0"
+    ydl_opts.setdefault("socket_timeout", SOCKET_TIMEOUT_SECS)
+
+
 def _apply_cookie_opts(ydl_opts: dict, cookie_opts: dict) -> None:
     browser = cookie_opts.get("cookies_browser", "")
     profile = str(cookie_opts.get("cookies_browser_profile") or "").strip() or None
@@ -767,6 +790,7 @@ def get_video_info(url: str, cookie_opts: dict | None = None) -> dict:
     }
     if cookie_opts:
         _apply_cookie_opts(ydl_opts, cookie_opts)
+        _apply_network_opts(ydl_opts, cookie_opts)
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=False)
     if not info:
@@ -803,6 +827,7 @@ def get_playlist_items(url: str, cookie_opts: dict | None = None) -> list[dict]:
     }
     if cookie_opts:
         _apply_cookie_opts(ydl_opts, cookie_opts)
+        _apply_network_opts(ydl_opts, cookie_opts)
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=False)
     if not info:
