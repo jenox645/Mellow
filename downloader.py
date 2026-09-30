@@ -9,7 +9,11 @@ from typing import Any, Callable
 import yt_dlp
 
 import analytics
-from constants import PAUSE_POLL_SECS, THUMB_FETCH_TIMEOUT_SECS
+from constants import (
+    PAUSE_POLL_SECS,
+    SPONSORBLOCK_REMOVE_CATEGORIES,
+    THUMB_FETCH_TIMEOUT_SECS,
+)
 from ffmpeg_locate import find_ffmpeg
 
 _pause_event = threading.Event()
@@ -202,24 +206,41 @@ def _make_progress_hook(progress_cb: Callable, library_id: str | None, speed_tra
     return hook
 
 
-def _build_postprocessors(opts: dict) -> list[dict]:
-    """ffmpeg-backed postprocessors — only call this when ffmpeg is available."""
+def _build_postprocessors(opts: dict, *, embed_subs: bool = False,
+                          cut_sponsors: bool = False) -> list[dict]:
+    """ffmpeg-backed postprocessors — only call this when ffmpeg is available.
+
+    The order is the one yt-dlp's CLI uses (get_postprocessors in
+    yt_dlp/__init__.py); several of these only work in that order.
+    """
     pps: list[dict] = []
+    if cut_sponsors:
+        # This one only looks the segments up (YouTube only) and must do so
+        # before the download; ModifyChapters below is what cuts them out.
+        pps.append({
+            "key": "SponsorBlock",
+            "categories": list(SPONSORBLOCK_REMOVE_CATEGORIES),
+            "when": "after_filter",
+        })
     if opts.get("embed_thumbnail"):
         # The embed step itself is attached in _download_video (it needs
         # writethumbnail and must never fail a download). Converting first
         # gives every container a format it accepts and a predictable .jpg.
         pps.append({"key": "FFmpegThumbnailsConvertor", "format": "jpg", "when": "before_dl"})
+    if embed_subs:
+        # Before ModifyChapters, so the subtitles are cut along with the video
+        pps.append({"key": "FFmpegEmbedSubtitle", "already_have_subtitle": False})
+    if cut_sponsors:
+        # Before FFmpegMetadata: it moves the chapters that follow a cut
+        pps.append({
+            "key": "ModifyChapters",
+            "remove_sponsor_segments": list(SPONSORBLOCK_REMOVE_CATEGORIES),
+        })
     if opts.get("embed_chapters") or opts.get("embed_metadata"):
         pps.append({
             "key": "FFmpegMetadata",
             "add_chapters": bool(opts.get("embed_chapters")),
             "add_metadata": bool(opts.get("embed_metadata")),
-        })
-    if opts.get("sponsorblock"):
-        pps.append({
-            "key": "SponsorBlock",
-            "categories": ["sponsor", "intro", "outro", "selfpromo"],
         })
     if opts.get("split_chapters"):
         pps.append({"key": "FFmpegSplitChapters"})
@@ -438,17 +459,27 @@ def _download_video(
     }
     if ffmpeg:
         ydl_opts["ffmpeg_location"] = ffmpeg
+        cut_sponsors = bool(opts.get("sponsorblock"))
+        if cut_sponsors and (start_time or end_time):
+            # SponsorBlock times refer to the whole video; yt-dlp would apply
+            # them unshifted to the trimmed file and cut the wrong parts.
+            cut_sponsors = False
+            warning = ("SponsorBlock was skipped: it can't be combined with a clip "
+                       "start/end time.")
+            progress_cb({"status": "warning", "code": "sponsorblock_skipped",
+                         "message": warning, "library_id": library_id})
+        pps = _build_postprocessors(opts, embed_subs=bool(embed_subs and mode != "audio"),
+                                    cut_sponsors=cut_sponsors)
         if want_audio:
             fmt = "bestaudio/best"
-            pps = [{
+            pps.insert(0, {
                 "key": "FFmpegExtractAudio",
                 "preferredcodec": AUDIO_FORMAT_MAP.get(audio_fmt, "mp3"),
                 "preferredquality": "0",
-            }] + _build_postprocessors(opts)
+            })
         else:
             fmt, ydl_opts["merge_output_format"] = _merged_format(quality, container)
             fmt = custom_format or fmt
-            pps = _build_postprocessors(opts)
     else:
         if start_time or end_time:
             raise RuntimeError("Trimming (start/end time) needs ffmpeg, which isn't installed.")
@@ -488,10 +519,7 @@ def _download_video(
         ydl_opts["writesubtitles"] = True
         ydl_opts["writeautomaticsub"] = opts.get("auto_subs", False)
         ydl_opts["subtitleslangs"] = [s.strip() for s in sub_langs.split(",") if s.strip()]
-        if ffmpeg:
-            ydl_opts["postprocessors"].append(
-                {"key": "FFmpegEmbedSubtitle", "already_have_subtitle": False}
-            )
+        # With ffmpeg, _build_postprocessors added the FFmpegEmbedSubtitle step
 
     _apply_cookie_opts(ydl_opts, {"cookies_browser": cookies_browser, "cookies_file": cookies_file, "cookies_browser_profile": cookies_browser_profile})
 
@@ -589,6 +617,9 @@ def _download_video(
                     final_thumbnail = info.get("thumbnail")
                     requested = info.get("requested_downloads") or [{}]
                     if requested and isinstance(requested[0], dict):
+                        # The saved file's own length: shorter than the video
+                        # when sponsor segments were cut out of it
+                        final_duration = requested[0].get("duration") or final_duration
                         fp = requested[0].get("filepath") or requested[0].get("_filename")
                         if fp:
                             final_path = fp
@@ -653,7 +684,7 @@ def _download_video(
                     "title": entry.get("title"),
                     "uploader": entry.get("uploader") or entry.get("channel"),
                     "platform": _detect_platform(url),
-                    "duration_seconds": entry.get("duration"),
+                    "duration_seconds": req[0].get("duration") or entry.get("duration"),
                     "file_size_bytes": sz,
                     "format": media_kind,
                     "quality": quality,

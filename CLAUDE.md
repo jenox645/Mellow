@@ -44,7 +44,7 @@ All job-originated events carry `job_id`, `job_type`, `job_label` (multi-worker 
 - `item_done` — one file finished: `title`, `thumbnail`, `video_id`, `playlist_index`
 - `item_failed` — one item failed: `reason` (`geo_blocked`/`error`), `message`
 - `processing` — postprocessing (ffmpeg)
-- `warning` — non-fatal notice with `code` + `message` (today: `ffmpeg_missing`)
+- `warning` — non-fatal notice with `code` + `message` (today: `ffmpeg_missing`, `sponsorblock_skipped`)
 - `complete` — entire download finished: `title`, `file_path`, `file_size`, `warning` (set when it was saved with limits)
 - `error` (includes `url` for retry, `code: ffmpeg_missing` when that is the likely cause) / `cancelled` — terminal states
 - `paused` / `resumed` — pause toggles
@@ -66,6 +66,7 @@ All job-originated events carry `job_id`, `job_type`, `job_label` (multi-worker 
 - History rows are only written for files that exist on disk; the recorded `container` is the real file extension
 - Cover art: yt-dlp only embeds a thumbnail it wrote itself, so `embed_thumbnail` sets `writethumbnail` + a jpg convertor and adds `_EmbedThumbnailBestEffort` (keeps the `.jpg` as the vault sidecar, never fails the download). Needs `mutagen` for mp4/m4a/flac/opus
 - webm can't hold m4a/h264: `_merged_format()` asks for webm streams and lets an impossible merge fall back to mkv (`merge_output_format="webm/mkv"`)
+- SponsorBlock (`sponsorblock` option) *removes* `SPONSORBLOCK_REMOVE_CATEGORIES` from the file. The `SponsorBlock` postprocessor only looks segments up (`when: after_filter`, YouTube only); `ModifyChapters` does the cutting and must sit after `FFmpegEmbedSubtitle` and before `FFmpegMetadata` — `_build_postprocessors()` keeps the yt-dlp CLI order. Skipped with a `sponsorblock_skipped` warning on a trimmed download (segment times refer to the whole video)
 - `download_range_func` takes `(start, end)` tuples, not dicts
 - yt-dlp's ffmpeg downloader ignores `ffmpeg_location`; `find_ffmpeg()` therefore also prepends the folder to `PATH`
 - yt-dlp update: a pip upgrade only takes effect after a restart (`restart_required`); the frozen app can't replace its bundled yt-dlp at all and says so

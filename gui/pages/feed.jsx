@@ -6,6 +6,7 @@ import { fmtBytes, fmtSpeed, fmtEta, fmtDuration, timeAgo } from '../lib/util.js
 import { SVG, Ico } from '../components/icons.jsx';
 import { Modal, Mascot, Pipeline } from '../components/common.jsx';
 import { MASCOT_CHILLING } from '../lib/mascots.js';
+import { SPONSORBLOCK_HINT } from '../lib/constants.js';
 
 export function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats, showNotif, switchPage, config, setConfig, suggestedUrl, onSuggestedConsumed, onPlaylistDownload, playlistItems, setPlaylistItems, completedItems, failedItems, playlistTotalCount, playlistCompletedCount, isPaused, syncJobLabel, fetchingPlaylistItems, onPause, onResume, onClearCompleted }) {
   const ss = (k, fb) => { try { const v = sessionStorage.getItem(k); return v !== null ? v : fb; } catch { return fb; } };
@@ -487,9 +488,9 @@ export function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats
                 { label: 'Subtitles', val: embedSubs, set: setEmbedSubs },
                 { label: 'Chapters', val: embedChapters, set: setEmbedChapters },
                 { label: 'Metadata', val: embedMeta, set: setEmbedMeta },
-                { label: 'SponsorBlock', val: sponsorblock, set: setSponsorblock },
+                { label: 'SponsorBlock', val: sponsorblock, set: setSponsorblock, hint: SPONSORBLOCK_HINT },
               ].map(item => (
-                <label key={item.label} className="opts-toggle-item">
+                <label key={item.label} className="opts-toggle-item" title={item.hint}>
                   <input type="checkbox" checked={item.val} onChange={e => item.set(e.target.checked)} />
                   {item.label}
                 </label>

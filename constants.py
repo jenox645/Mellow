@@ -52,6 +52,11 @@ HISTORY_MAX_LIMIT: int = 500
 HISTORY_DEFAULT_LIMIT: int = 50
 PAUSE_POLL_SECS: float = 0.2         # progress-hook pause loop cadence
 
+# ── SponsorBlock ──────────────────────────────────────────────────────────────
+# Segment types the "SponsorBlock" option cuts out of a download
+# (https://wiki.sponsor.ajay.app/w/Types)
+SPONSORBLOCK_REMOVE_CATEGORIES: tuple[str, ...] = ("sponsor", "intro", "outro", "selfpromo")
+
 # ── Misc ──────────────────────────────────────────────────────────────────────
 WEBHOOK_TIMEOUT_SECS: int = 5
 PYPI_CHECK_TIMEOUT_SECS: int = 30

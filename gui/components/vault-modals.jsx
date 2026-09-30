@@ -4,6 +4,7 @@
 import { API } from '../lib/api.js';
 import { fmtBytes } from '../lib/util.js';
 import { Modal } from './common.jsx';
+import { SPONSORBLOCK_HINT } from '../lib/constants.js';
 
 export function AddVaultModal({ onClose, onSaved, showNotif }) {
   const [name, setName] = React.useState('');
@@ -145,9 +146,9 @@ export function AddVaultModal({ onClose, onSaved, showNotif }) {
             { label: 'Subtitles', val: embedSubs, set: setEmbedSubs },
             { label: 'Chapters', val: embedChapters, set: setEmbedChapters },
             { label: 'Metadata', val: embedMeta, set: setEmbedMeta },
-            { label: 'SponsorBlock', val: sponsorblock, set: setSponsorblock },
+            { label: 'SponsorBlock', val: sponsorblock, set: setSponsorblock, hint: SPONSORBLOCK_HINT },
           ].map(item => (
-            <label key={item.label} className="opts-toggle-item">
+            <label key={item.label} className="opts-toggle-item" title={item.hint}>
               <input type="checkbox" checked={item.val} onChange={e => item.set(e.target.checked)} />
               {item.label}
             </label>
@@ -517,9 +518,9 @@ export function SyncPlaylistModal({ folder, onClose, showNotif, onRefreshVault, 
                 { label: 'Subtitles', val: syncEmbedSubs, set: setSyncEmbedSubs },
                 { label: 'Chapters', val: syncEmbedChapters, set: setSyncEmbedChapters },
                 { label: 'Metadata', val: syncEmbedMeta, set: setSyncEmbedMeta },
-                { label: 'SponsorBlock', val: syncSponsorblock, set: setSyncSponsorblock },
+                { label: 'SponsorBlock', val: syncSponsorblock, set: setSyncSponsorblock, hint: SPONSORBLOCK_HINT },
               ].map(item => (
-                <label key={item.label} className="opts-toggle-item">
+                <label key={item.label} className="opts-toggle-item" title={item.hint}>
                   <input type="checkbox" checked={item.val} onChange={e => item.set(e.target.checked)} />
                   {item.label}
                 </label>

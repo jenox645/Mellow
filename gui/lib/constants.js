@@ -37,5 +37,8 @@ export const CLIPBOARD_URL_RE = /^https?:\/\/\S+$/;
 // Keyboard navigation — keys 1..N jump to these pages
 export const PAGE_ORDER = ['feed', 'queue', 'vault', 'analytics', 'signal', 'config'];
 
+// Tooltip of the SponsorBlock option (feed and library entries)
+export const SPONSORBLOCK_HINT = 'Cut sponsor, intro, outro and self-promo segments out of YouTube downloads';
+
 // Error patterns that usually mean yt-dlp is outdated
 export const BREAKAGE_RE = /unable to extract|unsupported url|extractor|sign in to confirm|http error 403/i;
