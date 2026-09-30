@@ -15,18 +15,11 @@ from urllib.request import Request, urlopen
 
 from flask import Flask, Response, jsonify, request, send_file, send_from_directory
 
-import analytics
-import applog
-import backup as _backup
-import desktop
-import downloader
-import errors
-import jobs
-import library as _library
-import scheduler
-import vault as _vault
-import ytdlp_update
-from config import (
+from . import analytics, applog, desktop, downloader, errors, jobs, scheduler, ytdlp_update
+from . import backup as _backup
+from . import library as _library
+from . import vault as _vault
+from .config import (
     download_root,
     download_settings,
     load_config,
@@ -34,7 +27,7 @@ from config import (
     reset_settings,
     update_config,
 )
-from constants import (
+from .constants import (
     HISTORY_DEFAULT_LIMIT,
     HISTORY_MAX_LIMIT,
     LOW_DISK_WARN_BYTES,
@@ -45,12 +38,12 @@ from constants import (
     THUMB_CACHE_SECS,
     WEBHOOK_TIMEOUT_SECS,
 )
-from ffmpeg_locate import find_ffmpeg
-from version import APP_VERSION
+from .ffmpeg_locate import find_ffmpeg
+from .version import APP_VERSION
 
 log = logging.getLogger(__name__)
 
-STATIC_DIR = Path(__file__).parent / "static"
+STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 
 app = Flask(__name__, static_folder=None)
 

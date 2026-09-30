@@ -11,7 +11,7 @@ import sys
 from typing import Callable
 from urllib.request import urlopen
 
-from constants import PYPI_CHECK_TIMEOUT_SECS
+from .constants import PYPI_CHECK_TIMEOUT_SECS
 
 log = logging.getLogger(__name__)
 

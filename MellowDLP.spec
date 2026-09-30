@@ -17,11 +17,9 @@ a = Analysis(
     binaries=[
         (_ytdlp_bin, "."),
     ] if _os.path.exists(_ytdlp_bin) else [],
+    # The mellow package is found by following main.py's imports
     datas=[
         ("static", "static"),
-        ("server.py", "."),
-        ("downloader.py", "."),
-        ("analytics.py", "."),
     ],
     hiddenimports=[
         "yt_dlp",
@@ -36,7 +34,6 @@ a = Analysis(
         "itsdangerous",
         "duckdb",
         "mutagen",
-        "analytics",
     ] + (["tkinter", "tkinter.filedialog"] if _has_tkinter else []),
     hookspath=[],
     runtime_hooks=[],

@@ -18,7 +18,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-import downloader  # noqa: E402
+from mellow import downloader  # noqa: E402
 
 # Long-lived public videos. Every target must be fetchable anonymously —
 # Vimeo was dropped because it now requires a login for any extraction.

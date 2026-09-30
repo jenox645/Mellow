@@ -15,9 +15,9 @@ from pathlib import Path
 from typing import Callable
 from urllib.parse import quote
 
-import analytics
-from config import download_root, download_settings
-from constants import (
+from . import analytics
+from .config import download_root, download_settings
+from .constants import (
     AUDIO_FORMATS,
     FILE_THUMBS_LIMIT,
     IMAGE_EXTS,
@@ -30,8 +30,8 @@ from constants import (
     VIDEO_CONTAINERS,
     VIDEO_EXTS,
 )
-from ffmpeg_locate import find_ffmpeg
-from library import folder_path_for_entry
+from .ffmpeg_locate import find_ffmpeg
+from .library import folder_path_for_entry
 
 log = logging.getLogger(__name__)
 
@@ -388,7 +388,7 @@ def get_mirror_preview(path: str, vp: list[str], request_opts: dict | None = Non
     """Return local files not present in any linked playlist."""
     import yt_dlp as _ydl
 
-    import downloader
+    from . import downloader
     ydl_opts: dict = {"quiet": True, "extract_flat": True, "skip_download": True}
     if request_opts:
         # Same cookies/proxy as the sync itself, so private playlists list

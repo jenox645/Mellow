@@ -33,19 +33,15 @@ SYSTEM = platform.system()   # 'Windows' | 'Linux' | 'Darwin'
 IS_WINDOWS = SYSTEM == "Windows"
 IS_LINUX   = SYSTEM == "Linux"
 
-from version import APP_VERSION as VERSION  # noqa: E402 — single version source
+from mellow.version import APP_VERSION as VERSION  # noqa: E402 — single version source
 
 REACT_VERSION = "18.3.1"
 REACT_URL = f"https://unpkg.com/react@{REACT_VERSION}/umd/react.production.min.js"
 REACT_DOM_URL = f"https://unpkg.com/react-dom@{REACT_VERSION}/umd/react-dom.production.min.js"
 
-PYTHON_FILES = [
-    "main.py", "server.py", "downloader.py", "analytics.py",
-    "config.py", "constants.py", "vault.py", "library.py",
-    "jobs.py", "scheduler.py", "backup.py", "ffmpeg_locate.py", "errors.py", "applog.py",
-    "desktop.py", "ytdlp_update.py",
-    "version.py", "build_setup.py",
-]
+# Syntax-checked before packaging: the entry points plus the whole backend
+PYTHON_FILES = ["main.py", "build_setup.py", *sorted(
+    str(p.relative_to(HERE)) for p in (HERE / "mellow").glob("*.py"))]
 
 # (file_stem_without_ext, js_var_name, use_svg)
 # SVG files are embedded inline so CSS currentColor tinting works.

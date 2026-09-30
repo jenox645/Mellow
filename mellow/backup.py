@@ -10,8 +10,8 @@ import time
 import zipfile
 from pathlib import Path
 
-import analytics
-from config import CONFIG_PATH
+from . import analytics
+from .config import CONFIG_PATH
 
 CONFIG_MEMBER = "mellow_dlp.json"
 DB_MEMBER = "mellow_dlp.duckdb"

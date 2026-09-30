@@ -27,7 +27,7 @@ def test_config_retries_field(client):
 
 
 def test_reset_defaults_resets_every_setting_but_keeps_user_data(client):
-    from config import _DEFAULTS, update_config
+    from mellow.config import _DEFAULTS, update_config
 
     def _customise(cfg):
         cfg.update(force_ipv4=True, default_quality='720p', proxy='http://p:1', download_workers=3,

@@ -19,11 +19,9 @@ import uuid
 from pathlib import Path
 from typing import Callable
 
-import analytics
-import downloader
-import errors
-from config import download_root, load_config, update_config
-from constants import (
+from . import analytics, downloader, errors
+from .config import download_root, load_config, update_config
+from .constants import (
     DEFAULT_DOWNLOAD_WORKERS,
     JOB_HISTORY_KEEP,
     MAX_DOWNLOAD_WORKERS,

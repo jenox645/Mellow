@@ -2,7 +2,7 @@ import tempfile
 import threading
 from unittest.mock import patch
 
-import jobs
+from mellow import jobs
 
 
 def _make_manager(events):
@@ -32,7 +32,7 @@ def test_single_complete_for_multi_url_job():
             'library_id': None,
             'status': 'active',
         }
-        with patch('downloader.download_video', side_effect=fake_dl):
+        with patch('mellow.downloader.download_video', side_effect=fake_dl):
             assert _make_manager(events).run_job(job) == 'complete'
 
     complete_events = [e for e in events if e.get('status') == 'complete']
@@ -42,7 +42,7 @@ def test_single_complete_for_multi_url_job():
 
 
 def test_sleep_interval_default_is_zero():
-    from config import load_config
+    from mellow.config import load_config
     cfg = load_config()
     assert cfg.get('sleep_interval', 0) == 0, "sleep_interval default must be 0 for speed"
 
@@ -72,7 +72,7 @@ def test_run_job_cancelled_mid_loop():
             'library_id': None,
             'status': 'active',
         }
-        with patch('downloader.download_video', side_effect=fake_dl_cancel):
+        with patch('mellow.downloader.download_video', side_effect=fake_dl_cancel):
             assert _make_manager(events).run_job(job) == 'cancelled'
 
     assert len(called) == 1, f"Should stop after cancel, but called: {called}"
@@ -106,11 +106,11 @@ def test_cancelled_before_start_never_runs():
 
 
 def test_configured_workers_clamped():
-    with patch('jobs.load_config', return_value={'download_workers': 99}):
+    with patch('mellow.jobs.load_config', return_value={'download_workers': 99}):
         assert jobs.configured_workers() == jobs.MAX_DOWNLOAD_WORKERS
-    with patch('jobs.load_config', return_value={'download_workers': 0}):
+    with patch('mellow.jobs.load_config', return_value={'download_workers': 0}):
         assert jobs.configured_workers() == 1
-    with patch('jobs.load_config', return_value={'download_workers': 'garbage'}):
+    with patch('mellow.jobs.load_config', return_value={'download_workers': 'garbage'}):
         assert jobs.configured_workers() == 1
 
 
@@ -133,8 +133,8 @@ def test_worker_pool_respects_limit():
 
     with tempfile.TemporaryDirectory() as tmp, \
             patch.object(jobs, 'QUEUE_STATE_PATH', jobs.Path(tmp) / 'queue.json'), \
-            patch('jobs.load_config', return_value={'download_workers': 2}), \
-            patch('downloader.download_video', side_effect=fake_dl):
+            patch('mellow.jobs.load_config', return_value={'download_workers': 2}), \
+            patch('mellow.downloader.download_video', side_effect=fake_dl):
         m = jobs.JobManager()
         m.start(lambda e: None)
         for i in range(3):
@@ -179,7 +179,7 @@ def test_multi_url_job_first_playlist_failing_ends_in_one_complete():
     events = []
     urls = ['https://youtube.com/playlist?list=A', 'https://youtube.com/playlist?list=B']
     with tempfile.TemporaryDirectory() as tmp, \
-            patch('downloader.download_video', side_effect=_fake_dl_failing({urls[0]})):
+            patch('mellow.downloader.download_video', side_effect=_fake_dl_failing({urls[0]})):
         assert _make_manager(events).run_job(_multi_job(tmp, urls)) == 'complete'
     terminal = _terminal(events)
     assert [e['status'] for e in terminal] == ['complete']
@@ -195,7 +195,7 @@ def test_multi_url_job_last_playlist_failing_is_not_reported_as_error():
     events = []
     urls = ['https://youtube.com/playlist?list=A', 'https://youtube.com/playlist?list=B']
     with tempfile.TemporaryDirectory() as tmp, \
-            patch('downloader.download_video', side_effect=_fake_dl_failing({urls[1]})):
+            patch('mellow.downloader.download_video', side_effect=_fake_dl_failing({urls[1]})):
         assert _make_manager(events).run_job(_multi_job(tmp, urls)) == 'complete'
     assert [e['status'] for e in _terminal(events)] == ['complete']
 
@@ -204,7 +204,7 @@ def test_multi_url_job_all_failing_ends_in_one_error():
     events = []
     urls = ['https://youtube.com/playlist?list=A', 'https://youtube.com/playlist?list=B']
     with tempfile.TemporaryDirectory() as tmp, \
-            patch('downloader.download_video', side_effect=_fake_dl_failing(set(urls))):
+            patch('mellow.downloader.download_video', side_effect=_fake_dl_failing(set(urls))):
         assert _make_manager(events).run_job(_multi_job(tmp, urls)) == 'failed'
     terminal = _terminal(events)
     assert [e['status'] for e in terminal] == ['error']
@@ -216,14 +216,14 @@ def test_job_whose_downloader_sent_no_terminal_event_still_gets_one():
     """The UI has no timeout: a job must always end in a terminal event."""
     events = []
     with tempfile.TemporaryDirectory() as tmp, \
-            patch('downloader.download_video', return_value='success'):
+            patch('mellow.downloader.download_video', return_value='success'):
         m = _make_manager(events)
         assert m.run_job(_multi_job(tmp, ['https://youtu.be/a'], job_type='feed')) == 'complete'
     assert [e['status'] for e in _terminal(events)] == ['complete']
 
 
 def test_library_last_synced_is_stamped_on_completion_only():
-    import analytics
+    from mellow import analytics
     analytics.upsert_library_entry({'id': 'lib1', 'name': 'L', 'url': 'https://x/pl'})
     m = _make_manager([])
 
@@ -251,7 +251,7 @@ def test_failed_link_that_reported_its_own_items_is_not_counted_twice():
         cb({'status': 'complete', 'title': url})
         return 'success'
 
-    with tempfile.TemporaryDirectory() as tmp, patch('downloader.download_video', side_effect=fake_dl):
+    with tempfile.TemporaryDirectory() as tmp, patch('mellow.downloader.download_video', side_effect=fake_dl):
         assert _make_manager(events).run_job(_multi_job(tmp, urls)) == 'complete'
     assert len([e for e in events if e['status'] == 'item_failed']) == 1
     assert '1 of 2' in _terminal(events)[0]['warning']
@@ -270,8 +270,8 @@ def test_download_running_at_exit_is_offered_again():
 
     with tempfile.TemporaryDirectory() as tmp, \
             patch.object(jobs, 'QUEUE_STATE_PATH', jobs.Path(tmp) / 'queue.json'), \
-            patch('jobs.load_config', return_value={'download_workers': 1}), \
-            patch('downloader.download_video', side_effect=fake_dl):
+            patch('mellow.jobs.load_config', return_value={'download_workers': 1}), \
+            patch('mellow.downloader.download_video', side_effect=fake_dl):
         m = jobs.JobManager()
         m.start(lambda e: None)
         running = m.enqueue('https://youtu.be/running', tmp, {})

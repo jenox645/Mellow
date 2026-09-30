@@ -1,6 +1,6 @@
 from unittest.mock import patch
 
-import jobs
+from mellow import jobs
 
 
 def test_download_requires_url(client):
@@ -10,7 +10,7 @@ def test_download_requires_url(client):
 
 
 def test_download_enqueues_job(client, tmp_dir):
-    with patch('downloader.download_video') as mock_dl:
+    with patch('mellow.downloader.download_video') as mock_dl:
         mock_dl.return_value = None
         r = client.post('/api/download', json={
             'url': 'https://youtube.com/watch?v=dQw4w9WgXcQ',
@@ -27,7 +27,7 @@ def test_download_enqueues_job(client, tmp_dir):
 
 
 def test_download_multi_urls(client, tmp_dir):
-    with patch('downloader.download_video') as mock_dl:
+    with patch('mellow.downloader.download_video') as mock_dl:
         mock_dl.return_value = None
         urls = ['https://youtu.be/a', 'https://youtu.be/b']
         r = client.post('/api/download', json={
@@ -46,7 +46,7 @@ def test_cancel_download(client):
 
 
 def test_pause_resume(client):
-    import downloader
+    from mellow import downloader
     with patch.object(jobs.manager, 'has_active', return_value=True):
         assert client.post('/api/download/pause', json={}).get_json()['status'] == 'paused'
     assert downloader._pause_event.is_set()

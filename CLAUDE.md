@@ -1,7 +1,21 @@
 # MellowDLP — Developer Guide for Claude Code
 
+## Layout
+```
+main.py            desktop entry point (single-instance guard, FlaskWebGUI window)
+mellow/            backend package — modules import each other relatively (`from . import jobs`)
+gui/               frontend source (React ES modules + index.html/CSS)
+static/            build output only (gitignored): bundle, React, index.html, mascots.js
+assets/            icons, mascot art (*_vector used by the build), installer images;
+                   originals/ holds unused source art
+tests/             pytest suite (imports `from mellow import …`, patches `mellow.<module>.<name>`)
+scripts/canary.py  live-site extraction probe
+build_setup.py     the build (SETUP.bat / setup.sh call it); MellowDLP.spec, installer.iss,
+                   build_linux_deb.py are its packaging inputs
+```
+
 ## Architecture
-- Backend modules (Python):
+- Backend modules (Python, in `mellow/`):
   - `server.py` — Flask routes only; business logic lives in the modules below
   - `jobs.py` — download job queue: worker pool (`download_workers` config, max `MAX_DOWNLOAD_WORKERS`), per-job cancel events, reordering, restart persistence (`~/.mellow_dlp_queue.json`)
   - `downloader.py` — yt-dlp Python API wrapper (returns `success|cancelled|error`; never raises — setup failures become an `error` event)

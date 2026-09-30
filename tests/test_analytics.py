@@ -1,5 +1,5 @@
 def test_record_and_stats(client):
-    import analytics
+    from mellow import analytics
     analytics.record_download({
         'url': 'https://youtube.com/watch?v=test',
         'title': 'Test Video',

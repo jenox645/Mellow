@@ -16,7 +16,7 @@ except ModuleNotFoundError:
     tkinter = None  # type: ignore[assignment]
     tkinter_available = False
 
-from constants import DIALOG_TIMEOUT_SECS
+from .constants import DIALOG_TIMEOUT_SECS
 
 # Tk isn't thread-safe: every Tk use (clipboard, dialogs) goes through this lock
 _tk_lock = threading.Lock()

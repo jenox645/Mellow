@@ -16,7 +16,7 @@ except ImportError:
 
 # The auto-sync thread would read the config and enqueue real syncs during a
 # long test session; tests drive scheduler.tick() directly instead.
-import scheduler  # noqa: E402
+from mellow import scheduler  # noqa: E402
 
 scheduler.start = lambda *args, **kwargs: None
 
@@ -28,18 +28,15 @@ def isolated_user_files(tmp_path):
     Without this a test run reads and writes the developer's real
     ~/.mellow_dlp.json, ~/.mellow_dlp.duckdb and ~/.mellow_dlp_queue.json.
     """
-    import analytics
-    import downloader
-    import ffmpeg_locate
-    import jobs
+    from mellow import analytics, downloader, ffmpeg_locate, jobs
 
     cfg_path = tmp_path / 'config.json'
     # find_ffmpeg() caches its answer and extends PATH; neither may leak from
     # a test that fakes an ffmpeg into the tests that follow.
-    with patch('config.CONFIG_PATH', cfg_path), \
-            patch('backup.CONFIG_PATH', cfg_path), \
-            patch('analytics.DB_PATH', tmp_path / 'analytics.duckdb'), \
-            patch('jobs.QUEUE_STATE_PATH', tmp_path / 'queue.json'), \
+    with patch('mellow.config.CONFIG_PATH', cfg_path), \
+            patch('mellow.backup.CONFIG_PATH', cfg_path), \
+            patch('mellow.analytics.DB_PATH', tmp_path / 'analytics.duckdb'), \
+            patch('mellow.jobs.QUEUE_STATE_PATH', tmp_path / 'queue.json'), \
             patch.dict('os.environ', {}), \
             patch.multiple(ffmpeg_locate, _cached=ffmpeg_locate._cached,
                            _last_miss=ffmpeg_locate._last_miss):
@@ -57,7 +54,7 @@ def isolated_user_files(tmp_path):
 
 @pytest.fixture
 def app(isolated_user_files):
-    import server
+    from mellow import server
     server.app.config['TESTING'] = True
     return server.app
 

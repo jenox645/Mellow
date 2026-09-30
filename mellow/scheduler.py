@@ -20,8 +20,8 @@ import time
 from datetime import datetime
 from typing import Callable
 
-from config import load_config
-from constants import SCHEDULER_TICK_SECS, SYNC_INTERVALS, SYNC_RETRY_BACKOFF_SECS
+from .config import load_config
+from .constants import SCHEDULER_TICK_SECS, SYNC_INTERVALS, SYNC_RETRY_BACKOFF_SECS
 
 log = logging.getLogger(__name__)
 

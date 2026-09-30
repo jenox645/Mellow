@@ -11,8 +11,8 @@ from urllib.request import urlopen
 
 from flaskwebgui import FlaskUI
 
-import applog
-from server import init_app
+from mellow import applog
+from mellow.server import init_app
 
 log = logging.getLogger(__name__)
 

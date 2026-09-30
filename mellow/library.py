@@ -3,8 +3,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from config import download_root, download_settings
-from constants import AUDIO_FORMATS
+from .config import download_root, download_settings
+from .constants import AUDIO_FORMATS
 
 
 def build_entry(data: dict, entry_id: str, now: str) -> dict:

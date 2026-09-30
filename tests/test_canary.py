@@ -10,8 +10,8 @@ _spec.loader.exec_module(canary)
 
 
 def _run(video_side_effect, playlist_side_effect=None):
-    with patch('downloader.get_video_info', side_effect=video_side_effect), \
-            patch('downloader.get_playlist_items',
+    with patch('mellow.downloader.get_video_info', side_effect=video_side_effect), \
+            patch('mellow.downloader.get_playlist_items',
                   side_effect=playlist_side_effect or (lambda url: [{'id': 'x'}])):
         return canary.main()
 

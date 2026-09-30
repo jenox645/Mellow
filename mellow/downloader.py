@@ -9,15 +9,15 @@ from typing import Any, Callable
 
 import yt_dlp
 
-import analytics
-from constants import (
+from . import analytics
+from .constants import (
     AUDIO_FORMATS,
     PAUSE_POLL_SECS,
     SOCKET_TIMEOUT_SECS,
     SPONSORBLOCK_REMOVE_CATEGORIES,
     THUMB_FETCH_TIMEOUT_SECS,
 )
-from ffmpeg_locate import find_ffmpeg
+from .ffmpeg_locate import find_ffmpeg
 
 log = logging.getLogger(__name__)
 
@@ -508,7 +508,7 @@ def _build_ydl_opts(url: str, out_dir: Path, opts: dict, *, ffmpeg: str | None,
     if mode == "library":
         # Use public mellow_archive.txt; migrate old hidden files and backfill
         # from existing media files so yt-dlp skips already-downloaded items.
-        import vault as _vault
+        from . import vault as _vault
         _vault.generate_archive(str(out_dir))
         ydl_opts["download_archive"] = str(out_dir / "mellow_archive.txt")
         ydl_opts["ignoreerrors"] = True

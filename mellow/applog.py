@@ -11,7 +11,7 @@ import logging.handlers
 import sys
 from pathlib import Path
 
-from constants import LOG_BACKUPS, LOG_MAX_BYTES
+from .constants import LOG_BACKUPS, LOG_MAX_BYTES
 
 LOG_PATH = Path.home() / ".mellow_dlp.log"
 _FORMAT = "%(asctime)s %(levelname)-7s %(name)s: %(message)s"

@@ -2,39 +2,39 @@ from unittest.mock import patch
 
 
 def test_server_imports():
-    import server
+    from mellow import server
     assert hasattr(server, 'app')
 
 def test_downloader_imports():
-    import downloader
+    from mellow import downloader
     assert callable(getattr(downloader, 'download_video', None))
 
 def test_analytics_imports():
-    import analytics
+    from mellow import analytics
     assert callable(getattr(analytics, 'record_download', None))
 
 def test_downloader_quality_map():
-    from downloader import QUALITY_MAP
+    from mellow.downloader import QUALITY_MAP
     assert '1080p' in QUALITY_MAP
 
 def test_downloader_detect_platform():
-    from downloader import _detect_platform
+    from mellow.downloader import _detect_platform
     assert _detect_platform('https://youtube.com/watch?v=abc') == 'YouTube'
 
 
 def test_download_options_keys():
-    import downloader
+    from mellow import downloader
     assert downloader is not None
 
 
 def test_stats_endpoint_no_cache():
-    import server
+    from mellow import server
     routes = [str(r) for r in server.app.url_map.iter_rules()]
     assert any('stats' in r for r in routes), f"No stats route found. Routes: {routes}"
 
 
 def test_thumbnail_sidecar_function():
-    import downloader
+    from mellow import downloader
     assert hasattr(downloader, '_save_thumbnail_sidecar'), \
         "_save_thumbnail_sidecar function missing from downloader.py"
 
@@ -43,14 +43,14 @@ def test_item_done_in_progress_hook():
     """item_done event must be emitted by the progress hook on 'finished' status."""
     import threading
 
-    from downloader import _make_progress_hook
+    from mellow.downloader import _make_progress_hook
     events = []
     import time
     tracker = {"samples": [], "t0": time.monotonic(), "item_t0": time.monotonic(),
                "item_sample_start": 0, "items": {}}
     hook = _make_progress_hook(events.append, None, tracker, threading.Event(), threading.Event())
     # The hook saves a thumbnail sidecar next to the file; keep that off the network
-    with patch("downloader._save_thumbnail_sidecar") as save_thumb:
+    with patch("mellow.downloader._save_thumbnail_sidecar") as save_thumb:
         hook({"status": "finished", "info_dict": {"title": "Test Video", "thumbnail": "http://x.jpg", "playlist_index": 1}, "filename": "test.mp4"})
     save_thumb.assert_called_once_with("test.mp4", "http://x.jpg")
     statuses = [e.get("status") for e in events]
@@ -61,6 +61,6 @@ def test_item_done_in_progress_hook():
 
 
 def test_vault_folder_stats_route():
-    import server
+    from mellow import server
     routes = [str(r) for r in server.app.url_map.iter_rules()]
     assert any('folder-stats' in r for r in routes), f"No folder-stats route. Routes: {routes}"

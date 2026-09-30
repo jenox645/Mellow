@@ -12,10 +12,8 @@ import time
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import downloader
-import ffmpeg_locate
-import vault
-from constants import SPONSORBLOCK_REMOVE_CATEGORIES
+from mellow import downloader, ffmpeg_locate, vault
+from mellow.constants import SPONSORBLOCK_REMOVE_CATEGORIES
 
 FFMPEG = '/usr/bin/ffmpeg'
 
@@ -28,8 +26,8 @@ def _opts_for(tmp_dir, opts, ffmpeg=FFMPEG, info=None):
     cls = MagicMock()
     cls.return_value.__enter__.return_value = ydl
     events = []
-    with patch('downloader.yt_dlp.YoutubeDL', cls), \
-            patch('downloader.find_ffmpeg', return_value=ffmpeg):
+    with patch('mellow.downloader.yt_dlp.YoutubeDL', cls), \
+            patch('mellow.downloader.find_ffmpeg', return_value=ffmpeg):
         assert downloader.download_video('https://youtu.be/abc', tmp_dir, opts, events.append) \
             == 'success', events
     return cls.call_args[0][0], ydl, events
@@ -182,7 +180,7 @@ def test_ytdlp_accepts_the_sponsorblock_postprocessors():
 
 
 def test_history_records_the_length_of_the_cut_file(tmp_dir):
-    import analytics
+    from mellow import analytics
     saved = Path(tmp_dir) / 'T.mp4'
     saved.write_bytes(b'x')
     # ModifyChapters shortens the download's duration, not the video's
@@ -236,7 +234,7 @@ def test_hook_leaves_the_thumbnail_to_ytdlp_when_embedding():
     tracker = {'samples': [], 't0': now, 'item_t0': now, 'item_sample_start': 0, 'items': {}}
     finished = {'status': 'finished', 'filename': 'T.mp4',
                 'info_dict': {'id': 'abc', 'thumbnail': 'http://x/t.jpg'}}
-    with patch('downloader._save_thumbnail_sidecar') as save:
+    with patch('mellow.downloader._save_thumbnail_sidecar') as save:
         downloader._make_progress_hook(lambda e: None, None, dict(tracker, items={}),
                                        threading.Event(), threading.Event(),
                                        save_sidecar=False)(finished)
@@ -252,10 +250,10 @@ def test_ffmpeg_found_off_path_is_added_to_path(tmp_path):
     """yt-dlp's ffmpeg downloader (trims) only looks on PATH."""
     fake = tmp_path / ffmpeg_locate._EXE
     fake.write_bytes(b'')
-    with patch('ffmpeg_locate._search', return_value=str(fake)):
+    with patch('mellow.ffmpeg_locate._search', return_value=str(fake)):
         assert ffmpeg_locate.find_ffmpeg(refresh=True) == str(fake)
     parts = os.environ['PATH'].split(os.pathsep)
     assert parts[0] == str(tmp_path)
-    with patch('ffmpeg_locate._search', return_value=str(fake)):
+    with patch('mellow.ffmpeg_locate._search', return_value=str(fake)):
         ffmpeg_locate.find_ffmpeg(refresh=True)
     assert os.environ['PATH'].split(os.pathsep).count(str(tmp_path)) == 1

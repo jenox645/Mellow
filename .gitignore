@@ -10,6 +10,7 @@ assets/mellow_256.png
 # yt-dlp binary the build downloads for bundling (latest at build time)
 /yt-dlp
 /yt-dlp.exe
+/appimagetool
 *.spec.bak
 node_modules/
 .vscode/

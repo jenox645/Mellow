@@ -16,8 +16,8 @@ import threading
 import time
 from pathlib import Path
 
-from config import load_config
-from constants import FFMPEG_RECHECK_SECS
+from .config import load_config
+from .constants import FFMPEG_RECHECK_SECS
 
 _EXE = "ffmpeg.exe" if os.name == "nt" else "ffmpeg"
 
@@ -27,7 +27,7 @@ _last_miss: float = 0.0
 
 
 def _candidate_dirs() -> list[Path]:
-    here = Path(__file__).parent
+    here = Path(__file__).resolve().parent.parent  # the app folder, above this package
     dirs: list[Path] = [here, here / "ffmpeg", here / "ffmpeg" / "bin"]
     if getattr(sys, "frozen", False):
         exe_dir = Path(sys.executable).parent

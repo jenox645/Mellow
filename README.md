@@ -48,6 +48,8 @@ Video: MP4, MKV, WebM at best, 4K, 1080p, 720p, 480p or 360p. Audio: MP3, M4A, A
 | Frontend | React (UMD, no npm), esbuild |
 | Desktop window | FlaskWebGUI (Tkinter) |
 
+Project layout: `main.py` starts the app, the backend lives in `mellow/`, the frontend source in `gui/`, and `build_setup.py` builds `static/` and the packages.
+
 ---
 
 ## Requirements
