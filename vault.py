@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import glob as _glob
+import logging
 import os
 import re as _re
 import subprocess
@@ -11,6 +12,7 @@ from typing import Callable
 from urllib.parse import quote
 
 import analytics
+from config import download_settings
 from constants import (
     FILE_THUMBS_LIMIT,
     IMAGE_EXTS,
@@ -23,6 +25,8 @@ from constants import (
     VIDEO_EXTS,
 )
 from ffmpeg_locate import find_ffmpeg
+
+log = logging.getLogger(__name__)
 
 # Matches yt-dlp's YouTube ID embedded in filenames: [dQw4w9WgXcW]
 _YT_ID_RE = _re.compile(r'\[([A-Za-z0-9_-]{11})\]')
@@ -403,7 +407,7 @@ def get_mirror_preview(path: str, vp: list[str], request_opts: dict | None = Non
                 if entry and entry.get("id"):
                     playlist_ids.add(entry["id"])
         except Exception as exc:
-            print(f"[MIRROR-PREVIEW] failed to fetch {playlist_url}: {exc}", flush=True)
+            log.warning(f"mirror preview: could not read {playlist_url}: {exc}")
             fetch_errors.append(playlist_url)
 
     p = Path(path)
@@ -824,13 +828,5 @@ def build_sync_opts(data: dict, lib: dict | None, cfg: dict, path: str = "") -> 
         "embed_subs": pick("embed_subs", False),
         "sponsorblock": pick("sponsorblock", False),
         "filename_template": (lib or {}).get("filename_template") or cfg.get("filename_template", ""),
-        "cookies_browser": cfg.get("cookies_browser", "none"),
-        "cookies_file": cfg.get("cookies_file", ""),
-        "cookies_browser_profile": cfg.get("cookies_browser_profile", ""),
-        "rate_limit": cfg.get("rate_limit", ""),
-        "proxy": cfg.get("proxy", ""),
-        "force_ipv4": bool(cfg.get("force_ipv4", False)),
-        "concurrent_fragments": cfg.get("concurrent_fragments", 4),
-        "sleep_interval": cfg.get("sleep_interval", 0),
-        "retries": cfg.get("retries", 3),
+        **download_settings(cfg),
     }

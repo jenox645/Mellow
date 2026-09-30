@@ -12,6 +12,7 @@ resume them.
 from __future__ import annotations
 
 import json
+import logging
 import threading
 import time
 import uuid
@@ -27,6 +28,8 @@ from constants import (
     JOB_HISTORY_KEEP,
     MAX_DOWNLOAD_WORKERS,
 )
+
+log = logging.getLogger(__name__)
 
 QUEUE_STATE_PATH = Path.home() / ".mellow_dlp_queue.json"
 
@@ -172,7 +175,7 @@ class JobManager:
             elif QUEUE_STATE_PATH.exists():
                 QUEUE_STATE_PATH.unlink()
         except OSError as exc:
-            print(f"[QUEUE] persist failed: {exc}", flush=True)
+            log.warning(f"queue persist failed: {exc}")
 
     def _load_restorable(self) -> None:
         try:
@@ -181,7 +184,7 @@ class JobManager:
                 if isinstance(data, list):
                     self.restorable = [j for j in data if isinstance(j, dict) and j.get("url")]
         except Exception as exc:
-            print(f"[QUEUE] could not read persisted queue: {exc}", flush=True)
+            log.warning(f"could not read persisted queue: {exc}")
 
     def restore_pending(self) -> list[str]:
         """Re-enqueue jobs that were still queued when the app last exited."""
@@ -239,7 +242,7 @@ class JobManager:
                     job["status"] = status
                 self._on_finished(job, status)
             except Exception as exc:
-                print(f"[QUEUE] post-job bookkeeping failed: {exc}", flush=True)
+                log.warning(f"post-job bookkeeping failed: {exc}")
             finally:
                 with self._cv:
                     self._active_count -= 1

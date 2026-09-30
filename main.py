@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import atexit
 import json
+import logging
 import socket
 import sys
 import webbrowser
@@ -10,7 +11,10 @@ from urllib.request import urlopen
 
 from flaskwebgui import FlaskUI
 
+import applog
 from server import init_app
+
+log = logging.getLogger(__name__)
 
 WINDOW_WIDTH = 1100
 WINDOW_HEIGHT = 780
@@ -64,11 +68,20 @@ def _remove_port_file() -> None:
 
 
 def main() -> None:
+    applog.setup()
+    # Anything that escapes (like a database that won't open) lands in the
+    # log file too, not only in the crash dialog
+    previous_hook = sys.excepthook
+
+    def _log_crash(*exc) -> None:
+        log.critical("unhandled exception", exc_info=exc)
+        previous_hook(*exc)
+    sys.excepthook = _log_crash
     # Single-instance guard: a second launch opens the existing UI instead of
     # spawning a duplicate server + window.
     existing = _running_instance_url()
     if existing:
-        print(f"MellowDLP is already running at {existing} — opening it.")
+        log.info(f"already running at {existing}, opening it")
         webbrowser.open(existing)
         sys.exit(0)
 

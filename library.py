@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from config import download_settings
+
 
 def build_entry(data: dict, entry_id: str, now: str) -> dict:
     """Build a library entry dict from request data."""
@@ -67,14 +69,6 @@ def build_sync_opts(entry: dict, cfg: dict, sync_mode: str) -> tuple[dict, str]:
         # Same naming as every other download unless the entry sets its own
         "filename_template": entry.get("filename_template") or cfg.get("filename_template", ""),
         "sync_mode": sync_mode,
-        "cookies_browser": cfg.get("cookies_browser", "none"),
-        "cookies_file": cfg.get("cookies_file", ""),
-        "cookies_browser_profile": cfg.get("cookies_browser_profile", ""),
-        "rate_limit": cfg.get("rate_limit", ""),
-        "proxy": cfg.get("proxy", ""),
-        "force_ipv4": bool(cfg.get("force_ipv4", False)),
-        "concurrent_fragments": cfg.get("concurrent_fragments", 4),
-        "sleep_interval": cfg.get("sleep_interval", 0),
-        "retries": cfg.get("retries", 3),
+        **download_settings(cfg),
     }
     return opts, output_dir

@@ -3,6 +3,7 @@ from __future__ import annotations
 import contextlib
 import csv
 import io
+import logging
 import threading
 import time
 from datetime import datetime, timedelta
@@ -12,6 +13,8 @@ from typing import Any
 import duckdb
 
 from constants import MEDIA_EXTS
+
+log = logging.getLogger(__name__)
 
 DB_PATH = Path.home() / ".mellow_dlp.duckdb"
 
@@ -53,8 +56,8 @@ def _connect(path: str) -> duckdb.DuckDBPyConnection:
             raise
         aside = wal.with_name(f"{wal.name}.unreplayable-{time.strftime('%Y%m%d-%H%M%S')}")
         wal.replace(aside)
-        print(f"[ANALYTICS] write-ahead log could not be replayed; moved to {aside.name}. "
-              f"Reason: {str(exc).splitlines()[0]}", flush=True)
+        log.warning(f"write-ahead log could not be replayed; moved to {aside.name}. "
+                    f"Reason: {str(exc).splitlines()[0]}")
         return duckdb.connect(path)
 
 

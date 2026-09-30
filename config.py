@@ -13,11 +13,14 @@ from __future__ import annotations
 
 import copy
 import json
+import logging
 import os
 import tempfile
 import threading
 from pathlib import Path
 from typing import Callable
+
+log = logging.getLogger(__name__)
 
 CONFIG_PATH = Path.home() / ".mellow_dlp.json"
 
@@ -37,7 +40,6 @@ _DEFAULTS: dict = {
     "sleep_interval": 0,
     "retries": 3,
     "write_metadata": True,
-    "extract_chapters": True,
     "filename_template": "",
     # Download defaults applied when the Feed has no session state yet
     "default_mode": "video",
@@ -83,7 +85,7 @@ def _backup_corrupt() -> None:
     try:
         if not backup.exists():
             backup.write_bytes(CONFIG_PATH.read_bytes())
-            print(f"[CONFIG] parse failed — backed up to {backup}", flush=True)
+            log.warning(f"parse failed — backed up to {backup}")
     except OSError:
         pass
 
@@ -104,6 +106,35 @@ def save_config(cfg: dict) -> None:
             except OSError:
                 pass
             raise
+
+
+def request_settings(cfg: dict) -> dict:
+    """Cookies and network settings every yt-dlp request needs (analyze,
+    playlist listing, mirror preview and downloads alike)."""
+    return {
+        "cookies_browser": cfg.get("cookies_browser", "none"),
+        "cookies_file": cfg.get("cookies_file", ""),
+        "cookies_browser_profile": cfg.get("cookies_browser_profile", ""),
+        "proxy": cfg.get("proxy", ""),
+        "force_ipv4": bool(cfg.get("force_ipv4", False)),
+    }
+
+
+def download_settings(cfg: dict) -> dict:
+    """request_settings() plus the Config tuning every download uses.
+
+    The one place these are copied into a job's opts: Feed downloads, vault
+    syncs and library syncs each kept their own list, and the sync lists had
+    drifted (no external downloader, for one).
+    """
+    return {
+        **request_settings(cfg),
+        "rate_limit": cfg.get("rate_limit", ""),
+        "external_downloader": cfg.get("external_downloader", ""),
+        "concurrent_fragments": cfg.get("concurrent_fragments", 4),
+        "sleep_interval": cfg.get("sleep_interval", 0),
+        "retries": cfg.get("retries", 3),
+    }
 
 
 def update_config(mutator: Callable[[dict], None]) -> dict:

@@ -28,7 +28,7 @@ export function ConfigPage({ config, setConfig, showNotif, sysInfo, refreshStats
     'cookies_browser', 'cookies_browser_profile', 'cookies_file',
     'rate_limit', 'proxy', 'force_ipv4', 'external_downloader',
     'concurrent_fragments', 'sleep_interval', 'retries',
-    'write_metadata', 'extract_chapters',
+    'write_metadata',
     'ui_victory_animation', 'ui_victory_sync',
     'default_mode', 'default_quality', 'default_container', 'default_audio_format', 'default_audio_quality',
     'download_workers', 'auto_sync_enabled', 'auto_sync_default_interval',
@@ -57,7 +57,7 @@ export function ConfigPage({ config, setConfig, showNotif, sysInfo, refreshStats
       output_dir: '', cookies_browser: 'none', cookies_file: '', cookies_browser_profile: '',
       rate_limit: '', proxy: '', external_downloader: '',
       concurrent_fragments: 4, sleep_interval: 0, retries: 3,
-      write_metadata: true, extract_chapters: true, filename_template: '',
+      write_metadata: true, filename_template: '',
     }).then(() => API.get('/api/config').then(c => { setLocal(c); setConfig(c); showNotif('Reset', 'Defaults restored', 'success'); }));
   };
 
@@ -494,6 +494,17 @@ export function ConfigPage({ config, setConfig, showNotif, sysInfo, refreshStats
                 </div>
                 <div className="settings-ctrl">
                   <span style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 10, color: 'var(--cyan)' }}>{fmtBytes(sysInfo.db_size_bytes || 0)}</span>
+                </div>
+              </div>
+              <div className="settings-row">
+                <div className="settings-label">
+                  <div className="sl-name">Log File</div>
+                  <div className="sl-sub">{sysInfo.log_path || 'What happened, for troubleshooting or a bug report'}</div>
+                </div>
+                <div className="settings-ctrl">
+                  <button className="btn btn-secondary btn-sm" onClick={() => API.post('/api/open-log', {})
+                    .then(d => { if (d.error) showNotif('No log yet', d.error, 'info'); })
+                    .catch(e => showNotif('Error', e.message, 'error'))}>OPEN LOG</button>
                 </div>
               </div>
               <div className="settings-row">

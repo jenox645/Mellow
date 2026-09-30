@@ -89,11 +89,11 @@ def test_failed_downloads_do_not_count_as_already_downloaded():
 
 
 def test_download_warns_when_disk_is_low(client, tmp_dir):
-    with patch('downloader.download_video'), patch('server.shutil_disk_free', return_value=500 * 1024 ** 2):
+    with patch('downloader.download_video'), patch('server._free_bytes_near', return_value=500 * 1024 ** 2):
         data = client.post('/api/download', json={'url': 'https://youtu.be/x', 'output_dir': tmp_dir}).get_json()
         assert jobs.manager.wait_idle(10)
     assert data['status'] == 'started' and '0.5 GB' in data['disk_warning']
-    with patch('downloader.download_video'), patch('server.shutil_disk_free', return_value=50 * 1024 ** 3):
+    with patch('downloader.download_video'), patch('server._free_bytes_near', return_value=50 * 1024 ** 3):
         data = client.post('/api/download', json={'url': 'https://youtu.be/x', 'output_dir': tmp_dir}).get_json()
         assert jobs.manager.wait_idle(10)
     assert 'disk_warning' not in data

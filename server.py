@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import platform
 import queue
+import shutil
 import subprocess
 import sys
 import threading
@@ -21,11 +23,12 @@ from pathlib import Path
 from typing import Any
 from urllib.error import URLError
 from urllib.parse import urlparse
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
 
-from flask import Flask, Response, jsonify, request, send_from_directory
+from flask import Flask, Response, jsonify, request, send_file, send_from_directory
 
 import analytics
+import applog
 import backup as _backup
 import downloader
 import errors
@@ -33,7 +36,7 @@ import jobs
 import library as _library
 import scheduler
 import vault as _vault
-from config import load_config, update_config
+from config import download_settings, load_config, request_settings, update_config
 from constants import (
     HISTORY_DEFAULT_LIMIT,
     HISTORY_MAX_LIMIT,
@@ -48,6 +51,8 @@ from constants import (
 )
 from ffmpeg_locate import find_ffmpeg
 from version import APP_VERSION
+
+log = logging.getLogger(__name__)
 
 STATIC_DIR = Path(__file__).parent / "static"
 
@@ -82,12 +87,8 @@ def _sse_unsubscribe(q: queue.Queue) -> None:
 _enqueue_job = jobs.manager.enqueue
 
 
-
-
 def _fire_webhooks(event_type: str, payload: dict) -> None:
     try:
-        from urllib.request import Request as _Req
-        from urllib.request import urlopen as _urlopen
         cfg = load_config()
         urls = cfg.get("webhooks", {}).get(event_type, [])
         body = json.dumps({"event": event_type,
@@ -95,11 +96,11 @@ def _fire_webhooks(event_type: str, payload: dict) -> None:
                            "data": payload}).encode()
         for wh_url in urls:
             try:
-                req = _Req(wh_url, data=body, method="POST",
-                           headers={"Content-Type": "application/json"})
-                _urlopen(req, timeout=WEBHOOK_TIMEOUT_SECS)
+                req = Request(wh_url, data=body, method="POST",
+                              headers={"Content-Type": "application/json"})
+                urlopen(req, timeout=WEBHOOK_TIMEOUT_SECS)
             except Exception as wh_exc:
-                print(f"[WEBHOOK] {event_type} → {wh_url} failed: {wh_exc}", flush=True)
+                log.warning(f"webhook {event_type} → {wh_url} failed: {wh_exc}")
     except Exception:
         pass
 
@@ -123,17 +124,6 @@ def _push_progress(event: dict) -> None:
 
 
 jobs.manager.start(_push_progress)
-
-
-def _request_opts(cfg: dict) -> dict:
-    """Cookies and network settings every yt-dlp call must share."""
-    return {
-        "cookies_browser": cfg.get("cookies_browser", "none"),
-        "cookies_file": cfg.get("cookies_file", ""),
-        "cookies_browser_profile": cfg.get("cookies_browser_profile", ""),
-        "proxy": cfg.get("proxy", ""),
-        "force_ipv4": bool(cfg.get("force_ipv4", False)),
-    }
 
 
 def _library_entry_for(path: str) -> dict | None:
@@ -212,11 +202,6 @@ def _api_write_guard() -> Response | None:
     if request.content_length and not request.is_json:
         return jsonify({"error": "Content-Type must be application/json"}), 415
     return None
-
-
-def shutil_disk_free(path: Path) -> int:
-    import shutil as _sh
-    return _sh.disk_usage(str(path)).free
 
 
 def _open_in_explorer(path: str) -> None:
@@ -422,13 +407,7 @@ def api_system() -> Response:
     # Same lookup the downloader uses, so the status light can't disagree
     # with what a download will actually do.
     ffmpeg_path = find_ffmpeg()
-    disk_free = None
-    try:
-        out_dir = load_config().get("output_dir", "")
-        probe = Path(out_dir) if out_dir and Path(out_dir).exists() else Path.home()
-        disk_free = shutil_disk_free(probe)
-    except OSError:
-        pass
+    disk_free = _free_bytes_near(load_config().get("output_dir") or str(Path.home()))
     return jsonify({
         "ffmpeg": ffmpeg_path is not None,
         "ffmpeg_path": ffmpeg_path,
@@ -438,7 +417,17 @@ def api_system() -> Response:
         "db_size_bytes": analytics.get_db_size(),
         "disk_free_bytes": disk_free,
         "disk_low": disk_free is not None and disk_free < LOW_DISK_WARN_BYTES,
+        "log_path": str(applog.LOG_PATH),
     })
+
+
+@app.route("/api/open-log", methods=["POST"])
+def api_open_log() -> Response:
+    """Open the log file (Config → About) — what to attach to a bug report."""
+    if not applog.LOG_PATH.exists():
+        return jsonify({"error": "No log file yet"}), 404
+    threading.Thread(target=_open_file, args=(str(applog.LOG_PATH),), daemon=True).start()
+    return jsonify({"ok": True})
 
 
 def _parse_ytdlp_ver(v: str) -> tuple:
@@ -459,7 +448,7 @@ def api_check_ytdlp_update() -> Response:
             installed = _ydlp.version.__version__
         except Exception:
             installed = "unknown"
-        print(f"[YTDLP CHECK] version returned: {installed}", flush=True)
+        log.debug(f"yt-dlp check: installed {installed}")
         try:
             with urlopen("https://pypi.org/pypi/yt-dlp/json", timeout=PYPI_CHECK_TIMEOUT_SECS) as resp:
                 payload = json.loads(resp.read().decode())
@@ -467,7 +456,7 @@ def api_check_ytdlp_update() -> Response:
         except (URLError, KeyError, Exception) as exc:
             return {"error": str(exc), "installed": installed, "latest": None, "current": installed}
         update_available = _parse_ytdlp_ver(latest) > _parse_ytdlp_ver(installed)
-        print(f"[YTDLP CHECK] installed={installed} latest={latest} update={update_available}", flush=True)
+        log.info(f"yt-dlp check: installed={installed} latest={latest} update={update_available}")
         return {
             "installed": installed, "latest": latest, "current": installed,
             "update_available": update_available,
@@ -484,7 +473,7 @@ def api_update_ytdlp() -> Response:
             import yt_dlp as _ytdlp_mod_check
             ytdlp_file = Path(_ytdlp_mod_check.__file__).parent
             old_ver = _ytdlp_mod_check.version.__version__
-            print(f"[YTDLP UPDATE] module at {ytdlp_file}, current version: {old_ver}", flush=True)
+            log.debug(f"yt-dlp update: module at {ytdlp_file}, version {old_ver}")
         except Exception:
             pass
 
@@ -495,22 +484,22 @@ def api_update_ytdlp() -> Response:
         exe = sys.executable
         frozen = getattr(sys, "frozen", False)
         guard = frozen or "mellowdlp" in exe.lower()
-        print(f"[YTDLP UPDATE] exe={exe!r} frozen={frozen} guard={guard}", flush=True)
+        log.debug(f"yt-dlp update: exe={exe!r} frozen={frozen} guard={guard}")
 
         try:
             if guard:
                 ytdlp_bin = _sh.which("yt-dlp") or _sh.which("yt-dlp.exe")
                 if ytdlp_bin and "mellowdlp" not in ytdlp_bin.lower():
-                    print(f"[YTDLP UPDATE] running standalone binary: {ytdlp_bin} -U", flush=True)
+                    log.info(f"yt-dlp update: running {ytdlp_bin} -U")
                     subprocess.run([ytdlp_bin, "-U"], check=True, **_kw)
                 else:
                     python = _sh.which("python") or _sh.which("python3")
                     if not python or "mellowdlp" in python.lower():
                         raise RuntimeError("No suitable Python found for yt-dlp update")
-                    print(f"[YTDLP UPDATE] pip via {python}", flush=True)
+                    log.info(f"yt-dlp update: pip via {python}")
                     subprocess.run([python, "-m", "pip", "install", "--upgrade", "yt-dlp"], check=True, **_kw)
             else:
-                print(f"[YTDLP UPDATE] pip via {exe}", flush=True)
+                log.info(f"yt-dlp update: pip via {exe}")
                 subprocess.run([exe, "-m", "pip", "install", "--upgrade", "yt-dlp"], check=True, **_kw)
 
             # Re-check version after update (force reload of version submodule)
@@ -521,7 +510,7 @@ def api_update_ytdlp() -> Response:
                 importlib.reload(_ytdlp_mod.version)
                 importlib.reload(_ytdlp_mod)
                 new_ver = _ytdlp_mod.version.__version__
-                print(f"[YTDLP UPDATE] new version after update: {new_ver}", flush=True)
+                log.info(f"yt-dlp update: now {new_ver}")
                 if _parse_ytdlp_ver(new_ver) > _parse_ytdlp_ver(old_ver):
                     # The files on disk are new, but every extractor already
                     # imported by this process is still the old code.
@@ -544,10 +533,10 @@ def api_update_ytdlp() -> Response:
                     _push_progress({"status": "ytdlp_updated", "ok": True, "new_version": new_ver,
                                     "message": f"yt-dlp is already up to date ({new_ver})."})
             except Exception as reload_exc:
-                print(f"[YTDLP UPDATE] reload error: {reload_exc}", flush=True)
+                log.warning(f"yt-dlp update: reload error: {reload_exc}")
                 _push_progress({"status": "ytdlp_updated", "ok": True})
         except Exception as exc:
-            print(f"[YTDLP UPDATE] failed: {exc}", flush=True)
+            log.warning(f"yt-dlp update failed: {exc}")
             _push_progress({"status": "ytdlp_updated", "ok": False, "error": str(exc)})
 
     threading.Thread(target=_update, daemon=True).start()
@@ -577,7 +566,7 @@ def api_info() -> Response:
     if not url:
         return jsonify({"error": "No URL"}), 400
     try:
-        info = downloader.get_video_info(url, cookie_opts=_request_opts(load_config()))
+        info = downloader.get_video_info(url, cookie_opts=request_settings(load_config()))
     except Exception as exc:
         return jsonify({"error": str(exc), **(errors.explain(str(exc)) or {})}), 500
     if info and not info.get("is_playlist"):
@@ -586,7 +575,7 @@ def api_info() -> Response:
             info["previous_download"] = analytics.find_previous_download(
                 [url, info.get("webpage_url")], info.get("id"))
         except Exception as exc:
-            print(f"[INFO] history lookup failed: {exc}", flush=True)
+            log.warning(f"history lookup failed: {exc}")
     return jsonify(info)
 
 
@@ -598,7 +587,7 @@ def api_download() -> Response:
         return jsonify({"error": "No URL provided"}), 400
     cfg = load_config()
     output_dir = data.get("output_dir") or cfg.get("output_dir") or str(Path.home() / "Downloads" / "MellowDLP")
-    print(f"[MellowDLP] download -> output_dir={output_dir!r}", flush=True)
+    log.info(f"download queued: {url} -> {output_dir}")
     opts = {
         "mode": data.get("mode", "video"),
         "quality": data.get("quality", "best"),
@@ -625,16 +614,7 @@ def api_download() -> Response:
         "date_before": data.get("date_before", ""),
         "date_after": data.get("date_after", ""),
         "filename_template": data.get("filename_template", "") or cfg.get("filename_template", ""),
-        "cookies_browser": cfg.get("cookies_browser", "none"),
-        "cookies_file": cfg.get("cookies_file", ""),
-        "cookies_browser_profile": cfg.get("cookies_browser_profile", ""),
-        "rate_limit": cfg.get("rate_limit", ""),
-        "proxy": cfg.get("proxy", ""),
-        "force_ipv4": bool(cfg.get("force_ipv4", False)),
-        "external_downloader": cfg.get("external_downloader", ""),
-        "concurrent_fragments": cfg.get("concurrent_fragments", 4),
-        "sleep_interval": cfg.get("sleep_interval", 0),
-        "retries": cfg.get("retries", 3),
+        **download_settings(cfg),
     }
     multi_urls = data.get("multi_urls")
     if multi_urls and isinstance(multi_urls, list) and len(multi_urls) > 1:
@@ -656,7 +636,7 @@ def _free_bytes_near(path: str) -> int | None:
     while not p.exists() and p.parent != p:
         p = p.parent
     try:
-        return shutil_disk_free(p)
+        return shutil.disk_usage(str(p)).free
     except OSError:
         return None
 
@@ -955,7 +935,7 @@ def api_playlist_items() -> Response:
     if not url:
         return jsonify({"error": "No URL"}), 400
     try:
-        items = downloader.get_playlist_items(url, cookie_opts=_request_opts(load_config()))
+        items = downloader.get_playlist_items(url, cookie_opts=request_settings(load_config()))
         return jsonify({"items": items})
     except Exception as exc:
         return jsonify({"error": str(exc)}), 500
@@ -1142,7 +1122,7 @@ def api_vault_mirror_preview() -> Response:
     vp = cfg.get("vault_playlists", {}).get(path, [])
     if not vp:
         return jsonify({"error": "No playlist linked"}), 400
-    return jsonify(_vault.get_mirror_preview(path, vp, _request_opts(cfg)))
+    return jsonify(_vault.get_mirror_preview(path, vp, request_settings(cfg)))
 
 
 @app.route("/api/vault/mirror-confirm", methods=["POST"])
@@ -1173,7 +1153,6 @@ def api_vault_stream() -> Response:
     p = Path(path)
     if not path or not p.is_file() or p.suffix.lower() not in MEDIA_EXTS:
         return jsonify({"error": "Not a streamable media file"}), 404
-    from flask import send_file
     mime = MEDIA_MIME.get(p.suffix.lower(), "application/octet-stream")
     # conditional=True makes Flask honor Range requests (seek support)
     return send_file(str(p), mimetype=mime, conditional=True)

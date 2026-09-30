@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import re
 import threading
 import time
@@ -16,6 +17,8 @@ from constants import (
     THUMB_FETCH_TIMEOUT_SECS,
 )
 from ffmpeg_locate import find_ffmpeg
+
+log = logging.getLogger(__name__)
 
 _pause_event = threading.Event()
 
@@ -296,7 +299,7 @@ def _save_thumbnail_sidecar(filepath: str, thumb_url: str | None) -> None:
                 data = resp.read()
             sidecar.write_bytes(data)
         except Exception as e:
-            print(f"[THUMB ERROR] failed to save sidecar for {p.name}: {e}", flush=True)
+            log.warning(f"failed to save sidecar for {p.name}: {e}")
 
     # Off-thread: a slow thumbnail CDN must not stall the progress hook
     threading.Thread(target=_fetch, daemon=True).start()
@@ -412,7 +415,7 @@ def _download_video(
         try:
             analytics.record_download(meta)
         except Exception as rec_exc:
-            print(f"[ANALYTICS] record failed: {rec_exc}", flush=True)
+            log.warning(f"history record failed: {rec_exc}")
 
     progress_cb({"status": "starting", "url": url, "library_id": library_id})
 
@@ -451,8 +454,8 @@ def _download_video(
     else:
         outtmpl = str(out_dir / "%(title)s.%(ext)s")
 
-    print(f"[MellowDLP] yt-dlp outtmpl={outtmpl!r}  output_dir={output_dir!r}", flush=True)
-    print(f"[DOWNLOAD] mode={mode} audio_format={audio_fmt} quality={quality} container={container}", flush=True)
+    log.debug(f"yt-dlp outtmpl={outtmpl!r}  output_dir={output_dir!r}")
+    log.debug(f"mode={mode} audio_format={audio_fmt} quality={quality} container={container}")
     ffmpeg = find_ffmpeg()
     embed_thumb = bool(ffmpeg and opts.get("embed_thumbnail"))
     hook = _make_progress_hook(progress_cb, library_id, speed_tracker, cancel_event, pause_event,
@@ -504,7 +507,7 @@ def _download_video(
             warning = ("ffmpeg isn't installed, so only a ready-made single file can be "
                        "downloaded. Sites that serve video and audio separately (YouTube) "
                        "will fail until ffmpeg is installed.")
-        print(f"[DOWNLOAD] {warning}", flush=True)
+        log.info(warning)
         progress_cb({"status": "warning", "code": "ffmpeg_missing", "message": warning,
                      "library_id": library_id})
     ydl_opts["format"] = fmt
@@ -524,7 +527,7 @@ def _download_video(
         ydl_opts["download_archive"] = str(out_dir / "mellow_archive.txt")
         ydl_opts["ignoreerrors"] = True
 
-    print(f"[DOWNLOAD] ydl format={ydl_opts.get('format')} postprocessors={ydl_opts.get('postprocessors')}", flush=True)
+    log.debug(f"ydl format={ydl_opts.get('format')} postprocessors={ydl_opts.get('postprocessors')}")
 
     if embed_subs and not want_audio:
         ydl_opts["writesubtitles"] = True
@@ -547,7 +550,7 @@ def _download_video(
         if parsed_rate:
             ydl_opts["ratelimit"] = parsed_rate
         else:
-            print(f"[DOWNLOAD] ignoring unparsable rate_limit {rate_limit!r}", flush=True)
+            log.warning(f"ignoring unparsable rate_limit {rate_limit!r}")
     _apply_network_opts(ydl_opts, {"proxy": proxy, "force_ipv4": opts.get("force_ipv4")})
     if ext_downloader:
         ydl_opts["external_downloader"] = ext_downloader
@@ -638,7 +641,7 @@ def _download_video(
                             except OSError:
                                 final_size = info.get("filesize") or 0
             except Exception as shape_exc:
-                print(f"[DOWNLOAD] info_dict shape unexpected: {shape_exc}", flush=True)
+                log.warning(f"info_dict shape unexpected: {shape_exc}")
 
         elapsed = time.monotonic() - t_start
         samples = speed_tracker["samples"]

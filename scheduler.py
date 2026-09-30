@@ -14,6 +14,7 @@ Flask/server dependency.
 """
 from __future__ import annotations
 
+import logging
 import threading
 import time
 from datetime import datetime
@@ -21,6 +22,8 @@ from typing import Callable
 
 from config import load_config
 from constants import SCHEDULER_TICK_SECS, SYNC_INTERVALS, SYNC_RETRY_BACKOFF_SECS
+
+log = logging.getLogger(__name__)
 
 DEFAULT_INTERVAL_KEY = "daily"
 SCHEDULE_OFF = "off"
@@ -84,7 +87,7 @@ def tick(sync_fn: Callable[[str], bool],
         if sync_fn(path):
             _last_attempt[path] = now
             queued.append(path)
-            print(f"[SCHEDULER] auto-sync queued: {path}", flush=True)
+            log.info(f"auto-sync queued: {path}")
     return queued
 
 
@@ -105,7 +108,7 @@ def start(sync_fn: Callable[[str], bool],
             try:
                 tick(sync_fn, is_syncing_fn)
             except Exception as exc:
-                print(f"[SCHEDULER] tick failed: {exc}", flush=True)
+                log.warning(f"tick failed: {exc}")
 
     _thread = threading.Thread(target=_loop, name="auto-sync", daemon=True)
     _thread.start()

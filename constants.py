@@ -63,4 +63,6 @@ SOCKET_TIMEOUT_SECS: int = 20        # yt-dlp per-connection timeout
 PYPI_CHECK_TIMEOUT_SECS: int = 30
 M3U8_TEMP_MAX_AGE_SECS: int = 86400  # playlist temp files older than this are swept
 FFMPEG_RECHECK_SECS: int = 30        # how often a missing ffmpeg is looked for again
+LOG_MAX_BYTES: int = 1024 * 1024     # ~/.mellow_dlp.log rotates at this size
+LOG_BACKUPS: int = 3                 # rotated log files kept
 LOW_DISK_WARN_BYTES: int = 2 * 1024 ** 3  # warn when output drive has < 2 GB free
