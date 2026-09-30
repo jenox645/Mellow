@@ -241,13 +241,28 @@ function Notif({ notif, dismiss }) {
     <div className={'notif ' + (notif.type || '')} onClick={dismiss} style={{ cursor: 'pointer' }}>
       <div className="notif-title">{notif.title}</div>
       <div className="notif-body">{notif.body}</div>
+      {notif.actions && notif.actions.length > 0 && (
+        <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+          {notif.actions.map(a => (
+            <button
+              key={a.label}
+              className={'btn btn-sm ' + (a.primary ? 'btn-primary' : 'btn-secondary')}
+              onClick={e => { e.stopPropagation(); a.onClick(); dismiss(); }}
+            >
+              {a.label}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
 
 // ── Loading Screen ────────────────────────────────────────────────────────────
 
-const LOADING_MIN_MS = 4500;
+// Short floor so launches aren't gated behind the typewriter animation;
+// clicking the splash skips the wait entirely (server readiness still applies).
+const LOADING_MIN_MS = 1000;
 
 const _SPLASH_POOL = [
   MASCOT_DJ, MASCOT_VIBING, MASCOT_CHILLING, MASCOT_TIRED,
@@ -312,8 +327,13 @@ function LoadingScreen({ onReady }) {
     return () => clearTimeout(t);
   }, [tryReady]);
 
+  const skip = React.useCallback(() => {
+    minElapsedRef.current = true;
+    tryReady();
+  }, [tryReady]);
+
   return (
-    <div className="loading-screen">
+    <div className="loading-screen" onClick={skip} style={{ cursor: 'pointer' }} title="Click to skip">
       {splashIsSvg ? (
         <div className="loading-mascot" style={{ filter: 'drop-shadow(0 0 24px rgba(0,216,255,0.35))' }} dangerouslySetInnerHTML={{ __html: splashSvgHtml }} />
       ) : splashMascot ? (
@@ -369,7 +389,7 @@ function MiniGraph({ data, color, height = 28 }) {
     ctx.scale(dpr, dpr);
     const w = c.offsetWidth, h = height;
     ctx.clearRect(0, 0, w, h);
-    const pts = data && data.length > 0 ? data : Array(20).fill(0.2 + Math.random() * 0.3);
+    const pts = data && data.length > 0 ? data : Array(20).fill(0);
     const maxV = Math.max(...pts, 1);
     ctx.strokeStyle = color || 'rgba(0,216,255,0.6)';
     ctx.lineWidth = 1;
@@ -662,6 +682,11 @@ function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats, showN
 
   const isDownloading = dlState && dlState.status !== 'complete' && dlState.status !== 'error';
 
+  // Between POST /api/download and the first 'starting' SSE event isDownloading
+  // is still false — block the window so rapid clicks can't enqueue duplicates
+  const [submitting, setSubmitting] = React.useState(false);
+  React.useEffect(() => { setSubmitting(false); }, [dlState]);
+
   const handleAnalyze = React.useCallback(() => {
     if (!url.trim()) return;
     setAnalyzing(true);
@@ -723,6 +748,7 @@ function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats, showN
   const startImportDownload = React.useCallback(() => {
     if (!importedUrls || !importedUrls.length) return;
     if (onPlaylistDownload) onPlaylistDownload(importedUrls.length, importedFileName || 'Imported URLs');
+    setSubmitting(true);
     API.post('/api/download', {
       url: importedUrls[0],
       multi_urls: importedUrls,
@@ -737,8 +763,8 @@ function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats, showN
       sponsorblock,
       ...(downloadPath ? { output_dir: downloadPath } : {}),
     }).then(d => {
-      if (d.error) showNotif('Error', d.error, 'error');
-    }).catch(e => showNotif('Error', e.message, 'error'));
+      if (d.error) { showNotif('Error', d.error, 'error'); setSubmitting(false); }
+    }).catch(e => { showNotif('Error', e.message, 'error'); setSubmitting(false); });
   }, [importedUrls, importedFileName, mode, quality, container, audioFmt, embedThumb, embedChapters, embedMeta, embedSubs, sponsorblock, downloadPath, onPlaylistDownload, showNotif]);
 
   // Ref so handleDownload/handleUrlKeyDown can call latest startImportDownload without stale closure
@@ -766,6 +792,7 @@ function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats, showN
 
   const startDownload = React.useCallback((extra) => {
     setVaultModal(false);
+    setSubmitting(true);
     let playlistItemsParam = undefined;
     if (playlistItems && info && info.is_playlist) {
       const selected = playlistItems.filter(i => i.selected !== false);
@@ -791,8 +818,8 @@ function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats, showN
       ...(playlistItemsParam ? { playlist_items: playlistItemsParam } : {}),
       ...extra,
     }).then(d => {
-      if (d.error) showNotif('Error', d.error, 'error');
-    }).catch(e => showNotif('Error', e.message, 'error'));
+      if (d.error) { showNotif('Error', d.error, 'error'); setSubmitting(false); }
+    }).catch(e => { showNotif('Error', e.message, 'error'); setSubmitting(false); });
   }, [url, mode, quality, container, audioFmt, embedThumb, embedChapters, embedMeta, embedSubs, sponsorblock, startTime, endTime, customFmt, downloadPath, playlistItems, info, showNotif]);
 
   // Keep ref in sync with latest startDownload (assigned during render, safe to read in callbacks)
@@ -1034,8 +1061,8 @@ function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats, showN
               </div>
               {/* RIGHT: action area */}
               <div className="info-actions">
-                <button className="btn btn-primary btn-sm" onClick={handleDownload} disabled={isDownloading} style={{ width: '100%' }}>
-                  {isDownloading ? 'ACTIVE...' : 'DOWNLOAD'}
+                <button className="btn btn-primary btn-sm" onClick={handleDownload} disabled={isDownloading || submitting} style={{ width: '100%' }}>
+                  {isDownloading ? 'ACTIVE...' : submitting ? 'STARTING...' : 'DOWNLOAD'}
                 </button>
                 <button className="btn btn-secondary btn-sm" onClick={handleAnalyze} disabled={analyzing || isDownloading} style={{ width: '100%' }} title="Re-analyze URL">
                   ↺ RESCAN
@@ -1297,15 +1324,44 @@ function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats, showN
 
 // ── QUEUE Page ────────────────────────────────────────────────────────────────
 
-function QueuePage({ dlState, showNotif, playlistItems, setPlaylistItems, completedItems, failedItems, playlistTotalCount, playlistCompletedCount, isPaused, pausedCount, failedCount, syncJobLabel, fetchingPlaylistItems, onPause, onResume, onClearCompleted }) {
+function QueuePage({ dlState, showNotif, playlistItems, setPlaylistItems, completedItems, failedItems, playlistTotalCount, playlistCompletedCount, isPaused, pausedCount, failedCount, syncJobLabel, fetchingPlaylistItems, onPause, onResume, onClearCompleted, onClearFailed }) {
   const isDownloading = dlState && dlState.pct !== undefined;
   const queueCount = playlistItems ? playlistItems.length : 0;
   const [qTab, setQTab] = React.useState('pending');
   const [removingItems, setRemovingItems] = React.useState(new Set());
+  const [jobs, setJobs] = React.useState([]);
+
+  // The backend job queue (queued vault syncs, second URLs) — distinct from
+  // the playlist items of the active job shown below
+  React.useEffect(() => {
+    const load = () => API.get('/api/queue/status').then(d => setJobs(d.jobs || [])).catch(() => {});
+    load();
+    const iv = setInterval(load, 4000);
+    return () => clearInterval(iv);
+  }, []);
 
   const handleCancel = () => {
     API.post('/api/cancel', {}).then(() => showNotif('Cancelled', 'Download stopped'));
   };
+
+  const handleCancelJob = (job) => {
+    API.del('/api/queue/' + job.id)
+      .then(() => {
+        showNotif(job.status === 'active' ? 'Cancelling' : 'Removed', job.label || job.url);
+        setJobs(js => js.map(j => j.id === job.id ? { ...j, status: 'cancelled' } : j));
+      })
+      .catch(e => showNotif('Error', e.message, 'error'));
+  };
+
+  const handleRetryFailed = (item) => {
+    if (!item.url) return;
+    API.post('/api/download', { url: item.url })
+      .then(d => d.error ? showNotif('Error', d.error, 'error') : showNotif('Re-queued', item.url))
+      .catch(e => showNotif('Error', e.message, 'error'));
+  };
+
+  const JOB_BADGE = { queued: 'queued', active: 'downloading', complete: 'completed', failed: 'failed', cancelled: 'queued' };
+  const JOB_COLOR = { queued: 'var(--cyan)', active: 'var(--amber)', complete: 'var(--green)', failed: 'var(--red)', cancelled: 'var(--t4)' };
 
   const handleRemove = (idx) => {
     setRemovingItems(prev => new Set([...prev, idx]));
@@ -1334,6 +1390,29 @@ function QueuePage({ dlState, showNotif, playlistItems, setPlaylistItems, comple
         <div className="stat"><div className="stat-label">PAUSED</div><div className="stat-value" style={{ color: 'var(--amber)' }}>{pausedCount || 0}</div></div>
         <div className="stat"><div className="stat-label">FAILED</div><div className="stat-value red">{failedCount || 0}</div></div>
       </div>
+
+      {/* BACKEND JOB QUEUE — queued syncs / extra URLs invisible until now */}
+      {jobs.length > 0 && (
+        <div className="panel" style={{ marginBottom: 16 }}>
+          <div className="panel-hud" /><div className="panel-hud-br" />
+          <div className="ph">
+            <span className="ptag amber">JOBS</span>
+            <span className="ptitle">SERVER JOB QUEUE</span>
+            <span className="psub">{jobs.filter(j => j.status === 'queued').length} QUEUED · {jobs.filter(j => j.status === 'active').length} ACTIVE</span>
+          </div>
+          {jobs.map(job => (
+            <div key={job.id} className="q-item" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 14px', borderBottom: '1px solid var(--border)' }}>
+              <span style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 8, color: 'var(--t4)', minWidth: 36 }}>{(job.type || 'feed').toUpperCase()}</span>
+              <span style={{ flex: 1, fontFamily: 'Share Tech Mono, monospace', fontSize: 10, color: 'var(--t2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{job.label || job.url}</span>
+              {job.error && <span style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 8, color: 'var(--red)', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={job.error}>{job.error}</span>}
+              <span className={'q-st-badge ' + (JOB_BADGE[job.status] || 'queued')} style={{ color: JOB_COLOR[job.status] }}>{(job.status || '').toUpperCase()}</span>
+              {(job.status === 'queued' || job.status === 'active') && (
+                <div className="q-del" title={job.status === 'active' ? 'Cancel this job' : 'Remove from queue'} onClick={() => handleCancelJob(job)}><Ico name="x" /></div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
 
       {isDownloading && (
         <div className="panel" style={{ marginBottom: 16 }}>
@@ -1373,22 +1452,52 @@ function QueuePage({ dlState, showNotif, playlistItems, setPlaylistItems, comple
         </div>
       )}
 
-      {(playlistItems && playlistItems.length > 0) || (completedItems && completedItems.length > 0) ? (
+      {(playlistItems && playlistItems.length > 0) || (completedItems && completedItems.length > 0) || (failedItems && failedItems.length > 0) ? (
         <div className="panel">
           <div className="panel-hud" /><div className="panel-hud-br" />
           <div className="ph">
             <span className="ptag">PLAYLIST</span>
             <span className="ptitle">DOWNLOAD QUEUE</span>
-            <span className="psub">{qTab === 'pending' ? (playlistItems ? playlistItems.length : 0) + ' PENDING' : (completedItems ? completedItems.length : 0) + ' DONE'}</span>
+            <span className="psub">
+              {qTab === 'pending' ? (playlistItems ? playlistItems.length : 0) + ' PENDING'
+                : qTab === 'completed' ? (completedItems ? completedItems.length : 0) + ' DONE'
+                : (failedItems ? failedItems.length : 0) + ' FAILED'}
+            </span>
           </div>
           <div className="q-tabs" style={{ display: 'flex', alignItems: 'center' }}>
             <div className={'q-tab' + (qTab === 'pending' ? ' active' : '')} onClick={() => setQTab('pending')}>PENDING</div>
             <div className={'q-tab' + (qTab === 'completed' ? ' active' : '')} onClick={() => setQTab('completed')}>COMPLETED</div>
+            <div className={'q-tab' + (qTab === 'failed' ? ' active' : '')} onClick={() => setQTab('failed')} style={failedItems && failedItems.length ? { color: 'var(--red)' } : undefined}>
+              FAILED{failedItems && failedItems.length ? ' (' + failedItems.length + ')' : ''}
+            </div>
             {qTab === 'completed' && completedItems && completedItems.length > 0 && onClearCompleted && (
               <span style={{ marginLeft: 'auto', cursor: 'pointer', fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: 'var(--red)', padding: '0 10px' }} onClick={onClearCompleted}>CLEAR ✕</span>
             )}
+            {qTab === 'failed' && failedItems && failedItems.length > 0 && onClearFailed && (
+              <span style={{ marginLeft: 'auto', cursor: 'pointer', fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: 'var(--red)', padding: '0 10px' }} onClick={onClearFailed}>CLEAR ✕</span>
+            )}
           </div>
-          {qTab === 'pending' ? (
+          {qTab === 'failed' ? (
+            <div className="pl-queue-list">
+              {(failedItems || []).map((item, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 14px', borderBottom: '1px solid var(--border)' }}>
+                  <span style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 8, color: item.reason === 'geo_blocked' ? 'var(--amber)' : 'var(--red)', minWidth: 70 }}>
+                    {(item.reason || 'error').toUpperCase()}
+                  </span>
+                  <span style={{ flex: 1, fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: 'var(--t2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={item.title}>
+                    {item.title}
+                  </span>
+                  <span style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 8, color: 'var(--t4)' }}>{timeAgo(item.failedAt)}</span>
+                  {item.url && (
+                    <button className="btn btn-secondary btn-sm" style={{ padding: '3px 8px', fontSize: 8 }} onClick={() => handleRetryFailed(item)}>↻ RETRY</button>
+                  )}
+                </div>
+              ))}
+              {(!failedItems || failedItems.length === 0) && (
+                <div style={{ padding: '20px', fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: 'var(--t4)', textAlign: 'center' }}>NO FAILURES — ALL CLEAR</div>
+              )}
+            </div>
+          ) : qTab === 'pending' ? (
             <>
               <div className="queue-list-header">
                 <span className="qlh-left">PENDING ITEMS — 待機中</span>
@@ -1505,6 +1614,7 @@ function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, config, sh
   const [randomizerCount, setRandomizerCount] = React.useState(5);
   const [randomizedFiles, setRandomizedFiles] = React.useState(null);
   const [watchArchivePrompt, setWatchArchivePrompt] = React.useState(null); // { path }
+  const [dupModal, setDupModal] = React.useState(false);
 
   const refreshLibraryEntries = React.useCallback(() => {
     API.get('/api/library').then(setLibraryEntries).catch(() => {});
@@ -1716,6 +1826,7 @@ function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, config, sh
                     .catch(e => showNotif('Sync Error', e.message, 'error'));
                 }}>↻ SYNC ALL</button>
             )}
+            <button className="btn btn-secondary btn-sm" onClick={() => setDupModal(true)} title="Find duplicate files across folders">⧉ FIND DUPES</button>
             <button className="btn btn-secondary btn-sm" onClick={handleWatchFolder}>
               <Ico name="folder" /> WATCH FOLDER
             </button>
@@ -1833,6 +1944,8 @@ function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, config, sh
         )}
 
         {linkPlModal && <LinkPlaylistModal folder={linkPlModal} onClose={() => setLinkPlModal(null)} showNotif={showNotif} />}
+
+        {dupModal && <DuplicatesModal onClose={() => setDupModal(false)} showNotif={showNotif} onRefreshVault={onRefreshVault} />}
 
         {syncModal && <SyncPlaylistModal folder={syncModal} onClose={() => setSyncModal(null)} showNotif={showNotif} onRefreshVault={onRefreshVault} isDownloading={isDownloading} onSyncStart={onSyncStart} onSyncItems={onSyncItems} />}
 
@@ -2160,9 +2273,165 @@ function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, config, sh
   );
 }
 
+// ── Generic line chart (canvas) ───────────────────────────────────────────────
+
+function LineChart({ data, color = 'rgba(0,216,255,0.85)', height = 120, yFormat }) {
+  const ref = React.useRef(null);
+  React.useEffect(() => {
+    const c = ref.current;
+    if (!c) return;
+    const w = c.offsetWidth;
+    if (!w) return;
+    c.width = w; c.height = height;
+    const ctx = c.getContext('2d');
+    ctx.clearRect(0, 0, w, height);
+    if (!data || !data.length) return;
+    const pts = data.map(d => d.y);
+    const labels = data.map(d => d.x);
+    const maxV = Math.max(...pts, 1);
+    const pad = { l: 44, r: 8, t: 8, b: 20 };
+    const cw = w - pad.l - pad.r, ch = height - pad.t - pad.b;
+    const fmt = yFormat || (v => String(Math.round(v)));
+    [0, 0.5, 1].forEach(f => {
+      const y = pad.t + ch * (1 - f);
+      ctx.strokeStyle = 'rgba(61,96,112,0.25)'; ctx.lineWidth = 0.5; ctx.setLineDash([2, 3]);
+      ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(pad.l + cw, y); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = 'rgba(61,96,112,0.6)'; ctx.font = '8px Share Tech Mono'; ctx.textAlign = 'left';
+      ctx.fillText(fmt(maxV * f), 0, y + 3);
+    });
+    const denom = Math.max(pts.length - 1, 1);
+    const fillColor = color.replace(/[\d.]+\)$/, '0.15)');
+    const grad = ctx.createLinearGradient(0, pad.t, 0, pad.t + ch);
+    grad.addColorStop(0, fillColor); grad.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = grad; ctx.beginPath();
+    pts.forEach((v, i) => {
+      const x = pad.l + i * (cw / denom);
+      const y = pad.t + ch * (1 - v / maxV);
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    });
+    ctx.lineTo(pad.l + cw, pad.t + ch); ctx.lineTo(pad.l, pad.t + ch); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.beginPath();
+    pts.forEach((v, i) => {
+      const x = pad.l + i * (cw / denom);
+      const y = pad.t + ch * (1 - v / maxV);
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(61,96,112,0.6)'; ctx.font = '7px Share Tech Mono'; ctx.textAlign = 'center';
+    labels.forEach((l, i) => {
+      if (i % Math.ceil(labels.length / 8) === 0) {
+        ctx.fillText(String(l).slice(5), pad.l + i * (cw / denom), height - 5);
+      }
+    });
+  }, [data, color, height, yFormat]);
+  return <canvas ref={ref} className="chart" height={height} />;
+}
+
+// ── History browser ───────────────────────────────────────────────────────────
+
+const HISTORY_LIMIT = 25;
+
+function HistoryPanel({ showNotif, refreshStats }) {
+  const [rows, setRows] = React.useState([]);
+  const [search, setSearch] = React.useState('');
+  const [typeFilter, setTypeFilter] = React.useState('all');
+  const [offset, setOffset] = React.useState(0);
+  const [loading, setLoading] = React.useState(false);
+
+  const load = React.useCallback(() => {
+    setLoading(true);
+    const params = new URLSearchParams({ limit: HISTORY_LIMIT, offset, type: typeFilter });
+    if (search.trim()) params.set('search', search.trim());
+    API.get('/api/history?' + params.toString())
+      .then(d => setRows(Array.isArray(d) ? d : []))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [search, typeFilter, offset]);
+
+  React.useEffect(() => {
+    const t = setTimeout(load, 250);
+    return () => clearTimeout(t);
+  }, [load]);
+
+  const redownload = (r) => {
+    API.post('/api/download', { url: r.url, mode: r.format === 'audio' ? 'audio' : 'video', quality: r.quality || 'best' })
+      .then(d => d.error ? showNotif('Error', d.error, 'error') : showNotif('Re-queued', r.title || r.url))
+      .catch(e => showNotif('Error', e.message, 'error'));
+  };
+
+  const openFile = (r) => {
+    API.post('/api/vault/open-file', { path: r.file_path }).catch(() => {});
+  };
+
+  const deleteRow = (r) => {
+    API.del('/api/history', { ids: [r.id] })
+      .then(() => { setRows(rs => rs.filter(x => x.id !== r.id)); refreshStats && refreshStats(); })
+      .catch(e => showNotif('Error', e.message, 'error'));
+  };
+
+  return (
+    <div className="chart-panel" style={{ marginTop: 16 }}>
+      <div className="chart-title">History Browser</div>
+      <div className="chart-sub">FULL DOWNLOAD HISTORY — SEARCH · REDOWNLOAD · OPEN</div>
+      <div style={{ display: 'flex', gap: 8, margin: '8px 0', alignItems: 'center' }}>
+        <input
+          className="inp-sm" style={{ flex: 1, maxWidth: 320 }}
+          placeholder="Search title / url / uploader..."
+          value={search}
+          onChange={e => { setSearch(e.target.value); setOffset(0); }}
+        />
+        <select className="sel" value={typeFilter} onChange={e => { setTypeFilter(e.target.value); setOffset(0); }}>
+          <option value="all">ALL TYPES</option>
+          <option value="video">VIDEO</option>
+          <option value="audio">AUDIO</option>
+        </select>
+        <span style={{ marginLeft: 'auto', fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: 'var(--t4)' }}>
+          {offset + 1}–{offset + rows.length}
+        </span>
+        <button className="btn btn-secondary btn-sm" disabled={offset === 0} onClick={() => setOffset(o => Math.max(0, o - HISTORY_LIMIT))}>‹ PREV</button>
+        <button className="btn btn-secondary btn-sm" disabled={rows.length < HISTORY_LIMIT} onClick={() => setOffset(o => o + HISTORY_LIMIT)}>NEXT ›</button>
+      </div>
+      <table className="data-table">
+        <thead>
+          <tr><th>TITLE</th><th>TYPE</th><th>SIZE</th><th>DATE</th><th>STATUS</th><th style={{ textAlign: 'right' }}>ACTIONS</th></tr>
+        </thead>
+        <tbody>
+          {rows.map(r => (
+            <tr key={r.id}>
+              <td style={{ maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.url}>
+                {r.title || r.url || '—'}
+              </td>
+              <td className="mono">{(r.format || '—').toUpperCase()}</td>
+              <td className="mono">{fmtBytes(r.file_size_bytes)}</td>
+              <td className="mono">{fmtDate(r.timestamp)}</td>
+              <td>
+                <span style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 8, padding: '2px 6px', color: r.status === 'success' ? 'var(--green)' : 'var(--red)', border: '1px solid', borderColor: r.status === 'success' ? 'rgba(0,255,148,0.3)' : 'rgba(255,59,97,0.3)' }}
+                  title={r.error_message || ''}>
+                  {(r.status || '').toUpperCase()}
+                </span>
+              </td>
+              <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                {r.url && <button className="btn btn-secondary btn-sm" style={{ padding: '2px 6px', fontSize: 8, marginRight: 4 }} title="Download again" onClick={() => redownload(r)}>↻ DL</button>}
+                {r.file_path && <button className="btn btn-secondary btn-sm" style={{ padding: '2px 6px', fontSize: 8, marginRight: 4 }} title="Open file" onClick={() => openFile(r)}>▶ OPEN</button>}
+                <button className="btn btn-danger btn-sm" style={{ padding: '2px 6px', fontSize: 8 }} title="Delete record" onClick={() => deleteRow(r)}>✕</button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {!rows.length && !loading && (
+        <div style={{ padding: '20px', textAlign: 'center', fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: 'var(--t4)' }}>
+          NO MATCHING RECORDS
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── ANALYTICS Page ────────────────────────────────────────────────────────────
 
-function AnalyticsPage({ stats, refreshStats }) {
+function AnalyticsPage({ stats, refreshStats, showNotif }) {
   const [range, setRange] = React.useState('30d');
   const [localStats, setLocalStats] = React.useState(stats);
   const [overrides, setOverrides] = React.useState({});
@@ -2364,6 +2633,36 @@ function AnalyticsPage({ stats, refreshStats }) {
         </div>
       </div>
 
+      {/* HEALTH KPI ROW */}
+      <div className="g4" style={{ marginBottom: 16 }}>
+        <div className="stat">
+          <div className="stat-label">SUCCESS RATE</div>
+          <div className="stat-value green">
+            {localStats.success_rate !== null && localStats.success_rate !== undefined ? localStats.success_rate + '%' : '—'}
+          </div>
+          <div className="stat-sub">of all attempts</div>
+        </div>
+        <div className="stat">
+          <div className="stat-label">CONTENT DURATION</div>
+          <div className="stat-value cyan">
+            {Math.round((localStats.total_duration_seconds || 0) / 3600).toLocaleString()}h
+          </div>
+          <div className="stat-sub">hours of media</div>
+        </div>
+        <div className="stat">
+          <div className="stat-label">FAILURES</div>
+          <div className="stat-value red">{(localStats.status_counts || {}).error || 0}</div>
+          <div className="stat-sub">errored downloads</div>
+        </div>
+        <div className="stat">
+          <div className="stat-label">LAST SYNC</div>
+          <div className="stat-value amber" style={{ fontSize: 16 }}>
+            {(localStats.sync_runs || []).length ? timeAgo(localStats.sync_runs[0].synced_at) : 'NEVER'}
+          </div>
+          <div className="stat-sub">{(localStats.sync_runs || []).length} logged runs</div>
+        </div>
+      </div>
+
       {/* CHARTS ROW */}
       <div className="g2" style={{ marginBottom: 0 }}>
         <div className="chart-panel">
@@ -2413,6 +2712,102 @@ function AnalyticsPage({ stats, refreshStats }) {
         </div>
       </div>
 
+      {/* STORAGE GROWTH + SPEED TREND */}
+      <div className="g2">
+        <div className="chart-panel">
+          <div className="chart-title">Storage Growth</div>
+          <div className="chart-sub">CUMULATIVE DISK USAGE OVER TIME</div>
+          <LineChart
+            data={(localStats.storage_growth || []).map(d => ({ x: d.day, y: d.bytes }))}
+            color="rgba(249,169,0,0.85)"
+            yFormat={v => fmtBytes(v)}
+          />
+        </div>
+        <div className="chart-panel">
+          <div className="chart-title">Speed Trend</div>
+          <div className="chart-sub">AVERAGE DOWNLOAD SPEED PER DAY</div>
+          <LineChart
+            data={(localStats.speed_by_day || []).map(d => ({ x: d.day, y: d.avg_bps }))}
+            color="rgba(0,216,255,0.85)"
+            yFormat={v => fmtSpeed(v)}
+          />
+        </div>
+      </div>
+
+      {/* FAILURES + WEEK HEATMAP */}
+      <div className="g2">
+        <div className="chart-panel">
+          <div className="chart-title">Failures Over Time</div>
+          <div className="chart-sub">ERRORED DOWNLOADS PER DAY</div>
+          {(localStats.failures_by_day || []).length ? (
+            <LineChart
+              data={(localStats.failures_by_day || []).map(d => ({ x: d.day, y: d.count }))}
+              color="rgba(255,59,97,0.85)"
+            />
+          ) : (
+            <div style={{ padding: '30px 0', textAlign: 'center', fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: 'var(--t4)' }}>
+              NO FAILURES IN RANGE
+            </div>
+          )}
+        </div>
+        <div className="chart-panel">
+          <div className="chart-title">Week × Hour Heatmap</div>
+          <div className="chart-sub">WHEN DO YOU DOWNLOAD — DAY OF WEEK × HOUR</div>
+          {(() => {
+            const grid = localStats.dow_hourly || [];
+            const days = ['SUN','MON','TUE','WED','THU','FRI','SAT'];
+            const maxC = Math.max(1, ...grid.flat());
+            return (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 6 }}>
+                {days.map((d, di) => (
+                  <div key={d} style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                    <span style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 7, color: 'var(--t4)', width: 24, flexShrink: 0 }}>{d}</span>
+                    {Array.from({ length: 24 }, (_, h) => {
+                      const v = (grid[di] || [])[h] || 0;
+                      return (
+                        <div key={h} title={`${d} ${String(h).padStart(2,'0')}:00 — ${v}`}
+                          style={{ flex: 1, height: 12, background: `rgba(0,216,255,${(0.05 + (v / maxC) * 0.9).toFixed(2)})` }} />
+                      );
+                    })}
+                  </div>
+                ))}
+                <div className="hm-labels" style={{ paddingLeft: 26 }}>
+                  <span>00:00</span><span>06:00</span><span>12:00</span><span>18:00</span><span>23:00</span>
+                </div>
+              </div>
+            );
+          })()}
+        </div>
+      </div>
+
+      {/* SYNC HEALTH */}
+      <div className="chart-panel" style={{ marginBottom: 16 }}>
+        <div className="chart-title">Sync Health</div>
+        <div className="chart-sub">LAST 10 LIBRARY / VAULT SYNC RUNS</div>
+        {(localStats.sync_runs || []).length ? (
+          <table className="data-table">
+            <thead>
+              <tr><th>WHEN</th><th>FOLDER</th><th>NEW</th><th>ERRORS</th><th>DURATION</th></tr>
+            </thead>
+            <tbody>
+              {(localStats.sync_runs || []).map((s, i) => (
+                <tr key={i}>
+                  <td className="mono">{fmtTimestamp(s.synced_at)}</td>
+                  <td>{s.name || '—'}</td>
+                  <td className="mono" style={{ color: 'var(--green)' }}>{s.new_items ?? 0}</td>
+                  <td className="mono" style={{ color: s.errors ? 'var(--red)' : 'var(--t4)' }}>{s.errors ?? 0}</td>
+                  <td className="mono">{fmtEta(s.duration_seconds || 0)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : (
+          <div style={{ padding: '20px', textAlign: 'center', fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: 'var(--t4)' }}>
+            NO SYNC RUNS LOGGED YET — RUN A VAULT OR LIBRARY SYNC
+          </div>
+        )}
+      </div>
+
       {/* RECENT DOWNLOADS TABLE */}
       <div className="chart-panel">
         <div className="chart-title">Recent Downloads</div>
@@ -2453,6 +2848,8 @@ function AnalyticsPage({ stats, refreshStats }) {
           </div>
         )}
       </div>
+
+      <HistoryPanel showNotif={showNotif} refreshStats={refreshStats} />
     </div>
   );
 }
@@ -2493,7 +2890,8 @@ const SCHEMA_TEXT = `-- downloads
   embed_chapters BOOLEAN, embed_metadata BOOLEAN,
   embed_subs BOOLEAN, sub_langs TEXT,
   sponsorblock BOOLEAN, filename_template TEXT,
-  sync_mode TEXT, last_synced TIMESTAMP, created_at TIMESTAMP
+  sync_mode TEXT, last_synced TIMESTAMP, created_at TIMESTAMP,
+  container TEXT, audio_format TEXT
 
 -- sync_log
   id INTEGER PK, library_id TEXT FK,
@@ -2542,9 +2940,15 @@ function SignalApiPage() {
   }, [eventsOpen]);
 
   const saveWebhooks = () => {
+    // Append the typed URL — replacing the whole list made multiple webhooks
+    // per event impossible despite the list UI
+    const appendTo = (list, url) => {
+      const u = url.trim();
+      return u && !list.includes(u) ? [...list, u] : list;
+    };
     const updated = {
-      complete: whCompleteUrl.trim() ? [whCompleteUrl.trim()] : webhooks.complete,
-      error: whErrorUrl.trim() ? [whErrorUrl.trim()] : webhooks.error,
+      complete: appendTo(webhooks.complete || [], whCompleteUrl),
+      error: appendTo(webhooks.error || [], whErrorUrl),
     };
     setWhSaving(true);
     API.post('/api/webhooks', updated)
@@ -2801,8 +3205,29 @@ function ConfigPage({ config, setConfig, showNotif, sysInfo, refreshStats }) {
 
   const set = (key, val) => setLocal(l => ({ ...l, [key]: val }));
 
+  // Only the keys this page edits — sending the whole stale `local` copy
+  // clobbered vault_playlists/webhooks changes made since the page mounted
+  const CONFIG_PAGE_KEYS = [
+    'output_dir', 'filename_template',
+    'cookies_browser', 'cookies_browser_profile', 'cookies_file',
+    'rate_limit', 'proxy', 'external_downloader',
+    'concurrent_fragments', 'sleep_interval', 'retries',
+    'write_metadata', 'extract_chapters',
+    'ui_victory_animation', 'ui_victory_sync',
+  ];
+  const NUMERIC_DEFAULTS = { concurrent_fragments: 4, sleep_interval: 0, retries: 3 };
+
   const handleSave = () => {
-    const { watched_folders, stat_overrides, ...toSave } = local;
+    const toSave = {};
+    CONFIG_PAGE_KEYS.forEach(k => {
+      if (local[k] === undefined) return;
+      let v = local[k];
+      if (k in NUMERIC_DEFAULTS) {
+        const n = parseInt(v, 10);
+        v = Number.isFinite(n) ? n : NUMERIC_DEFAULTS[k];
+      }
+      toSave[k] = v;
+    });
     API.post('/api/config', toSave)
       .then(() => { setConfig(c => ({ ...c, ...toSave })); showNotif('Saved', 'Configuration updated', 'success'); })
       .catch(e => showNotif('Error', e.message, 'error'));
@@ -3020,7 +3445,7 @@ function ConfigPage({ config, setConfig, showNotif, sysInfo, refreshStats }) {
                       max={f.max}
                       value={local[f.key] !== undefined ? local[f.key] : ''}
                       placeholder={f.placeholder || ''}
-                      onChange={e => set(f.key, f.type === 'number' ? (parseInt(e.target.value) || 0) : e.target.value)}
+                      onChange={e => set(f.key, e.target.value)}
                     />
                   </div>
                 </div>
@@ -3293,6 +3718,7 @@ function App() {
   const [pausedCount, setPausedCount] = React.useState(0);
   const [syncJobLabel, setSyncJobLabel] = React.useState(null);
   const [fetchingPlaylistItems, setFetchingPlaylistItems] = React.useState(false);
+  const [restorableJobs, setRestorableJobs] = React.useState(null);
   const playlistActiveRef = React.useRef(false);
   const currentPlaylistRef = React.useRef({ name: '', count: 0 });
   const configRef = React.useRef(config);
@@ -3302,10 +3728,11 @@ function App() {
 
   React.useEffect(() => { configRef.current = config; }, [config]);
 
-  const showNotif = React.useCallback((title, body, type = 'info') => {
-    setNotif({ title, body, type });
+  const showNotif = React.useCallback((title, body, type = 'info', actions = null) => {
+    setNotif({ title, body, type, actions });
     if (notifTimer.current) clearTimeout(notifTimer.current);
-    notifTimer.current = setTimeout(() => setNotif(null), 6000);
+    // Toasts with action buttons stay up longer
+    notifTimer.current = setTimeout(() => setNotif(null), actions ? 12000 : 6000);
   }, []);
 
   const refreshStats = React.useCallback(() => {
@@ -3320,6 +3747,13 @@ function App() {
       .then(d => setVaultFolders(d.folders || []))
       .catch(() => {});
   }, [config.output_dir]);
+
+  // Jobs that were still queued when the app last exited
+  React.useEffect(() => {
+    API.get('/api/queue/restorable')
+      .then(d => { if (d.jobs && d.jobs.length) setRestorableJobs(d.jobs); })
+      .catch(() => {});
+  }, []);
 
   React.useEffect(() => {
     refreshStats();
@@ -3386,7 +3820,9 @@ function App() {
             const byTitle = prev.filter(x => x.title !== title);
             if (byTitle.length < prev.length) return byTitle;
           }
-          return prev.length > 0 ? prev.slice(1) : prev;
+          // No match: leave the list alone — blindly dropping the head
+          // removed the wrong pending item
+          return prev;
         });
         setCompletedItems(prev => {
           if (data.video_id && prev.some(x => x.video_id === data.video_id)) return prev;
@@ -3411,6 +3847,7 @@ function App() {
         setFailedItems(prev => [{
           title: data.message || 'Unknown item',
           reason: data.reason || 'error',
+          url: data.url || null,
           failedAt: Date.now(),
         }, ...prev].slice(0, 100));
       } else if (data.status === 'complete') {
@@ -3422,7 +3859,11 @@ function App() {
         if (!data.library_id) setSyncJobLabel(null);
         else setSyncJobLabel(null); // clear for library too — job is fully done now
         setSpeedHistory(h => [...h.slice(1), 0]);
-        showNotif('Download Complete', data.title || 'File saved successfully', 'success');
+        const fileActions = data.file_path ? [
+          { label: 'OPEN FILE', primary: true, onClick: () => API.post('/api/vault/open-file', { path: data.file_path }).catch(() => {}) },
+          { label: 'FOLDER', onClick: () => API.post('/api/open-folder', { path: data.file_path }).catch(() => {}) },
+        ] : null;
+        showNotif('Download Complete', data.title || 'File saved successfully', 'success', fileActions);
         refreshStats();
         refreshVault();
         setPlaylistItems(null);
@@ -3451,7 +3892,18 @@ function App() {
         setDlState(null);
         setAppState('error');
         setIsPaused(false);
-        showNotif('Error', data.message || 'Download failed', 'error');
+        const msg = data.message || 'Download failed';
+        setFailedItems(prev => [{
+          title: msg, reason: 'error', url: data.url || null, failedAt: Date.now(),
+        }, ...prev].slice(0, 100));
+        setFailedCount(c => c + 1);
+        // Extraction failures usually mean yt-dlp is outdated — offer the fix
+        const looksLikeBreakage = /unable to extract|unsupported url|extractor|sign in to confirm|http error 403/i.test(msg);
+        const errActions = looksLikeBreakage ? [{
+          label: 'UPDATE YT-DLP', primary: true,
+          onClick: () => API.post('/api/update-ytdlp', {}).catch(() => {}),
+        }] : null;
+        showNotif('Error', looksLikeBreakage ? msg + ' — this often means yt-dlp is outdated.' : msg, 'error', errActions);
         refreshStats();
       } else if (data.status === 'cancelled') {
         setDlState(null);
@@ -3539,6 +3991,7 @@ function App() {
             onPause={() => API.post('/api/download/pause', {}).catch(() => {})}
             onResume={() => API.post('/api/download/resume', {}).catch(() => {})}
             onClearCompleted={() => setCompletedItems([])}
+            onClearFailed={() => { setFailedItems([]); setFailedCount(0); }}
           />
         )}
         {page === 'vault' && (
@@ -3571,7 +4024,7 @@ function App() {
           />
         )}
         {page === 'analytics' && (
-          <AnalyticsPage stats={stats} refreshStats={refreshStats} />
+          <AnalyticsPage stats={stats} refreshStats={refreshStats} showNotif={showNotif} />
         )}
         {page === 'signal' && <SignalApiPage />}
         {page === 'config' && (
@@ -3634,6 +4087,42 @@ function App() {
           showNotif={showNotif}
         />
       )}
+
+      {restorableJobs && (
+        <Modal
+          title="RESUME PENDING DOWNLOADS?"
+          onClose={() => setRestorableJobs(null)}
+          footer={
+            <>
+              <button className="btn btn-secondary btn-sm" onClick={() => {
+                API.del('/api/queue/restorable').catch(() => {});
+                setRestorableJobs(null);
+              }}>DISCARD</button>
+              <button className="btn btn-primary btn-sm" onClick={() => {
+                API.post('/api/queue/restore', {})
+                  .then(d => showNotif('Queue Restored', (d.restored || 0) + ' job(s) re-queued', 'success'))
+                  .catch(e => showNotif('Error', e.message, 'error'));
+                setRestorableJobs(null);
+              }}>RESUME ALL</button>
+            </>
+          }
+        >
+          <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 10, color: 'var(--t2)' }}>
+            <div style={{ marginBottom: 8, color: 'var(--t3)' }}>
+              {restorableJobs.length} download(s) were still queued when the app last closed:
+            </div>
+            {restorableJobs.slice(0, 8).map(j => (
+              <div key={j.id} style={{ padding: '3px 0', borderBottom: '1px solid var(--border)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <span style={{ color: 'var(--amber)', marginRight: 8 }}>{(j.type || 'feed').toUpperCase()}</span>
+                <span style={{ color: 'var(--cyan)' }}>{j.label || j.url}</span>
+              </div>
+            ))}
+            {restorableJobs.length > 8 && (
+              <div style={{ padding: '4px 0', color: 'var(--t4)' }}>+{restorableJobs.length - 8} more</div>
+            )}
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
@@ -3673,7 +4162,8 @@ function AddVaultModal({ onClose, onSaved, showNotif }) {
       folder_name: name.trim(),
       use_subfolder: !!folder,
       quality: mediaType === 'audio' ? 'best' : quality,
-      container: mediaType === 'audio' ? audioFmt : container,
+      container,
+      audio_format: audioFmt,
       mode: mediaType === 'audio' ? 'AUDIO' : 'VIDEO',
       sync_mode: mode,
       embed_thumbnail: embedThumb,
@@ -3908,9 +4398,11 @@ function SyncPlaylistModal({ folder, onClose, showNotif, onRefreshVault, isDownl
   }, [folder.path]);
 
   const buildFmtOpts = () => ({
+    // sync_audio sent explicitly both ways — the backend otherwise falls
+    // back to the library entry's saved mode
     ...(syncMediaType === 'audio'
       ? { sync_audio: true, audio_format: syncAudioFmt }
-      : { quality: syncQuality, container: syncContainer }),
+      : { sync_audio: false, quality: syncQuality, container: syncContainer }),
     embed_thumbnail: syncEmbedThumb,
     embed_subs: syncEmbedSubs,
     embed_chapters: syncEmbedChapters,
@@ -3966,7 +4458,7 @@ function SyncPlaylistModal({ folder, onClose, showNotif, onRefreshVault, isDownl
     const pathsToDelete = (mirrorPreview?.to_delete || []).map(f => f.path);
     const fmtOpts = mirrorPreview?.fmtOpts || buildFmtOpts();
     const activePlaylists = playlists ? playlists.filter(p => !selectedPlaylists || selectedPlaylists.has(p)) : [];
-    API.post('/api/vault/mirror-confirm', { paths: pathsToDelete })
+    API.post('/api/vault/mirror-confirm', { path: folder.path, paths: pathsToDelete })
       .then(() => API.post('/api/vault/sync', { path: folder.path, mode: 'add', playlist_urls: activePlaylists.length ? activePlaylists : undefined, ...fmtOpts }))
       .then(() => {
         const label = folder.name + ' — mirror sync';
@@ -4143,6 +4635,82 @@ function SyncPlaylistModal({ folder, onClose, showNotif, onRefreshVault, isDownl
               CANCEL
             </button>
           </div>
+        </div>
+      )}
+    </Modal>
+  );
+}
+
+// ── Duplicates Modal ──────────────────────────────────────────────────────────
+
+function DuplicatesModal({ onClose, showNotif, onRefreshVault }) {
+  const [data, setData] = React.useState(null);
+  const [deleting, setDeleting] = React.useState(false);
+
+  const load = React.useCallback(() => {
+    setData(null);
+    API.get('/api/vault/duplicates')
+      .then(setData)
+      .catch(e => { showNotif('Error', e.message, 'error'); setData({ groups: [] }); });
+  }, [showNotif]);
+
+  React.useEffect(() => { load(); }, [load]);
+
+  // Each group is sorted largest-first by the server; keep the largest copy
+  const deleteSmaller = (groups) => {
+    const targets = groups.flatMap(g => g.copies.slice(1));
+    if (!targets.length) return;
+    setDeleting(true);
+    Promise.all(targets.map(c => API.del('/api/vault/file', { path: c.path }).catch(() => null)))
+      .then(() => {
+        showNotif('Deduplicated', targets.length + ' smaller cop' + (targets.length === 1 ? 'y' : 'ies') + ' deleted', 'success');
+        onRefreshVault && onRefreshVault();
+        load();
+      })
+      .finally(() => setDeleting(false));
+  };
+
+  const groups = (data && data.groups) || [];
+
+  return (
+    <Modal title="DUPLICATE FINDER" onClose={onClose} footer={
+      <>
+        <button className="btn btn-secondary btn-sm" onClick={onClose}>CLOSE</button>
+        {groups.length > 0 && (
+          <button className="btn btn-danger btn-sm" disabled={deleting} onClick={() => deleteSmaller(groups)}>
+            {deleting ? 'DELETING...' : 'DELETE ALL SMALLER COPIES (' + fmtBytes(data.total_wasted_bytes) + ')'}
+          </button>
+        )}
+      </>
+    }>
+      {data === null ? (
+        <div style={{ padding: 24, textAlign: 'center', fontFamily: 'Share Tech Mono, monospace', fontSize: 10, color: 'var(--t3)' }}>
+          SCANNING VAULT FOLDERS...
+        </div>
+      ) : groups.length === 0 ? (
+        <div style={{ padding: 24, textAlign: 'center', fontFamily: 'Share Tech Mono, monospace', fontSize: 10, color: 'var(--t3)' }}>
+          NO DUPLICATES FOUND — every [videoID] appears only once.
+        </div>
+      ) : (
+        <div style={{ maxHeight: 320, overflow: 'auto' }}>
+          <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: 'var(--amber)', marginBottom: 8 }}>
+            {groups.length} duplicated video(s) · {fmtBytes(data.total_wasted_bytes)} reclaimable
+          </div>
+          {groups.map(g => (
+            <div key={g.video_id} style={{ marginBottom: 10, borderBottom: '1px solid var(--border)', paddingBottom: 6 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: 'var(--cyan)' }}>[{g.video_id}]</span>
+                <span style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 8, color: 'var(--t4)' }}>{g.copies.length} copies · {fmtBytes(g.wasted_bytes)} wasted</span>
+                <button className="btn btn-danger btn-sm" style={{ marginLeft: 'auto', padding: '2px 6px', fontSize: 8 }} disabled={deleting}
+                  onClick={() => deleteSmaller([g])}>DELETE SMALLER</button>
+              </div>
+              {g.copies.map((c, i) => (
+                <div key={c.path} style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 8, color: i === 0 ? 'var(--green)' : 'var(--t3)', padding: '2px 0 0 12px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={c.path}>
+                  {i === 0 ? '✓ KEEP ' : '✕ DEL  '}{c.name} · {fmtBytes(c.size)} · {c.folder}
+                </div>
+              ))}
+            </div>
+          ))}
         </div>
       )}
     </Modal>

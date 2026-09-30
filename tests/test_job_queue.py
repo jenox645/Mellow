@@ -10,9 +10,10 @@ def test_single_complete_for_multi_url_job():
     """Fix #2: multi-URL job should only fire complete once."""
     events = []
 
-    def fake_dl(url, out, opts, cb, lib_id=None):
+    def fake_dl(url, out, opts, cb, lib_id=None, cancel_event=None, pause_event=None):
         cb({'status': 'downloading', 'pct': 50})
         cb({'status': 'complete', 'title': url})
+        return 'success'
 
     with tempfile.TemporaryDirectory() as tmp:
         job = {
@@ -43,10 +44,6 @@ def test_run_job_cancelled_mid_loop():
     """If cancelled after first URL, remaining URLs are skipped."""
     called = []
 
-    def fake_dl(url, out, opts, cb, lib_id=None):
-        called.append(url)
-        cb({'status': 'complete', 'title': url})
-
     with tempfile.TemporaryDirectory() as tmp:
         job = {
             'id': 'test2',
@@ -58,12 +55,13 @@ def test_run_job_cancelled_mid_loop():
             'library_id': None,
             'status': 'active',
         }
-        def fake_dl_cancel(url, out, opts, cb, lib_id=None):
+        def fake_dl_cancel(url, out, opts, cb, lib_id=None, cancel_event=None, pause_event=None):
             called.append(url)
-            e = threading.Event()
-            e.set()
-            downloader._current_cancel_event = e
-            cb({'status': 'complete', 'title': url})
+            # Cancel arrives mid-download: the per-job event gets set
+            if cancel_event is not None:
+                cancel_event.set()
+            cb({'status': 'cancelled'})
+            return 'cancelled'
 
         with patch('downloader.download_video', side_effect=fake_dl_cancel):
             with patch('server._push_progress'):

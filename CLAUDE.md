@@ -17,7 +17,7 @@
 ## Download Flow
 1. User pastes URL → ANALYZE → POST `/api/info` → yt-dlp `--dump-json`
 2. User clicks DOWNLOAD → POST `/api/download` with `{url, format, quality, options}`
-3. `server.py` calls `downloader.download_in_thread()` → yt-dlp subprocess
+3. `server.py` enqueues a job; the queue worker thread calls `downloader.download_video()` (yt-dlp Python API) with a per-job cancel event
 4. Progress emitted per-item via SSE: `downloading` → `item_done` (on each file finish) → `processing` → repeat → `complete`
 5. `item_done` event: frontend moves item from `playlistItems` → `completedItems`, increments counter
 6. `complete` event: clears remaining `playlistItems`, triggers victory overlay if playlist

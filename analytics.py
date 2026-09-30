@@ -3,6 +3,7 @@ from __future__ import annotations
 import contextlib
 import csv
 import io
+import threading
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -14,9 +15,24 @@ from constants import MEDIA_EXTS
 
 DB_PATH = Path.home() / ".mellow_dlp.duckdb"
 
+# One process-wide connection per DB file, handed out as cursors. DuckDB
+# rejects opening the same file twice with different configs in one process
+# (e.g. read_only vs read-write), which made Signal API queries fail while a
+# download was recording. Cursors of a shared parent are safe across threads.
+_conns: dict[str, duckdb.DuckDBPyConnection] = {}
+_conns_lock = threading.Lock()
+
 
 def get_conn() -> duckdb.DuckDBPyConnection:
-    return duckdb.connect(str(DB_PATH))
+    key = str(DB_PATH)
+    with _conns_lock:
+        # Evict connections to other paths (tests repoint DB_PATH per run)
+        for old_key in [k for k in _conns if k != key]:
+            with contextlib.suppress(Exception):
+                _conns.pop(old_key).close()
+        if key not in _conns:
+            _conns[key] = duckdb.connect(key)
+        return _conns[key].cursor()
 
 
 def init_db() -> None:
@@ -73,6 +89,15 @@ def init_db() -> None:
                 created_at TIMESTAMP DEFAULT now()
             )
         """)
+        for col, typ in [
+            ("container", "TEXT DEFAULT 'mp4'"),
+            ("audio_format", "TEXT DEFAULT 'mp3'"),
+        ]:
+            try:
+                con.execute(f"ALTER TABLE library ADD COLUMN {col} {typ}")
+            except Exception:
+                pass
+
         con.execute("""
             CREATE TABLE IF NOT EXISTS sync_log (
                 id INTEGER PRIMARY KEY,
@@ -189,16 +214,72 @@ def get_stats(time_range: str = "30d") -> dict[str, Any]:
         lib_row = con.execute("SELECT COUNT(*) FROM library").fetchone()
         lib_count = lib_row[0] if lib_row else 0
 
-        where_recent = f"WHERE status='success' {ts_filter}" if ts_filter else ""
         recent_records = con.execute(f"""
             SELECT id, title, url, platform, format, quality,
                    file_size_bytes, timestamp, status
-            FROM downloads {where_recent}
+            FROM downloads WHERE status='success' {ts_filter}
             ORDER BY timestamp DESC LIMIT 10
         """, ts_params).fetchall()
 
+        status_counts = con.execute(f"""
+            SELECT status, COUNT(*) FROM downloads
+            WHERE status IS NOT NULL {ts_filter}
+            GROUP BY status
+        """, ts_params).fetchall()
+
+        failures_by_day = con.execute(f"""
+            SELECT strftime(timestamp,'%Y-%m-%d') as day, COUNT(*) as cnt
+            FROM downloads WHERE status='error' {ts_filter}
+            GROUP BY day ORDER BY day
+        """, ts_params).fetchall()
+
+        dur_row = con.execute(f"""
+            SELECT COALESCE(SUM(duration_seconds),0) FROM downloads
+            WHERE status='success' {ts_filter}
+        """, ts_params).fetchone()
+        total_duration = dur_row[0] if dur_row else 0
+
+        storage_growth = con.execute(f"""
+            SELECT day, SUM(sz) OVER (ORDER BY day) as cum FROM (
+                SELECT strftime(timestamp,'%Y-%m-%d') as day,
+                       COALESCE(SUM(file_size_bytes),0) as sz
+                FROM downloads WHERE status='success' {ts_filter}
+                GROUP BY day
+            ) ORDER BY day
+        """, ts_params).fetchall()
+
+        speed_by_day = con.execute(f"""
+            SELECT strftime(timestamp,'%Y-%m-%d') as day,
+                   AVG(download_speed_avg_bps) as avg_bps
+            FROM downloads
+            WHERE status='success' AND download_speed_avg_bps IS NOT NULL {ts_filter}
+            GROUP BY day ORDER BY day
+        """, ts_params).fetchall()
+
+        dow_hour = con.execute(f"""
+            SELECT EXTRACT(dow FROM timestamp)::INTEGER as dow,
+                   EXTRACT(hour FROM timestamp)::INTEGER as hr,
+                   COUNT(*) as cnt
+            FROM downloads WHERE status='success' {ts_filter}
+            GROUP BY dow, hr
+        """, ts_params).fetchall()
+
+        sync_runs = con.execute("""
+            SELECT sl.synced_at, COALESCE(l.name, sl.library_id) as name,
+                   sl.new_items, sl.skipped, sl.errors, sl.duration_seconds
+            FROM sync_log sl LEFT JOIN library l ON l.id = sl.library_id
+            ORDER BY sl.synced_at DESC LIMIT 10
+        """).fetchall()
+
     hour_map = {row[0]: row[1] for row in by_hour}
     hourly = [hour_map.get(h, 0) for h in range(24)]
+
+    dow_hour_map = {(r[0], r[1]): r[2] for r in dow_hour}
+    # 7 rows (Sun..Sat per DuckDB dow) × 24 cols
+    dow_hourly = [[dow_hour_map.get((d, h), 0) for h in range(24)] for d in range(7)]
+
+    st_map = {r[0]: r[1] for r in status_counts}
+    attempts = sum(st_map.values())
 
     return {
         "total_downloads": total_downloads,
@@ -224,6 +305,19 @@ def get_stats(time_range: str = "30d") -> dict[str, Any]:
                 "timestamp": str(r[7]) if r[7] else None, "status": r[8],
             }
             for r in recent_records
+        ],
+        "status_counts": st_map,
+        "success_rate": round(st_map.get("success", 0) / attempts * 100, 1) if attempts else None,
+        "failures_by_day": [{"day": r[0], "count": r[1]} for r in failures_by_day],
+        "total_duration_seconds": int(total_duration or 0),
+        "storage_growth": [{"day": r[0], "bytes": int(r[1] or 0)} for r in storage_growth],
+        "speed_by_day": [{"day": r[0], "avg_bps": int(r[1] or 0)} for r in speed_by_day],
+        "dow_hourly": dow_hourly,
+        "sync_runs": [
+            {"synced_at": str(r[0]) if r[0] else None, "name": r[1],
+             "new_items": r[2], "skipped": r[3], "errors": r[4],
+             "duration_seconds": r[5]}
+            for r in sync_runs
         ],
     }
 
@@ -296,18 +390,40 @@ def delete_history(
     return 0
 
 
+def delete_history_by_path(file_path: str) -> int:
+    """Delete download rows whose file_path matches (used by vault file delete)."""
+    if not file_path:
+        return 0
+    with get_conn() as con:
+        result = con.execute(
+            "SELECT COUNT(*) FROM downloads WHERE file_path = ?", [file_path]
+        ).fetchone()
+        count = result[0] if result else 0
+        if count:
+            con.execute("DELETE FROM downloads WHERE file_path = ?", [file_path])
+    return count
+
+
 def run_query(sql: str) -> dict:
     stripped = sql.strip()
-    if not stripped.upper().startswith("SELECT"):
-        return {"error": "Only SELECT statements are permitted.", "columns": [], "rows": [], "time_ms": 0}
+    first_word = stripped.split(None, 1)[0].upper() if stripped else ""
+    if first_word not in ("SELECT", "WITH"):
+        return {"error": "Only SELECT statements (including WITH ... SELECT) are permitted.",
+                "columns": [], "rows": [], "time_ms": 0}
     t0 = time.monotonic()
     try:
-        # Read-only connection: DuckDB enforces this at the engine level, so COPY,
-        # ATTACH, DELETE, and other write operations are rejected unconditionally.
-        with duckdb.connect(str(DB_PATH), read_only=True) as con:
-            res = con.execute(stripped)
-            columns = [d[0] for d in res.description] if res.description else []
-            rows = res.fetchall()
+        # Shared connection (a separate read_only connection conflicts with the
+        # process-wide read-write one). Run inside a rolled-back transaction so
+        # anything that slips past the SELECT/WITH check can't persist writes.
+        with get_conn() as con:
+            con.begin()
+            try:
+                res = con.execute(stripped)
+                columns = [d[0] for d in res.description] if res.description else []
+                rows = res.fetchall()
+            finally:
+                with contextlib.suppress(Exception):
+                    con.rollback()
         elapsed = round((time.monotonic() - t0) * 1000, 1)
         return {
             "columns": columns,
@@ -404,7 +520,8 @@ def get_library_entries() -> list[dict]:
             SELECT id, name, url, folder, folder_name, use_subfolder,
                    quality, mode, embed_thumbnail, embed_chapters,
                    embed_metadata, embed_subs, sub_langs, sponsorblock,
-                   filename_template, sync_mode, last_synced, created_at
+                   filename_template, sync_mode, last_synced, created_at,
+                   container, audio_format
             FROM library ORDER BY created_at DESC
         """).fetchall()
     return [
@@ -417,6 +534,8 @@ def get_library_entries() -> list[dict]:
             "sync_mode": r[15],
             "last_synced": str(r[16]) if r[16] else None,
             "created_at": str(r[17]) if r[17] else None,
+            "container": r[18] or "mp4",
+            "audio_format": r[19] or "mp3",
         }
         for r in rows
     ]
@@ -428,8 +547,9 @@ def upsert_library_entry(entry: dict) -> None:
             INSERT INTO library
                 (id,name,url,folder,folder_name,use_subfolder,quality,mode,
                  embed_thumbnail,embed_chapters,embed_metadata,embed_subs,sub_langs,
-                 sponsorblock,filename_template,sync_mode,last_synced,created_at)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                 sponsorblock,filename_template,sync_mode,last_synced,created_at,
+                 container,audio_format)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             ON CONFLICT (id) DO UPDATE SET
                 name=excluded.name, url=excluded.url, folder=excluded.folder,
                 folder_name=excluded.folder_name, use_subfolder=excluded.use_subfolder,
@@ -440,7 +560,8 @@ def upsert_library_entry(entry: dict) -> None:
                 embed_subs=excluded.embed_subs, sub_langs=excluded.sub_langs,
                 sponsorblock=excluded.sponsorblock,
                 filename_template=excluded.filename_template,
-                sync_mode=excluded.sync_mode, last_synced=excluded.last_synced
+                sync_mode=excluded.sync_mode, last_synced=excluded.last_synced,
+                container=excluded.container, audio_format=excluded.audio_format
         """, [
             entry["id"], entry["name"], entry["url"],
             entry.get("folder"), entry.get("folder_name"),
@@ -451,6 +572,7 @@ def upsert_library_entry(entry: dict) -> None:
             entry.get("sponsorblock", False), entry.get("filename_template", ""),
             entry.get("sync_mode", "add"), entry.get("last_synced"),
             entry.get("created_at"),
+            entry.get("container", "mp4"), entry.get("audio_format", "mp3"),
         ])
 
 

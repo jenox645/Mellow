@@ -1,0 +1,68 @@
+name: yt-dlp canary
+
+# Weekly check that the app's extraction paths still work against the
+# latest (pre-release) yt-dlp — find out about extractor breakage before
+# a user does. Fails loudly; does not block normal CI.
+
+on:
+  schedule:
+    - cron: "0 6 * * 1" # Mondays 06:00 UTC
+  workflow_dispatch:
+
+jobs:
+  canary:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps with yt-dlp pre-release
+        run: |
+          pip install -r requirements.txt
+          pip install --upgrade --pre yt-dlp
+
+      - name: Show yt-dlp version
+        run: python -c "import yt_dlp; print(yt_dlp.version.__version__)"
+
+      - name: Probe stable URLs through downloader.get_video_info
+        run: |
+          python - <<'EOF'
+          import sys
+          import downloader
+
+          # Long-lived, public, embeddable videos — stable canary targets
+          URLS = [
+              "https://www.youtube.com/watch?v=jNQXAC9IVRw",  # "Me at the zoo"
+              "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+              "https://vimeo.com/76979871",
+          ]
+          failures = []
+          for url in URLS:
+              try:
+                  info = downloader.get_video_info(url)
+                  if not info.get("title"):
+                      failures.append((url, "no title in info dict"))
+                  else:
+                      print(f"OK  {url} -> {info['title']!r}")
+              except Exception as exc:
+                  failures.append((url, str(exc)))
+
+          # One playlist probe — exercises the extract_flat path
+          try:
+              items = downloader.get_playlist_items(
+                  "https://www.youtube.com/playlist?list=PLBCF2DAC6FFB574DE")
+              if not items:
+                  failures.append(("playlist probe", "0 items returned"))
+              else:
+                  print(f"OK  playlist probe -> {len(items)} items")
+          except Exception as exc:
+              failures.append(("playlist probe", str(exc)))
+
+          if failures:
+              print("\nCANARY FAILURES (yt-dlp master may have broken extraction):")
+              for url, err in failures:
+                  print(f"  {url}: {err}")
+              sys.exit(1)
+          EOF

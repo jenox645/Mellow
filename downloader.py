@@ -30,6 +30,16 @@ class _GeoBlockLogger:
     def __init__(self, progress_cb: Callable, library_id: str | None) -> None:
         self._cb = progress_cb
         self._lid = library_id
+        self._seen: set[str] = set()
+
+    def _emit_once(self, reason: str, msg: str) -> None:
+        # yt-dlp logs several error lines per failed item (retries, final
+        # error); dedupe so failedCount reflects items, not log lines.
+        key = msg.strip()
+        if key in self._seen:
+            return
+        self._seen.add(key)
+        self._cb({"status": "item_failed", "reason": reason, "message": msg, "library_id": self._lid})
 
     def debug(self, msg: str) -> None:
         pass
@@ -40,14 +50,14 @@ class _GeoBlockLogger:
     def warning(self, msg: str) -> None:
         lmsg = msg.lower()
         if any(p in lmsg for p in GEO_BLOCK_PATTERNS):
-            self._cb({"status": "item_failed", "reason": "geo_blocked", "message": msg, "library_id": self._lid})
+            self._emit_once("geo_blocked", msg)
 
     def error(self, msg: str) -> None:
         lmsg = msg.lower()
         if any(p in lmsg for p in GEO_BLOCK_PATTERNS):
-            self._cb({"status": "item_failed", "reason": "geo_blocked", "message": msg, "library_id": self._lid})
+            self._emit_once("geo_blocked", msg)
         else:
-            self._cb({"status": "item_failed", "reason": "error", "message": msg, "library_id": self._lid})
+            self._emit_once("error", msg)
 
 
 def pause() -> None:
@@ -84,10 +94,11 @@ def cancel_download() -> None:
         _current_cancel_event.set()
 
 
-def _make_progress_hook(progress_cb: Callable, library_id: str | None, speed_tracker: dict, cancel_event: threading.Event) -> Callable:
+def _make_progress_hook(progress_cb: Callable, library_id: str | None, speed_tracker: dict,
+                        cancel_event: threading.Event, pause_event: threading.Event) -> Callable:
     def hook(d: dict) -> None:
         # Pause support: block here while paused
-        while _pause_event.is_set():
+        while pause_event.is_set():
             if cancel_event.is_set():
                 raise yt_dlp.utils.DownloadCancelled()
             time.sleep(0.2)
@@ -125,11 +136,25 @@ def _make_progress_hook(progress_cb: Callable, library_id: str | None, speed_tra
             # Save sidecar immediately — filename and URL are live right now
             if filename:
                 _save_thumbnail_sidecar(filename, thumb_url)
+            # Per-item timing/speed so playlist entries don't all inherit the
+            # whole playlist's elapsed time and shared average speed.
+            now = time.monotonic()
+            samples = speed_tracker["samples"]
+            start_idx = speed_tracker.get("item_sample_start", 0)
+            item_samples = samples[start_idx:]
+            vid = info_dict.get("id")
+            if vid:
+                speed_tracker.setdefault("items", {})[vid] = {
+                    "elapsed": int(now - speed_tracker.get("item_t0", speed_tracker["t0"])),
+                    "speed": int(sum(item_samples) / len(item_samples)) if item_samples else None,
+                }
+            speed_tracker["item_t0"] = now
+            speed_tracker["item_sample_start"] = len(samples)
             progress_cb({
                 "status": "item_done",
                 "title": info_dict.get("title") or Path(filename).stem,
                 "thumbnail": thumb_url,
-                "video_id": info_dict.get("id"),
+                "video_id": vid,
                 "playlist_index": info_dict.get("playlist_index"),
                 "library_id": library_id,
             })
@@ -166,26 +191,28 @@ def _build_postprocessors(opts: dict) -> list[dict]:
 
 def _save_thumbnail_sidecar(filepath: str, thumb_url: str | None) -> None:
     if not thumb_url or not filepath:
-        print(f"[THUMB DEBUG] skipped — filepath={filepath!r} url={thumb_url!r}", flush=True)
         return
     p = Path(filepath)
     stem = p.stem
-    # Strip yt-dlp format codes like .f137 .f251 appended to stem before extension
-    clean_stem = re.sub(r'\.[A-Za-z0-9_-]{1,8}$', '', stem)
+    # Strip only yt-dlp intermediate format codes (.f137, .f251-style) so
+    # legitimate dotted titles ("Episode.10") keep their full stem and the
+    # vault lookup (same stem + .jpg) actually finds the sidecar.
+    clean_stem = re.sub(r'\.f\d{1,5}$', '', stem)
     sidecar = p.parent / ((clean_stem or stem) + ".jpg")
-    print(f"[THUMB DEBUG] filepath={filepath}", flush=True)
-    print(f"[THUMB DEBUG] thumbnail_url={thumb_url}", flush=True)
-    print(f"[THUMB DEBUG] sidecar={sidecar}", flush=True)
     if sidecar.exists():
-        print("[THUMB DEBUG] already exists, skipping", flush=True)
         return
-    try:
-        from urllib.request import urlretrieve
-        urlretrieve(thumb_url, str(sidecar))
-        size = sidecar.stat().st_size if sidecar.exists() else 0
-        print(f"[THUMB DEBUG] saved OK ({size} bytes)", flush=True)
-    except Exception as e:
-        print(f"[THUMB ERROR] failed to save sidecar: {e}", flush=True)
+
+    def _fetch() -> None:
+        try:
+            from urllib.request import urlopen as _uo
+            with _uo(thumb_url, timeout=15) as resp:
+                data = resp.read()
+            sidecar.write_bytes(data)
+        except Exception as e:
+            print(f"[THUMB ERROR] failed to save sidecar for {p.name}: {e}", flush=True)
+
+    # Off-thread: a slow thumbnail CDN must not stall the progress hook
+    threading.Thread(target=_fetch, daemon=True).start()
 
 
 def _detect_platform(url: str) -> str:
@@ -234,13 +261,36 @@ def download_video(
     opts: dict,
     progress_cb: Callable,
     library_id: str | None = None,
-) -> None:
+    cancel_event: threading.Event | None = None,
+    pause_event: threading.Event | None = None,
+) -> str:
+    """Run one download. Returns terminal status: 'success' | 'cancelled' | 'error'.
+
+    cancel_event/pause_event are per-job when called from the queue worker;
+    module-level fallbacks keep /api/cancel and pause()/resume() working.
+    """
     global _current_cancel_event
-    cancel_event = threading.Event()
+    if cancel_event is None:
+        cancel_event = threading.Event()
+    if pause_event is None:
+        pause_event = _pause_event
     with _lock:
         _current_cancel_event = cancel_event
+    # A pause left set by a previous download must never carry into this one
+    pause_event.clear()
     t_start = time.monotonic()
-    speed_tracker: dict = {"samples": []}
+    speed_tracker: dict = {"samples": [], "t0": t_start, "item_t0": t_start,
+                           "item_sample_start": 0, "items": {}}
+    write_metadata = opts.get("write_metadata", True)
+
+    def _record(meta: dict) -> None:
+        if not write_metadata:
+            return
+        try:
+            analytics.record_download(meta)
+        except Exception as rec_exc:
+            print(f"[ANALYTICS] record failed: {rec_exc}", flush=True)
+
     progress_cb({"status": "starting", "url": url, "library_id": library_id})
 
     out_dir = Path(output_dir)
@@ -276,7 +326,7 @@ def download_video(
 
     print(f"[MellowDLP] yt-dlp outtmpl={outtmpl!r}  output_dir={output_dir!r}", flush=True)
     print(f"[DOWNLOAD] mode={mode} audio_format={audio_fmt} quality={quality} container={container}", flush=True)
-    hook = _make_progress_hook(progress_cb, library_id, speed_tracker, cancel_event)
+    hook = _make_progress_hook(progress_cb, library_id, speed_tracker, cancel_event, pause_event)
 
     if mode == "audio":
         fmt = "bestaudio/best"
@@ -354,18 +404,38 @@ def download_video(
     _apply_cookie_opts(ydl_opts, {"cookies_browser": cookies_browser, "cookies_file": cookies_file, "cookies_browser_profile": cookies_browser_profile or ""})
 
     if rate_limit:
-        ydl_opts["ratelimit"] = rate_limit
+        # UI stores CLI-style strings ("5M"); the Python API needs bytes/sec.
+        if isinstance(rate_limit, (int, float)):
+            parsed_rate = rate_limit
+        else:
+            parse_fn = getattr(yt_dlp.utils, "parse_bytes", None) or yt_dlp.utils.parse_filesize
+            try:
+                parsed_rate = parse_fn(str(rate_limit))
+            except Exception:
+                parsed_rate = None
+        if parsed_rate:
+            ydl_opts["ratelimit"] = parsed_rate
+        else:
+            print(f"[DOWNLOAD] ignoring unparsable rate_limit {rate_limit!r}", flush=True)
     if proxy:
         ydl_opts["proxy"] = proxy
     if ext_downloader:
         ydl_opts["external_downloader"] = ext_downloader
-    if concurrent_frags and int(concurrent_frags) > 1:
-        ydl_opts["concurrent_fragment_downloads"] = int(concurrent_frags)
-    if sleep_interval and int(sleep_interval) > 0:
-        ydl_opts["sleep_interval"] = int(sleep_interval)
-    retries = opts.get("retries")
+    def _safe_int(v: Any) -> int | None:
+        try:
+            return int(v)
+        except (TypeError, ValueError):
+            return None
+
+    frags = _safe_int(concurrent_frags)
+    if frags and frags > 1:
+        ydl_opts["concurrent_fragment_downloads"] = frags
+    sleep_i = _safe_int(sleep_interval)
+    if sleep_i and sleep_i > 0:
+        ydl_opts["sleep_interval"] = sleep_i
+    retries = _safe_int(opts.get("retries"))
     if retries is not None:
-        ydl_opts["retries"] = int(retries)
+        ydl_opts["retries"] = retries
 
     if start_time or end_time:
         start_sec = _parse_time(start_time) if start_time else None
@@ -403,20 +473,25 @@ def download_video(
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
-            if info:
-                final_title = info.get("title")
-                final_uploader = info.get("uploader") or info.get("channel")
-                final_duration = info.get("duration")
-                final_thumbnail = info.get("thumbnail")
-                requested = info.get("requested_downloads", [{}])
-                if requested:
-                    fp = requested[0].get("filepath") or requested[0].get("_filename")
-                    if fp:
-                        final_path = fp
-                        try:
-                            final_size = Path(fp).stat().st_size
-                        except OSError:
-                            final_size = info.get("filesize") or 0
+            # Defensive: a yt-dlp update changing the info_dict shape must
+            # degrade to "no file path recorded", not kill the whole flow.
+            try:
+                if info:
+                    final_title = info.get("title")
+                    final_uploader = info.get("uploader") or info.get("channel")
+                    final_duration = info.get("duration")
+                    final_thumbnail = info.get("thumbnail")
+                    requested = info.get("requested_downloads") or [{}]
+                    if requested and isinstance(requested[0], dict):
+                        fp = requested[0].get("filepath") or requested[0].get("_filename")
+                        if fp:
+                            final_path = fp
+                            try:
+                                final_size = Path(fp).stat().st_size
+                            except OSError:
+                                final_size = info.get("filesize") or 0
+            except Exception as shape_exc:
+                print(f"[DOWNLOAD] info_dict shape unexpected: {shape_exc}", flush=True)
 
         elapsed = time.monotonic() - t_start
         samples = speed_tracker["samples"]
@@ -425,13 +500,13 @@ def download_video(
 
         if cancel_event.is_set():
             progress_cb({"status": "cancelled"})
-            analytics.record_download({
+            _record({
                 "url": url, "title": final_title, "uploader": final_uploader,
                 "platform": _detect_platform(url), "duration_seconds": final_duration,
                 "status": "cancelled",
                 "elapsed_seconds": elapsed_int,
             })
-            return
+            return "cancelled"
 
         progress_cb({
             "status": "complete",
@@ -440,6 +515,8 @@ def download_video(
             "file_size": final_size,
             "library_id": library_id,
         })
+
+        item_stats: dict = speed_tracker.get("items", {})
 
         # Record per-item for playlists; record single item for single downloads
         if info and ("entries" in info or info.get("_type") == "playlist"):
@@ -456,7 +533,10 @@ def download_video(
                 entry_thumb = entry.get("thumbnail")
                 if fp and entry_thumb:
                     _save_thumbnail_sidecar(fp, entry_thumb)
-                analytics.record_download({
+                # Per-item timing captured by the progress hook — the playlist
+                # totals would otherwise corrupt speed/duration stats.
+                per_item = item_stats.get(entry.get("id"), {})
+                _record({
                     "url": entry.get("webpage_url") or entry.get("url", ""),
                     "title": entry.get("title"),
                     "uploader": entry.get("uploader") or entry.get("channel"),
@@ -469,13 +549,13 @@ def download_video(
                     "file_path": fp,
                     "thumbnail_url": entry_thumb,
                     "status": "success",
-                    "download_speed_avg_bps": avg_speed,
-                    "elapsed_seconds": elapsed_int,
+                    "download_speed_avg_bps": per_item.get("speed", avg_speed),
+                    "elapsed_seconds": per_item.get("elapsed", elapsed_int),
                 })
         else:
             if final_path and final_thumbnail:
                 _save_thumbnail_sidecar(final_path, final_thumbnail)
-            analytics.record_download({
+            _record({
                 "url": url, "title": final_title, "uploader": final_uploader,
                 "platform": _detect_platform(url), "duration_seconds": final_duration,
                 "file_size_bytes": final_size,
@@ -488,19 +568,22 @@ def download_video(
                 "download_speed_avg_bps": avg_speed,
                 "elapsed_seconds": elapsed_int,
             })
+        return "success"
 
     except yt_dlp.utils.DownloadCancelled:
         elapsed = time.monotonic() - t_start
         progress_cb({"status": "cancelled"})
-        analytics.record_download({
+        _record({
             "url": url, "title": final_title, "platform": _detect_platform(url),
             "status": "cancelled", "elapsed_seconds": int(elapsed),
         })
+        return "cancelled"
     except Exception as exc:
         elapsed = time.monotonic() - t_start
         msg = str(exc)
-        progress_cb({"status": "error", "message": msg, "library_id": library_id})
-        analytics.record_download({
+        # url included so the frontend can offer a one-click retry
+        progress_cb({"status": "error", "message": msg, "url": url, "library_id": library_id})
+        _record({
             "url": url, "title": final_title, "uploader": final_uploader,
             "platform": _detect_platform(url),
             "format": "audio" if mode == "audio" else "video",
@@ -509,6 +592,10 @@ def download_video(
             "error_message": msg,
             "elapsed_seconds": int(elapsed),
         })
+        return "error"
+    finally:
+        # Never leak pause state into the next download
+        pause_event.clear()
 
 
 def _apply_cookie_opts(ydl_opts: dict, cookie_opts: dict) -> None:
@@ -589,18 +676,3 @@ def get_playlist_items(url: str, cookie_opts: dict | None = None) -> list[dict]:
         })
     return items
 
-
-def download_in_thread(
-    url: str,
-    output_dir: str,
-    opts: dict,
-    progress_cb: Callable,
-    library_id: str | None = None,
-) -> threading.Thread:
-    t = threading.Thread(
-        target=download_video,
-        args=(url, output_dir, opts, progress_cb, library_id),
-        daemon=True,
-    )
-    t.start()
-    return t

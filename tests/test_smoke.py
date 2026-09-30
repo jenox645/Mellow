@@ -41,7 +41,10 @@ def test_item_done_in_progress_hook():
     import threading
     from downloader import _make_progress_hook
     events = []
-    hook = _make_progress_hook(events.append, None, {"samples": []}, threading.Event())
+    import time
+    tracker = {"samples": [], "t0": time.monotonic(), "item_t0": time.monotonic(),
+               "item_sample_start": 0, "items": {}}
+    hook = _make_progress_hook(events.append, None, tracker, threading.Event(), threading.Event())
     hook({"status": "finished", "info_dict": {"title": "Test Video", "thumbnail": "http://x.jpg", "playlist_index": 1}, "filename": "test.mp4"})
     statuses = [e.get("status") for e in events]
     assert "item_done" in statuses, f"Expected item_done event, got: {statuses}"
