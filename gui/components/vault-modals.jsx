@@ -35,9 +35,12 @@ export function AddVaultModal({ onClose, onSaved, showNotif }) {
       name: name.trim(),
       url: validUrls[0] || '',
       extra_urls: validUrls.slice(1),
-      folder: folder,
+      // Same rule as the Feed's "create new vault entry": a picked folder is
+      // used as-is, no folder means a subfolder of the download folder (the
+      // server fills that in). This dialog used to nest a picked folder.
+      folder: folder.trim(),
       folder_name: name.trim(),
-      use_subfolder: !!folder,
+      use_subfolder: !folder.trim(),
       quality: mediaType === 'audio' ? 'best' : quality,
       container,
       audio_format: audioFmt,
