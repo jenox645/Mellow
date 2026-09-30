@@ -24,13 +24,16 @@ Personal desktop GUI for [yt-dlp](https://github.com/yt-dlp/yt-dlp). Download au
 
 ## Features
 
-- **Feed**: paste a URL, analyze it, pick format/quality, download. Supports videos, playlists, audio-only, and multi-URL batch jobs.
+- **Feed**: paste a URL, analyze it, pick format/quality, download. Supports videos, playlists, audio-only (with a bitrate choice), and multi-URL batch jobs. Paste (Ctrl+V) or drop a link anywhere in the window to analyze it. Tells you when you already downloaded a video, with a shortcut to the file.
+- **Plain-language errors**: common failures (outdated yt-dlp, bot checks, private or removed videos, geo-blocks, network, full disk) are explained with the fix, often as a one-click button.
 - **Queue**: download jobs with live progress (speed, ETA, per-item thumbnails). Pause, resume, reorder, or cancel; run up to 3 at once (`download_workers`, default 1).
 - **Vault**: browse your local media library by folder. Thumbnail previews, file stats, direct media player launch.
 - **Library sync**: link a vault folder to a playlist URL. Add-only or mirror mode (deletes local files no longer in the playlist).
 - **Archive file**: `mellow_archive.txt` per folder tracks downloaded URLs so yt-dlp skips duplicates. Auto-updated on download, sync, and delete. Import in Feed to reproduce the same library on another device.
 - **Analytics**: download history with stats by platform, format, and uploader. CSV export and custom SQL.
 - **Cookies**: pull cookies from your browser for age-restricted content.
+- **Network**: proxy, rate limit, and a Force IPv4 switch for connections where IPv6 hangs.
+- **Notifications**: optional desktop notification when a download finishes or fails in the background.
 - **yt-dlp self-update**: update yt-dlp from the Config page when running from source (takes effect after a restart). The packaged `.exe` can't replace its bundled copy — see Limitations.
 
 Formats: MP4, MKV, WebM, MP3, FLAC, M4A, OGG, Opus / Quality: best, 4K, 1080p, 720p, 480p, 360p, 128k, 320k.

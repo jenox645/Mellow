@@ -4,7 +4,7 @@
 import { API } from '../lib/api.js';
 import { fmtBytes } from '../lib/util.js';
 import { Modal } from './common.jsx';
-import { SPONSORBLOCK_HINT } from '../lib/constants.js';
+import { AUDIO_FORMATS, CONTAINERS, QUALITIES, SPONSORBLOCK_HINT } from '../lib/constants.js';
 
 export function AddVaultModal({ onClose, onSaved, showNotif }) {
   const [name, setName] = React.useState('');
@@ -35,9 +35,12 @@ export function AddVaultModal({ onClose, onSaved, showNotif }) {
       name: name.trim(),
       url: validUrls[0] || '',
       extra_urls: validUrls.slice(1),
-      folder: folder,
+      // Same rule as the Feed's "create new vault entry": a picked folder is
+      // used as-is, no folder means a subfolder of the download folder (the
+      // server fills that in). This dialog used to nest a picked folder.
+      folder: folder.trim(),
       folder_name: name.trim(),
-      use_subfolder: !!folder,
+      use_subfolder: !folder.trim(),
       quality: mediaType === 'audio' ? 'best' : quality,
       container,
       audio_format: audioFmt,
@@ -105,7 +108,7 @@ export function AddVaultModal({ onClose, onSaved, showNotif }) {
           <div className="form-row">
             <div className="form-label">QUALITY</div>
             <div className="pills">
-              {['best','1080p','720p','480p'].map(q => (
+              {QUALITIES.map(q => (
                 <div key={q} className={'pill' + (quality === q ? ' active' : '')} onClick={() => setQuality(q)}>{q.toUpperCase()}</div>
               ))}
             </div>
@@ -113,7 +116,7 @@ export function AddVaultModal({ onClose, onSaved, showNotif }) {
           <div className="form-row">
             <div className="form-label">CONTAINER</div>
             <div className="pills">
-              {['mp4','mkv','webm'].map(c => (
+              {CONTAINERS.map(c => (
                 <div key={c} className={'pill' + (container === c ? ' active' : '')} onClick={() => setContainer(c)}>{c.toUpperCase()}</div>
               ))}
             </div>
@@ -123,7 +126,7 @@ export function AddVaultModal({ onClose, onSaved, showNotif }) {
         <div className="form-row">
           <div className="form-label">FORMAT</div>
           <div className="pills">
-            {['mp3','aac','flac','m4a','opus','wav'].map(f => (
+            {AUDIO_FORMATS.map(f => (
               <div key={f} className={'pill' + (audioFmt === f ? ' active' : '')} onClick={() => setAudioFmt(f)}>{f.toUpperCase()}</div>
             ))}
           </div>
@@ -271,6 +274,16 @@ export function SyncPlaylistModal({ folder, onClose, showNotif, onRefreshVault, 
         const pls = d.playlists || [];
         setPlaylists(pls);
         setSelectedPlaylists(new Set(pls));
+        const f = d.sync_format || {};
+        if (f.sync_audio !== undefined) setSyncMediaType(f.sync_audio ? 'audio' : 'video');
+        if (f.quality) setSyncQuality(f.quality);
+        if (f.container) setSyncContainer(f.container);
+        if (f.audio_format) setSyncAudioFmt(f.audio_format);
+        if (f.embed_thumbnail !== undefined) setSyncEmbedThumb(!!f.embed_thumbnail);
+        if (f.embed_subs !== undefined) setSyncEmbedSubs(!!f.embed_subs);
+        if (f.embed_chapters !== undefined) setSyncEmbedChapters(!!f.embed_chapters);
+        if (f.embed_metadata !== undefined) setSyncEmbedMeta(!!f.embed_metadata);
+        if (f.sponsorblock !== undefined) setSyncSponsorblock(!!f.sponsorblock);
       })
       .catch(() => { setPlaylists([]); setSelectedPlaylists(new Set()); });
     API.get('/api/config').then(c => {
@@ -352,11 +365,16 @@ export function SyncPlaylistModal({ folder, onClose, showNotif, onRefreshVault, 
     const pathsToDelete = (mirrorPreview?.to_delete || []).map(f => f.path);
     const fmtOpts = mirrorPreview?.fmtOpts || buildFmtOpts();
     const activePlaylists = playlists ? playlists.filter(p => !selectedPlaylists || selectedPlaylists.has(p)) : [];
+    let removed = { deleted: 0, errors: [] };
     API.post('/api/vault/mirror-confirm', { path: folder.path, paths: pathsToDelete })
+      .then(r => { removed = r; })
       .then(() => API.post('/api/vault/sync', { path: folder.path, mode: 'add', playlist_urls: activePlaylists.length ? activePlaylists : undefined, ...fmtOpts }))
       .then(() => {
         const label = folder.name + ' — mirror sync';
-        showNotif('Mirror Done', 'Deleted ' + pathsToDelete.length + ' file(s), syncing new items', 'success');
+        showNotif('Mirror Done', 'Deleted ' + removed.deleted + ' file(s), syncing new items', 'success');
+        if (removed.errors && removed.errors.length) {
+          showNotif('Not Deleted', removed.errors.length + ' file(s) could not be deleted (in use or read-only?)', 'error');
+        }
         onSyncStart && onSyncStart(label);
         if (onSyncItems && activePlaylists.length) {
           onSyncItems(null, 0, folder.name);
@@ -396,7 +414,14 @@ export function SyncPlaylistModal({ folder, onClose, showNotif, onRefreshVault, 
           {toAddCount > 0 && <div style={{ color: 'var(--cyan)' }}>+ {toAddCount} new item(s) will be downloaded</div>}
           {toDelete.length > 0 && <div style={{ color: 'var(--red)' }}>− {toDelete.length} item(s) will be deleted (not in any playlist)</div>}
           {unchangedCount > 0 && <div style={{ color: 'var(--t4)' }}>= {unchangedCount} item(s) unchanged</div>}
-          {toAddCount === 0 && toDelete.length === 0 && <div style={{ color: 'var(--t3)' }}>No changes — folder matches all linked playlists.</div>}
+          {(mirrorPreview.fetch_errors || []).length > 0 ? (
+            <div style={{ color: 'var(--amber)' }}>
+              ⚠ {mirrorPreview.fetch_errors.length} playlist(s) could not be read, so nothing will be deleted this time
+              (their files would look orphaned). New items are still downloaded.
+            </div>
+          ) : toAddCount === 0 && toDelete.length === 0 && (
+            <div style={{ color: 'var(--t3)' }}>No changes — folder matches all linked playlists.</div>
+          )}
         </div>
         {toDelete.length > 0 && (
           <div style={{ maxHeight: 180, overflow: 'auto' }}>
@@ -464,7 +489,7 @@ export function SyncPlaylistModal({ folder, onClose, showNotif, onRefreshVault, 
               <div className="form-row">
                 <div className="form-label">QUALITY</div>
                 <div className="pills">
-                  {['best','1080p','720p','480p'].map(q => (
+                  {QUALITIES.map(q => (
                     <div key={q} className={'pill' + (syncQuality === q ? ' active' : '')} onClick={() => setSyncQuality(q)}>{q.toUpperCase()}</div>
                   ))}
                 </div>
@@ -472,7 +497,7 @@ export function SyncPlaylistModal({ folder, onClose, showNotif, onRefreshVault, 
               <div className="form-row">
                 <div className="form-label">CONTAINER</div>
                 <div className="pills">
-                  {['mp4','mkv','webm'].map(c => (
+                  {CONTAINERS.map(c => (
                     <div key={c} className={'pill' + (syncContainer === c ? ' active' : '')} onClick={() => setSyncContainer(c)}>{c.toUpperCase()}</div>
                   ))}
                 </div>
@@ -482,7 +507,7 @@ export function SyncPlaylistModal({ folder, onClose, showNotif, onRefreshVault, 
             <div className="form-row">
               <div className="form-label">FORMAT</div>
               <div className="pills">
-                {['mp3','aac','flac','m4a','opus','wav'].map(f => (
+                {AUDIO_FORMATS.map(f => (
                   <div key={f} className={'pill' + (syncAudioFmt === f ? ' active' : '')} onClick={() => setSyncAudioFmt(f)}>{f.toUpperCase()}</div>
                 ))}
               </div>
@@ -566,9 +591,12 @@ export function DuplicatesModal({ onClose, showNotif, onRefreshVault }) {
     const targets = groups.flatMap(g => g.copies.slice(1));
     if (!targets.length) return;
     setDeleting(true);
-    Promise.all(targets.map(c => API.del('/api/vault/file', { path: c.path }).catch(() => null)))
-      .then(() => {
-        showNotif('Deduplicated', targets.length + ' smaller cop' + (targets.length === 1 ? 'y' : 'ies') + ' deleted', 'success');
+    Promise.all(targets.map(c => API.del('/api/vault/file', { path: c.path }).then(() => true, () => false)))
+      .then(results => {
+        const deleted = results.filter(Boolean).length;
+        const failed = results.length - deleted;
+        if (deleted) showNotif('Deduplicated', deleted + ' smaller cop' + (deleted === 1 ? 'y' : 'ies') + ' deleted', 'success');
+        if (failed) showNotif('Not Deleted', failed + ' cop' + (failed === 1 ? 'y' : 'ies') + ' could not be deleted', 'error');
         onRefreshVault && onRefreshVault();
         load();
       })

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import re
 import threading
 import time
@@ -10,11 +11,15 @@ import yt_dlp
 
 import analytics
 from constants import (
+    AUDIO_FORMATS,
     PAUSE_POLL_SECS,
+    SOCKET_TIMEOUT_SECS,
     SPONSORBLOCK_REMOVE_CATEGORIES,
     THUMB_FETCH_TIMEOUT_SECS,
 )
 from ffmpeg_locate import find_ffmpeg
+
+log = logging.getLogger(__name__)
 
 _pause_event = threading.Event()
 
@@ -111,13 +116,16 @@ def _merged_format(quality: str, container: str) -> tuple[str, str]:
     return fmt, "webm/mkv"
 
 
-AUDIO_FORMAT_MAP: dict[str, str] = {
-    "mp3": "mp3",
-    "aac": "aac",
-    "flac": "flac",
-    "m4a": "m4a",
-    "opus": "opus",
-    "wav": "wav",
+AUDIO_FORMAT_MAP: dict[str, str] = {fmt: fmt for fmt in AUDIO_FORMATS}
+
+# Audio quality choice -> FFmpegExtractAudio preferredquality ("0" = best VBR).
+# Ignored by lossless targets (flac, wav).
+AUDIO_QUALITY_MAP: dict[str, str] = {
+    "best": "0",
+    "320": "320",
+    "256": "256",
+    "192": "192",
+    "128": "128",
 }
 
 _current_cancel_event: threading.Event | None = None
@@ -285,7 +293,7 @@ def _save_thumbnail_sidecar(filepath: str, thumb_url: str | None) -> None:
                 data = resp.read()
             sidecar.write_bytes(data)
         except Exception as e:
-            print(f"[THUMB ERROR] failed to save sidecar for {p.name}: {e}", flush=True)
+            log.warning(f"failed to save sidecar for {p.name}: {e}")
 
     # Off-thread: a slow thumbnail CDN must not stall the progress hook
     threading.Thread(target=_fetch, daemon=True).start()
@@ -310,6 +318,44 @@ def _detect_platform(url: str) -> str:
     if "soundcloud.com" in url_lower:
         return "SoundCloud"
     return "Other"
+
+
+# yt-dlp extractor key → reconstructable public URL, for archive files.
+# soundcloud / tiktok / instagram / bandcamp store numeric IDs that can't be
+# turned back into a working public URL; their entries are skipped.
+_ARCHIVE_URL_TEMPLATES = {
+    "youtube":     "https://www.youtube.com/watch?v={}",
+    "vimeo":       "https://vimeo.com/{}",
+    "twitter":     "https://twitter.com/i/status/{}",
+    "twitch":      "https://www.twitch.tv/videos/{}",
+    "twitchvod":   "https://www.twitch.tv/videos/{}",
+    "bilibili":    "https://www.bilibili.com/video/{}",
+    "dailymotion": "https://www.dailymotion.com/video/{}",
+    "nicovideo":   "https://www.nicovideo.jp/watch/{}",
+}
+
+
+def parse_url_file(content: str) -> tuple[list[str], str]:
+    """URLs from a text file of URLs or a yt-dlp archive file ("youtube <id>").
+
+    Returns (urls, "url_list" | "archive").
+    """
+    urls: list[str] = []
+    fmt = "url_list"
+    for line in content.strip().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("http"):
+            urls.append(line)
+            continue
+        parts = line.split()
+        if len(parts) == 2:
+            tmpl = _ARCHIVE_URL_TEMPLATES.get(parts[0].lower())
+            if tmpl:
+                urls.append(tmpl.format(parts[1]))
+                fmt = "archive"
+    return urls, fmt
 
 
 def _parse_time(s: str) -> float | None:
@@ -370,6 +416,236 @@ def download_video(
         return "error"
 
 
+def _opt_str(opts: dict, key: str, default: str = "") -> str:
+    # Clients send null for unset fields; treat that like a missing key
+    return str(opts.get(key) or default).strip()
+
+
+def _clip_range(start_time: str, end_time: str) -> tuple[float, float]:
+    """(start, end) seconds of a trimmed download; an open end is "to the last second"."""
+    start = _parse_time(start_time) if start_time else 0.0
+    end = _parse_time(end_time) if end_time else float("inf")
+    for text, value in ((start_time, start), (end_time, end)):
+        if value is None:
+            # Silently reading it as "from the start"/"to the end" downloaded
+            # the whole video when a clip was asked for
+            raise ValueError(f"Can't read the clip time {text!r} (use seconds, mm:ss or hh:mm:ss).")
+    if end <= start:
+        raise ValueError(f"The clip ends ({end_time}) before it starts ({start_time or '0'}).")
+    return start, end
+
+
+def _rate_limit(value: Any) -> float | None:
+    """The UI stores CLI-style strings ("5M"); the Python API needs bytes/sec."""
+    if isinstance(value, (int, float)):
+        return value or None
+    parse_fn = getattr(yt_dlp.utils, "parse_bytes", None) or yt_dlp.utils.parse_filesize
+    try:
+        return parse_fn(str(value))
+    except Exception:
+        return None
+
+
+def _build_ydl_opts(url: str, out_dir: Path, opts: dict, *, ffmpeg: str | None,
+                    want_audio: bool, embed_thumb: bool,
+                    warn: Callable[[str, str], None]) -> tuple[dict[str, Any], str | None]:
+    """The yt-dlp options for one download, and the warning it is saved with (if any).
+
+    warn(code, message) reports a limitation to the UI as it is decided.
+    """
+    mode = _opt_str(opts, "mode", "video").lower()
+    quality = _opt_str(opts, "quality", "best")
+    container = _opt_str(opts, "container", "mp4").lower()
+    audio_fmt = _opt_str(opts, "audio_format", "mp3").lower()
+    custom_format = _opt_str(opts, "custom_format")
+    start_time = _opt_str(opts, "start_time")
+    end_time = _opt_str(opts, "end_time")
+    embed_subs = bool(opts.get("embed_subs")) and not want_audio
+    filename_template = _opt_str(opts, "filename_template") or "%(title)s.%(ext)s"
+    outtmpl = str(out_dir / filename_template)
+    log.debug(f"yt-dlp outtmpl={outtmpl!r} mode={mode} audio_format={audio_fmt} "
+              f"quality={quality} container={container}")
+    warning: str | None = None
+
+    ydl_opts: dict[str, Any] = {"outtmpl": outtmpl, "windows_filenames": True}
+    if ffmpeg:
+        ydl_opts["ffmpeg_location"] = ffmpeg
+        cut_sponsors = bool(opts.get("sponsorblock"))
+        if cut_sponsors and (start_time or end_time):
+            # SponsorBlock times refer to the whole video; yt-dlp would apply
+            # them unshifted to the trimmed file and cut the wrong parts.
+            cut_sponsors = False
+            warning = ("SponsorBlock was skipped: it can't be combined with a clip "
+                       "start/end time.")
+            warn("sponsorblock_skipped", warning)
+        pps = _build_postprocessors(opts, embed_subs=embed_subs, cut_sponsors=cut_sponsors)
+        if want_audio:
+            fmt = "bestaudio/best"
+            pps.insert(0, {
+                "key": "FFmpegExtractAudio",
+                "preferredcodec": AUDIO_FORMAT_MAP.get(audio_fmt, "mp3"),
+                "preferredquality": AUDIO_QUALITY_MAP.get(
+                    _opt_str(opts, "audio_quality", "best").lower(), "0"),
+            })
+        else:
+            fmt, ydl_opts["merge_output_format"] = _merged_format(quality, container)
+            fmt = custom_format or fmt
+    else:
+        if start_time or end_time:
+            raise RuntimeError("Trimming (start/end time) needs ffmpeg, which isn't installed.")
+        pps = []
+        if want_audio:
+            fmt = NO_FFMPEG_AUDIO_FORMAT
+            warning = (f"ffmpeg isn't installed, so the audio is saved in its original format "
+                       f"instead of {audio_fmt.upper()}, without embedded artwork or tags.")
+        else:
+            fmt = custom_format or _single_file_format(quality)
+            warning = ("ffmpeg isn't installed, so only a ready-made single file can be "
+                       "downloaded. Sites that serve video and audio separately (YouTube) "
+                       "will fail until ffmpeg is installed.")
+        log.info(warning)
+        warn("ffmpeg_missing", warning)
+    ydl_opts["format"] = fmt
+    ydl_opts["postprocessors"] = pps
+    log.debug(f"ydl format={fmt} postprocessors={pps}")
+    if embed_thumb:
+        # yt-dlp only embeds a thumbnail it wrote to disk itself. Kept after
+        # embedding (already_have_thumbnail), that .jpg next to the media file
+        # is also the vault's sidecar thumbnail.
+        ydl_opts["writethumbnail"] = True
+        ydl_opts["outtmpl"] = {"default": outtmpl, "pl_thumbnail": ""}
+
+    if mode == "library":
+        # Use public mellow_archive.txt; migrate old hidden files and backfill
+        # from existing media files so yt-dlp skips already-downloaded items.
+        import vault as _vault
+        _vault.generate_archive(str(out_dir))
+        ydl_opts["download_archive"] = str(out_dir / "mellow_archive.txt")
+        ydl_opts["ignoreerrors"] = True
+
+    if embed_subs:
+        # With ffmpeg, _build_postprocessors added the FFmpegEmbedSubtitle step
+        ydl_opts["writesubtitles"] = True
+        ydl_opts["writeautomaticsub"] = opts.get("auto_subs", False)
+        ydl_opts["subtitleslangs"] = [
+            s.strip() for s in _opt_str(opts, "sub_langs", "en").split(",") if s.strip()]
+
+    _apply_cookie_opts(ydl_opts, opts)
+    if opts.get("rate_limit"):
+        rate = _rate_limit(opts["rate_limit"])
+        if rate:
+            ydl_opts["ratelimit"] = rate
+        else:
+            log.warning(f"ignoring unparsable rate_limit {opts['rate_limit']!r}")
+    _apply_network_opts(ydl_opts, opts)
+    if _opt_str(opts, "external_downloader"):
+        ydl_opts["external_downloader"] = _opt_str(opts, "external_downloader")
+    frags = _safe_int(opts.get("concurrent_fragments", 4))
+    if frags and frags > 1:
+        ydl_opts["concurrent_fragment_downloads"] = frags
+    sleep_i = _safe_int(opts.get("sleep_interval", 0))
+    if sleep_i and sleep_i > 0:
+        ydl_opts["sleep_interval"] = sleep_i
+    retries = _safe_int(opts.get("retries"))
+    if retries is not None:
+        ydl_opts["retries"] = retries
+
+    if start_time or end_time:
+        ydl_opts["download_ranges"] = yt_dlp.utils.download_range_func(
+            None, [_clip_range(start_time, end_time)])
+        ydl_opts["force_keyframes_at_cuts"] = True
+
+    playlist_items = _opt_str(opts, "playlist_items")
+    playlist_start = _safe_int(opts.get("playlist_start"))
+    playlist_end = _safe_int(opts.get("playlist_end"))
+    if playlist_items:
+        ydl_opts["playlist_items"] = playlist_items
+    elif playlist_start:
+        ydl_opts["playliststart"] = playlist_start
+    if playlist_end:
+        ydl_opts["playlistend"] = playlist_end
+    for key, ydl_key in (("date_before", "datebefore"), ("date_after", "dateafter")):
+        if _opt_str(opts, key):
+            ydl_opts[ydl_key] = _opt_str(opts, key).replace("-", "")
+
+    # For playlist-like downloads: skip geo-blocked/failed items instead of aborting
+    if playlist_items or "list=" in url or "/playlist" in url.lower():
+        ydl_opts["ignoreerrors"] = True
+    return ydl_opts, warning
+
+
+def _saved_file(info: dict | None) -> dict:
+    """Title, uploader, duration, thumbnail, path and size of a single download.
+
+    Defensive: a yt-dlp update changing the info_dict shape must degrade to
+    "no file path recorded", not fail a finished download.
+    """
+    result: dict = {"title": None, "uploader": None, "duration": None,
+                    "thumbnail": None, "path": None, "size": 0}
+    if not info:
+        return result
+    try:
+        result.update(title=info.get("title"),
+                      uploader=info.get("uploader") or info.get("channel"),
+                      duration=info.get("duration"), thumbnail=info.get("thumbnail"))
+        requested = info.get("requested_downloads") or [{}]
+        if requested and isinstance(requested[0], dict):
+            # The saved file's own length: shorter than the video when sponsor
+            # segments were cut out of it
+            result["duration"] = requested[0].get("duration") or result["duration"]
+            fp = requested[0].get("filepath") or requested[0].get("_filename")
+            if fp:
+                result["path"] = fp
+                try:
+                    result["size"] = Path(fp).stat().st_size
+                except OSError:
+                    result["size"] = info.get("filesize") or 0
+    except Exception as shape_exc:
+        log.warning(f"info_dict shape unexpected: {shape_exc}")
+    return result
+
+
+def _playlist_records(info: dict, base: dict, item_stats: dict, wanted_ext: str,
+                      avg_speed: int | None, elapsed: int) -> list[dict]:
+    """One history row per playlist entry whose file is on disk."""
+    rows = []
+    for entry in info.get("entries") or []:
+        if not entry:
+            continue
+        req = entry.get("requested_downloads") or [{}]
+        fp = (req[0].get("filepath") or req[0].get("_filename")) if req else None
+        if not fp:
+            continue
+        try:
+            size = Path(fp).stat().st_size
+        except OSError:
+            # Extracted but never written: this item's download failed
+            # (already reported as item_failed) or a filter skipped it.
+            # It is not a successful download and gets no sidecar.
+            continue
+        thumb = entry.get("thumbnail")
+        if thumb:
+            _save_thumbnail_sidecar(fp, thumb)
+        # Per-item timing captured by the progress hook — the playlist totals
+        # would otherwise corrupt speed/duration stats.
+        per_item = item_stats.get(entry.get("id"), {})
+        rows.append({
+            **base,
+            "url": entry.get("webpage_url") or entry.get("url", ""),
+            "title": entry.get("title"),
+            "uploader": entry.get("uploader") or entry.get("channel"),
+            "duration_seconds": req[0].get("duration") or entry.get("duration"),
+            "file_size_bytes": size,
+            "container": _file_ext(fp, wanted_ext),
+            "file_path": fp,
+            "thumbnail_url": thumb,
+            "status": "success",
+            "download_speed_avg_bps": per_item.get("speed", avg_speed),
+            "elapsed_seconds": per_item.get("elapsed", elapsed),
+        })
+    return rows
+
+
 def _download_video(
     url: str,
     output_dir: str,
@@ -393,189 +669,35 @@ def _download_video(
     t_start = time.monotonic()
     speed_tracker: dict = {"samples": [], "t0": t_start, "item_t0": t_start,
                            "item_sample_start": 0, "items": {}}
-    write_metadata = opts.get("write_metadata", True)
 
     def _record(meta: dict) -> None:
-        if not write_metadata:
+        if not opts.get("write_metadata", True):
             return
         try:
             analytics.record_download(meta)
         except Exception as rec_exc:
-            print(f"[ANALYTICS] record failed: {rec_exc}", flush=True)
+            log.warning(f"history record failed: {rec_exc}")
 
     progress_cb({"status": "starting", "url": url, "library_id": library_id})
 
     out_dir = Path(output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    def _s(key: str, default: str = "") -> str:
-        # Clients send null for unset fields; treat that like a missing key
-        return str(opts.get(key) or default).strip()
-
-    mode = _s("mode", "video").lower()
-    quality = _s("quality", "best")
-    container = _s("container", "mp4").lower()
-    audio_fmt = _s("audio_format", "mp3").lower()
-    custom_format = _s("custom_format")
-    start_time = _s("start_time")
-    end_time = _s("end_time")
-    cookies_browser = _s("cookies_browser")
-    cookies_file = _s("cookies_file")
-    cookies_browser_profile = _s("cookies_browser_profile")
-    rate_limit = opts.get("rate_limit", "")
-    proxy = _s("proxy")
-    ext_downloader = _s("external_downloader")
-    concurrent_frags = opts.get("concurrent_fragments", 4)
-    sleep_interval = opts.get("sleep_interval", 0)
-    embed_subs = opts.get("embed_subs", False)
-    sub_langs = _s("sub_langs", "en")
-    playlist_start = _safe_int(opts.get("playlist_start"))
-    playlist_end = _safe_int(opts.get("playlist_end"))
-    date_before = _s("date_before")
-    date_after = _s("date_after")
-    filename_template = _s("filename_template")
-
-    if filename_template:
-        outtmpl = str(out_dir / filename_template)
-    else:
-        outtmpl = str(out_dir / "%(title)s.%(ext)s")
-
-    print(f"[MellowDLP] yt-dlp outtmpl={outtmpl!r}  output_dir={output_dir!r}", flush=True)
-    print(f"[DOWNLOAD] mode={mode} audio_format={audio_fmt} quality={quality} container={container}", flush=True)
+    mode = _opt_str(opts, "mode", "video").lower()
+    quality = _opt_str(opts, "quality", "best")
     ffmpeg = find_ffmpeg()
-    embed_thumb = bool(ffmpeg and opts.get("embed_thumbnail"))
-    hook = _make_progress_hook(progress_cb, library_id, speed_tracker, cancel_event, pause_event,
-                               save_sidecar=not embed_thumb)
-    is_library = mode == "library"
-    want_audio = mode == "audio" or (is_library and bool(opts.get("sync_audio", False)))
+    want_audio = mode == "audio" or (mode == "library" and bool(opts.get("sync_audio", False)))
     media_kind = "audio" if want_audio else "video"
-    wanted_ext = audio_fmt if want_audio else container
-    warning: str | None = None
-
-    ydl_opts: dict[str, Any] = {
-        "outtmpl": outtmpl,
-        "progress_hooks": [hook],
-        "windows_filenames": True,
-    }
-    if ffmpeg:
-        ydl_opts["ffmpeg_location"] = ffmpeg
-        cut_sponsors = bool(opts.get("sponsorblock"))
-        if cut_sponsors and (start_time or end_time):
-            # SponsorBlock times refer to the whole video; yt-dlp would apply
-            # them unshifted to the trimmed file and cut the wrong parts.
-            cut_sponsors = False
-            warning = ("SponsorBlock was skipped: it can't be combined with a clip "
-                       "start/end time.")
-            progress_cb({"status": "warning", "code": "sponsorblock_skipped",
-                         "message": warning, "library_id": library_id})
-        pps = _build_postprocessors(opts, embed_subs=bool(embed_subs and mode != "audio"),
-                                    cut_sponsors=cut_sponsors)
-        if want_audio:
-            fmt = "bestaudio/best"
-            pps.insert(0, {
-                "key": "FFmpegExtractAudio",
-                "preferredcodec": AUDIO_FORMAT_MAP.get(audio_fmt, "mp3"),
-                "preferredquality": "0",
-            })
-        else:
-            fmt, ydl_opts["merge_output_format"] = _merged_format(quality, container)
-            fmt = custom_format or fmt
-    else:
-        if start_time or end_time:
-            raise RuntimeError("Trimming (start/end time) needs ffmpeg, which isn't installed.")
-        pps = []
-        if want_audio:
-            fmt = NO_FFMPEG_AUDIO_FORMAT
-            warning = (f"ffmpeg isn't installed, so the audio is saved in its original format "
-                       f"instead of {audio_fmt.upper()}, without embedded artwork or tags.")
-        else:
-            fmt = custom_format or _single_file_format(quality)
-            warning = ("ffmpeg isn't installed, so only a ready-made single file can be "
-                       "downloaded. Sites that serve video and audio separately (YouTube) "
-                       "will fail until ffmpeg is installed.")
-        print(f"[DOWNLOAD] {warning}", flush=True)
-        progress_cb({"status": "warning", "code": "ffmpeg_missing", "message": warning,
-                     "library_id": library_id})
-    ydl_opts["format"] = fmt
-    ydl_opts["postprocessors"] = pps
-    if embed_thumb:
-        # yt-dlp only embeds a thumbnail it wrote to disk itself. Kept after
-        # embedding (already_have_thumbnail below), that .jpg next to the
-        # media file is also the vault's sidecar thumbnail.
-        ydl_opts["writethumbnail"] = True
-        ydl_opts["outtmpl"] = {"default": outtmpl, "pl_thumbnail": ""}
-
-    if is_library:
-        # Use public mellow_archive.txt; migrate old hidden files and backfill
-        # from existing media files so yt-dlp skips already-downloaded items.
-        import vault as _vault
-        _vault.generate_archive(str(out_dir))
-        ydl_opts["download_archive"] = str(out_dir / "mellow_archive.txt")
-        ydl_opts["ignoreerrors"] = True
-
-    print(f"[DOWNLOAD] ydl format={ydl_opts.get('format')} postprocessors={ydl_opts.get('postprocessors')}", flush=True)
-
-    if embed_subs and mode != "audio":
-        ydl_opts["writesubtitles"] = True
-        ydl_opts["writeautomaticsub"] = opts.get("auto_subs", False)
-        ydl_opts["subtitleslangs"] = [s.strip() for s in sub_langs.split(",") if s.strip()]
-        # With ffmpeg, _build_postprocessors added the FFmpegEmbedSubtitle step
-
-    _apply_cookie_opts(ydl_opts, {"cookies_browser": cookies_browser, "cookies_file": cookies_file, "cookies_browser_profile": cookies_browser_profile})
-
-    if rate_limit:
-        # UI stores CLI-style strings ("5M"); the Python API needs bytes/sec.
-        if isinstance(rate_limit, (int, float)):
-            parsed_rate = rate_limit
-        else:
-            parse_fn = getattr(yt_dlp.utils, "parse_bytes", None) or yt_dlp.utils.parse_filesize
-            try:
-                parsed_rate = parse_fn(str(rate_limit))
-            except Exception:
-                parsed_rate = None
-        if parsed_rate:
-            ydl_opts["ratelimit"] = parsed_rate
-        else:
-            print(f"[DOWNLOAD] ignoring unparsable rate_limit {rate_limit!r}", flush=True)
-    if proxy:
-        ydl_opts["proxy"] = proxy
-    if ext_downloader:
-        ydl_opts["external_downloader"] = ext_downloader
-    frags = _safe_int(concurrent_frags)
-    if frags and frags > 1:
-        ydl_opts["concurrent_fragment_downloads"] = frags
-    sleep_i = _safe_int(sleep_interval)
-    if sleep_i and sleep_i > 0:
-        ydl_opts["sleep_interval"] = sleep_i
-    retries = _safe_int(opts.get("retries"))
-    if retries is not None:
-        ydl_opts["retries"] = retries
-
-    if start_time or end_time:
-        start_sec = _parse_time(start_time) if start_time else None
-        end_sec = _parse_time(end_time) if end_time else None
-        # (start, end) tuples; an open end is "until the last second"
-        ydl_opts["download_ranges"] = yt_dlp.utils.download_range_func(
-            None, [(start_sec or 0, end_sec if end_sec is not None else float("inf"))]
-        )
-        ydl_opts["force_keyframes_at_cuts"] = True
-
-    playlist_items_str = _s("playlist_items")
-    if playlist_items_str:
-        ydl_opts["playlist_items"] = playlist_items_str
-    elif playlist_start:
-        ydl_opts["playliststart"] = playlist_start
-    if playlist_end:
-        ydl_opts["playlistend"] = playlist_end
-    if date_before:
-        ydl_opts["datebefore"] = date_before.replace("-", "")
-    if date_after:
-        ydl_opts["dateafter"] = date_after.replace("-", "")
-
-    # For playlist-like downloads: skip geo-blocked/failed items instead of aborting
-    _is_playlist = bool(playlist_items_str) or "list=" in url or "/playlist" in url.lower()
-    if _is_playlist:
-        ydl_opts["ignoreerrors"] = True
+    wanted_ext = (_opt_str(opts, "audio_format", "mp3") if want_audio
+                  else _opt_str(opts, "container", "mp4")).lower()
+    embed_thumb = bool(ffmpeg and opts.get("embed_thumbnail"))
+    ydl_opts, warning = _build_ydl_opts(
+        url, out_dir, opts, ffmpeg=ffmpeg, want_audio=want_audio, embed_thumb=embed_thumb,
+        warn=lambda code, message: progress_cb({"status": "warning", "code": code,
+                                                "message": message, "library_id": library_id}))
+    ydl_opts["progress_hooks"] = [_make_progress_hook(
+        progress_cb, library_id, speed_tracker, cancel_event, pause_event,
+        save_sidecar=not embed_thumb)]
     logger: _GeoBlockLogger | None = None
     if ydl_opts.get("ignoreerrors"):
         # With ignoreerrors yt-dlp only logs failures; the logger turns them
@@ -583,13 +705,8 @@ def _download_video(
         logger = _GeoBlockLogger(progress_cb, library_id)
         ydl_opts["logger"] = logger
 
-    final_path: str | None = None
-    final_size: int = 0
-    final_title: str | None = None
-    final_uploader: str | None = None
-    final_duration: int | None = None
-    final_thumbnail: str | None = None
-
+    base = {"url": url, "platform": _detect_platform(url), "format": media_kind, "quality": quality}
+    saved = _saved_file(None)
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             if embed_thumb:
@@ -607,122 +724,56 @@ def _download_video(
                 raise yt_dlp.utils.DownloadError(
                     (logger.last_error if logger else None)
                     or "Nothing could be downloaded from this URL")
-            # Defensive: a yt-dlp update changing the info_dict shape must
-            # degrade to "no file path recorded", not kill the whole flow.
-            try:
-                if info:
-                    final_title = info.get("title")
-                    final_uploader = info.get("uploader") or info.get("channel")
-                    final_duration = info.get("duration")
-                    final_thumbnail = info.get("thumbnail")
-                    requested = info.get("requested_downloads") or [{}]
-                    if requested and isinstance(requested[0], dict):
-                        # The saved file's own length: shorter than the video
-                        # when sponsor segments were cut out of it
-                        final_duration = requested[0].get("duration") or final_duration
-                        fp = requested[0].get("filepath") or requested[0].get("_filename")
-                        if fp:
-                            final_path = fp
-                            try:
-                                final_size = Path(fp).stat().st_size
-                            except OSError:
-                                final_size = info.get("filesize") or 0
-            except Exception as shape_exc:
-                print(f"[DOWNLOAD] info_dict shape unexpected: {shape_exc}", flush=True)
+            saved = _saved_file(info)
 
-        elapsed = time.monotonic() - t_start
+        elapsed = int(time.monotonic() - t_start)
         samples = speed_tracker["samples"]
         avg_speed = int(sum(samples) / len(samples)) if samples else None
-        elapsed_int = int(elapsed)
 
         if cancel_event.is_set():
             progress_cb({"status": "cancelled"})
-            _record({
-                "url": url, "title": final_title, "uploader": final_uploader,
-                "platform": _detect_platform(url), "duration_seconds": final_duration,
-                "status": "cancelled",
-                "elapsed_seconds": elapsed_int,
-            })
+            _record({**base, "title": saved["title"], "uploader": saved["uploader"],
+                     "duration_seconds": saved["duration"], "status": "cancelled",
+                     "elapsed_seconds": elapsed})
             return "cancelled"
 
         progress_cb({
             "status": "complete",
-            "title": final_title or url,
-            "file_path": final_path,
-            "file_size": final_size,
+            "title": saved["title"] or url,
+            "file_path": saved["path"],
+            "file_size": saved["size"],
             "library_id": library_id,
             "warning": warning,
         })
 
-        item_stats: dict = speed_tracker.get("items", {})
-
-        # Record per-item for playlists; record single item for single downloads
         if info and ("entries" in info or info.get("_type") == "playlist"):
-            entries = info.get("entries") or []
-            for entry in entries:
-                if not entry:
-                    continue
-                req = entry.get("requested_downloads") or [{}]
-                fp = req[0].get("filepath") or req[0].get("_filename") if req else None
-                try:
-                    sz = Path(fp).stat().st_size if fp else 0
-                except OSError:
-                    # Extracted but never written: this item's download failed
-                    # (already reported as item_failed) or a filter skipped it.
-                    # It is not a successful download and gets no sidecar.
-                    continue
-                if not fp:
-                    continue
-                entry_thumb = entry.get("thumbnail")
-                if fp and entry_thumb:
-                    _save_thumbnail_sidecar(fp, entry_thumb)
-                # Per-item timing captured by the progress hook — the playlist
-                # totals would otherwise corrupt speed/duration stats.
-                per_item = item_stats.get(entry.get("id"), {})
-                _record({
-                    "url": entry.get("webpage_url") or entry.get("url", ""),
-                    "title": entry.get("title"),
-                    "uploader": entry.get("uploader") or entry.get("channel"),
-                    "platform": _detect_platform(url),
-                    "duration_seconds": req[0].get("duration") or entry.get("duration"),
-                    "file_size_bytes": sz,
-                    "format": media_kind,
-                    "quality": quality,
-                    "container": _file_ext(fp, wanted_ext),
-                    "file_path": fp,
-                    "thumbnail_url": entry_thumb,
-                    "status": "success",
-                    "download_speed_avg_bps": per_item.get("speed", avg_speed),
-                    "elapsed_seconds": per_item.get("elapsed", elapsed_int),
-                })
+            rows = _playlist_records(info, base, speed_tracker.get("items", {}), wanted_ext,
+                                     avg_speed, elapsed)
+        elif not (saved["path"] and Path(saved["path"]).is_file()):
+            # Nothing was saved: the archive already had it (a sync that is up
+            # to date). A "success" row without a file inflated the stats and
+            # made "already downloaded" report the file as moved.
+            rows = []
         else:
-            if final_path and final_thumbnail:
-                _save_thumbnail_sidecar(final_path, final_thumbnail)
-            _record({
-                "url": url, "title": final_title, "uploader": final_uploader,
-                "platform": _detect_platform(url), "duration_seconds": final_duration,
-                "file_size_bytes": final_size,
-                "format": media_kind,
-                "quality": quality,
-                "container": _file_ext(final_path, wanted_ext),
-                "file_path": final_path,
-                "thumbnail_url": final_thumbnail,
-                "status": "success",
-                "download_speed_avg_bps": avg_speed,
-                "elapsed_seconds": elapsed_int,
-            })
+            if saved["thumbnail"]:
+                _save_thumbnail_sidecar(saved["path"], saved["thumbnail"])
+            rows = [{
+                **base, "title": saved["title"], "uploader": saved["uploader"],
+                "duration_seconds": saved["duration"], "file_size_bytes": saved["size"],
+                "container": _file_ext(saved["path"], wanted_ext), "file_path": saved["path"],
+                "thumbnail_url": saved["thumbnail"], "status": "success",
+                "download_speed_avg_bps": avg_speed, "elapsed_seconds": elapsed,
+            }]
+        for row in rows:
+            _record(row)
         return "success"
 
     except yt_dlp.utils.DownloadCancelled:
-        elapsed = time.monotonic() - t_start
         progress_cb({"status": "cancelled"})
-        _record({
-            "url": url, "title": final_title, "platform": _detect_platform(url),
-            "status": "cancelled", "elapsed_seconds": int(elapsed),
-        })
+        _record({**base, "title": saved["title"], "status": "cancelled",
+                 "elapsed_seconds": int(time.monotonic() - t_start)})
         return "cancelled"
     except Exception as exc:
-        elapsed = time.monotonic() - t_start
         msg = str(exc)
         event = {"status": "error", "message": msg, "url": url, "library_id": library_id}
         if not ffmpeg and not want_audio:
@@ -731,15 +782,9 @@ def _download_video(
             event.update(message=msg, code="ffmpeg_missing")
         # url included so the frontend can offer a one-click retry
         progress_cb(event)
-        _record({
-            "url": url, "title": final_title, "uploader": final_uploader,
-            "platform": _detect_platform(url),
-            "format": media_kind,
-            "quality": quality,
-            "status": "error",
-            "error_message": msg,
-            "elapsed_seconds": int(elapsed),
-        })
+        _record({**base, "title": saved["title"], "uploader": saved["uploader"],
+                 "status": "error", "error_message": msg,
+                 "elapsed_seconds": int(time.monotonic() - t_start)})
         return "error"
     finally:
         if owns_pause:
@@ -747,11 +792,24 @@ def _download_video(
             pause_event.clear()
 
 
+def _apply_network_opts(ydl_opts: dict, opts: dict) -> None:
+    """Proxy and IP family — applied to analyze, playlist listing and
+    downloads alike, so a proxy isn't bypassed just for the first request."""
+    proxy = str(opts.get("proxy") or "").strip()
+    if proxy:
+        ydl_opts["proxy"] = proxy
+    if opts.get("force_ipv4"):
+        # A broken IPv6 route makes every request hang for minutes before
+        # falling back; binding to 0.0.0.0 is yt-dlp's --force-ipv4
+        ydl_opts["source_address"] = "0.0.0.0"
+    ydl_opts.setdefault("socket_timeout", SOCKET_TIMEOUT_SECS)
+
+
 def _apply_cookie_opts(ydl_opts: dict, cookie_opts: dict) -> None:
-    browser = cookie_opts.get("cookies_browser", "")
-    profile = str(cookie_opts.get("cookies_browser_profile") or "").strip() or None
-    cookie_file = cookie_opts.get("cookies_file", "")
-    if browser and browser.lower() not in ("none", ""):
+    browser = _opt_str(cookie_opts, "cookies_browser")
+    profile = _opt_str(cookie_opts, "cookies_browser_profile") or None
+    cookie_file = _opt_str(cookie_opts, "cookies_file")
+    if browser and browser.lower() != "none":
         ydl_opts["cookiesfrombrowser"] = (browser.lower(), profile, None, None)
     elif cookie_file:
         ydl_opts["cookiefile"] = cookie_file
@@ -767,6 +825,7 @@ def get_video_info(url: str, cookie_opts: dict | None = None) -> dict:
     }
     if cookie_opts:
         _apply_cookie_opts(ydl_opts, cookie_opts)
+        _apply_network_opts(ydl_opts, cookie_opts)
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=False)
     if not info:
@@ -790,6 +849,8 @@ def get_video_info(url: str, cookie_opts: dict | None = None) -> dict:
         "platform": _detect_platform(url),
         "is_playlist": is_playlist,
         "playlist_count": playlist_count,
+        "id": info.get("id"),
+        "webpage_url": info.get("webpage_url") or url,
     }
 
 
@@ -803,6 +864,7 @@ def get_playlist_items(url: str, cookie_opts: dict | None = None) -> list[dict]:
     }
     if cookie_opts:
         _apply_cookie_opts(ydl_opts, cookie_opts)
+        _apply_network_opts(ydl_opts, cookie_opts)
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=False)
     if not info:

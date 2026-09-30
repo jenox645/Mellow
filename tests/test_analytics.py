@@ -36,3 +36,11 @@ def test_export_csv(client):
     r = client.get('/api/analytics/export')
     assert r.status_code == 200
     assert b'url' in r.data.lower() or b'title' in r.data.lower()
+
+
+def test_analytics_query_allows_leading_comments_but_not_writes(client):
+    """A "-- comment" line before SELECT was refused as not a SELECT."""
+    ok = client.post('/api/analytics/query', json={'sql': '-- how many?\n/* all */ SELECT COUNT(*) FROM downloads'}).get_json()
+    assert ok['error'] is None and ok['rows'] == [[0]]
+    for sql in ('-- sneaky\nDELETE FROM downloads', '/* x */ DROP TABLE downloads', '-- only a comment'):
+        assert client.post('/api/analytics/query', json={'sql': sql}).get_json()['error'], sql

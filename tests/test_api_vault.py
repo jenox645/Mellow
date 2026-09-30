@@ -45,7 +45,7 @@ def test_vault_playlists_crud(client, tmp_dir):
 def test_vault_play_files_opens(client, tmp_dir):
     fpath = os.path.join(tmp_dir, 'test.mp4')
     open(fpath, 'w').close()
-    with patch('server._open_file') as mock_open:
+    with patch('desktop.open_file') as mock_open:
         with patch('subprocess.Popen') as mock_popen:
             r = client.post('/api/vault/play-files', json={'paths': [fpath]})
             assert r.status_code == 200
@@ -84,3 +84,54 @@ def test_vault_play_files_empty(client):
 def test_vault_sync_requires_playlist(client, tmp_dir):
     r = client.post('/api/vault/sync', json={'path': tmp_dir, 'mode': 'add'})
     assert r.status_code in (400, 404)
+
+
+def _record_file(path):
+    import analytics
+    analytics.record_download({'url': 'https://youtu.be/dQw4w9WgXcQ', 'title': 'x',
+                               'file_path': str(path), 'status': 'success'})
+
+
+def _history_paths():
+    import analytics
+    return [r['file_path'] for r in analytics.get_history(100)]
+
+
+def test_vault_delete_file_removes_sidecar_and_history(client, tmp_dir):
+    from pathlib import Path
+    media = Path(tmp_dir) / 'Episode.10.mp4'
+    media.write_bytes(b'x')
+    (Path(tmp_dir) / 'Episode.10.jpg').write_bytes(b'j')
+    _record_file(media)
+    r = client.delete('/api/vault/file', json={'path': str(media)})
+    assert r.get_json() == {'ok': True}
+    assert sorted(p.name for p in Path(tmp_dir).iterdir()) == []
+    assert _history_paths() == []
+
+
+def test_vault_mirror_delete_also_forgets_history(client, tmp_dir):
+    """Mirror mode left the history rows behind, so analyzing the video again
+    still said "you already have this" for a deleted file."""
+    from pathlib import Path
+    media = Path(tmp_dir) / 'Gone [dQw4w9WgXcQ].mp3'
+    media.write_bytes(b'x')
+    _record_file(media)
+    client.post('/api/vault/playlists', json={'path': tmp_dir, 'url': 'https://youtube.com/playlist?list=P'})
+    r = client.post('/api/vault/mirror-confirm', json={'path': tmp_dir, 'paths': [str(media)]})
+    assert r.get_json() == {'deleted': 1, 'errors': []}
+    assert not media.exists()
+    assert _history_paths() == []
+
+
+def test_vault_folders_report_their_linked_playlists(client, tmp_path):
+    """The folder view offered SYNC NOW only after a first sync; a folder
+    with linked playlists needs to say so from the start."""
+    from config import update_config
+    root = tmp_path / 'dl'
+    (root / 'Mix').mkdir(parents=True)
+    (root / 'Plain').mkdir()
+    update_config(lambda c: c.update(output_dir=str(root)))
+    client.post('/api/vault/playlists', json={'path': str(root / 'Mix'), 'url': 'https://youtube.com/playlist?list=M'})
+    folders = {f['name']: f for f in client.get('/api/vault').get_json()['folders']}
+    assert folders['Mix']['playlist_count'] == 1
+    assert folders['Plain']['playlist_count'] == 0

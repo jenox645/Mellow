@@ -3,6 +3,8 @@ from __future__ import annotations
 import contextlib
 import csv
 import io
+import logging
+import re
 import threading
 import time
 from datetime import datetime, timedelta
@@ -11,7 +13,7 @@ from typing import Any
 
 import duckdb
 
-from constants import MEDIA_EXTS
+log = logging.getLogger(__name__)
 
 DB_PATH = Path.home() / ".mellow_dlp.duckdb"
 
@@ -53,8 +55,8 @@ def _connect(path: str) -> duckdb.DuckDBPyConnection:
             raise
         aside = wal.with_name(f"{wal.name}.unreplayable-{time.strftime('%Y%m%d-%H%M%S')}")
         wal.replace(aside)
-        print(f"[ANALYTICS] write-ahead log could not be replayed; moved to {aside.name}. "
-              f"Reason: {str(exc).splitlines()[0]}", flush=True)
+        log.warning(f"write-ahead log could not be replayed; moved to {aside.name}. "
+                    f"Reason: {str(exc).splitlines()[0]}")
         return duckdb.connect(path)
 
 
@@ -499,6 +501,39 @@ def delete_history(
     return 0
 
 
+def find_previous_download(urls: list[str], video_id: str | None = None) -> dict | None:
+    """Latest successful download of the same video, or None.
+
+    Matches any of the given URLs exactly; for an 11-character (YouTube-style)
+    id also any history URL that contains it, since the same video arrives as
+    watch?v=, youtu.be/ or a playlist entry URL.
+    """
+    urls = [u for u in urls if u]
+    if not urls and not video_id:
+        return None
+    conditions = ["url = ?"] * len(urls)
+    params: list[Any] = list(urls)
+    if video_id and len(video_id) == 11:
+        conditions.append("url LIKE ?")
+        params.append(f"%{video_id}%")
+    with get_conn() as con:
+        row = con.execute(f"""
+            SELECT title, file_path, timestamp FROM downloads
+            WHERE status = 'success' AND file_path IS NOT NULL
+              AND ({' OR '.join(conditions)})
+            ORDER BY timestamp DESC LIMIT 1
+        """, params).fetchone()
+    if not row:
+        return None
+    title, file_path, ts = row
+    return {
+        "title": title,
+        "file_path": file_path,
+        "timestamp": str(ts) if ts else None,
+        "exists": bool(file_path) and Path(file_path).is_file(),
+    }
+
+
 def delete_history_by_path(file_path: str) -> int:
     """Delete download rows whose file_path matches (used by vault file delete)."""
     if not file_path:
@@ -513,9 +548,15 @@ def delete_history_by_path(file_path: str) -> int:
     return count
 
 
+# Leading "-- line" and "/* block */" comments, skipped when checking what
+# kind of statement a query is
+_LEADING_SQL_COMMENTS = re.compile(r"\A(?:\s+|--[^\n]*(?:\n|\Z)|/\*.*?\*/)*", re.DOTALL)
+
+
 def run_query(sql: str) -> dict:
     stripped = sql.strip()
-    first_word = stripped.split(None, 1)[0].upper() if stripped else ""
+    body = _LEADING_SQL_COMMENTS.sub("", stripped, count=1)
+    first_word = body.split(None, 1)[0].upper() if body else ""
     if first_word not in ("SELECT", "WITH"):
         return {"error": "Only SELECT statements (including WITH ... SELECT) are permitted.",
                 "columns": [], "rows": [], "time_ms": 0}
@@ -564,34 +605,6 @@ def export_csv() -> str:
     w.writerow(cols)
     w.writerows(rows)
     return buf.getvalue()
-
-
-def get_vault_folders(base_path: str) -> list[dict]:
-    root = Path(base_path)
-    if not root.exists():
-        return []
-    result = []
-    try:
-        for item in sorted(root.iterdir()):
-            if item.is_dir() and not item.name.startswith("."):
-                try:
-                    all_files = [f for f in item.rglob("*") if f.is_file() and not f.name.startswith(".")]
-                    media_files = [f for f in all_files if f.suffix.lower() in MEDIA_EXTS]
-                    size = sum(f.stat().st_size for f in media_files if f.exists())
-                    st = item.stat()
-                except PermissionError:
-                    all_files, media_files, size, st = [], [], 0, None
-                result.append({
-                    "name": item.name,
-                    "path": str(item),
-                    "item_count": len(media_files),
-                    "size_bytes": size,
-                    "created_at": st.st_ctime if st else None,
-                    "modified_at": st.st_mtime if st else None,
-                })
-    except PermissionError:
-        pass
-    return result
 
 
 def clear_library() -> None:
@@ -648,6 +661,10 @@ def get_library_entries() -> list[dict]:
         }
         for r in rows
     ]
+
+
+def get_library_entry(entry_id: str) -> dict | None:
+    return next((e for e in get_library_entries() if e["id"] == entry_id), None)
 
 
 def upsert_library_entry(entry: dict) -> None:

@@ -13,6 +13,11 @@ VIDEO_EXTS: frozenset[str] = frozenset({'.mp4', '.mkv', '.webm', '.avi', '.mov'}
 AUDIO_EXTS: frozenset[str] = MEDIA_EXTS - VIDEO_EXTS
 IMAGE_EXTS: frozenset[str] = frozenset({'.jpg', '.jpeg', '.png', '.webp'})
 
+# Formats an audio download can be converted to (FFmpegExtractAudio codecs)
+AUDIO_FORMATS: tuple[str, ...] = ("mp3", "m4a", "aac", "flac", "opus", "wav")
+# Containers a video download can be merged into
+VIDEO_CONTAINERS: tuple[str, ...] = ("mp4", "mkv", "webm")
+
 # MIME types for streaming/preview
 MEDIA_MIME: dict[str, str] = {
     '.mp4': 'video/mp4', '.webm': 'video/webm', '.mkv': 'video/x-matroska',
@@ -59,7 +64,11 @@ SPONSORBLOCK_REMOVE_CATEGORIES: tuple[str, ...] = ("sponsor", "intro", "outro", 
 
 # ── Misc ──────────────────────────────────────────────────────────────────────
 WEBHOOK_TIMEOUT_SECS: int = 5
+SOCKET_TIMEOUT_SECS: int = 20        # yt-dlp per-connection timeout
 PYPI_CHECK_TIMEOUT_SECS: int = 30
+DIALOG_TIMEOUT_SECS: int = 120       # how long a native file/folder dialog may stay open
 M3U8_TEMP_MAX_AGE_SECS: int = 86400  # playlist temp files older than this are swept
 FFMPEG_RECHECK_SECS: int = 30        # how often a missing ffmpeg is looked for again
+LOG_MAX_BYTES: int = 1024 * 1024     # ~/.mellow_dlp.log rotates at this size
+LOG_BACKUPS: int = 3                 # rotated log files kept
 LOW_DISK_WARN_BYTES: int = 2 * 1024 ** 3  # warn when output drive has < 2 GB free

@@ -127,26 +127,48 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
   }, [vaultFolders]);
 
   const selectedFolderMeta = vaultFolders.find(f => f.path === selectedFolder);
+  // The server links a folder to its library entry (library_id); matching on
+  // the folder name here attached "My Music" to an entry called "Music"
   const libEntry = selectedFolderMeta && selectedFolderMeta.library_id
     ? libraryEntries.find(e => e.id === selectedFolderMeta.library_id)
-    : libraryEntries.find(e => e.folder_name && selectedFolder && selectedFolder.endsWith(e.folder_name));
+    : null;
 
+  // Same sync as the folder card: every linked playlist, in the format the
+  // folder remembers. (It used to sync only the library entry's first URL,
+  // with the entry's settings.) Library sync is the fallback for entries
+  // made before playlists were linked to folders.
   const handleSync = React.useCallback(() => {
-    if (!libEntry) return;
+    if (!selectedFolder) return;
     if (isDownloading) showNotif('Note', 'Sync will queue after current download', 'info');
-    setSyncingId(libEntry.id);
-    API.post('/api/library/' + libEntry.id + '/sync', { mode: libEntry.sync_mode || 'add' })
-      .then(() => showNotif('Sync started', libEntry.name))
+    setSyncingId(selectedFolder);
+    const label = libEntry ? libEntry.name : selectedFolder.split(/[\\/]/).pop();
+    API.post('/api/vault/sync', { path: selectedFolder })
+      .catch(e => {
+        if (!libEntry || e.status !== 400) throw e;
+        return API.post('/api/library/' + libEntry.id + '/sync', { mode: libEntry.sync_mode || 'add' });
+      })
+      .then(() => showNotif('Sync started', label))
       .catch(e => showNotif('Error', e.message, 'error'))
       .finally(() => setSyncingId(null));
-  }, [libEntry, isDownloading, showNotif]);
+  }, [selectedFolder, libEntry, isDownloading, showNotif]);
+
+  // The card and this view read different stamps; show whichever is newer
+  const lastSynced = [libEntry && libEntry.last_synced, selectedFolderMeta && selectedFolderMeta.last_synced]
+    .filter(Boolean)
+    .sort((a, b) => new Date(b) - new Date(a))[0] || null;
+  // A folder with linked playlists can sync before its first sync, too
+  const canSync = !!(libEntry || (selectedFolderMeta && selectedFolderMeta.playlist_count > 0));
 
   const handleRandomize = React.useCallback(() => {
-    const mediaFiles = files.filter(f => /\.(mp4|mkv|webm|mp3|m4a|flac|wav|aac|avi|mov|opus)$/i.test(f.name));
-    if (!mediaFiles.length) { showNotif('No media', 'No media files in this folder', 'error'); return; }
-    const count = Math.min(randomizerCount, mediaFiles.length);
-    const shuffled = [...mediaFiles].sort(() => Math.random() - 0.5).slice(0, count);
-    setRandomizedFiles(shuffled);
+    // The folder listing holds media files only
+    if (!files.length) { showNotif('No media', 'No media files in this folder', 'error'); return; }
+    // Fisher–Yates: sort() with a random comparator favours some orders
+    const shuffled = [...files];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    setRandomizedFiles(shuffled.slice(0, Math.min(randomizerCount, shuffled.length)));
     setSelectedFiles(new Set());
     setSelectionMode(true);
   }, [files, randomizerCount, showNotif]);
@@ -172,10 +194,13 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
   const handleDeleteSelected = React.useCallback(() => {
     if (!selectedFiles.size) return;
     const paths = [...selectedFiles];
-    Promise.all(paths.map(p => API.del('/api/vault/file', { path: p }).catch(() => null)))
-      .then(() => {
-        setFiles(f => f.filter(x => !selectedFiles.has(x.path)));
-        showNotif('Deleted', paths.length + ' file(s)');
+    Promise.all(paths.map(p => API.del('/api/vault/file', { path: p }).then(() => p, () => null)))
+      .then(results => {
+        const deleted = new Set(results.filter(Boolean));
+        setFiles(f => f.filter(x => !deleted.has(x.path)));
+        const failed = paths.length - deleted.size;
+        if (deleted.size) showNotif('Deleted', deleted.size + ' file(s)');
+        if (failed) showNotif('Not Deleted', failed + ' file(s) could not be deleted (in use or read-only?)', 'error');
         setSelectedFiles(new Set());
         setSelectionMode(false);
       });
@@ -205,7 +230,7 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
       .finally(() => setDeleteConfirm(null));
   }, [deleteConfirm, showNotif]);
 
-  const isVideoExt = (ext) => ['mp4','mkv','webm','avi','mov'].includes(ext);
+  const isVideoExt = (ext) => VIDEO_PREVIEW_EXTS.includes((ext || '').toLowerCase());
 
   React.useEffect(() => {
     const close = () => { setCtxMenu(null); setCardMenuData(null); };
@@ -289,11 +314,9 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
               ))}
             </div>
             <button className="btn btn-secondary btn-sm" onClick={() => { onRefreshVault && onRefreshVault(); refreshLibraryEntries(); }} title="Refresh vault">↻ REFRESH</button>
-            {vaultFolders.some(f => f.last_synced !== undefined || f.library_id) && (
-              <button className="btn btn-secondary btn-sm" title="Sync all linked folders"
+            {vaultFolders.some(f => f.playlist_count > 0) && (
+              <button className="btn btn-secondary btn-sm" title="Sync all folders with linked playlists"
                 onClick={() => {
-                  const linked = vaultFolders.filter(f => f.library_id || f.last_synced);
-                  if (!linked.length) { showNotif('Nothing to sync', 'No linked folders found', 'info'); return; }
                   API.post('/api/vault/sync-all', {})
                     .then(d => showNotif('Sync All Queued', d.count + ' folder(s) queued', 'success'))
                     .catch(e => showNotif('Sync Error', e.message, 'error'));
@@ -355,7 +378,7 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
                   }}>⋮</div>
 
                   {/* Quick sync button — only shows when folder has a linked playlist */}
-                  {folder.library_id && (
+                  {(folder.playlist_count > 0 || folder.library_id) && (
                     <div className="vfc-sync-btn" title="Sync" onClick={e => { e.stopPropagation(); setSyncModal(folder); }}>↻</div>
                   )}
 
@@ -582,12 +605,12 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
               </div>
             ))}
           </div>
-          {libEntry && (
+          {canSync && (
             <button className="btn btn-amber btn-sm" onClick={handleSync} disabled={!!syncingId}>
               {syncingId ? 'SYNCING...' : (<><Ico name="sync" /> SYNC NOW</>)}
             </button>
           )}
-          {selectedFolderMeta && (selectedFolderMeta.library_id || selectedFolderMeta.last_synced) && (
+          {canSync && selectedFolderMeta && (
             <button className="btn btn-secondary btn-sm" title="Sync options / selective playlist sync"
               onClick={() => setSyncModal(selectedFolderMeta)}>SYNC OPTIONS</button>
           )}
@@ -622,7 +645,7 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
             <span className="ptag cyan">SYNCED</span>
             <span className="ptitle">{libEntry.name}</span>
             <span className="psub">
-              {libEntry.last_synced ? 'Last sync: ' + timeAgo(libEntry.last_synced) : 'Never synced'}
+              {lastSynced ? 'Last sync: ' + timeAgo(lastSynced) : 'Never synced'}
             </span>
           </div>
         </div>
@@ -813,6 +836,10 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
       )}
 
       {previewFile && <MediaPreviewModal file={previewFile} onClose={() => setPreviewFile(null)} />}
+
+      {/* Opened by SYNC OPTIONS; it was only mounted in the grid view, so the
+          button in this view did nothing */}
+      {syncModal && <SyncPlaylistModal folder={syncModal} onClose={() => setSyncModal(null)} showNotif={showNotif} onRefreshVault={onRefreshVault} isDownloading={isDownloading} onSyncStart={onSyncStart} onSyncItems={onSyncItems} />}
     </div>
   );
 }

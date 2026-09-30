@@ -1,17 +1,24 @@
 """Vault business logic — folder listing, thumbnails, media player, mirror ops."""
 from __future__ import annotations
 
+import contextlib
 import glob as _glob
+import logging
 import os
 import re as _re
+import shutil
 import subprocess
+import tempfile
 import threading
+import time
 from pathlib import Path
 from typing import Callable
 from urllib.parse import quote
 
 import analytics
+from config import download_root, download_settings
 from constants import (
+    AUDIO_FORMATS,
     FILE_THUMBS_LIMIT,
     IMAGE_EXTS,
     M3U8_TEMP_MAX_AGE_SECS,
@@ -20,9 +27,13 @@ from constants import (
     THUMB_FFMPEG_TIMEOUT_SECS,
     THUMB_FFMPEG_WIDTH,
     THUMB_PREVIEW_LIMIT,
+    VIDEO_CONTAINERS,
     VIDEO_EXTS,
 )
 from ffmpeg_locate import find_ffmpeg
+from library import folder_path_for_entry
+
+log = logging.getLogger(__name__)
 
 # Matches yt-dlp's YouTube ID embedded in filenames: [dQw4w9WgXcW]
 _YT_ID_RE = _re.compile(r'\[([A-Za-z0-9_-]{11})\]')
@@ -53,7 +64,7 @@ _MPC_PATHS = [
 ]
 
 
-# ── Folder stats helper ───────────────────────────────────────────────────────
+# ── Vault folder list ─────────────────────────────────────────────────────────
 
 def get_folder_media_stats(path: str) -> dict:
     p = Path(path)
@@ -65,82 +76,71 @@ def get_folder_media_stats(path: str) -> dict:
             if entry.is_file() and not entry.name.startswith(".") and entry.suffix.lower() in MEDIA_EXTS:
                 total += entry.stat().st_size
                 count += 1
-    except PermissionError:
+    except OSError:
         pass
     return {"item_count": count, "size_bytes": total}
 
 
-# ── Vault folder list ─────────────────────────────────────────────────────────
+def _folder_record(path: str, name: str, **extra) -> dict:
+    """One vault folder card: media count and size plus the folder's times."""
+    try:
+        st = Path(path).stat()
+    except OSError:
+        st = None
+    return {
+        "path": path, "name": name, **get_folder_media_stats(path),
+        "created_at": st.st_ctime if st else None,
+        "modified_at": st.st_mtime if st else None,
+        **extra,
+    }
+
+
+def _download_root_folders(base_path: str) -> list[dict]:
+    """Every subfolder of the download folder."""
+    root = Path(base_path)
+    try:
+        subdirs = sorted(d for d in root.iterdir() if d.is_dir() and not d.name.startswith("."))
+    except OSError:
+        return []
+    return [_folder_record(str(d), d.name) for d in subdirs]
+
 
 def build_folder_list(base_path: str, cfg: dict) -> list[dict]:
-    """Return the full vault folder list (db + watched + library-linked)."""
-    all_folders = analytics.get_vault_folders(base_path)
-    all_paths: set[str] = {f["path"] for f in all_folders}
+    """Return the full vault folder list (download folder + watched + library-linked)."""
+    all_folders = _download_root_folders(base_path)
+    by_path: dict[str, dict] = {f["path"]: f for f in all_folders}
 
     for wp in cfg.get("watched_folders", []):
-        p = Path(wp)
-        norm = str(p)
-        if norm not in all_paths and p.exists() and p.is_dir():
-            try:
-                ms = get_folder_media_stats(norm)
-                st = p.stat()
-            except Exception:
-                ms, st = {"item_count": 0, "size_bytes": 0}, None
-            all_folders.append({
-                "path": norm, "name": p.name,
-                "item_count": ms["item_count"], "size_bytes": ms["size_bytes"],
-                "watched": True,
-                "created_at": st.st_ctime if st else None,
-                "modified_at": st.st_mtime if st else None,
-            })
-            all_paths.add(norm)
+        norm = str(Path(wp))
+        if norm not in by_path and Path(norm).is_dir():
+            by_path[norm] = _folder_record(norm, Path(norm).name, watched=True)
+            all_folders.append(by_path[norm])
 
+    root = download_root(cfg)
     for entry in analytics.get_library_entries():
-        folder = entry.get("folder") or ""
-        folder_name = entry.get("folder_name") or ""
-        use_sub = entry.get("use_subfolder", True)
-        if use_sub and folder and folder_name:
-            actual_path = str(Path(folder) / folder_name)
-        elif folder:
-            actual_path = folder
-        else:
+        if not (entry.get("folder") or entry.get("folder_name")):
             continue
+        actual_path = folder_path_for_entry(entry, root)
         norm = str(Path(actual_path))
-        found = False
-        for f in all_folders:
-            if f["path"] == norm:
-                f.setdefault("library_id", entry["id"])
-                f.setdefault("library_name", entry["name"])
-                found = True
-                break
-        if not found and norm not in all_paths:
-            p = Path(actual_path)
-            if p.exists() and p.is_dir():
-                try:
-                    ms = get_folder_media_stats(actual_path)
-                    st = p.stat()
-                except Exception:
-                    ms, st = {"item_count": 0, "size_bytes": 0}, None
-            else:
-                ms, st = {"item_count": 0, "size_bytes": 0}, None
-            all_folders.append({
-                "path": actual_path,
-                "name": folder_name or Path(actual_path).name,
-                "item_count": ms["item_count"], "size_bytes": ms["size_bytes"],
-                "library_id": entry["id"], "library_name": entry["name"],
-                "created_at": st.st_ctime if st else None,
-                "modified_at": st.st_mtime if st else None,
-            })
-            all_paths.add(norm)
+        link = {"library_id": entry["id"], "library_name": entry["name"]}
+        if norm in by_path:
+            for key, value in link.items():
+                by_path[norm].setdefault(key, value)
+            continue
+        # A library folder shows even before its first sync created it
+        by_path[norm] = _folder_record(actual_path, entry.get("folder_name") or Path(actual_path).name,
+                                       **link)
+        all_folders.append(by_path[norm])
 
     vault_names = cfg.get("vault_names", {})
     vault_hidden = set(cfg.get("vault_hidden", []))
     vault_sync_times = cfg.get("vault_sync_times", {})
+    vault_playlists = cfg.get("vault_playlists", {})
     for f in all_folders:
         if f["path"] in vault_names:
             f["name"] = vault_names[f["path"]]
-        has_playlists = bool(cfg.get("vault_playlists", {}).get(f["path"]))
-        if has_playlists and f["path"] in vault_sync_times:
+        f["playlist_count"] = len(vault_playlists.get(f["path"]) or [])
+        if f["playlist_count"] and f["path"] in vault_sync_times:
             f["last_synced"] = vault_sync_times[f["path"]]
     return [f for f in all_folders if f["path"] not in vault_hidden]
 
@@ -172,27 +172,59 @@ def list_folder_files(path: str) -> list[dict]:
 
 # ── Thumbnail serving ─────────────────────────────────────────────────────────
 
-def _generate_video_thumb(video: Path, sidecar: Path) -> bool:
-    """Extract a frame as a cached sidecar .jpg for files with no thumbnail."""
+# Media files ffmpeg could not make a thumbnail for. The vault grid asks for
+# every file's thumbnail on each render; without this an audio file with no
+# cover art spawned ffmpeg again every time.
+_thumb_failed: set[tuple[str, float]] = set()
+
+# Thumbnail files next to a media file, sharing its stem
+_SIDECAR_EXTS = (".jpg", ".jpeg", ".png", ".webp")
+
+
+def _generate_thumb(media: Path, sidecar: Path) -> bool:
+    """Make a cached sidecar .jpg for a file that has none.
+
+    Video: grab a frame. Audio: pull out the embedded cover art, if any.
+    """
     ffmpeg = find_ffmpeg()
     if not ffmpeg:
         return False
-    scale = f"scale={THUMB_FFMPEG_WIDTH}:-1"
     try:
-        kw: dict = {"capture_output": True, "timeout": THUMB_FFMPEG_TIMEOUT_SECS}
-        if os.name == "nt":
-            kw["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
-        result = subprocess.run(
-            [ffmpeg, "-ss", str(THUMB_FFMPEG_SEEK_SECS), "-i", str(video), "-frames:v", "1",
-             "-vf", scale, "-q:v", "4", "-y", str(sidecar)], **kw)
-        if result.returncode != 0 or not sidecar.exists() or sidecar.stat().st_size == 0:
-            # Short clips: retry from the start
-            result = subprocess.run(
-                [ffmpeg, "-i", str(video), "-frames:v", "1",
-                 "-vf", scale, "-q:v", "4", "-y", str(sidecar)], **kw)
-        return result.returncode == 0 and sidecar.exists() and sidecar.stat().st_size > 0
-    except Exception:
+        key = (str(media), media.stat().st_mtime)
+    except OSError:
         return False
+    if key in _thumb_failed:
+        return False
+    scale = f"scale={THUMB_FFMPEG_WIDTH}:-1"
+    kw: dict = {"capture_output": True, "timeout": THUMB_FFMPEG_TIMEOUT_SECS}
+    if os.name == "nt":
+        kw["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+
+    def made() -> bool:
+        return sidecar.exists() and sidecar.stat().st_size > 0
+
+    try:
+        if media.suffix.lower() in VIDEO_EXTS:
+            result = subprocess.run(
+                [ffmpeg, "-ss", str(THUMB_FFMPEG_SEEK_SECS), "-i", str(media), "-frames:v", "1",
+                 "-vf", scale, "-q:v", "4", "-y", str(sidecar)], **kw)
+            if result.returncode != 0 or not made():
+                # Short clips: retry from the start
+                result = subprocess.run(
+                    [ffmpeg, "-i", str(media), "-frames:v", "1",
+                     "-vf", scale, "-q:v", "4", "-y", str(sidecar)], **kw)
+        else:
+            # The cover art of an audio file is its only "video" stream
+            result = subprocess.run(
+                [ffmpeg, "-i", str(media), "-map", "0:v:0", "-frames:v", "1",
+                 "-vf", scale, "-q:v", "4", "-y", str(sidecar)], **kw)
+        ok = result.returncode == 0 and made()
+    except Exception:
+        ok = False
+    if not ok:
+        _thumb_failed.add(key)
+        sidecar.unlink(missing_ok=True)
+    return ok
 
 
 def get_thumb_bytes(path: str) -> tuple[bytes, str] | None:
@@ -206,19 +238,21 @@ def get_thumb_bytes(path: str) -> tuple[bytes, str] | None:
             return None
     if not p.exists():
         return None
-    base = p.with_suffix("")
-    for ext in (".jpg", ".jpeg", ".png", ".webp"):
-        thumb = base.with_suffix(ext)
+    # Sidecars share the media file's full stem: "Episode.10.mp4" pairs with
+    # "Episode.10.jpg" (with_suffix would look for "Episode.jpg", which is a
+    # different video's thumbnail or nothing)
+    for ext in _SIDECAR_EXTS:
+        thumb = p.parent / (p.stem + ext)
         if thumb.exists():
             try:
                 return thumb.read_bytes(), _mime_for_ext(ext)
             except Exception:
                 return None
-    # No sidecar (pre-existing file / watched folder): generate one frame with
-    # ffmpeg on demand and cache it as the .jpg sidecar.
-    if p.suffix.lower() in VIDEO_EXTS:
-        sidecar = base.with_suffix(".jpg")
-        if _generate_video_thumb(p, sidecar):
+    # No sidecar (pre-existing file / watched folder): make one with ffmpeg on
+    # demand and cache it next to the file.
+    if p.suffix.lower() in MEDIA_EXTS:
+        sidecar = p.parent / (p.stem + ".jpg")
+        if _generate_thumb(p, sidecar):
             try:
                 return sidecar.read_bytes(), "image/jpeg"
             except Exception:
@@ -350,31 +384,48 @@ def get_folder_stats(path: str, linked_playlists: list) -> dict:
 
 # ── Mirror preview & confirm ──────────────────────────────────────────────────
 
-def get_mirror_preview(path: str, vp: list[str]) -> dict:
+def get_mirror_preview(path: str, vp: list[str], request_opts: dict | None = None) -> dict:
     """Return local files not present in any linked playlist."""
     import yt_dlp as _ydl
+
+    import downloader
+    ydl_opts: dict = {"quiet": True, "extract_flat": True, "skip_download": True}
+    if request_opts:
+        # Same cookies/proxy as the sync itself, so private playlists list
+        downloader._apply_cookie_opts(ydl_opts, request_opts)
+        downloader._apply_network_opts(ydl_opts, request_opts)
     playlist_ids: set[str] = set()
+    fetch_errors: list[str] = []
     for playlist_url in vp:
         try:
-            with _ydl.YoutubeDL({"quiet": True, "extract_flat": True, "skip_download": True}) as ydl:
+            with _ydl.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(playlist_url, download=False)
-                if info and "entries" in info:
-                    for entry in (info["entries"] or []):
-                        if entry and entry.get("id"):
-                            playlist_ids.add(entry["id"])
+            if not info:
+                raise ValueError("no playlist data")
+            for entry in (info.get("entries") or []):
+                if entry and entry.get("id"):
+                    playlist_ids.add(entry["id"])
         except Exception as exc:
-            print(f"[MIRROR-PREVIEW] failed to fetch {playlist_url}: {exc}", flush=True)
+            log.warning(f"mirror preview: could not read {playlist_url}: {exc}")
+            fetch_errors.append(playlist_url)
 
     p = Path(path)
     # IDs backed by an actual file on disk (deletable) vs archive-only IDs
     # (no file — listing them as deletable produced size-0 phantom entries).
     file_ids: dict[str, str] = {}
-    for f in p.iterdir():
-        if not f.is_file() or f.suffix.lower() not in MEDIA_EXTS:
-            continue
-        m = _re.search(r'\[([A-Za-z0-9_-]{11})\]', f.name)
-        if m:
-            file_ids[m.group(1)] = f.name
+    try:
+        for f in p.iterdir():
+            if not f.is_file() or f.suffix.lower() not in MEDIA_EXTS:
+                continue
+            m = _YT_ID_RE.search(f.name)
+            if m:
+                file_ids[m.group(1)] = f.name
+    except OSError as exc:
+        return {"error": f"Cannot read {p}: {exc}"}
+    # The default "%(title)s" names carry no [id]; recover it from the
+    # download history, or mirror mode could never remove anything.
+    for vid_id, fname in _history_ids_in(p).items():
+        file_ids.setdefault(vid_id, fname)
     archive_ids: set[str] = set()
     for archive_file in [p / "mellow_archive.txt", *p.glob(".mellow_archive_*.txt")]:
         if not archive_file.exists():
@@ -389,7 +440,9 @@ def get_mirror_preview(path: str, vp: list[str]) -> dict:
             pass
 
     to_delete = []
-    if playlist_ids:
+    # A playlist that failed to load would make its files look orphaned:
+    # propose no deletions at all unless every linked playlist was read
+    if playlist_ids and not fetch_errors:
         for vid_id, fname in file_ids.items():
             if vid_id not in playlist_ids:
                 f_path = p / fname
@@ -406,24 +459,62 @@ def get_mirror_preview(path: str, vp: list[str]) -> dict:
         "unchanged_count": len(playlist_ids & known_ids),
         "playlist_count": len(vp),
         "playlist_ids_found": len(playlist_ids),
+        "fetch_errors": fetch_errors,
     }
 
 
+_YT_URL_ID_RE = _re.compile(r'(?:[?&]v=|youtu\.be/|/shorts/)([A-Za-z0-9_-]{11})')
+
+
+def _history_ids_in(folder: Path) -> dict[str, str]:
+    """YouTube id -> file name, for files in `folder` that the download
+    history knows the source URL of."""
+    ids: dict[str, str] = {}
+    try:
+        with analytics.get_conn() as con:
+            rows = con.execute(
+                "SELECT file_path, url FROM downloads WHERE status='success' AND file_path IS NOT NULL"
+            ).fetchall()
+    except Exception:
+        return ids
+    for file_path, url in rows:
+        f = Path(file_path)
+        if f.parent != folder or not f.is_file():
+            continue
+        m = _YT_URL_ID_RE.search(url or "")
+        if m:
+            ids.setdefault(m.group(1), f.name)
+    return ids
+
+
+def delete_media_file(path: Path) -> None:
+    """Delete a media file, its thumbnail sidecars and its history rows.
+
+    Without the history rows going too, "you already have this" kept pointing
+    at a deleted file. Raises OSError when the media file itself can't go.
+    """
+    path.unlink()
+    for ext in _SIDECAR_EXTS:
+        with contextlib.suppress(OSError):
+            path.with_suffix(ext).unlink(missing_ok=True)
+    try:
+        analytics.delete_history_by_path(str(path))
+    except Exception as exc:
+        log.warning(f"history cleanup failed for {path.name}: {exc}")
+
+
 def confirm_mirror_delete(paths: list[str]) -> dict:
-    deleted, errors = [], []
+    deleted, errors = 0, []
     for fp in paths:
+        f = Path(fp)
+        if not f.is_file():
+            continue
         try:
-            f = Path(fp)
-            if f.exists() and f.is_file():
-                f.unlink()
-                deleted.append(fp)
-                for ext in (".jpg", ".jpeg", ".png", ".webp"):
-                    sidecar = f.with_suffix(ext)
-                    if sidecar.exists():
-                        sidecar.unlink()
-        except Exception as exc:
+            delete_media_file(f)
+            deleted += 1
+        except OSError as exc:
             errors.append({"path": fp, "error": str(exc)})
-    return {"deleted": len(deleted), "errors": errors}
+    return {"deleted": deleted, "errors": errors}
 
 
 # ── Archive file ──────────────────────────────────────────────────────────────
@@ -613,8 +704,6 @@ def find_duplicates(folders: list[str]) -> list[dict]:
 
 def launch_playlist(paths: list[str], open_file_fn: Callable[[str], None]) -> str:
     """Open media files in a player. Returns method name used."""
-    import shutil
-    import tempfile
     valid = [p for p in paths if Path(p).exists()]
     if not valid:
         return "no_files"
@@ -649,8 +738,7 @@ def launch_playlist(paths: list[str], open_file_fn: Callable[[str], None]) -> st
     # Sweep playlist temp files older than a day before writing a new one
     tmp_dir = Path(tempfile.gettempdir())
     try:
-        import time as _time
-        cutoff = _time.time() - M3U8_TEMP_MAX_AGE_SECS
+        cutoff = time.time() - M3U8_TEMP_MAX_AGE_SECS
         for old in tmp_dir.glob("mellow_*.m3u8"):
             if old.stat().st_mtime < cutoff:
                 old.unlink(missing_ok=True)
@@ -668,27 +756,96 @@ def launch_playlist(paths: list[str], open_file_fn: Callable[[str], None]) -> st
 
 # ── Sync opts builder ─────────────────────────────────────────────────────────
 
-def build_sync_opts(data: dict, lib: dict | None, cfg: dict) -> dict:
-    """Build a yt-dlp opts dict for a vault sync request."""
-    q = data.get("quality") or (lib["quality"] if lib else cfg.get("quality_default", "1080p"))
-    lib_is_audio = bool(lib) and (lib.get("mode") or "").upper() == "AUDIO"
+# Format choices a folder remembers between syncs (vault_sync_formats in config)
+SYNC_FORMAT_KEYS = (
+    "sync_audio", "audio_format", "audio_quality", "quality", "container",
+    "embed_thumbnail", "embed_subs", "embed_chapters", "embed_metadata", "sponsorblock",
+)
+
+
+def infer_folder_format(path: str) -> dict:
+    """Guess what a folder holds from its media files: a folder of .mp3s syncs
+    as MP3 audio, not as 1080p video."""
+    audio: dict[str, int] = {}
+    video: dict[str, int] = {}
+    try:
+        for f in Path(path).iterdir():
+            ext = f.suffix.lower().lstrip(".")
+            if not f.is_file() or f.suffix.lower() not in MEDIA_EXTS:
+                continue
+            bucket = video if f.suffix.lower() in VIDEO_EXTS else audio
+            bucket[ext] = bucket.get(ext, 0) + 1
+    except OSError:
+        return {}
+    if not audio and not video:
+        return {}
+    if sum(audio.values()) > sum(video.values()):
+        fmt = max(audio, key=audio.get)
+        return {"sync_audio": True, "audio_format": fmt if fmt in AUDIO_FORMATS else "mp3"}
+    ext = max(video, key=video.get)
+    return {"sync_audio": False, "container": ext if ext in VIDEO_CONTAINERS else "mp4"}
+
+
+def remember_sync_format(cfg: dict, path: str, chosen: dict) -> None:
+    """Store a folder's format choice (inside an update_config mutator), so
+    auto-sync and "sync all", which have no dialog, keep using it."""
+    chosen = {k: v for k, v in chosen.items() if k in SYNC_FORMAT_KEYS}
+    if chosen:
+        formats = cfg.setdefault("vault_sync_formats", {})
+        formats[path] = {**formats.get(path, {}), **chosen}
+
+
+def default_sync_format(path: str, lib: dict | None, cfg: dict) -> dict:
+    """Format a sync of this folder uses when the request doesn't say.
+
+    Last choice made for the folder, then its library entry, then a guess from
+    the files already in it. Auto-sync and "sync all" have no dialog, so
+    without this an audio folder was synced as 1080p video.
+    """
+    saved = (cfg.get("vault_sync_formats") or {}).get(path) if path else None
+    if saved:
+        return {k: v for k, v in saved.items() if k in SYNC_FORMAT_KEYS}
+    if lib:
+        return {
+            "sync_audio": (lib.get("mode") or "").upper() == "AUDIO",
+            "audio_format": lib.get("audio_format") or "mp3",
+            "quality": lib.get("quality") or cfg.get("default_quality", "1080p"),
+            "container": lib.get("container") or "mp4",
+            "embed_thumbnail": lib.get("embed_thumbnail", True),
+            "embed_subs": lib.get("embed_subs", False),
+            "embed_chapters": lib.get("embed_chapters", True),
+            "embed_metadata": lib.get("embed_metadata", True),
+            "sponsorblock": lib.get("sponsorblock", False),
+        }
+    return infer_folder_format(path) if path else {}
+
+
+def build_sync_opts(data: dict, lib: dict | None, cfg: dict, path: str = "") -> dict:
+    """Build a yt-dlp opts dict for a vault sync request.
+
+    Precedence per option: the request, then default_sync_format(), then the
+    Config defaults.
+    """
+    base = default_sync_format(path, lib, cfg)
+
+    def pick(key: str, fallback):
+        value = data.get(key)
+        if value is None or value == "":
+            value = base.get(key)
+        return fallback if value is None or value == "" else value
+
     return {
         "mode": "library",
-        "quality": q,
-        "container": (data.get("container") or (lib or {}).get("container") or "mp4").lower(),
-        "sync_audio": data.get("sync_audio", lib_is_audio),
-        "audio_format": (data.get("audio_format") or (lib or {}).get("audio_format") or "mp3").lower(),
-        "embed_thumbnail": data.get("embed_thumbnail", lib["embed_thumbnail"] if lib else cfg.get("embed_thumbnail", True)),
-        "embed_chapters": data.get("embed_chapters", lib["embed_chapters"] if lib else True),
-        "embed_metadata": data.get("embed_metadata", lib["embed_metadata"] if lib else True),
-        "embed_subs": data.get("embed_subs", lib.get("embed_subs", False) if lib else False),
-        "sponsorblock": data.get("sponsorblock", lib.get("sponsorblock", False) if lib else False),
-        "cookies_browser": cfg.get("cookies_browser", "none"),
-        "cookies_file": cfg.get("cookies_file", ""),
-        "cookies_browser_profile": cfg.get("cookies_browser_profile", ""),
-        "rate_limit": cfg.get("rate_limit", ""),
-        "proxy": cfg.get("proxy", ""),
-        "concurrent_fragments": cfg.get("concurrent_fragments", 4),
-        "sleep_interval": cfg.get("sleep_interval", 0),
-        "retries": cfg.get("retries", 3),
+        "quality": pick("quality", cfg.get("default_quality", "1080p")),
+        "container": str(pick("container", cfg.get("default_container", "mp4"))).lower(),
+        "sync_audio": bool(pick("sync_audio", False)),
+        "audio_format": str(pick("audio_format", cfg.get("default_audio_format", "mp3"))).lower(),
+        "audio_quality": pick("audio_quality", cfg.get("default_audio_quality", "best")),
+        "embed_thumbnail": pick("embed_thumbnail", True),
+        "embed_chapters": pick("embed_chapters", True),
+        "embed_metadata": pick("embed_metadata", True),
+        "embed_subs": pick("embed_subs", False),
+        "sponsorblock": pick("sponsorblock", False),
+        "filename_template": (lib or {}).get("filename_template") or cfg.get("filename_template", ""),
+        **download_settings(cfg),
     }

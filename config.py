@@ -13,11 +13,14 @@ from __future__ import annotations
 
 import copy
 import json
+import logging
 import os
 import tempfile
 import threading
 from pathlib import Path
 from typing import Callable
+
+log = logging.getLogger(__name__)
 
 CONFIG_PATH = Path.home() / ".mellow_dlp.json"
 
@@ -30,19 +33,20 @@ _DEFAULTS: dict = {
     "cookies_browser_profile": "",
     "rate_limit": "",
     "proxy": "",
+    "force_ipv4": False,              # work around a broken IPv6 route
     "external_downloader": "",
     "ffmpeg_location": "",            # ffmpeg binary or folder; empty = auto-detect
     "concurrent_fragments": 4,
     "sleep_interval": 0,
     "retries": 3,
     "write_metadata": True,
-    "extract_chapters": True,
     "filename_template": "",
     # Download defaults applied when the Feed has no session state yet
     "default_mode": "video",
     "default_quality": "1080p",
     "default_container": "mp4",
     "default_audio_format": "mp3",
+    "default_audio_quality": "best",  # best | 320 | 256 | 192 | 128 (kbps)
     # Behavior
     "download_workers": 1,            # concurrent downloads (1 = sequential)
     "auto_sync_enabled": False,       # vault auto-sync scheduler master switch
@@ -52,8 +56,15 @@ _DEFAULTS: dict = {
     "update_check_on_launch": True,   # yt-dlp staleness toast on startup
     "clipboard_watch": True,          # Feed banner when a media URL is copied
     "completion_sound": False,        # chime when a download finishes
+    "desktop_notifications": False,   # system notification when unfocused
+    "ui_victory_animation": True,     # celebration after a playlist download
+    "ui_victory_sync": True,          # ... and after a vault sync
     "download_presets": [],           # saved option bundles for the Feed
 }
+
+# Defaults that hold the user's own data rather than a setting: RESET
+# DEFAULTS leaves them alone
+_USER_DATA_KEYS = frozenset({"vault_sync_schedule", "vault_budgets", "download_presets"})
 
 
 def load_config() -> dict:
@@ -80,7 +91,7 @@ def _backup_corrupt() -> None:
     try:
         if not backup.exists():
             backup.write_bytes(CONFIG_PATH.read_bytes())
-            print(f"[CONFIG] parse failed — backed up to {backup}", flush=True)
+            log.warning(f"parse failed — backed up to {backup}")
     except OSError:
         pass
 
@@ -101,6 +112,49 @@ def save_config(cfg: dict) -> None:
             except OSError:
                 pass
             raise
+
+
+def download_root(cfg: dict) -> str:
+    """The download folder; an emptied Config field means the default one."""
+    return cfg.get("output_dir") or _DEFAULTS["output_dir"]
+
+
+def request_settings(cfg: dict) -> dict:
+    """Cookies and network settings every yt-dlp request needs (analyze,
+    playlist listing, mirror preview and downloads alike)."""
+    return {
+        "cookies_browser": cfg.get("cookies_browser", "none"),
+        "cookies_file": cfg.get("cookies_file", ""),
+        "cookies_browser_profile": cfg.get("cookies_browser_profile", ""),
+        "proxy": cfg.get("proxy", ""),
+        "force_ipv4": bool(cfg.get("force_ipv4", False)),
+    }
+
+
+def download_settings(cfg: dict) -> dict:
+    """request_settings() plus the Config tuning every download uses.
+
+    The one place these are copied into a job's opts: Feed downloads, vault
+    syncs and library syncs each kept their own list, and the sync lists had
+    drifted (no external downloader, for one).
+    """
+    return {
+        **request_settings(cfg),
+        "rate_limit": cfg.get("rate_limit", ""),
+        "external_downloader": cfg.get("external_downloader", ""),
+        "concurrent_fragments": cfg.get("concurrent_fragments", 4),
+        "sleep_interval": cfg.get("sleep_interval", 0),
+        "retries": cfg.get("retries", 3),
+    }
+
+
+def reset_settings() -> dict:
+    """Put every setting back to its default (per-folder data and playlists stay)."""
+    def _reset(cfg: dict) -> None:
+        for key, value in _DEFAULTS.items():
+            if key not in _USER_DATA_KEYS:
+                cfg[key] = copy.deepcopy(value)
+    return update_config(_reset)
 
 
 def update_config(mutator: Callable[[dict], None]) -> dict:

@@ -1,12 +1,15 @@
 // FEED page — URL ingest, options, active download, queue preview.
 'use strict';
 
-import { API } from '../lib/api.js';
+import { API, cancelShownDownload } from '../lib/api.js';
 import { fmtBytes, fmtSpeed, fmtEta, fmtDuration, timeAgo } from '../lib/util.js';
 import { SVG, Ico } from '../components/icons.jsx';
 import { Modal, Mascot, Pipeline } from '../components/common.jsx';
 import { MASCOT_CHILLING } from '../lib/mascots.js';
-import { SPONSORBLOCK_HINT } from '../lib/constants.js';
+import {
+  ANALYZE_SLOW_MS, AUDIO_FORMATS, AUDIO_QUALITIES, CONTAINERS, LOSSLESS_AUDIO, QUALITIES,
+  SPONSORBLOCK_HINT,
+} from '../lib/constants.js';
 
 export function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats, showNotif, switchPage, config, setConfig, suggestedUrl, onSuggestedConsumed, onPlaylistDownload, playlistItems, setPlaylistItems, completedItems, failedItems, playlistTotalCount, playlistCompletedCount, isPaused, syncJobLabel, fetchingPlaylistItems, onPause, onResume, onClearCompleted }) {
   const ss = (k, fb) => { try { const v = sessionStorage.getItem(k); return v !== null ? v : fb; } catch { return fb; } };
@@ -15,6 +18,13 @@ export function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats
 
   const [url, setUrl] = React.useState(() => ss('feed_url', ''));
   const [analyzing, setAnalyzing] = React.useState(false);
+  // Analyze normally takes a few seconds; past ANALYZE_SLOW_MS say why it may hang
+  const [analyzeSlow, setAnalyzeSlow] = React.useState(false);
+  React.useEffect(() => {
+    if (!analyzing) { setAnalyzeSlow(false); return undefined; }
+    const t = setTimeout(() => setAnalyzeSlow(true), ANALYZE_SLOW_MS);
+    return () => clearTimeout(t);
+  }, [analyzing]);
   const [fetchingItems, setFetchingItems] = React.useState(false);
   const [info, setInfo] = React.useState(() => ssJ('feed_info', null));
   const [optsOpen, setOptsOpen] = React.useState(false);
@@ -23,6 +33,7 @@ export function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats
   const [quality, setQuality] = React.useState(() => ss('feed_quality', '1080p'));
   const [container, setContainer] = React.useState(() => ss('feed_container', 'mp4'));
   const [audioFmt, setAudioFmt] = React.useState(() => ss('feed_audioFmt', 'mp3'));
+  const [audioQuality, setAudioQuality] = React.useState(() => ss('feed_audioQuality', 'best'));
   const [embedThumb, setEmbedThumb] = React.useState(() => ssJ('feed_embedThumb', true));
   const [embedSubs, setEmbedSubs] = React.useState(() => ssJ('feed_embedSubs', false));
   const [embedChapters, setEmbedChapters] = React.useState(() => ssJ('feed_embedChapters', true));
@@ -32,13 +43,13 @@ export function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats
   const [endTime, setEndTime] = React.useState(() => ss('feed_endTime', ''));
   const [customFmt, setCustomFmt] = React.useState(() => ss('feed_customFmt', ''));
   const [downloadPath, setDownloadPath] = React.useState(() => ss('feed_downloadPath', ''));
-  const [vaultModal, setVaultModal] = React.useState(false);
 
   React.useEffect(() => { try { sessionStorage.setItem('feed_url', url); } catch {} }, [url]);
   React.useEffect(() => { try { sessionStorage.setItem('feed_mode', mode); } catch {} }, [mode]);
   React.useEffect(() => { try { sessionStorage.setItem('feed_quality', quality); } catch {} }, [quality]);
   React.useEffect(() => { try { sessionStorage.setItem('feed_container', container); } catch {} }, [container]);
   React.useEffect(() => { try { sessionStorage.setItem('feed_audioFmt', audioFmt); } catch {} }, [audioFmt]);
+  React.useEffect(() => { try { sessionStorage.setItem('feed_audioQuality', audioQuality); } catch {} }, [audioQuality]);
   React.useEffect(() => { try { sessionStorage.setItem('feed_embedThumb', JSON.stringify(embedThumb)); } catch {} }, [embedThumb]);
   React.useEffect(() => { try { sessionStorage.setItem('feed_embedSubs', JSON.stringify(embedSubs)); } catch {} }, [embedSubs]);
   React.useEffect(() => { try { sessionStorage.setItem('feed_embedChapters', JSON.stringify(embedChapters)); } catch {} }, [embedChapters]);
@@ -61,8 +72,6 @@ export function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats
     }
   }, [url, setPlaylistItems]);
 
-  const [vaultName, setVaultName] = React.useState('');
-  const [vaultFolder, setVaultFolder] = React.useState('');
   const [vaultLinkPrompt, setVaultLinkPrompt] = React.useState(false);
   const [feedQTab, setFeedQTab] = React.useState('pending');
   const [removingFeedItems, setRemovingFeedItems] = React.useState(new Set());
@@ -89,10 +98,8 @@ export function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats
     setPlaylistItems && setPlaylistItems(null);
     API.post('/api/info', { url: target })
       .then(data => {
-        if (data.error) { showNotif('Error', data.error, 'error'); return; }
         setInfo(data);
         if (data.is_playlist) {
-          setMode('video');
           setFetchingItems(true);
           API.post('/api/playlist-items', { url: target })
             .then(r => {
@@ -104,7 +111,11 @@ export function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats
             .finally(() => setFetchingItems(false));
         }
       })
-      .catch(e => showNotif('Error', e.message, 'error'))
+      .catch(e => {
+        // Explained when the backend recognises it; the raw text otherwise
+        const d = e.data || {};
+        showNotif(d.title || 'Error', d.hint || e.message, 'error');
+      })
       .finally(() => setAnalyzing(false));
   }, [url, showNotif, setPlaylistItems]);
 
@@ -121,6 +132,7 @@ export function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats
   const sessionHadRef = React.useRef({
     mode: hasSS('feed_mode'), quality: hasSS('feed_quality'),
     container: hasSS('feed_container'), audioFmt: hasSS('feed_audioFmt'),
+    audioQuality: hasSS('feed_audioQuality'),
   });
   React.useEffect(() => {
     const had = sessionHadRef.current;
@@ -128,14 +140,15 @@ export function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats
     if (!had.quality && config.default_quality) setQuality(config.default_quality);
     if (!had.container && config.default_container) setContainer(config.default_container);
     if (!had.audioFmt && config.default_audio_format) setAudioFmt(config.default_audio_format);
-  }, [config.default_mode, config.default_quality, config.default_container, config.default_audio_format]);
+    if (!had.audioQuality && config.default_audio_quality) setAudioQuality(config.default_audio_quality);
+  }, [config.default_mode, config.default_quality, config.default_container, config.default_audio_format, config.default_audio_quality]);
 
   // ── Format presets — named option bundles stored in config ────────────────
   const [savingPreset, setSavingPreset] = React.useState(false);
   const [presetName, setPresetName] = React.useState('');
 
   const currentOpts = () => ({
-    mode, quality, container, audio_format: audioFmt,
+    mode, quality, container, audio_format: audioFmt, audio_quality: audioQuality,
     embed_thumbnail: embedThumb, embed_subs: embedSubs,
     embed_chapters: embedChapters, embed_metadata: embedMeta,
     sponsorblock,
@@ -147,6 +160,7 @@ export function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats
     if (o.quality) setQuality(o.quality);
     if (o.container) setContainer(o.container);
     if (o.audio_format) setAudioFmt(o.audio_format);
+    if (o.audio_quality) setAudioQuality(o.audio_quality);
     setEmbedThumb(o.embed_thumbnail !== false);
     setEmbedSubs(!!o.embed_subs);
     setEmbedChapters(o.embed_chapters !== false);
@@ -219,6 +233,7 @@ export function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats
       quality,
       container,
       audio_format: audioFmt,
+      audio_quality: audioQuality,
       embed_thumbnail: embedThumb,
       embed_chapters: embedChapters,
       embed_metadata: embedMeta,
@@ -226,9 +241,9 @@ export function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats
       sponsorblock,
       ...(downloadPath ? { output_dir: downloadPath } : {}),
     }).then(d => {
-      if (d.error) { showNotif('Error', d.error, 'error'); setSubmitting(false); }
+      if (d.disk_warning) showNotif('Low Disk Space', d.disk_warning, 'warn');
     }).catch(e => { showNotif('Error', e.message, 'error'); setSubmitting(false); });
-  }, [importedUrls, importedFileName, mode, quality, container, audioFmt, embedThumb, embedChapters, embedMeta, embedSubs, sponsorblock, downloadPath, onPlaylistDownload, showNotif]);
+  }, [importedUrls, importedFileName, mode, quality, container, audioFmt, audioQuality, embedThumb, embedChapters, embedMeta, embedSubs, sponsorblock, downloadPath, onPlaylistDownload, showNotif]);
 
   // Ref so handleDownload/handleUrlKeyDown can call latest startImportDownload without stale closure
   const startImportDownloadRef = React.useRef(null);
@@ -254,7 +269,6 @@ export function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats
   }, []);
 
   const startDownload = React.useCallback((extra) => {
-    setVaultModal(false);
     setSubmitting(true);
     let playlistItemsParam = undefined;
     if (playlistItems && info && info.is_playlist) {
@@ -269,6 +283,7 @@ export function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats
       quality,
       container,
       audio_format: audioFmt,
+      audio_quality: audioQuality,
       embed_thumbnail: embedThumb,
       embed_chapters: embedChapters,
       embed_metadata: embedMeta,
@@ -281,16 +296,16 @@ export function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats
       ...(playlistItemsParam ? { playlist_items: playlistItemsParam } : {}),
       ...extra,
     }).then(d => {
-      if (d.error) { showNotif('Error', d.error, 'error'); setSubmitting(false); }
+      if (d.disk_warning) showNotif('Low Disk Space', d.disk_warning, 'warn');
     }).catch(e => { showNotif('Error', e.message, 'error'); setSubmitting(false); });
-  }, [url, mode, quality, container, audioFmt, embedThumb, embedChapters, embedMeta, embedSubs, sponsorblock, startTime, endTime, customFmt, downloadPath, playlistItems, info, showNotif]);
+  }, [url, mode, quality, container, audioFmt, audioQuality, embedThumb, embedChapters, embedMeta, embedSubs, sponsorblock, startTime, endTime, customFmt, downloadPath, playlistItems, info, showNotif]);
 
   // Keep ref in sync with latest startDownload (assigned during render, safe to read in callbacks)
   startDownloadRef.current = startDownload;
 
   const handleCancel = React.useCallback(() => {
-    API.post('/api/cancel', {}).then(() => showNotif('Cancelled', 'Download cancelled'));
-  }, [showNotif]);
+    cancelShownDownload(dlState).catch(e => showNotif('Error', e.message, 'error'));
+  }, [dlState, showNotif]);
 
   const handlePaste = React.useCallback(() => {
     API.get('/api/clipboard').then(d => {
@@ -314,42 +329,9 @@ export function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats
     }
   }, [url, info, analyzing, isDownloading, importedUrls, handleAnalyze, handleDownload]);
 
-  const browseVaultFolder = React.useCallback(() => {
-    API.post('/api/browse-folder', {}).then(d => {
-      if (d.path) setVaultFolder(d.path);
-    }).catch(() => {});
-  }, []);
-
-  const confirmVaultDownload = React.useCallback(() => {
-    if (vaultFolder && vaultName) {
-      API.post('/api/library', {
-        name: vaultName,
-        url: url.trim(),
-        folder: vaultFolder,
-        folder_name: vaultName,
-        quality,
-        mode: mode.toUpperCase(),
-        embed_thumbnail: embedThumb,
-        embed_chapters: embedChapters,
-        embed_metadata: embedMeta,
-        embed_subs: embedSubs,
-        sponsorblock,
-      }).then(() => {
-        startDownload({ mode: 'library' });
-        showNotif('Added to VAULT', vaultName + ' saved to library');
-      }).catch(() => startDownload());
-    } else {
-      startDownload();
-    }
-  }, [vaultFolder, vaultName, url, quality, mode, embedThumb, embedChapters, embedMeta, embedSubs, sponsorblock, startDownload, showNotif]);
-
   const pipelineStage = dlState
     ? dlState.status === 'processing' ? 'processing' : 'downloading'
     : 'done';
-
-  const QUALITIES = ['best','4k','1080p','720p','480p','360p'];
-  const CONTAINERS = ['mp4','mkv','webm'];
-  const AUDIO_FMTS = ['mp3','aac','flac','m4a','opus','wav'];
 
   return (
     <div className="content active">
@@ -400,6 +382,11 @@ export function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats
         <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: 'var(--t4)', paddingTop: 3 }}>
           ENTER: {!url.trim() ? 'paste' : !info && !analyzing ? 'analyze' : 'download'}
           {importedFileName && <span style={{ color: 'var(--cyan)', marginLeft: 10 }}>↑ {importedFileName} ({importedUrls ? importedUrls.length : 0} URLs)</span>}
+          {analyzeSlow && (
+            <span style={{ color: 'var(--amber)', marginLeft: 10 }}>
+              STILL ANALYZING — big playlists take a while. If it never finishes, try Config → Network → Force IPv4.
+            </span>
+          )}
         </div>
 
         {/* OPTIONS PANEL */}
@@ -470,16 +457,28 @@ export function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats
                 </div>
               </>
             ) : (
-              <div className="opts-row">
-                <span className="opts-label">FORMAT</span>
-                <div className="pills">
-                  {AUDIO_FMTS.map(f => (
-                    <div key={f} className={'pill' + (audioFmt === f ? ' active' : '')} onClick={() => setAudioFmt(f)}>
-                      {f.toUpperCase()}
-                    </div>
-                  ))}
+              <>
+                <div className="opts-row">
+                  <span className="opts-label">FORMAT</span>
+                  <div className="pills">
+                    {AUDIO_FORMATS.map(f => (
+                      <div key={f} className={'pill' + (audioFmt === f ? ' active' : '')} onClick={() => setAudioFmt(f)}>
+                        {f.toUpperCase()}
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              </div>
+                <div className="opts-row" title={LOSSLESS_AUDIO.includes(audioFmt) ? audioFmt.toUpperCase() + ' is lossless: bitrate does not apply' : 'Target bitrate of the converted file'}>
+                  <span className="opts-label">BITRATE</span>
+                  <div className="pills" style={LOSSLESS_AUDIO.includes(audioFmt) ? { opacity: 0.4, pointerEvents: 'none' } : undefined}>
+                    {AUDIO_QUALITIES.map(([v, label]) => (
+                      <div key={v} className={'pill' + (audioQuality === v ? ' active' : '')} onClick={() => setAudioQuality(v)}>
+                        {label}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </>
             )}
 
             <div className="opts-toggles">
@@ -552,6 +551,19 @@ export function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats
                 <div className="info-meta">
                   {[info.uploader, info.platform, info.is_playlist ? (info.playlist_count + ' items') : null].filter(Boolean).join(' · ')}
                 </div>
+                {info.previous_download && (
+                  <div className="info-prev" title={info.previous_download.file_path || ''}>
+                    <span className="tag green">✓ ALREADY DOWNLOADED {timeAgo(info.previous_download.timestamp).toUpperCase()}</span>
+                    {info.previous_download.exists ? (
+                      <>
+                        <span className="info-prev-link" onClick={() => API.post('/api/vault/open-file', { path: info.previous_download.file_path }).catch(() => {})}>OPEN</span>
+                        <span className="info-prev-link" onClick={() => API.post('/api/open-folder', { path: info.previous_download.file_path }).catch(() => {})}>SHOW IN FOLDER</span>
+                      </>
+                    ) : (
+                      <span style={{ color: 'var(--t4)' }}>file moved or deleted since</span>
+                    )}
+                  </div>
+                )}
                 <div className="info-tags">
                   <span className="tag cyan">{info.platform || 'URL'}</span>
                   {info.is_playlist && <span className="tag amber">PLAYLIST · {info.playlist_count}</span>}
@@ -627,7 +639,7 @@ export function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats
                 <div className="dl-side">
                   <div className="dl-side-title">DETAILS — 詳細</div>
                   <div className="dl-kv"><span className="k">FORMAT</span><span className="v">{mode === 'audio' ? audioFmt.toUpperCase() : container.toUpperCase()}</span></div>
-                  <div className="dl-kv"><span className="k">QUALITY</span><span className="v">{quality.toUpperCase()}</span></div>
+                  <div className="dl-kv"><span className="k">QUALITY</span><span className="v">{mode === 'audio' ? (LOSSLESS_AUDIO.includes(audioFmt) ? 'LOSSLESS' : (AUDIO_QUALITIES.find(q => q[0] === audioQuality) || ['', 'BEST'])[1]) : quality.toUpperCase()}</span></div>
                   <div className="dl-kv"><span className="k">PLATFORM</span><span className="v">{info && info.platform || '—'}</span></div>
                   <div className="dl-kv"><span className="k">SIZE</span><span className="v">{fmtBytes(dlState.total)}</span></div>
                   <div style={{ marginTop: 10, display: 'flex', gap: 6 }}>
@@ -779,38 +791,13 @@ export function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats
         </div>
       </div>
 
-      {/* VAULT MODAL */}
-      {vaultModal && (
-        <Modal
-          title="ADD TO VAULT"
-          onClose={() => setVaultModal(false)}
-          footer={
-            <>
-              <button className="btn btn-secondary btn-sm" onClick={() => { setVaultModal(false); startDownload(); }}>JUST DOWNLOAD ONCE</button>
-              <button className="btn btn-primary btn-sm" onClick={confirmVaultDownload}>SAVE TO VAULT AND DOWNLOAD</button>
-            </>
-          }
-        >
-          <div className="form-row">
-            <div className="form-label">PLAYLIST NAME</div>
-            <input className="form-input" value={vaultName} onChange={e => setVaultName(e.target.value)} />
-          </div>
-          <div className="form-row">
-            <div className="form-label">SAVE FOLDER</div>
-            <div className="input-row">
-              <input className="form-input" value={vaultFolder} onChange={e => setVaultFolder(e.target.value)} placeholder="C:\Users\..." />
-              <button className="btn btn-secondary btn-sm" onClick={browseVaultFolder}>BROWSE</button>
-            </div>
-          </div>
-        </Modal>
-      )}
-
       {/* VAULT LINK PROMPT MODAL — shown for playlist downloads */}
       {vaultLinkPrompt && (
         <VaultLinkPromptModal
           info={info}
           url={url}
           config={config}
+          opts={currentOpts()}
           onClose={() => setVaultLinkPrompt(false)}
           onJustDownload={() => { setVaultLinkPrompt(false); if (startDownloadRef.current) startDownloadRef.current(); }}
           onLinkAndDownload={(extra) => { setVaultLinkPrompt(false); if (startDownloadRef.current) startDownloadRef.current(extra); }}
@@ -821,7 +808,19 @@ export function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats
   );
 }
 
-function VaultLinkPromptModal({ info, url, config, onClose, onJustDownload, onLinkAndDownload, showNotif }) {
+function VaultLinkPromptModal({ info, url, config, opts, onClose, onJustDownload, onLinkAndDownload, showNotif }) {
+  const isAudio = opts.mode === 'audio';
+  // What future syncs of the folder should download: the options chosen now
+  const syncFormat = {
+    sync_audio: isAudio, audio_format: opts.audio_format, audio_quality: opts.audio_quality,
+    quality: opts.quality, container: opts.container,
+    embed_thumbnail: opts.embed_thumbnail, embed_subs: opts.embed_subs,
+    embed_chapters: opts.embed_chapters, embed_metadata: opts.embed_metadata,
+    sponsorblock: opts.sponsorblock,
+  };
+  // Library mode keeps mellow_archive.txt, so items already in the folder are
+  // skipped now and on every later sync
+  const downloadInto = (folderPath) => onLinkAndDownload({ output_dir: folderPath, mode: 'library', sync_audio: isAudio });
   const [step, setStep] = React.useState('choose'); // 'choose' | 'link-existing' | 'create-new'
   const [vaultFolders, setVaultFolders] = React.useState([]);
   const [selectedFolder, setSelectedFolder] = React.useState('');
@@ -841,21 +840,38 @@ function VaultLinkPromptModal({ info, url, config, onClose, onJustDownload, onLi
 
   const handleLinkExisting = () => {
     if (!selectedFolder) return;
-    onLinkAndDownload({ output_dir: selectedFolder });
+    setSaving(true);
+    // Actually link the playlist, so the folder's Sync picks it up later
+    API.post('/api/vault/playlists', { path: selectedFolder, url: url.trim(), sync_format: syncFormat })
+      .then(() => {
+        showNotif('Linked', 'Playlist linked to ' + selectedFolder.split(/[\\/]/).pop(), 'success');
+        downloadInto(selectedFolder);
+      })
+      .catch(e => { showNotif('Error', e.message, 'error'); setSaving(false); });
   };
 
   const handleCreateNew = () => {
-    if (!newName.trim()) { showNotif('Error', 'Name required', 'error'); return; }
+    const name = newName.trim();
+    if (!name) { showNotif('Error', 'Name required', 'error'); return; }
     setSaving(true);
-    const folder = newFolder || (config.output_dir ? config.output_dir + '/' + newName.trim() : '');
     API.post('/api/library', {
-      name: newName.trim(), url: url, folder: config.output_dir || '',
-      folder_name: newName.trim(), use_subfolder: true, quality: '1080p',
-      mode: 'VIDEO', sync_mode: 'add', embed_thumbnail: true,
-      embed_chapters: true, embed_metadata: true,
-    }).then(() => {
-      showNotif('Added to VAULT', newName.trim() + ' saved to library');
-      onLinkAndDownload({ output_dir: folder || undefined });
+      name, url: url.trim(),
+      // A picked folder is used as-is; otherwise a subfolder of the download folder
+      folder: newFolder || config.output_dir || '',
+      folder_name: name, use_subfolder: !newFolder,
+      mode: isAudio ? 'AUDIO' : 'VIDEO', quality: opts.quality, container: opts.container,
+      audio_format: opts.audio_format, sync_mode: 'add',
+      embed_thumbnail: opts.embed_thumbnail, embed_chapters: opts.embed_chapters,
+      embed_metadata: opts.embed_metadata, embed_subs: opts.embed_subs,
+      sponsorblock: opts.sponsorblock,
+    }).then(entry => {
+      // Also remember the full format (incl. bitrate, which library entries
+      // don't store) for the folder's future syncs
+      return API.post('/api/vault/playlists', { path: entry.folder_path, url: url.trim(), sync_format: syncFormat })
+        .then(() => entry);
+    }).then(entry => {
+      showNotif('Added to VAULT', name + ' saved to library', 'success');
+      downloadInto(entry.folder_path);
     }).catch(e => { showNotif('Error', e.message, 'error'); setSaving(false); });
   };
 
@@ -882,7 +898,9 @@ function VaultLinkPromptModal({ info, url, config, onClose, onJustDownload, onLi
           </div>
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 8 }}>
             <button className="btn btn-secondary btn-sm" onClick={() => setStep('choose')}>BACK</button>
-            <button className="btn btn-primary btn-sm" onClick={handleLinkExisting} disabled={!selectedFolder}>DOWNLOAD TO FOLDER</button>
+            <button className="btn btn-primary btn-sm" onClick={handleLinkExisting} disabled={!selectedFolder || saving}>
+              {saving ? 'LINKING...' : 'LINK AND DOWNLOAD'}
+            </button>
           </div>
         </div>
       )}

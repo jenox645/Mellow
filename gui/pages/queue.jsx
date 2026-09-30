@@ -1,7 +1,7 @@
 // QUEUE page — server job queue, active download, playlist tabs.
 'use strict';
 
-import { API } from '../lib/api.js';
+import { API, cancelShownDownload } from '../lib/api.js';
 import { fmtBytes, fmtSpeed, fmtEta, fmtDuration, timeAgo } from '../lib/util.js';
 import { Ico } from '../components/icons.jsx';
 import { Mascot } from '../components/common.jsx';
@@ -28,7 +28,7 @@ export function QueuePage({ dlState, showNotif, activeJobs, playlistItems, setPl
   }, [loadJobs]);
 
   const handleCancel = () => {
-    API.post('/api/cancel', {}).then(() => showNotif('Cancelled', 'Download stopped'));
+    cancelShownDownload(dlState).catch(e => showNotif('Error', e.message, 'error'));
   };
 
   const handleCancelJob = (job) => {
@@ -43,7 +43,7 @@ export function QueuePage({ dlState, showNotif, activeJobs, playlistItems, setPl
   const handleRetryFailed = (item) => {
     if (!item.url) return;
     API.post('/api/download', { url: item.url })
-      .then(d => d.error ? showNotif('Error', d.error, 'error') : showNotif('Re-queued', item.url))
+      .then(() => showNotif('Re-queued', item.url))
       .catch(e => showNotif('Error', e.message, 'error'));
   };
 
@@ -208,8 +208,9 @@ export function QueuePage({ dlState, showNotif, activeJobs, playlistItems, setPl
                   <span style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 8, color: item.reason === 'geo_blocked' ? 'var(--amber)' : 'var(--red)', minWidth: 70 }}>
                     {(item.reason || 'error').toUpperCase()}
                   </span>
-                  <span style={{ flex: 1, fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: 'var(--t2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={item.title}>
-                    {item.title}
+                  <span style={{ flex: 1, minWidth: 0, fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: 'var(--t2)' }} title={item.title}>
+                    {item.hint && <div style={{ color: 'var(--t1)', marginBottom: 2 }}>{item.hint}</div>}
+                    <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: item.hint ? 'var(--t4)' : undefined }}>{item.title}</div>
                   </span>
                   <span style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 8, color: 'var(--t4)' }}>{timeAgo(item.failedAt)}</span>
                   {item.url && (

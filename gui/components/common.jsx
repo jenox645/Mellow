@@ -192,28 +192,27 @@ export function LineChart({ data, color = 'rgba(0,216,255,0.85)', height = 120, 
       ctx.fillStyle = 'rgba(61,96,112,0.6)'; ctx.font = '8px Share Tech Mono'; ctx.textAlign = 'left';
       ctx.fillText(fmt(maxV * f), 0, y + 3);
     });
-    const denom = Math.max(pts.length - 1, 1);
+    // One point has no line to draw: put it in the middle as a dot
+    const xAt = i => pts.length === 1 ? pad.l + cw / 2 : pad.l + i * (cw / (pts.length - 1));
+    const yAt = v => pad.t + ch * (1 - v / maxV);
+    if (pts.length === 1) {
+      ctx.fillStyle = color; ctx.beginPath(); ctx.arc(xAt(0), yAt(pts[0]), 3, 0, 2 * Math.PI); ctx.fill();
+    }
     const fillColor = color.replace(/[\d.]+\)$/, '0.15)');
     const grad = ctx.createLinearGradient(0, pad.t, 0, pad.t + ch);
     grad.addColorStop(0, fillColor); grad.addColorStop(1, 'rgba(0,0,0,0)');
-    ctx.fillStyle = grad; ctx.beginPath();
-    pts.forEach((v, i) => {
-      const x = pad.l + i * (cw / denom);
-      const y = pad.t + ch * (1 - v / maxV);
-      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
-    });
-    ctx.lineTo(pad.l + cw, pad.t + ch); ctx.lineTo(pad.l, pad.t + ch); ctx.closePath(); ctx.fill();
-    ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.beginPath();
-    pts.forEach((v, i) => {
-      const x = pad.l + i * (cw / denom);
-      const y = pad.t + ch * (1 - v / maxV);
-      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
-    });
-    ctx.stroke();
+    if (pts.length > 1) {
+      ctx.fillStyle = grad; ctx.beginPath();
+      pts.forEach((v, i) => (i === 0 ? ctx.moveTo(xAt(i), yAt(v)) : ctx.lineTo(xAt(i), yAt(v))));
+      ctx.lineTo(xAt(pts.length - 1), pad.t + ch); ctx.lineTo(pad.l, pad.t + ch); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.beginPath();
+      pts.forEach((v, i) => (i === 0 ? ctx.moveTo(xAt(i), yAt(v)) : ctx.lineTo(xAt(i), yAt(v))));
+      ctx.stroke();
+    }
     ctx.fillStyle = 'rgba(61,96,112,0.6)'; ctx.font = '7px Share Tech Mono'; ctx.textAlign = 'center';
     labels.forEach((l, i) => {
       if (i % Math.ceil(labels.length / 8) === 0) {
-        ctx.fillText(String(l).slice(5), pad.l + i * (cw / denom), height - 5);
+        ctx.fillText(String(l).slice(5), xAt(i), height - 5);
       }
     });
   }, [data, color, height, yFormat]);

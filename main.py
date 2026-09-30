@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import atexit
 import json
+import logging
 import socket
 import sys
 import webbrowser
@@ -10,7 +11,10 @@ from urllib.request import urlopen
 
 from flaskwebgui import FlaskUI
 
+import applog
 from server import init_app
+
+log = logging.getLogger(__name__)
 
 WINDOW_WIDTH = 1100
 WINDOW_HEIGHT = 780
@@ -64,23 +68,33 @@ def _remove_port_file() -> None:
 
 
 def main() -> None:
+    applog.setup()
+    # Anything that escapes (like a database that won't open) lands in the
+    # log file too, not only in the crash dialog
+    previous_hook = sys.excepthook
+
+    def _log_crash(*exc) -> None:
+        log.critical("unhandled exception", exc_info=exc)
+        previous_hook(*exc)
+    sys.excepthook = _log_crash
     # Single-instance guard: a second launch opens the existing UI instead of
     # spawning a duplicate server + window.
     existing = _running_instance_url()
     if existing:
-        print(f"MellowDLP is already running at {existing} — opening it.")
+        log.info(f"already running at {existing}, opening it")
         webbrowser.open(existing)
         sys.exit(0)
+
+    static_dir = Path(__file__).parent / "static"
+    if not static_dir.exists():
+        # Logged, not printed: the packaged app has no console
+        log.critical(f"static/ directory not found at {static_dir}; "
+                     "run build_setup.py first to generate static assets")
+        sys.exit(1)
 
     flask_app = init_app()
     port = _find_free_port()
     _write_port_file(port)
-
-    static_dir = Path(__file__).parent / "static"
-    if not static_dir.exists():
-        print(f"ERROR: static/ directory not found at {static_dir}", file=sys.stderr)
-        print("Run build_setup.py first to generate static assets.", file=sys.stderr)
-        sys.exit(1)
 
     ui = FlaskUI(
         app=flask_app,

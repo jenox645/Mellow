@@ -20,9 +20,9 @@ const PRESET_QUERIES = [
   { label: 'All downloads', sql: "SELECT id, title, platform, format, quality,\n  file_size_bytes, timestamp, status\nFROM downloads\nORDER BY timestamp DESC\nLIMIT 50" },
   { label: 'Library folders & linked playlists', sql: "SELECT l.name, l.folder, l.quality, l.mode,\n  l.embed_thumbnail, l.embed_subs, l.sponsorblock,\n  l.last_synced,\n  (SELECT COUNT(*) FROM sync_log sl WHERE sl.library_id = l.id) as total_syncs\nFROM library l\nORDER BY l.last_synced DESC NULLS LAST" },
   { label: 'Sync history (all runs)', sql: "SELECT l.name as folder, sl.synced_at, sl.new_items,\n  sl.skipped, sl.errors, sl.duration_seconds\nFROM sync_log sl\nJOIN library l ON l.id = sl.library_id\nORDER BY sl.synced_at DESC\nLIMIT 30" },
-  { label: 'Downloads per library folder', sql: "SELECT l.name as library, l.folder,\n  COUNT(d.id) as downloads,\n  SUM(d.file_size_bytes) as total_bytes,\n  MAX(d.timestamp) as last_download\nFROM library l\nLEFT JOIN downloads d ON d.file_path LIKE l.folder || '%'\n  AND d.status='success'\nGROUP BY l.id, l.name, l.folder\nORDER BY downloads DESC" },
-  { label: 'Duplicates by title', sql: "SELECT title, COUNT(*) as count, SUM(file_size_bytes) as wasted_bytes\nFROM downloads\nWHERE status='success' AND title IS NOT NULL\nGROUP BY title\nHAVING COUNT(*) > 1\nORDER BY wasted_bytes DESC\nLIMIT 20" },
-  { label: 'Audio vs Video split', sql: "SELECT\n  CASE WHEN format IN ('mp3','aac','flac','m4a','opus','wav') THEN 'audio' ELSE 'video' END as type,\n  COUNT(*) as count,\n  SUM(file_size_bytes) as total_bytes\nFROM downloads\nWHERE status='success'\nGROUP BY type" },
+  { label: 'Downloads per library folder', sql: "-- An entry's files live in folder/folder_name when it uses a subfolder\nSELECT l.name as library, l.folder,\n  COUNT(d.id) as downloads,\n  SUM(d.file_size_bytes) as total_bytes,\n  MAX(d.timestamp) as last_download\nFROM library l\nLEFT JOIN downloads d\n  ON replace(d.file_path, '\\', '/') LIKE replace(l.folder, '\\', '/')\n     || CASE WHEN l.use_subfolder AND coalesce(l.folder_name, '') <> ''\n             THEN '/' || l.folder_name ELSE '' END || '/%'\n  AND d.status='success'\nGROUP BY l.id, l.name, l.folder\nORDER BY downloads DESC" },
+  { label: 'Duplicates by title', sql: "-- wasted = every copy but the largest\nSELECT title, COUNT(*) as count,\n  SUM(file_size_bytes) - MAX(file_size_bytes) as wasted_bytes\nFROM downloads\nWHERE status='success' AND title IS NOT NULL\nGROUP BY title\nHAVING COUNT(*) > 1\nORDER BY wasted_bytes DESC\nLIMIT 20" },
+  { label: 'Audio vs Video split', sql: "-- format is 'audio' or 'video'; container is the file type\nSELECT format as type, COUNT(*) as count,\n  SUM(file_size_bytes) as total_bytes,\n  string_agg(DISTINCT container, ', ') as containers\nFROM downloads\nWHERE status='success'\nGROUP BY format" },
   { label: 'Download speed stats', sql: "SELECT\n  DATE_TRUNC('day', timestamp) as day,\n  AVG(download_speed_avg_bps) / 1048576.0 as avg_mbps,\n  MAX(download_speed_avg_bps) / 1048576.0 as peak_mbps,\n  COUNT(*) as count\nFROM downloads\nWHERE status='success' AND download_speed_avg_bps IS NOT NULL\nGROUP BY day\nORDER BY day DESC\nLIMIT 14" },
   { label: 'Longest downloads (time)', sql: "SELECT title, platform, format, elapsed_seconds,\n  file_size_bytes, timestamp\nFROM downloads\nWHERE status='success' AND elapsed_seconds IS NOT NULL\nORDER BY elapsed_seconds DESC\nLIMIT 10" },
 ];
@@ -34,7 +34,7 @@ const SCHEMA_TEXT = `-- downloads
   container TEXT, file_path TEXT,
   timestamp TIMESTAMP, status TEXT,
   error_message TEXT, download_speed_avg_bps BIGINT,
-  elapsed_seconds INTEGER
+  elapsed_seconds INTEGER, thumbnail_url TEXT
 
 -- library
   id TEXT PK, name TEXT, url TEXT,

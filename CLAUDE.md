@@ -5,12 +5,16 @@
   - `server.py` — Flask routes only; business logic lives in the modules below
   - `jobs.py` — download job queue: worker pool (`download_workers` config, max `MAX_DOWNLOAD_WORKERS`), per-job cancel events, reordering, restart persistence (`~/.mellow_dlp_queue.json`)
   - `downloader.py` — yt-dlp Python API wrapper (returns `success|cancelled|error`; never raises — setup failures become an `error` event)
+  - `desktop.py` — OS integration: show in file manager, open with default app, clipboard, native Tk file/folder dialogs
+  - `ytdlp_update.py` — yt-dlp version check (PyPI) and in-app self-update
+  - `applog.py` — rotating log file `~/.mellow_dlp.log` (the packaged app has no console); modules log via `logging.getLogger(__name__)`, never `print`
   - `ffmpeg_locate.py` — the one ffmpeg lookup (config override → PATH → next to the app → known install folders), shared by downloader, vault and `/api/system`
-  - `analytics.py` — DuckDB (shared per-path connection handed out as cursors)
+  - `errors.py` — `explain()` maps raw yt-dlp errors to `{code, title, hint, action}`; `jobs._make_cb` annotates every `error`/`item_failed` event, `/api/info` errors too
+  - `analytics.py` — DuckDB only (shared per-path connection handed out as cursors); filesystem scans live in `vault.py`
   - `scheduler.py` — vault auto-sync loop (config: `auto_sync_enabled`, `vault_sync_schedule`)
   - `vault.py` / `library.py` — vault & library business logic
   - `backup.py` — config+DB zip export/restore (touches the DB file only inside `analytics.exclusive_file_access()`; DuckDB locks an open file on Windows)
-  - `config.py` — atomic config persistence + `update_config()` for read-modify-write; `load_config()` layers the saved file over `_DEFAULTS`, so new keys need no per-caller fallback
+  - `config.py` — atomic config persistence + `update_config()` for read-modify-write; `load_config()` layers the saved file over `_DEFAULTS`, so new keys need no per-caller fallback. `download_root(cfg)` is the download folder (never re-derive `~/Downloads/MellowDLP`); `request_settings()` / `download_settings()` are the cookie/network/tuning opts every yt-dlp call and job copies
   - `constants.py` / `version.py` — all tuning knobs and the single APP_VERSION
 - Frontend (React UMD, bundled by esbuild from ES modules):
   - `gui/app.jsx` — App root: SSE hub, routing, clipboard watcher, shortcuts
@@ -27,7 +31,7 @@
 - Queue: `playlistItems` (pending) and `completedItems` (done) — both at App root
 - Options (format, quality, checkboxes): survive URL change AND section navigation via sessionStorage
 - Victory overlay: state at App root, triggered by `item_done` events accumulating then `complete`
-- Queued jobs survive restarts (resume prompt on launch)
+- Unfinished jobs (running or queued) survive restarts (resume prompt on launch)
 
 ## Download Flow
 1. User pastes URL → ANALYZE → POST `/api/info` → yt-dlp `--dump-json`
@@ -47,6 +51,7 @@ All job-originated events carry `job_id`, `job_type`, `job_label` (multi-worker 
 - `warning` — non-fatal notice with `code` + `message` (today: `ffmpeg_missing`, `sponsorblock_skipped`)
 - `complete` — entire download finished: `title`, `file_path`, `file_size`, `warning` (set when it was saved with limits)
 - `error` (includes `url` for retry, `code: ffmpeg_missing` when that is the likely cause) / `cancelled` — terminal states
+- `error` and `item_failed` also carry `code`, `title`, `hint` and `action` (`update_ytdlp` | `open_config` | null) when `errors.explain()` recognises the message; the UI shows title + hint and a button for the action
 - `paused` / `resumed` — pause toggles
 - `ytdlp_updated` — after yt-dlp self-update
 
@@ -56,10 +61,21 @@ All job-originated events carry `job_id`, `job_type`, `job_label` (multi-worker 
 - Vault thumbnails: `.jpg` sidecars saved at download time (`_save_thumbnail_sidecar`), ffmpeg frame-grab fallback in `vault.get_thumb_bytes`, served via `/api/vault/thumb?path=...`
 - The App root pins the main progress panel to one "primary" job; concurrent jobs render in the Queue page jobs list via `activeJobs`
 - Mutating `/api/` requests require a JSON content type (CSRF guard); `/api/backup/restore` is the only multipart exception
+- `gui/lib/api.js`: every `API.*` call rejects on a 4xx/5xx with `Error(body.error)` plus `err.data` (full body) and `err.status` — handle failures in `.catch`, never by checking `d.error` in `.then`
+- A library entry's folder is `library.folder_path_for_entry(entry, download_root(cfg))` — used by syncs, the vault listing and entry↔folder matching alike
+- Deleting a media file goes through `vault.delete_media_file()` (sidecars + history rows too)
 - All magic numbers live in `constants.py` (backend) / `gui/lib/constants.js` (frontend)
 - Stats polling: 3s during active download, 30s idle (frontend constants)
+- Format lists (qualities, containers, audio formats, bitrates) live only in `gui/lib/constants.js`
+- A vault folder's sync format: request → `vault_sync_formats[path]` (last choice, saved by the sync dialog and the Feed's vault link) → its library entry → `infer_folder_format()` (what the files are). Auto-sync and "sync all" send no format, so this chain decides them
+- Every yt-dlp call (analyze, playlist items, mirror preview, downloads) goes through `_apply_cookie_opts` + `_apply_network_opts` (proxy, `force_ipv4`, socket timeout); build them with `server._request_opts(cfg)`
+- Mirror preview proposes no deletions when any linked playlist failed to load; ids for "%(title)s"-named files come from the download history
+- Sidecar thumbnails share the media file's full stem (`p.parent / (p.stem + ".jpg")`), never `with_suffix("")`
+- `/api/info` returns `previous_download` for single videos (history match by URL or YouTube id); `/api/download` returns `disk_warning` when the target drive is low
 - Victory overlay at App root (outside all page components), z-index 9999
 - Every job must end in exactly one terminal event (`complete`/`error`/`cancelled`) — the UI has no timeout; `jobs._worker` pushes `error` if a job crashes
+- `jobs.run_job` holds back each downloader run's terminal event and emits the job's one terminal itself: with several URLs, a failed one becomes `item_failed` + a `warning` on `complete` (all failed → one `error`)
+- Sync timestamps (`vault_sync_times`, library `last_synced`) are written by `JobManager._on_finished` when a sync completes, never on enqueue
 - No ffmpeg → `downloader` requests single-file formats and no ffmpeg postprocessors, and says so via `warning`; never build a `a+b` format or an `FFmpeg*` postprocessor without checking `find_ffmpeg()`
 - Cancel is per job (`job["cancel_event"]`); pause is one flag for all running downloads, owned by `JobManager` (cleared when the queue goes idle)
 - A run where yt-dlp logged errors and no file finished (`_download_retcode` set, `speed_tracker["finished"]` == 0) is an `error`, never `complete` — that is a dead/private playlist or every item refused (HTTP 403 from a stale yt-dlp). No errors and no files is an up-to-date archive sync and stays a success

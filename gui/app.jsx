@@ -41,6 +41,7 @@ const KEYBOARD_SHORTCUTS = [
   ['?', 'Toggle this help'],
   ['Esc', 'Close dialogs'],
   ['Enter (Feed)', 'Paste → Analyze → Download'],
+  ['Ctrl+V / drop a link', 'Anywhere outside a text field: analyze it on the Feed'],
 ];
 
 function ShortcutHelpOverlay({ onClose }) {
@@ -112,6 +113,61 @@ function App() {
     );
   }, []);
 
+  // Buttons for the fixes the backend can name (errors.py actions)
+  const errorActions = React.useCallback((action) => {
+    if (action === 'update_ytdlp') return [{
+      label: 'UPDATE YT-DLP', primary: true,
+      onClick: () => API.post('/api/update-ytdlp', {}).catch(() => {}),
+    }];
+    if (action === 'open_config') return [{ label: 'OPEN CONFIG', primary: true, onClick: () => setPage('config') }];
+    return null;
+  }, []);
+
+  // System notification when the window is in the background (opt-in in Config)
+  const desktopNotify = React.useCallback((title, body) => {
+    if (!configRef.current.desktop_notifications) return;
+    if (document.hasFocus() || typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+    try { new Notification(title, { body: body || '' }); } catch {}
+  }, []);
+
+  // Paste or drop a link anywhere: jump to the Feed and analyze it
+  React.useEffect(() => {
+    const isTyping = (el) => {
+      const tag = ((el && el.tagName) || '').toLowerCase();
+      return tag === 'input' || tag === 'textarea' || tag === 'select' || (el && el.isContentEditable);
+    };
+    const offer = (text) => {
+      const u = (text || '').trim().split(/\s+/)[0];
+      if (!CLIPBOARD_URL_RE.test(u)) return false;
+      lastClipboardRef.current = u;
+      setClipboardSuggestion({ url: u, ts: Date.now() });
+      setPage('feed');
+      return true;
+    };
+    const onPaste = (e) => {
+      if (isTyping(e.target)) return;
+      if (offer(e.clipboardData && e.clipboardData.getData('text'))) e.preventDefault();
+    };
+    const hasLink = (e) => {
+      const types = Array.from((e.dataTransfer && e.dataTransfer.types) || []);
+      return !types.includes('Files') && (types.includes('text/uri-list') || types.includes('text/plain'));
+    };
+    const onDragOver = (e) => { if (hasLink(e)) e.preventDefault(); };
+    const onDrop = (e) => {
+      if (!hasLink(e)) return;
+      const dt = e.dataTransfer;
+      if (offer(dt.getData('text/uri-list') || dt.getData('text/plain'))) e.preventDefault();
+    };
+    window.addEventListener('paste', onPaste);
+    window.addEventListener('dragover', onDragOver);
+    window.addEventListener('drop', onDrop);
+    return () => {
+      window.removeEventListener('paste', onPaste);
+      window.removeEventListener('dragover', onDragOver);
+      window.removeEventListener('drop', onDrop);
+    };
+  }, []);
+
   const refreshStats = React.useCallback(() => {
     API.get('/api/stats').then(setStats).catch(() => {});
     API.get('/api/system').then(setSysInfo).catch(() => {});
@@ -125,7 +181,7 @@ function App() {
       .catch(() => {});
   }, [config.output_dir]);
 
-  // Jobs that were still queued when the app last exited
+  // Jobs that were running or queued when the app last exited
   React.useEffect(() => {
     API.get('/api/queue/restorable')
       .then(d => { if (d.jobs && d.jobs.length) setRestorableJobs(d.jobs); })
@@ -313,7 +369,8 @@ function App() {
         setFailedCount(c => c + 1);
         setFailedItems(prev => [{
           title: data.message || 'Unknown item',
-          reason: data.reason || 'error',
+          reason: data.code || data.reason || 'error',
+          hint: data.title ? data.title + ' — ' + data.hint : null,
           url: data.url || null,
           failedAt: Date.now(),
         }, ...prev].slice(0, FAILED_ITEMS_KEEP));
@@ -330,6 +387,7 @@ function App() {
         } else {
           showNotif('Download Complete', data.title || 'File saved successfully', 'success', fileActions);
         }
+        desktopNotify('Download complete', data.title || '');
         refreshStats();
         refreshVault();
         if (!isPrimary) return;  // a background job finished; main panel stays
@@ -366,17 +424,21 @@ function App() {
         if (jobId) setActiveJobs(prev => { const next = { ...prev }; delete next[jobId]; return next; });
         const msg = data.message || 'Download failed';
         setFailedItems(prev => [{
-          title: msg, reason: 'error', url: data.url || null, failedAt: Date.now(),
+          title: msg, reason: data.code || 'error', url: data.url || null, failedAt: Date.now(),
+          hint: data.title ? data.title + ' — ' + data.hint : null,
         }, ...prev].slice(0, FAILED_ITEMS_KEEP));
         setFailedCount(c => c + 1);
-        // Extraction failures usually mean yt-dlp is outdated — offer the fix
-        // (unless the backend already pinned it on the missing ffmpeg)
-        const looksLikeBreakage = data.code !== 'ffmpeg_missing' && BREAKAGE_RE.test(msg);
-        const errActions = looksLikeBreakage ? [{
-          label: 'UPDATE YT-DLP', primary: true,
-          onClick: () => API.post('/api/update-ytdlp', {}).catch(() => {}),
-        }] : null;
-        showNotif('Error', looksLikeBreakage ? msg + ' — this often means yt-dlp is outdated.' : msg, 'error', errActions);
+        if (data.title) {
+          // The backend recognised the error: plain words and the fix
+          showNotif(data.title, data.hint, 'error', errorActions(data.action));
+        } else {
+          // Extraction failures usually mean yt-dlp is outdated — offer the fix
+          // (unless the backend already pinned it on the missing ffmpeg)
+          const looksLikeBreakage = data.code !== 'ffmpeg_missing' && BREAKAGE_RE.test(msg);
+          showNotif('Error', looksLikeBreakage ? msg + ' — this often means yt-dlp is outdated.' : msg, 'error',
+            looksLikeBreakage ? errorActions('update_ytdlp') : null);
+        }
+        desktopNotify(data.title || 'Download failed', data.hint || msg);
         refreshStats();
         if (!isPrimary) return;
         primaryJobRef.current = null;
@@ -405,7 +467,7 @@ function App() {
     };
     es.onerror = () => {};
     return () => es.close();
-  }, [showNotif, refreshStats, refreshVault]);
+  }, [showNotif, refreshStats, refreshVault, errorActions, desktopNotify]);
 
   const switchPage = React.useCallback((p) => setPage(p), []);
 
@@ -602,7 +664,7 @@ function App() {
         >
           <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 10, color: 'var(--t2)' }}>
             <div style={{ marginBottom: 8, color: 'var(--t3)' }}>
-              {restorableJobs.length} download(s) were still queued when the app last closed:
+              {restorableJobs.length} download(s) hadn't finished when the app last closed:
             </div>
             {restorableJobs.slice(0, 8).map(j => (
               <div key={j.id} style={{ padding: '3px 0', borderBottom: '1px solid var(--border)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>

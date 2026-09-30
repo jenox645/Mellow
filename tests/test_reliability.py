@@ -14,7 +14,7 @@ import downloader
 import ffmpeg_locate
 import jobs
 import scheduler
-import server
+import ytdlp_update
 
 TERMINAL = ('complete', 'error', 'cancelled')
 DEFAULT_INFO = {'title': 'T', 'id': 'abc'}
@@ -111,7 +111,10 @@ def test_history_records_the_file_that_was_actually_saved(tmp_dir):
 
 def test_audio_library_sync_is_recorded_as_audio(tmp_dir):
     import analytics
-    _run(tmp_dir, {'mode': 'library', 'sync_audio': True, 'audio_format': 'opus'})
+    saved = Path(tmp_dir) / 'T.opus'
+    saved.write_bytes(b'x')
+    _run(tmp_dir, {'mode': 'library', 'sync_audio': True, 'audio_format': 'opus'},
+         info={**DEFAULT_INFO, 'requested_downloads': [{'filepath': str(saved)}]})
     row = analytics.get_history()[0]
     assert (row['format'], row['container']) == ('audio', 'opus')
 
@@ -285,9 +288,9 @@ def _run_update(client, *, frozen, version_after):
 
     with patch.object(yt_dlp.version, '__version__', '2026.06.09'), \
             patch('server._push_progress', side_effect=push), \
-            patch('server.subprocess.run'), \
+            patch('ytdlp_update.subprocess.run'), \
             patch('importlib.reload', side_effect=fake_reload), \
-            patch.object(server.sys, 'frozen', frozen, create=True), \
+            patch.object(ytdlp_update.sys, 'frozen', frozen, create=True), \
             patch('shutil.which', return_value='/usr/bin/yt-dlp'):
         assert client.post('/api/update-ytdlp', json={}).status_code == 200
         assert done.wait(10)

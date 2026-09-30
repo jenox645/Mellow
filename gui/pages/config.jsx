@@ -5,6 +5,7 @@ import { API } from '../lib/api.js';
 import { fmtBytes } from '../lib/util.js';
 import { Toggle, Modal, Mascot } from '../components/common.jsx';
 import { MASCOT_FRUSTRATED } from '../lib/mascots.js';
+import { AUDIO_FORMATS, AUDIO_QUALITIES, CONTAINERS, QUALITIES } from '../lib/constants.js';
 
 export function ConfigPage({ config, setConfig, showNotif, sysInfo, refreshStats }) {
   const [local, setLocal] = React.useState({ ...config });
@@ -25,13 +26,13 @@ export function ConfigPage({ config, setConfig, showNotif, sysInfo, refreshStats
   const CONFIG_PAGE_KEYS = [
     'output_dir', 'filename_template',
     'cookies_browser', 'cookies_browser_profile', 'cookies_file',
-    'rate_limit', 'proxy', 'external_downloader',
+    'rate_limit', 'proxy', 'force_ipv4', 'external_downloader',
     'concurrent_fragments', 'sleep_interval', 'retries',
-    'write_metadata', 'extract_chapters',
+    'write_metadata',
     'ui_victory_animation', 'ui_victory_sync',
-    'default_mode', 'default_quality', 'default_container', 'default_audio_format',
+    'default_mode', 'default_quality', 'default_container', 'default_audio_format', 'default_audio_quality',
     'download_workers', 'auto_sync_enabled', 'auto_sync_default_interval',
-    'update_check_on_launch', 'clipboard_watch', 'completion_sound',
+    'update_check_on_launch', 'clipboard_watch', 'completion_sound', 'desktop_notifications',
   ];
   const NUMERIC_DEFAULTS = { concurrent_fragments: 4, sleep_interval: 0, retries: 3, download_workers: 1 };
 
@@ -51,13 +52,12 @@ export function ConfigPage({ config, setConfig, showNotif, sysInfo, refreshStats
       .catch(e => showNotif('Error', e.message, 'error'));
   };
 
+  // Every setting back to the server's defaults (a list kept here missed
+  // most of them); vault playlists, schedules, budgets and presets stay
   const handleReset = () => {
-    API.post('/api/config', {
-      output_dir: '', cookies_browser: 'none', cookies_file: '', cookies_browser_profile: '',
-      rate_limit: '', proxy: '', external_downloader: '',
-      concurrent_fragments: 4, sleep_interval: 0, retries: 3,
-      write_metadata: true, extract_chapters: true, filename_template: '',
-    }).then(() => API.get('/api/config').then(c => { setLocal(c); setConfig(c); showNotif('Reset', 'Defaults restored', 'success'); }));
+    API.post('/api/config/reset', {})
+      .then(c => { setLocal(c); setConfig(c); showNotif('Reset', 'Defaults restored', 'success'); })
+      .catch(e => showNotif('Error', e.message, 'error'));
   };
 
   const browseFolder = () => {
@@ -221,7 +221,7 @@ export function ConfigPage({ config, setConfig, showNotif, sysInfo, refreshStats
                 </div>
                 <div className="settings-ctrl">
                   <select className="sel" value={local.default_quality || '1080p'} onChange={e => set('default_quality', e.target.value)}>
-                    {['best', '4k', '1080p', '720p', '480p', '360p'].map(q => (
+                    {QUALITIES.map(q => (
                       <option key={q} value={q}>{q.toUpperCase()}</option>
                     ))}
                   </select>
@@ -234,7 +234,7 @@ export function ConfigPage({ config, setConfig, showNotif, sysInfo, refreshStats
                 </div>
                 <div className="settings-ctrl">
                   <select className="sel" value={local.default_container || 'mp4'} onChange={e => set('default_container', e.target.value)}>
-                    {['mp4', 'mkv', 'webm'].map(c => <option key={c} value={c}>{c.toUpperCase()}</option>)}
+                    {CONTAINERS.map(c => <option key={c} value={c}>{c.toUpperCase()}</option>)}
                   </select>
                 </div>
               </div>
@@ -245,7 +245,18 @@ export function ConfigPage({ config, setConfig, showNotif, sysInfo, refreshStats
                 </div>
                 <div className="settings-ctrl">
                   <select className="sel" value={local.default_audio_format || 'mp3'} onChange={e => set('default_audio_format', e.target.value)}>
-                    {['mp3', 'aac', 'flac', 'm4a', 'opus', 'wav'].map(f => <option key={f} value={f}>{f.toUpperCase()}</option>)}
+                    {AUDIO_FORMATS.map(f => <option key={f} value={f}>{f.toUpperCase()}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div className="settings-row">
+                <div className="settings-label">
+                  <div className="sl-name">Default Audio Bitrate</div>
+                  <div className="sl-sub">For MP3 / AAC / M4A / OPUS (FLAC and WAV are lossless)</div>
+                </div>
+                <div className="settings-ctrl">
+                  <select className="sel" value={local.default_audio_quality || 'best'} onChange={e => set('default_audio_quality', e.target.value)}>
+                    {AUDIO_QUALITIES.map(([v, label]) => <option key={v} value={v}>{label}</option>)}
                   </select>
                 </div>
               </div>
@@ -351,6 +362,15 @@ export function ConfigPage({ config, setConfig, showNotif, sysInfo, refreshStats
                   </div>
                 </div>
               ))}
+              <div className="settings-row">
+                <div className="settings-label">
+                  <div className="sl-name">Force IPv4</div>
+                  <div className="sl-sub">Turn on if Analyze or downloads hang for minutes (broken IPv6 connection)</div>
+                </div>
+                <div className="settings-ctrl">
+                  <Toggle checked={local.force_ipv4 === true} onChange={v => set('force_ipv4', v)} />
+                </div>
+              </div>
             </div>
           </div>
 
@@ -401,6 +421,23 @@ export function ConfigPage({ config, setConfig, showNotif, sysInfo, refreshStats
                 </div>
                 <div className="settings-ctrl">
                   <Toggle checked={local.clipboard_watch !== false} onChange={v => set('clipboard_watch', v)} />
+                </div>
+              </div>
+              <div className="settings-row">
+                <div className="settings-label">
+                  <div className="sl-name">Desktop Notifications</div>
+                  <div className="sl-sub">System notification when a download finishes or fails while the window is in the background</div>
+                </div>
+                <div className="settings-ctrl">
+                  <Toggle checked={local.desktop_notifications === true} onChange={v => {
+                    set('desktop_notifications', v);
+                    // Ask on this click: browsers only prompt from a user action
+                    if (v && typeof Notification !== 'undefined' && Notification.permission === 'default') {
+                      Notification.requestPermission().then(p => {
+                        if (p !== 'granted') { set('desktop_notifications', false); showNotif('Notifications blocked', 'Allow notifications for this app to use this', 'warn'); }
+                      });
+                    }
+                  }} />
                 </div>
               </div>
               <div className="settings-row">
@@ -456,6 +493,18 @@ export function ConfigPage({ config, setConfig, showNotif, sysInfo, refreshStats
                 </div>
                 <div className="settings-ctrl">
                   <span style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 10, color: 'var(--cyan)' }}>{fmtBytes(sysInfo.db_size_bytes || 0)}</span>
+                </div>
+              </div>
+              <div className="settings-row">
+                <div className="settings-label">
+                  <div className="sl-name">Log File</div>
+                  <div className="sl-sub">{sysInfo.log_path || 'What happened, for troubleshooting or a bug report'}</div>
+                </div>
+                <div className="settings-ctrl">
+                  <button className="btn btn-secondary btn-sm" onClick={() => API.post('/api/open-log', {})
+                    .catch(e => e.status === 404
+                      ? showNotif('No log yet', e.message, 'info')
+                      : showNotif('Error', e.message, 'error'))}>OPEN LOG</button>
                 </div>
               </div>
               <div className="settings-row">

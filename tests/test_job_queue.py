@@ -145,3 +145,141 @@ def test_worker_pool_respects_limit():
         release.set()
         assert started.acquire(timeout=10), "third job never started after slots freed"
         assert peak['n'] == 2
+
+
+def _multi_job(tmp, urls, job_id='multi', job_type='sync', library_id=None):
+    return {
+        'id': job_id, 'type': job_type, 'label': 'Sync — Music (2 playlist(s))',
+        'url': urls[0], 'multi_urls': urls, 'output_dir': tmp, 'opts': {},
+        'library_id': library_id, 'status': 'active',
+        'cancel_event': threading.Event(),
+    }
+
+
+def _fake_dl_failing(failing):
+    """Downloader stand-in: URLs in `failing` end in error, the rest complete."""
+    def fake_dl(url, out, opts, cb, lib_id=None, cancel_event=None, pause_event=None):
+        cb({'status': 'starting', 'url': url})
+        if url in failing:
+            cb({'status': 'error', 'message': f'ERROR: {url} is private', 'url': url})
+            return 'error'
+        cb({'status': 'item_done', 'title': url, 'video_id': url[-1]})
+        cb({'status': 'complete', 'title': url})
+        return 'success'
+    return fake_dl
+
+
+def _terminal(events):
+    return [e for e in events if e.get('status') in ('complete', 'error', 'cancelled')]
+
+
+def test_multi_url_job_first_playlist_failing_ends_in_one_complete():
+    """A failed first playlist used to push `error` mid-job (UI showed the
+    sync as failed, then as running again)."""
+    events = []
+    urls = ['https://youtube.com/playlist?list=A', 'https://youtube.com/playlist?list=B']
+    with tempfile.TemporaryDirectory() as tmp, \
+            patch('downloader.download_video', side_effect=_fake_dl_failing({urls[0]})):
+        assert _make_manager(events).run_job(_multi_job(tmp, urls)) == 'complete'
+    terminal = _terminal(events)
+    assert [e['status'] for e in terminal] == ['complete']
+    assert '1 of 2' in terminal[0]['warning']
+    assert events[-1] is terminal[0], 'the terminal event must be the last one'
+    failed = [e for e in events if e.get('status') == 'item_failed']
+    assert [e['url'] for e in failed] == [urls[0]]
+    assert 'private' in failed[0]['message']
+
+
+def test_multi_url_job_last_playlist_failing_is_not_reported_as_error():
+    """The job counts as complete, so the UI must not be told it failed."""
+    events = []
+    urls = ['https://youtube.com/playlist?list=A', 'https://youtube.com/playlist?list=B']
+    with tempfile.TemporaryDirectory() as tmp, \
+            patch('downloader.download_video', side_effect=_fake_dl_failing({urls[1]})):
+        assert _make_manager(events).run_job(_multi_job(tmp, urls)) == 'complete'
+    assert [e['status'] for e in _terminal(events)] == ['complete']
+
+
+def test_multi_url_job_all_failing_ends_in_one_error():
+    events = []
+    urls = ['https://youtube.com/playlist?list=A', 'https://youtube.com/playlist?list=B']
+    with tempfile.TemporaryDirectory() as tmp, \
+            patch('downloader.download_video', side_effect=_fake_dl_failing(set(urls))):
+        assert _make_manager(events).run_job(_multi_job(tmp, urls)) == 'failed'
+    terminal = _terminal(events)
+    assert [e['status'] for e in terminal] == ['error']
+    assert terminal[0]['url'] == urls[1]  # retry target
+    assert terminal[0]['job_id'] == 'multi'
+
+
+def test_job_whose_downloader_sent_no_terminal_event_still_gets_one():
+    """The UI has no timeout: a job must always end in a terminal event."""
+    events = []
+    with tempfile.TemporaryDirectory() as tmp, \
+            patch('downloader.download_video', return_value='success'):
+        m = _make_manager(events)
+        assert m.run_job(_multi_job(tmp, ['https://youtu.be/a'], job_type='feed')) == 'complete'
+    assert [e['status'] for e in _terminal(events)] == ['complete']
+
+
+def test_library_last_synced_is_stamped_on_completion_only():
+    import analytics
+    analytics.upsert_library_entry({'id': 'lib1', 'name': 'L', 'url': 'https://x/pl'})
+    m = _make_manager([])
+
+    def last_synced():
+        return next(e for e in analytics.get_library_entries() if e['id'] == 'lib1')['last_synced']
+
+    job = {'type': 'sync', 'library_id': 'lib1', 'counts': {}}
+    m._on_finished(job, 'failed')
+    assert last_synced() is None
+    m._on_finished(job, 'complete')
+    assert last_synced() is not None
+
+
+def test_failed_link_that_reported_its_own_items_is_not_counted_twice():
+    """Library runs log each failure as item_failed already; the job summary
+    must not add a second one for the same link."""
+    events = []
+    urls = ['https://youtube.com/playlist?list=A', 'https://youtube.com/playlist?list=B']
+
+    def fake_dl(url, out, opts, cb, lib_id=None, cancel_event=None, pause_event=None):
+        if url == urls[0]:
+            cb({'status': 'item_failed', 'reason': 'error', 'message': 'HTTP Error 404'})
+            cb({'status': 'error', 'message': 'HTTP Error 404', 'url': url})
+            return 'error'
+        cb({'status': 'complete', 'title': url})
+        return 'success'
+
+    with tempfile.TemporaryDirectory() as tmp, patch('downloader.download_video', side_effect=fake_dl):
+        assert _make_manager(events).run_job(_multi_job(tmp, urls)) == 'complete'
+    assert len([e for e in events if e['status'] == 'item_failed']) == 1
+    assert '1 of 2' in _terminal(events)[0]['warning']
+
+
+def test_download_running_at_exit_is_offered_again():
+    """Only queued jobs were saved: the download in progress when the app
+    closed was lost. It is saved (first), and dropped once it finishes."""
+    import json
+    started, release = threading.Event(), threading.Event()
+
+    def fake_dl(url, out, opts, cb, lib_id=None, cancel_event=None, pause_event=None):
+        started.set()
+        release.wait(timeout=10)
+        return 'success'
+
+    with tempfile.TemporaryDirectory() as tmp, \
+            patch.object(jobs, 'QUEUE_STATE_PATH', jobs.Path(tmp) / 'queue.json'), \
+            patch('jobs.load_config', return_value={'download_workers': 1}), \
+            patch('downloader.download_video', side_effect=fake_dl):
+        m = jobs.JobManager()
+        m.start(lambda e: None)
+        running = m.enqueue('https://youtu.be/running', tmp, {})
+        assert started.wait(10)
+        queued = m.enqueue('https://youtu.be/queued', tmp, {})
+        saved = json.loads(jobs.QUEUE_STATE_PATH.read_text())
+        assert [j['id'] for j in saved] == [running['id'], queued['id']]
+        assert jobs.JobManager().restorable[0]['url'] == 'https://youtu.be/running'
+        release.set()
+        assert m.wait_idle(10)
+        assert not jobs.QUEUE_STATE_PATH.exists()
