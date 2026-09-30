@@ -36,6 +36,21 @@ _DEFAULTS: dict = {
     "write_metadata": True,
     "extract_chapters": True,
     "filename_template": "",
+    # Download defaults applied when the Feed has no session state yet
+    "default_mode": "video",
+    "default_quality": "1080p",
+    "default_container": "mp4",
+    "default_audio_format": "mp3",
+    # Behavior
+    "download_workers": 1,            # concurrent downloads (1 = sequential)
+    "auto_sync_enabled": False,       # vault auto-sync scheduler master switch
+    "auto_sync_default_interval": "daily",
+    "vault_sync_schedule": {},        # per-folder interval overrides
+    "vault_budgets": {},              # per-folder storage caps (bytes)
+    "update_check_on_launch": True,   # yt-dlp staleness toast on startup
+    "clipboard_watch": True,          # Feed banner when a media URL is copied
+    "completion_sound": False,        # chime when a download finishes
+    "download_presets": [],           # saved option bundles for the Feed
 }
 
 

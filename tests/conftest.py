@@ -1,10 +1,9 @@
-import sys
-import pytest
-import tempfile
-import os
-import json
 import pathlib
-from unittest.mock import patch, MagicMock
+import sys
+import tempfile
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 # Stub tkinter before server.py is imported (headless test environment)
 if 'tkinter' not in sys.modules:
@@ -13,7 +12,7 @@ if 'tkinter' not in sys.modules:
 
 # Stub flaskwebgui if not installed
 try:
-    import flaskwebgui
+    import flaskwebgui  # noqa: F401 — availability probe
 except ImportError:
     sys.modules['flaskwebgui'] = MagicMock()
 

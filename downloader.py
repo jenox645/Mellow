@@ -10,6 +10,7 @@ from typing import Any, Callable
 import yt_dlp
 
 import analytics
+from constants import PAUSE_POLL_SECS, THUMB_FETCH_TIMEOUT_SECS
 
 _ffmpeg_ok = bool(_shutil.which("ffmpeg"))
 
@@ -101,7 +102,7 @@ def _make_progress_hook(progress_cb: Callable, library_id: str | None, speed_tra
         while pause_event.is_set():
             if cancel_event.is_set():
                 raise yt_dlp.utils.DownloadCancelled()
-            time.sleep(0.2)
+            time.sleep(PAUSE_POLL_SECS)
         if cancel_event.is_set():
             raise yt_dlp.utils.DownloadCancelled()
         status = d.get("status")
@@ -205,7 +206,7 @@ def _save_thumbnail_sidecar(filepath: str, thumb_url: str | None) -> None:
     def _fetch() -> None:
         try:
             from urllib.request import urlopen as _uo
-            with _uo(thumb_url, timeout=15) as resp:
+            with _uo(thumb_url, timeout=THUMB_FETCH_TIMEOUT_SECS) as resp:
                 data = resp.read()
             sidecar.write_bytes(data)
         except Exception as e:

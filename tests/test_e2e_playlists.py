@@ -1,4 +1,5 @@
 import pytest
+
 import downloader
 
 PLAYLIST_3 = 'https://youtube.com/playlist?list=PL29g0AFkwZD9LG2WOIiPqzXNmXbcQdAoC'
@@ -60,8 +61,9 @@ def test_download_playlist_100_count(tmp_path):
 @pytest.mark.e2e
 def test_multi_url_single_complete(tmp_path):
     """Regression for flaw #2: multi-URL job via server fires complete once."""
-    import server
     from unittest.mock import patch
+
+    import server
 
     complete_count = [0]
     real_push = server._push_progress

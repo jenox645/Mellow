@@ -26,11 +26,26 @@ from urllib.request import urlopen
 from flask import Flask, Response, jsonify, request, send_from_directory
 
 import analytics
+import backup as _backup
 import downloader
+import jobs
 import library as _library
+import scheduler
 import vault as _vault
 from config import load_config, update_config
-from constants import MEDIA_EXTS, THUMB_CACHE_SECS
+from constants import (
+    HISTORY_DEFAULT_LIMIT,
+    HISTORY_MAX_LIMIT,
+    LOW_DISK_WARN_BYTES,
+    MEDIA_EXTS,
+    MEDIA_MIME,
+    PYPI_CHECK_TIMEOUT_SECS,
+    SSE_PING_INTERVAL_SECS,
+    SSE_QUEUE_MAXSIZE,
+    THUMB_CACHE_SECS,
+    WEBHOOK_TIMEOUT_SECS,
+)
+from version import APP_VERSION
 
 STATIC_DIR = Path(__file__).parent / "static"
 
@@ -47,7 +62,7 @@ _sse_lock = threading.Lock()
 
 
 def _sse_subscribe() -> queue.Queue:
-    q: queue.Queue = queue.Queue(maxsize=500)
+    q: queue.Queue = queue.Queue(maxsize=SSE_QUEUE_MAXSIZE)
     with _sse_lock:
         _sse_subscribers.append(q)
     return q
@@ -59,179 +74,11 @@ def _sse_unsubscribe(q: queue.Queue) -> None:
             _sse_subscribers.remove(q)
 
 
-# ── Download job queue (single-worker — one download at a time) ────────────────
-_dl_queue: queue.Queue = queue.Queue()
-_dl_jobs: list[dict] = []
-_dl_jobs_lock = threading.Lock()
+# ── Download job queue ────────────────────────────────────────────────────────
+# Owned by jobs.JobManager (worker pool, reordering, persistence). The alias
+# keeps call sites readable.
+_enqueue_job = jobs.manager.enqueue
 
-# Pending jobs persisted across restarts (Path so tests can monkeypatch)
-QUEUE_STATE_PATH = Path.home() / ".mellow_dlp_queue.json"
-_JOB_PERSIST_KEYS = ("id", "type", "label", "url", "multi_urls",
-                     "output_dir", "opts", "library_id", "sync_path")
-_restorable_jobs: list[dict] = []
-
-
-def _persist_queue() -> None:
-    """Snapshot still-queued jobs to disk so a restart can offer to resume them."""
-    try:
-        with _dl_jobs_lock:
-            pending = [
-                {k: j.get(k) for k in _JOB_PERSIST_KEYS}
-                for j in _dl_jobs if j["status"] == "queued"
-            ]
-        if pending:
-            QUEUE_STATE_PATH.write_text(json.dumps(pending), encoding="utf-8")
-        elif QUEUE_STATE_PATH.exists():
-            QUEUE_STATE_PATH.unlink()
-    except OSError as exc:
-        print(f"[QUEUE] persist failed: {exc}", flush=True)
-
-
-def _load_restorable_jobs() -> None:
-    global _restorable_jobs
-    try:
-        if QUEUE_STATE_PATH.exists():
-            data = json.loads(QUEUE_STATE_PATH.read_text(encoding="utf-8"))
-            if isinstance(data, list):
-                _restorable_jobs = [j for j in data if isinstance(j, dict) and j.get("url")]
-    except Exception as exc:
-        print(f"[QUEUE] could not read persisted queue: {exc}", flush=True)
-
-
-_load_restorable_jobs()
-
-
-def _enqueue_job(url: str, output_dir: str, opts: dict,
-                 library_id: str | None = None,
-                 job_type: str = "feed",
-                 label: str = "",
-                 multi_urls: list | None = None,
-                 sync_path: str | None = None) -> dict:
-    job: dict = {
-        "id": str(uuid.uuid4()),
-        "type": job_type,
-        "label": label or url,
-        "url": url,
-        "multi_urls": multi_urls,
-        "output_dir": output_dir,
-        "opts": opts,
-        "library_id": library_id,
-        "sync_path": sync_path,
-        "status": "queued",
-        "cancel_event": threading.Event(),
-        "counts": {"new": 0, "errors": 0},
-    }
-    with _dl_jobs_lock:
-        _dl_jobs.append(job)
-    _dl_queue.put(job)
-    _persist_queue()
-    return job
-
-
-def _cancel_job(job_id: str) -> dict | None:
-    """Cancel a queued or active job. Returns the job, or None if not found."""
-    with _dl_jobs_lock:
-        job = next((j for j in _dl_jobs if j["id"] == job_id), None)
-        if job is None:
-            return None
-        job["cancel_event"].set()
-        if job["status"] == "queued":
-            job["status"] = "cancelled"
-    _persist_queue()
-    return job
-
-
-def _run_job(job: dict) -> str:
-    """Run all URLs of a job. Returns aggregate status."""
-    urls = job.get("multi_urls") or [job["url"]]
-    last_idx = len(urls) - 1
-    cancel_event = job.setdefault("cancel_event", threading.Event())
-    job.setdefault("counts", {"new": 0, "errors": 0})
-    # The metadata toggle is read at run time so config changes apply to
-    # already-queued jobs too.
-    job["opts"]["write_metadata"] = load_config().get("write_metadata", True)
-    results: list[str] = []
-    for i, url in enumerate(urls):
-        if cancel_event.is_set():
-            results.append("cancelled")
-            break
-        is_last = (i == last_idx)
-
-        def _make_cb(final: bool):
-            def _cb(event: dict) -> None:
-                status = event.get("status")
-                if status == "item_done":
-                    job["counts"]["new"] += 1
-                elif status == "item_failed":
-                    job["counts"]["errors"] += 1
-                # Suppress intermediate complete events so only the final URL fires once
-                if status == "complete" and not final:
-                    return
-                _push_progress(event)
-            return _cb
-
-        results.append(downloader.download_video(
-            url, job["output_dir"], job["opts"], _make_cb(is_last),
-            job.get("library_id"), cancel_event=cancel_event))
-
-    if any(r == "cancelled" for r in results) or cancel_event.is_set():
-        return "cancelled"
-    if results and all(r == "error" for r in results):
-        return "failed"
-    return "complete"
-
-
-def _on_job_finished(job: dict, status: str) -> None:
-    """Post-job bookkeeping: sync timestamps and the sync_log fact table."""
-    if job.get("type") != "sync" or status != "complete":
-        return
-    t_done = time.strftime("%Y-%m-%dT%H:%M:%S")
-    sync_path = job.get("sync_path")
-    if sync_path:
-        # Stamped on completion, not enqueue, so a failed sync isn't "synced"
-        update_config(lambda cfg: cfg.setdefault("vault_sync_times", {}).__setitem__(sync_path, t_done))
-    counts = job.get("counts", {})
-    duration = int(time.monotonic() - job.get("_t0", time.monotonic()))
-    analytics.record_sync_log(
-        job.get("library_id") or "", counts.get("new", 0), 0,
-        counts.get("errors", 0), duration)
-
-
-def _queue_worker() -> None:
-    while True:
-        job = _dl_queue.get()
-        if job is None:
-            break
-        if job["cancel_event"].is_set() or job["status"] == "cancelled":
-            with _dl_jobs_lock:
-                job["status"] = "cancelled"
-            _dl_queue.task_done()
-            continue
-        with _dl_jobs_lock:
-            job["status"] = "active"
-            job["_t0"] = time.monotonic()
-        _persist_queue()
-        try:
-            status = _run_job(job)
-            with _dl_jobs_lock:
-                job["status"] = status
-            _on_job_finished(job, status)
-        except Exception as exc:
-            with _dl_jobs_lock:
-                job["status"] = "failed"
-                job["error"] = str(exc)
-        finally:
-            _dl_queue.task_done()
-            with _dl_jobs_lock:
-                done = [j for j in _dl_jobs if j["status"] in ("complete", "failed", "cancelled")]
-                if len(done) > 20:
-                    for old in done[:-20]:
-                        if old in _dl_jobs:
-                            _dl_jobs.remove(old)
-
-
-_worker_thread = threading.Thread(target=_queue_worker, daemon=True)
-_worker_thread.start()
 
 
 
@@ -248,7 +95,7 @@ def _fire_webhooks(event_type: str, payload: dict) -> None:
             try:
                 req = _Req(wh_url, data=body, method="POST",
                            headers={"Content-Type": "application/json"})
-                _urlopen(req, timeout=5)
+                _urlopen(req, timeout=WEBHOOK_TIMEOUT_SECS)
             except Exception as wh_exc:
                 print(f"[WEBHOOK] {event_type} → {wh_url} failed: {wh_exc}", flush=True)
     except Exception:
@@ -273,11 +120,51 @@ def _push_progress(event: dict) -> None:
         threading.Thread(target=_fire_webhooks, args=(status, event), daemon=True).start()
 
 
+jobs.manager.start(_push_progress)
+
+
+def _enqueue_vault_sync(path: str, data: dict | None = None,
+                        requested_urls: list | None = None) -> dict | None:
+    """Build sync opts and enqueue a sync job for a linked vault folder.
+
+    Shared by the sync endpoints and the auto-sync scheduler. Returns the
+    job, or None when the folder has no (matching) linked playlists.
+    """
+    data = data or {}
+    cfg = load_config()
+    vp = cfg.get("vault_playlists", {}).get(path, [])
+    if not vp:
+        return None
+    playlist_urls = [u for u in list(vp) if u in requested_urls] if requested_urls else list(vp)
+    if not playlist_urls:
+        return None
+    library_entries = analytics.get_library_entries()
+    lib = next((e for e in library_entries if e.get("folder") == path or
+                str(Path(e.get("folder", "")) / (e.get("folder_name") or "")) == path), None)
+    opts = _vault.build_sync_opts(data, lib, cfg)
+    library_id = lib["id"] if lib else None
+    label = f"Sync — {Path(path).name} ({len(playlist_urls)} playlist(s))"
+    return _enqueue_job(playlist_urls[0] if len(playlist_urls) == 1 else path,
+                        path, opts, library_id, job_type="sync", label=label,
+                        multi_urls=playlist_urls, sync_path=path)
+
+
+scheduler.start(
+    sync_fn=lambda path: _enqueue_vault_sync(path) is not None,
+    is_syncing_fn=jobs.manager.has_sync_for,
+)
+
+
 # ── Cross-origin write protection ─────────────────────────────────────────────
 # All endpoints parse JSON with force=True, which also accepts text/plain —
 # the content type a cross-origin "simple" POST can send without a CORS
 # preflight. Requiring a JSON content type (and a local Origin when present)
 # stops any website you visit from poking /api/download, /api/config, etc.
+
+# Endpoints that legitimately receive non-JSON bodies (file uploads). They
+# are still covered by the Origin check above.
+_MULTIPART_ALLOWED_PATHS = frozenset({"/api/backup/restore"})
+
 
 @app.before_request
 def _api_write_guard() -> Response | None:
@@ -291,9 +178,16 @@ def _api_write_guard() -> Response | None:
             host = None
         if host not in ("localhost", "127.0.0.1", "::1"):
             return jsonify({"error": "Cross-origin requests are not allowed"}), 403
+    if request.path in _MULTIPART_ALLOWED_PATHS:
+        return None
     if request.content_length and not request.is_json:
         return jsonify({"error": "Content-Type must be application/json"}), 415
     return None
+
+
+def shutil_disk_free(path: Path) -> int:
+    import shutil as _sh
+    return _sh.disk_usage(str(path)).free
 
 
 def _open_in_explorer(path: str) -> None:
@@ -505,11 +399,21 @@ def api_system() -> Response:
         ffmpeg_ok = result.returncode == 0
     except Exception:
         pass
+    disk_free = None
+    try:
+        out_dir = load_config().get("output_dir", "")
+        probe = Path(out_dir) if out_dir and Path(out_dir).exists() else Path.home()
+        disk_free = shutil_disk_free(probe)
+    except OSError:
+        pass
     return jsonify({
         "ffmpeg": ffmpeg_ok,
         "ytdlp_version": ytdlp_version,
         "python_version": sys.version.split()[0],
+        "app_version": APP_VERSION,
         "db_size_bytes": analytics.get_db_size(),
+        "disk_free_bytes": disk_free,
+        "disk_low": disk_free is not None and disk_free < LOW_DISK_WARN_BYTES,
     })
 
 
@@ -533,7 +437,7 @@ def api_check_ytdlp_update() -> Response:
             installed = "unknown"
         print(f"[YTDLP CHECK] version returned: {installed}", flush=True)
         try:
-            with urlopen("https://pypi.org/pypi/yt-dlp/json", timeout=30) as resp:
+            with urlopen("https://pypi.org/pypi/yt-dlp/json", timeout=PYPI_CHECK_TIMEOUT_SECS) as resp:
                 payload = json.loads(resp.read().decode())
             latest = payload["info"]["version"]
         except (URLError, KeyError, Exception) as exc:
@@ -692,11 +596,7 @@ def api_download() -> Response:
 
 @app.route("/api/cancel", methods=["POST"])
 def api_cancel() -> Response:
-    # Cancel the active job (its event is registered as current in downloader)
-    with _dl_jobs_lock:
-        active = next((j for j in _dl_jobs if j["status"] == "active"), None)
-    if active:
-        active["cancel_event"].set()
+    jobs.manager.cancel_active()
     downloader.cancel_download()
     return jsonify({"status": "cancelled"})
 
@@ -704,7 +604,7 @@ def api_cancel() -> Response:
 @app.route("/api/queue/<job_id>", methods=["DELETE"])
 @app.route("/api/queue/<job_id>/cancel", methods=["POST"])
 def api_queue_cancel_job(job_id: str) -> Response:
-    job = _cancel_job(job_id)
+    job = jobs.manager.cancel(job_id)
     if job is None:
         return jsonify({"error": "Job not found"}), 404
     if job["status"] == "cancelled":
@@ -714,40 +614,37 @@ def api_queue_cancel_job(job_id: str) -> Response:
     return jsonify({"ok": True, "status": "cancelling"})
 
 
+@app.route("/api/queue/<job_id>/reorder", methods=["POST"])
+def api_queue_reorder(job_id: str) -> Response:
+    data = request.get_json(force=True) or {}
+    try:
+        new_index = int(data.get("index"))
+    except (TypeError, ValueError):
+        return jsonify({"error": "index (integer) required"}), 400
+    if not jobs.manager.reorder(job_id, new_index):
+        return jsonify({"error": "Job not queued (already running or unknown)"}), 404
+    return jsonify({"ok": True})
+
+
 @app.route("/api/queue/restorable", methods=["GET"])
 def api_queue_restorable() -> Response:
     return jsonify({"jobs": [
         {"id": j.get("id"), "label": j.get("label"), "type": j.get("type"),
          "url": j.get("url")}
-        for j in _restorable_jobs
+        for j in jobs.manager.restorable
     ]})
 
 
 @app.route("/api/queue/restore", methods=["POST"])
 def api_queue_restore() -> Response:
     """Re-enqueue jobs that were still pending when the app last exited."""
-    global _restorable_jobs
-    restored = []
-    for j in _restorable_jobs:
-        job = _enqueue_job(
-            j["url"], j.get("output_dir") or load_config().get("output_dir", ""),
-            j.get("opts") or {}, j.get("library_id"),
-            job_type=j.get("type", "feed"), label=j.get("label", ""),
-            multi_urls=j.get("multi_urls"), sync_path=j.get("sync_path"))
-        restored.append(job["id"])
-    _restorable_jobs = []
+    restored = jobs.manager.restore_pending()
     return jsonify({"ok": True, "restored": len(restored), "job_ids": restored})
 
 
 @app.route("/api/queue/restorable", methods=["DELETE"])
 def api_queue_restorable_discard() -> Response:
-    global _restorable_jobs
-    _restorable_jobs = []
-    try:
-        if QUEUE_STATE_PATH.exists():
-            QUEUE_STATE_PATH.unlink()
-    except OSError:
-        pass
+    jobs.manager.discard_restorable()
     return jsonify({"ok": True})
 
 
@@ -772,7 +669,7 @@ def api_progress() -> Response:
         try:
             while True:
                 try:
-                    event = q.get(timeout=25)
+                    event = q.get(timeout=SSE_PING_INTERVAL_SECS)
                     data = json.dumps(event)
                     yield f"data: {data}\n\n"
                 except queue.Empty:
@@ -784,21 +681,9 @@ def api_progress() -> Response:
                     headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
-_JOB_PUBLIC_SKIP = ("opts", "multi_urls", "cancel_event", "_t0")
-
-
 @app.route("/api/queue/status")
 def api_queue_status() -> Response:
-    with _dl_jobs_lock:
-        jobs = [
-            {k: v for k, v in j.items() if k not in _JOB_PUBLIC_SKIP}
-            for j in _dl_jobs
-        ]
-    return jsonify({
-        "jobs": jobs,
-        "queued": sum(1 for j in jobs if j["status"] == "queued"),
-        "active": sum(1 for j in jobs if j["status"] == "active"),
-    })
+    return jsonify(jobs.manager.status())
 
 
 # ── Webhooks ──────────────────────────────────────────────────────────────────
@@ -827,7 +712,7 @@ def _int_arg(name: str, default: int, lo: int = 0, hi: int = 10000) -> int:
 
 @app.route("/api/history")
 def api_history() -> Response:
-    limit = _int_arg("limit", 50, 1, 500)
+    limit = _int_arg("limit", HISTORY_DEFAULT_LIMIT, 1, HISTORY_MAX_LIMIT)
     offset = _int_arg("offset", 0)
     type_filter = request.args.get("type", "all")
     search = request.args.get("search", "").strip() or None
@@ -1145,28 +1030,12 @@ def api_vault_sync() -> Response:
     path = data.get("path", "").strip()
     if not path:
         return jsonify({"error": "path required"}), 400
-    cfg = load_config()
-    vp = cfg.get("vault_playlists", {}).get(path, [])
-    if not vp:
-        return jsonify({"error": "No playlist linked to this folder"}), 400
-    library_entries = analytics.get_library_entries()
-    lib = next((e for e in library_entries if e.get("folder") == path or
-                str(Path(e.get("folder", "")) / (e.get("folder_name") or "")) == path), None)
-    output_dir = path
-    opts = _vault.build_sync_opts(data, lib, cfg)
-    library_id = lib["id"] if lib else None
-
-    # Enqueue all linked playlists as a single sync job (processed sequentially)
-    requested_urls = data.get("playlist_urls")
-    playlist_urls = [u for u in list(vp) if u in requested_urls] if requested_urls else list(vp)
-    if not playlist_urls:
-        return jsonify({"error": "No matching playlists to sync"}), 400
-    label = f"Sync — {Path(path).name} ({len(playlist_urls)} playlist(s))"
     # Sync time is stamped by the worker on successful completion, not here
-    _enqueue_job(playlist_urls[0] if len(playlist_urls) == 1 else path,
-                 output_dir, opts, library_id, job_type="sync", label=label,
-                 multi_urls=playlist_urls, sync_path=path)
-    return jsonify({"ok": True, "queued": True, "playlists_synced": len(playlist_urls)})
+    job = _enqueue_vault_sync(path, data, requested_urls=data.get("playlist_urls"))
+    if job is None:
+        return jsonify({"error": "No matching playlists linked to this folder"}), 400
+    return jsonify({"ok": True, "queued": True, "job_id": job["id"],
+                    "playlists_synced": len(job.get("multi_urls") or [])})
 
 
 @app.route("/api/vault/sync-all", methods=["POST"])
@@ -1183,19 +1052,7 @@ def api_vault_sync_all() -> Response:
     ]
     if not folders_to_sync:
         return jsonify({"error": "No linked folders to sync"}), 400
-    queued = []
-    library_entries = analytics.get_library_entries()
-    for path in folders_to_sync:
-        playlist_urls = list(vp[path])
-        lib = next((e for e in library_entries if e.get("folder") == path or
-                    str(Path(e.get("folder", "")) / (e.get("folder_name") or "")) == path), None)
-        opts = _vault.build_sync_opts({}, lib, cfg)
-        library_id = lib["id"] if lib else None
-        label = f"Sync — {Path(path).name} ({len(playlist_urls)} playlist(s))"
-        _enqueue_job(playlist_urls[0] if len(playlist_urls) == 1 else path,
-                     path, opts, library_id, job_type="sync", label=label,
-                     multi_urls=playlist_urls, sync_path=path)
-        queued.append(path)
+    queued = [path for path in folders_to_sync if _enqueue_vault_sync(path) is not None]
     return jsonify({"ok": True, "queued": queued, "count": len(queued)})
 
 
@@ -1233,6 +1090,58 @@ def api_vault_mirror_confirm() -> Response:
     return jsonify(_vault.confirm_mirror_delete(paths))
 
 
+@app.route("/api/vault/stream")
+def api_vault_stream() -> Response:
+    """Range-aware media streaming for the in-app preview player."""
+    path = request.args.get("path", "")
+    p = Path(path)
+    if not path or not p.is_file() or p.suffix.lower() not in MEDIA_EXTS:
+        return jsonify({"error": "Not a streamable media file"}), 404
+    from flask import send_file
+    mime = MEDIA_MIME.get(p.suffix.lower(), "application/octet-stream")
+    # conditional=True makes Flask honor Range requests (seek support)
+    return send_file(str(p), mimetype=mime, conditional=True)
+
+
+@app.route("/api/vault/budget", methods=["POST"])
+def api_vault_budget() -> Response:
+    """Set or clear a per-folder storage budget (bytes; null clears)."""
+    data = request.get_json(force=True) or {}
+    path = (data.get("path") or "").strip()
+    if not path:
+        return jsonify({"error": "path required"}), 400
+    raw = data.get("budget_bytes")
+    budget: int | None
+    if raw in (None, "", 0):
+        budget = None
+    else:
+        try:
+            budget = max(0, int(raw)) or None
+        except (TypeError, ValueError):
+            return jsonify({"error": "budget_bytes must be a number or null"}), 400
+
+    def _set_budget(cfg: dict) -> None:
+        budgets = cfg.setdefault("vault_budgets", {})
+        if budget is None:
+            budgets.pop(path, None)
+        else:
+            budgets[path] = budget
+    cfg = update_config(_set_budget)
+    return jsonify({"ok": True, "budgets": cfg.get("vault_budgets", {})})
+
+
+@app.route("/api/vault/cleanup-candidates")
+def api_vault_cleanup_candidates() -> Response:
+    """Files to free a folder's budget overage (oldest first); read-only."""
+    path = request.args.get("path", "")
+    if not path or not os.path.isdir(path):
+        return jsonify({"error": "Invalid path"}), 400
+    budget = load_config().get("vault_budgets", {}).get(path)
+    if not budget:
+        return jsonify({"error": "No budget set for this folder"}), 400
+    return jsonify(_vault.get_cleanup_candidates(path, int(budget)))
+
+
 @app.route("/api/vault/duplicates")
 def api_vault_duplicates() -> Response:
     """Cross-folder duplicate scan by yt-dlp [videoID] filename pattern."""
@@ -1262,6 +1171,36 @@ def api_vault_folder_stats() -> Response:
         return jsonify(_vault.get_folder_stats(path, linked_playlists))
     except Exception as exc:
         return jsonify({"error": str(exc)}), 500
+
+
+# ── Backup / restore ──────────────────────────────────────────────────────────
+
+@app.route("/api/backup")
+def api_backup() -> Response:
+    data = _backup.create_backup()
+    return Response(
+        data,
+        mimetype="application/zip",
+        headers={"Content-Disposition": f"attachment; filename={_backup.backup_filename()}"},
+    )
+
+
+@app.route("/api/backup/restore", methods=["POST"])
+def api_backup_restore() -> Response:
+    upload = request.files.get("file")
+    if upload is None:
+        return jsonify({"error": "No file uploaded (multipart field 'file')"}), 400
+    result = _backup.restore_backup(upload.read())
+    status = 200 if result.get("ok") else 400
+    return jsonify(result), status
+
+
+# ── Wrapped ───────────────────────────────────────────────────────────────────
+
+@app.route("/api/analytics/wrapped")
+def api_analytics_wrapped() -> Response:
+    year = _int_arg("year", time.localtime().tm_year, 2000, 2100)
+    return jsonify(analytics.get_wrapped(year))
 
 
 # ── Library ───────────────────────────────────────────────────────────────────

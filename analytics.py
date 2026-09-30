@@ -35,6 +35,14 @@ def get_conn() -> duckdb.DuckDBPyConnection:
         return _conns[key].cursor()
 
 
+def reset_connections() -> None:
+    """Close all cached connections (used after a DB file restore)."""
+    with _conns_lock:
+        for key in list(_conns):
+            with contextlib.suppress(Exception):
+                _conns.pop(key).close()
+
+
 def init_db() -> None:
     with get_conn() as con:
         con.execute("""
@@ -319,6 +327,65 @@ def get_stats(time_range: str = "30d") -> dict[str, Any]:
              "duration_seconds": r[5]}
             for r in sync_runs
         ],
+    }
+
+
+def get_wrapped(year: int) -> dict:
+    """Year-in-review stats for the Wrapped card — one pass over downloads."""
+    with get_conn() as con:
+        r = con.execute("""
+            SELECT COUNT(*),
+                   COALESCE(SUM(file_size_bytes), 0),
+                   COALESCE(SUM(duration_seconds), 0)
+            FROM downloads
+            WHERE status='success' AND EXTRACT(year FROM timestamp) = ?
+        """, [year]).fetchone()
+        total, size_bytes, duration = (r or (0, 0, 0))
+
+        top_uploaders = con.execute("""
+            SELECT uploader, COUNT(*) as cnt FROM downloads
+            WHERE status='success' AND uploader IS NOT NULL
+              AND EXTRACT(year FROM timestamp) = ?
+            GROUP BY uploader ORDER BY cnt DESC LIMIT 5
+        """, [year]).fetchall()
+
+        by_month = con.execute("""
+            SELECT EXTRACT(month FROM timestamp)::INTEGER as m, COUNT(*) as cnt
+            FROM downloads WHERE status='success' AND EXTRACT(year FROM timestamp) = ?
+            GROUP BY m ORDER BY m
+        """, [year]).fetchall()
+
+        busiest_day = con.execute("""
+            SELECT strftime(timestamp, '%Y-%m-%d') as day, COUNT(*) as cnt
+            FROM downloads WHERE status='success' AND EXTRACT(year FROM timestamp) = ?
+            GROUP BY day ORDER BY cnt DESC LIMIT 1
+        """, [year]).fetchone()
+
+        statuses = con.execute("""
+            SELECT status, COUNT(*) FROM downloads
+            WHERE EXTRACT(year FROM timestamp) = ?
+            GROUP BY status
+        """, [year]).fetchall()
+
+        fmt_split = con.execute("""
+            SELECT COALESCE(format, 'video'), COUNT(*) FROM downloads
+            WHERE status='success' AND EXTRACT(year FROM timestamp) = ?
+            GROUP BY 1
+        """, [year]).fetchall()
+
+    month_map = {row[0]: row[1] for row in by_month}
+    st_map = {row[0]: row[1] for row in statuses}
+    attempts = sum(st_map.values())
+    return {
+        "year": year,
+        "total_downloads": total,
+        "total_size_bytes": int(size_bytes),
+        "total_duration_seconds": int(duration),
+        "top_uploaders": [{"uploader": r[0], "count": r[1]} for r in top_uploaders],
+        "monthly": [month_map.get(m, 0) for m in range(1, 13)],
+        "busiest_day": {"day": busiest_day[0], "count": busiest_day[1]} if busiest_day else None,
+        "success_rate": round(st_map.get("success", 0) / attempts * 100, 1) if attempts else None,
+        "format_split": {r[0]: r[1] for r in fmt_split},
     }
 
 

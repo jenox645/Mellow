@@ -39,6 +39,7 @@ def test_thumbnail_sidecar_function():
 def test_item_done_in_progress_hook():
     """item_done event must be emitted by the progress hook on 'finished' status."""
     import threading
+
     from downloader import _make_progress_hook
     events = []
     import time

@@ -18,17 +18,26 @@ ASSETS = HERE / "assets"
 GUI = HERE / "gui"
 
 DESKTOP_SHORTCUT = "--desktop-shortcut" in sys.argv
+# Fast dev loop: rebuild static/ (mascots, bundle, html) and skip pip,
+# PyInstaller and the installer entirely.
+FRONTEND_ONLY = "--frontend-only" in sys.argv
+# Install deps into .venv and run the test suite instead of building.
+RUN_TESTS = "--run-tests" in sys.argv
 SYSTEM = platform.system()   # 'Windows' | 'Linux' | 'Darwin'
 IS_WINDOWS = SYSTEM == "Windows"
 IS_LINUX   = SYSTEM == "Linux"
 
-VERSION = "2.0.0"
+from version import APP_VERSION as VERSION  # noqa: E402 — single version source
 
 REACT_VERSION = "18.3.1"
 REACT_URL = f"https://unpkg.com/react@{REACT_VERSION}/umd/react.production.min.js"
 REACT_DOM_URL = f"https://unpkg.com/react-dom@{REACT_VERSION}/umd/react-dom.production.min.js"
 
-PYTHON_FILES = ["main.py", "server.py", "downloader.py", "analytics.py", "build_setup.py"]
+PYTHON_FILES = [
+    "main.py", "server.py", "downloader.py", "analytics.py",
+    "config.py", "constants.py", "vault.py", "library.py",
+    "version.py", "build_setup.py",
+]
 
 # (file_stem_without_ext, js_var_name, use_svg)
 # SVG files are embedded inline so CSS currentColor tinting works.
@@ -80,22 +89,65 @@ if major < 3 or (major == 3 and minor < 9):
 print(f"  Python {sys.version.split()[0]} — OK")
 
 
+# ── Step 1b: Re-exec inside the project venv ──────────────────────────────────
+# Builds install/uninstall packages; doing that in the system Python pollutes
+# (and step 2 even removes packages from) the global site-packages. Everything
+# below therefore runs inside .venv/, created on first use.
+VENV_DIR = HERE / ".venv"
+VENV_PYTHON = VENV_DIR / ("Scripts/python.exe" if IS_WINDOWS else "bin/python")
+
+if not FRONTEND_ONLY and os.environ.get("MELLOW_BUILD_VENV") != "1":
+    if Path(sys.prefix).resolve() != VENV_DIR.resolve():
+        step("1b/12 · Preparing build virtualenv (.venv)")
+        if not VENV_PYTHON.exists():
+            print("  Creating .venv (first build only)...")
+            r = subprocess.run([sys.executable, "-m", "venv", str(VENV_DIR)])
+            if r.returncode != 0 or not VENV_PYTHON.exists():
+                fail("Could not create .venv — check that the 'venv' module is available")
+        print(f"  Re-launching inside {VENV_PYTHON}")
+        r = subprocess.run(
+            [str(VENV_PYTHON), str(Path(__file__).resolve()), *sys.argv[1:]],
+            env={**os.environ, "MELLOW_BUILD_VENV": "1"},
+        )
+        sys.exit(r.returncode)
+
+
+# ── Test mode: install deps + pytest, run the suite, exit ─────────────────────
+if RUN_TESTS:
+    step("Running test suite")
+    run([
+        sys.executable, "-m", "pip", "install", "--upgrade", "--quiet",
+        "yt-dlp", "flask", "flaskwebgui", "duckdb", "pytest",
+    ])
+    result = subprocess.run([
+        sys.executable, "-m", "pytest", "tests/", "-q",
+        "-m", "not e2e and not slow",
+    ], cwd=str(HERE))
+    sys.exit(result.returncode)
+
+
 # ── Step 2: Remove conflicting packages ───────────────────────────────────────
 step("2/12 · Removing conflicting packages")
-for pkg in ["pywebview", "pythonnet", "proxy-tools", "bottle"]:
-    subprocess.run(
-        [sys.executable, "-m", "pip", "uninstall", "-y", pkg],
-        capture_output=True,
-    )
-    print(f"  Removed (or not present): {pkg}")
+if FRONTEND_ONLY:
+    print("  (frontend-only: skipped)")
+else:
+    for pkg in ["pywebview", "pythonnet", "proxy-tools", "bottle"]:
+        subprocess.run(
+            [sys.executable, "-m", "pip", "uninstall", "-y", pkg],
+            capture_output=True,
+        )
+        print(f"  Removed (or not present): {pkg}")
 
 
 # ── Step 3: Install required packages ─────────────────────────────────────────
 step("3/12 · Installing dependencies")
-run([
-    sys.executable, "-m", "pip", "install", "--upgrade",
-    "yt-dlp", "flask", "flaskwebgui", "pyinstaller", "pillow", "duckdb",
-])
+if FRONTEND_ONLY:
+    print("  (frontend-only: skipped)")
+else:
+    run([
+        sys.executable, "-m", "pip", "install", "--upgrade",
+        "yt-dlp", "flask", "flaskwebgui", "pyinstaller", "pillow", "duckdb",
+    ])
 
 
 # ── Step 4: Check Node.js ──────────────────────────────────────────────────────
@@ -109,16 +161,51 @@ if not node:
 result = subprocess.run([node, "--version"], capture_output=True, text=True)
 print(f"  Node {result.stdout.strip()} — OK")
 
-esbuild = shutil.which("esbuild")
+
+def _npm_global_esbuild() -> str | None:
+    """Find esbuild inside npm's global prefix.
+
+    A fresh `npm install -g` lands there, but shutil.which() only searches
+    this process's PATH — which was captured when the terminal opened and
+    may predate the Node installation. Asking npm directly is reliable.
+    """
+    npm = shutil.which("npm")
+    if not npm:
+        return None
+    try:
+        cmd = [npm, "prefix", "-g"]
+        r = subprocess.run(
+            subprocess.list2cmdline(cmd) if IS_WINDOWS else cmd,
+            shell=IS_WINDOWS, capture_output=True, text=True, timeout=30,
+        )
+        prefix = Path(r.stdout.strip())
+    except Exception:
+        return None
+    if IS_WINDOWS:
+        candidates = [prefix / "esbuild.cmd", prefix / "esbuild"]
+    else:
+        candidates = [prefix / "bin" / "esbuild"]
+    for c in candidates:
+        if c.exists():
+            return str(c)
+    return None
+
+
+esbuild = shutil.which("esbuild") or _npm_global_esbuild()
 if not esbuild:
     print("  esbuild not found — installing globally via npm...")
     run(["npm", "install", "-g", "esbuild"])
-    esbuild = shutil.which("esbuild")
-    if not esbuild:
-        fail("esbuild install failed. Run: npm install -g esbuild")
-_eb_cmd = subprocess.list2cmdline([esbuild, "--version"]) if platform.system() == "Windows" else [esbuild, "--version"]
-result2 = subprocess.run(_eb_cmd, shell=(platform.system() == "Windows"), capture_output=True, text=True)
-print(f"  esbuild {result2.stdout.strip()} — OK")
+    esbuild = shutil.which("esbuild") or _npm_global_esbuild()
+if not esbuild:
+    fail(
+        "esbuild was installed but can't be located.\n"
+        "  Your terminal's PATH probably predates the Node.js install —\n"
+        "  open a NEW terminal and run SETUP.bat again,\n"
+        "  or run `npm prefix -g` and add that folder to PATH."
+    )
+_eb_cmd = subprocess.list2cmdline([esbuild, "--version"]) if IS_WINDOWS else [esbuild, "--version"]
+result2 = subprocess.run(_eb_cmd, shell=IS_WINDOWS, capture_output=True, text=True)
+print(f"  esbuild {result2.stdout.strip()} ({esbuild}) — OK")
 
 
 # ── Step 5: Encode mascot images → static/mascots.js ─────────────────────────
@@ -158,12 +245,11 @@ for file_stem, var_name, use_svg in MASCOT_ENTRIES:
         fail(f"Missing mascot asset for {var_name}: tried {svg_src} and {png_src}")
 
 (STATIC / "mascots.js").write_text("".join(lines), encoding="utf-8")
-print(f"  static/mascots.js written — OK")
+print("  static/mascots.js written — OK")
 
 
 # ── Step 6: Process images with Pillow ────────────────────────────────────────
 step("6/12 · Processing images")
-from PIL import Image  # noqa: E402
 
 ico_path = ASSETS / "mellow.ico"
 if not ico_path.exists():
@@ -172,9 +258,13 @@ print(f"  mellow.ico ({ico_path.stat().st_size} bytes) — OK")
 
 # Copy favicon to static/
 shutil.copy2(ico_path, STATIC / "favicon.ico")
-print(f"  favicon.ico copied to static/ — OK")
+print("  favicon.ico copied to static/ — OK")
 
-if IS_WINDOWS:
+if FRONTEND_ONLY:
+    # Wizard/installer images aren't needed (and Pillow may not be installed)
+    print("  (frontend-only: skipping installer image generation)")
+elif IS_WINDOWS:
+    from PIL import Image  # noqa: E402
     # Wizard BMPs are only needed by Inno Setup on Windows
     wizard_large = ASSETS / "wizard_large.bmp"
     if wizard_large.exists():
@@ -196,7 +286,7 @@ if IS_WINDOWS:
         mellow_src = ASSETS / "mellow_source.png"
         small_src = mellow_src if mellow_src.exists() else (ASSETS / "wizard_banner.png")
         if not small_src.exists():
-            fail(f"Missing wizard_small.bmp and no source image found to generate it")
+            fail("Missing wizard_small.bmp and no source image found to generate it")
         src = Image.open(small_src).convert("RGBA")
         src.thumbnail((55, 58), Image.LANCZOS)
         out_img = Image.new("RGB", (55, 58), (26, 22, 20))
@@ -205,7 +295,9 @@ if IS_WINDOWS:
         assert wizard_small.exists(), "wizard_small.bmp was not created"
         print(f"  wizard_small.bmp (55x58) generated from {small_src.name} — OK")
 
-if IS_LINUX:
+elif IS_LINUX:
+    from PIL import Image  # noqa: E402
+
     # Derive a 256×256 PNG from mellow.ico for .desktop / AppImage / .deb
     icon_png = ASSETS / "mellow_256.png"
     if not icon_png.exists():
@@ -216,24 +308,42 @@ if IS_LINUX:
         frame = ico_img.convert("RGBA")
         frame = frame.resize((256, 256), Image.LANCZOS)
         frame.save(icon_png)
-        print(f"  mellow_256.png (256×256) derived from mellow.ico — OK")
+        print("  mellow_256.png (256×256) derived from mellow.ico — OK")
     else:
-        print(f"  mellow_256.png already present — OK")
+        print("  mellow_256.png already present — OK")
 
 
 # ── Step 7: Download React UMD bundles ────────────────────────────────────────
 step("7/12 · Downloading React UMD bundles")
-for url, dest_name in [(REACT_URL, "react.min.js"), (REACT_DOM_URL, "react-dom.min.js")]:
+_REACT_SOURCES = [
+    ("react.min.js", [
+        REACT_URL,
+        f"https://cdn.jsdelivr.net/npm/react@{REACT_VERSION}/umd/react.production.min.js",
+    ]),
+    ("react-dom.min.js", [
+        REACT_DOM_URL,
+        f"https://cdn.jsdelivr.net/npm/react-dom@{REACT_VERSION}/umd/react-dom.production.min.js",
+    ]),
+]
+for dest_name, urls in _REACT_SOURCES:
     dest = STATIC / dest_name
     if dest.exists():
         print(f"  {dest_name} already cached ({dest.stat().st_size} bytes)")
-    else:
-        print(f"  Downloading {dest_name} from unpkg...")
+        continue
+    last_err: Exception | None = None
+    for url in urls:
+        host = url.split("/")[2]
+        print(f"  Downloading {dest_name} from {host}...")
         try:
             urllib.request.urlretrieve(url, dest)
             print(f"  {dest_name} ({dest.stat().st_size} bytes) — OK")
+            last_err = None
+            break
         except Exception as exc:
-            fail(f"Failed to download {dest_name}: {exc}")
+            last_err = exc
+            print(f"  {host} failed: {exc}")
+    if last_err is not None:
+        fail(f"Failed to download {dest_name} from all CDNs: {last_err}")
 
 
 # ── Step 8: Copy index.html ────────────────────────────────────────────────────
@@ -252,11 +362,13 @@ if not app_jsx.exists():
     fail(f"Missing {app_jsx}")
 
 bundle_out = STATIC / "app.bundle.js"
+# --bundle resolves the gui/lib + gui/components + gui/pages module imports
+# into the single static/app.bundle.js (React stays a UMD global).
 run([
     esbuild or "esbuild",
     str(app_jsx),
     f"--outfile={bundle_out}",
-    "--bundle=false",
+    "--bundle",
     "--loader:.jsx=jsx",
     "--target=es2020",
     "--platform=browser",
@@ -285,6 +397,15 @@ print("  All Python files syntax-valid")
 
 # ── Step 11: PyInstaller ───────────────────────────────────────────────────────
 step("11/12 · Running PyInstaller")
+if FRONTEND_ONLY:
+    print("  (frontend-only: skipped)")
+    step("12/12 · Skipping packaging (frontend-only)")
+    print("  static/ refreshed — restart the app (or reload the browser tab)")
+    step("Frontend build complete")
+    bundle = STATIC / "app.bundle.js"
+    print(f"\n    static/app.bundle.js  ({bundle.stat().st_size:,} bytes)\n")
+    sys.exit(0)
+
 spec_file = HERE / "MellowDLP.spec"
 if not spec_file.exists():
     fail(f"Missing {spec_file}")
@@ -298,7 +419,7 @@ else:
     ytdlp_url = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp"
 
 if not ytdlp_local.exists():
-    print(f"  Downloading yt-dlp binary from GitHub…")
+    print("  Downloading yt-dlp binary from GitHub…")
     try:
         urllib.request.urlretrieve(ytdlp_url, ytdlp_local)
         if not IS_WINDOWS:
@@ -309,7 +430,12 @@ if not ytdlp_local.exists():
 else:
     print(f"  yt-dlp already present ({ytdlp_local.stat().st_size:,} bytes) — OK")
 
-run([sys.executable, "-m", "PyInstaller", "--clean", "--noconfirm", str(spec_file)])
+# --clean wipes PyInstaller's cache: keep it for installer builds (correctness),
+# skip it for "App only" dev builds (saves a minute or two per iteration)
+_pyi_args = [sys.executable, "-m", "PyInstaller", "--noconfirm"]
+if not DESKTOP_SHORTCUT:
+    _pyi_args.append("--clean")
+run([*_pyi_args, str(spec_file)])
 
 exe_name = "MellowDLP.exe" if IS_WINDOWS else "MellowDLP"
 built_exe = HERE / "dist" / exe_name
@@ -321,7 +447,6 @@ print(f"  dist/{exe_name} ({built_exe.stat().st_size:,} bytes) — OK")
 # ── Step 12: Installer / AppImage / Desktop shortcut ─────────────────────────
 if IS_LINUX:
     step("12/12 · Building AppImage")
-    import stat as _stat
 
     appdir = HERE / "dist" / "MellowDLP.AppDir"
     appdir_bin = appdir / "usr" / "bin"
@@ -366,7 +491,7 @@ if IS_LINUX:
                 appimagetool,
             )
             appimagetool.chmod(0o755)
-            print(f"  appimagetool downloaded — OK")
+            print("  appimagetool downloaded — OK")
         except Exception as exc:
             print(f"  WARNING: could not download appimagetool: {exc} — AppImage skipped")
             appimagetool = None
@@ -397,10 +522,43 @@ elif IS_WINDOWS and DESKTOP_SHORTCUT:
 
 elif IS_WINDOWS:
     step("12/12 · Building installer with Inno Setup")
-    iscc = Path(r"C:\Program Files (x86)\Inno Setup 6\ISCC.exe")
-    if iscc.exists():
+
+    def _find_iscc() -> Path | None:
+        """Locate ISCC.exe: PATH, then the uninstall registry key, then defaults."""
+        on_path = shutil.which("ISCC") or shutil.which("iscc")
+        if on_path:
+            return Path(on_path)
+        candidates: list[Path] = []
+        try:
+            import winreg
+            for hive, key in [
+                (winreg.HKEY_LOCAL_MACHINE,
+                 r"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\Inno Setup 6_is1"),
+                (winreg.HKEY_LOCAL_MACHINE,
+                 r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Inno Setup 6_is1"),
+                (winreg.HKEY_CURRENT_USER,
+                 r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Inno Setup 6_is1"),
+            ]:
+                try:
+                    with winreg.OpenKey(hive, key) as k:
+                        loc, _ = winreg.QueryValueEx(k, "InstallLocation")
+                        if loc:
+                            candidates.append(Path(loc) / "ISCC.exe")
+                except OSError:
+                    pass
+        except ImportError:
+            pass
+        candidates += [
+            Path(r"C:\Program Files (x86)\Inno Setup 6\ISCC.exe"),
+            Path(r"C:\Program Files\Inno Setup 6\ISCC.exe"),
+        ]
+        return next((c for c in candidates if c.exists()), None)
+
+    iscc = _find_iscc()
+    if iscc:
+        print(f"  Inno Setup found: {iscc}")
         iss_file = HERE / "installer.iss"
-        run([str(iscc), str(iss_file)])
+        run([str(iscc), f"/DAppVersion={VERSION}", str(iss_file)])
         setup_exe = HERE / "dist" / "MellowDLP_Setup.exe"
         if setup_exe.exists():
             print(f"  dist/MellowDLP_Setup.exe ({setup_exe.stat().st_size:,} bytes) — OK")
@@ -412,7 +570,7 @@ elif IS_WINDOWS:
 
 else:
     step("12/12 · Skipping platform-specific installer")
-    print(f"  Binary ready at dist/MellowDLP")
+    print("  Binary ready at dist/MellowDLP")
 
 
 # ── Summary ────────────────────────────────────────────────────────────────────

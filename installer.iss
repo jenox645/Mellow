@@ -1,6 +1,11 @@
+; AppVersion is normally injected by build_setup.py via /DAppVersion=x.y.z
+#ifndef AppVersion
+  #define AppVersion "2.0.0"
+#endif
+
 [Setup]
 AppName=MellowDLP
-AppVersion=2.0
+AppVersion={#AppVersion}
 DefaultDirName={autopf}\MellowDLP
 SetupIconFile=assets\mellow.ico
 WizardImageFile=assets\wizard_large.bmp

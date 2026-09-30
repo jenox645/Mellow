@@ -6,7 +6,6 @@ Run AFTER build_setup.py has produced dist/MellowDLP:
 """
 from __future__ import annotations
 
-import os
 import shutil
 import stat
 import subprocess
@@ -15,8 +14,10 @@ from pathlib import Path
 
 HERE = Path(__file__).parent
 
+sys.path.insert(0, str(HERE))
+from version import APP_VERSION as VERSION  # noqa: E402 — single version source
+
 APP_NAME = "mellowdlp"
-VERSION  = "2.0.0"
 ARCH     = "amd64"
 
 DEB_ROOT  = HERE / "dist" / "deb" / f"{APP_NAME}_{VERSION}_{ARCH}"
@@ -38,7 +39,7 @@ def run(cmd: list[str]) -> None:
 
 # ── Preflight ─────────────────────────────────────────────────────────────────
 if not BINARY.exists():
-    fail(f"dist/MellowDLP not found — run build_setup.py first")
+    fail("dist/MellowDLP not found — run build_setup.py first")
 
 if not shutil.which("dpkg-deb"):
     fail("dpkg-deb not found — install with: sudo apt install dpkg")

@@ -14,7 +14,11 @@ import analytics
 from constants import (
     FILE_THUMBS_LIMIT,
     IMAGE_EXTS,
+    M3U8_TEMP_MAX_AGE_SECS,
     MEDIA_EXTS,
+    THUMB_FFMPEG_SEEK_SECS,
+    THUMB_FFMPEG_TIMEOUT_SECS,
+    THUMB_FFMPEG_WIDTH,
     THUMB_PREVIEW_LIMIT,
     VIDEO_EXTS,
 )
@@ -183,18 +187,19 @@ def _generate_video_thumb(video: Path, sidecar: Path) -> bool:
     ffmpeg = _ffmpeg()
     if not ffmpeg:
         return False
+    scale = f"scale={THUMB_FFMPEG_WIDTH}:-1"
     try:
-        kw: dict = {"capture_output": True, "timeout": 20}
+        kw: dict = {"capture_output": True, "timeout": THUMB_FFMPEG_TIMEOUT_SECS}
         if os.name == "nt":
             kw["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
         result = subprocess.run(
-            [ffmpeg, "-ss", "30", "-i", str(video), "-frames:v", "1",
-             "-vf", "scale=480:-1", "-q:v", "4", "-y", str(sidecar)], **kw)
+            [ffmpeg, "-ss", str(THUMB_FFMPEG_SEEK_SECS), "-i", str(video), "-frames:v", "1",
+             "-vf", scale, "-q:v", "4", "-y", str(sidecar)], **kw)
         if result.returncode != 0 or not sidecar.exists() or sidecar.stat().st_size == 0:
             # Short clips: retry from the start
             result = subprocess.run(
                 [ffmpeg, "-i", str(video), "-frames:v", "1",
-                 "-vf", "scale=480:-1", "-q:v", "4", "-y", str(sidecar)], **kw)
+                 "-vf", scale, "-q:v", "4", "-y", str(sidecar)], **kw)
         return result.returncode == 0 and sidecar.exists() and sidecar.stat().st_size > 0
     except Exception:
         return False
@@ -522,6 +527,50 @@ def generate_archive(folder: str, prune: bool = False) -> dict:
     return {"ok": True, "path": str(archive_path), "migrated": migrated, "backfilled": backfilled, "pruned": pruned}
 
 
+# ── Storage budget ────────────────────────────────────────────────────────────
+
+def get_cleanup_candidates(path: str, budget_bytes: int) -> dict:
+    """When a folder exceeds its budget, suggest files to free the overage.
+
+    Suggestion order: oldest first, ties broken by size (largest first).
+    Never deletes anything — the UI presents the list for manual action.
+    """
+    p = Path(path)
+    files: list[dict] = []
+    total = 0
+    try:
+        for f in p.rglob("*"):
+            if not f.is_file() or f.name.startswith(".") or f.suffix.lower() not in MEDIA_EXTS:
+                continue
+            try:
+                st = f.stat()
+            except OSError:
+                continue
+            total += st.st_size
+            files.append({"path": str(f), "name": f.name,
+                          "size": st.st_size, "mtime": st.st_mtime})
+    except PermissionError:
+        pass
+
+    over = total - budget_bytes
+    candidates: list[dict] = []
+    if over > 0:
+        files.sort(key=lambda x: (x["mtime"], -x["size"]))
+        freed = 0
+        for f in files:
+            if freed >= over:
+                break
+            candidates.append(f)
+            freed += f["size"]
+    return {
+        "path": str(p),
+        "total_bytes": total,
+        "budget_bytes": budget_bytes,
+        "over_bytes": max(0, over),
+        "candidates": candidates,
+    }
+
+
 # ── Duplicate finder ──────────────────────────────────────────────────────────
 
 def find_duplicates(folders: list[str]) -> list[dict]:
@@ -611,7 +660,7 @@ def launch_playlist(paths: list[str], open_file_fn: Callable[[str], None]) -> st
     tmp_dir = Path(tempfile.gettempdir())
     try:
         import time as _time
-        cutoff = _time.time() - 86400
+        cutoff = _time.time() - M3U8_TEMP_MAX_AGE_SECS
         for old in tmp_dir.glob("mellow_*.m3u8"):
             if old.stat().st_mtime < cutoff:
                 old.unlink(missing_ok=True)

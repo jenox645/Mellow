@@ -4,10 +4,11 @@ Download speed comparison: MellowDLP vs raw yt-dlp.
 All tests in this module are @pytest.mark.slow — they require real network and yt-dlp.
 Run with:  pytest tests/test_download_speed.py -m slow -v -s
 """
-import time
+import shutil
 import subprocess
 import sys
-import shutil
+import time
+
 import pytest
 
 # Short public-domain video (~2 MB) — fast to download, good for timing
@@ -92,12 +93,12 @@ def test_speed_comparison(tmp_path):
 
     ratio = mellow_t / ytdlp_t if ytdlp_t > 0 else float("inf")
 
-    print(f"\n  ┌─────────────────────────────────────┐")
-    print(f"  │  Download speed comparison          │")
+    print("\n  ┌─────────────────────────────────────┐")
+    print("  │  Download speed comparison          │")
     print(f"  │  MellowDLP : {mellow_t:6.1f}s  ok={mellow_ok}         │")
     print(f"  │  yt-dlp    : {ytdlp_t:6.1f}s  ok={ytdlp_ok}         │")
     print(f"  │  ratio     : {ratio:6.2f}×                  │")
-    print(f"  └─────────────────────────────────────┘")
+    print("  └─────────────────────────────────────┘")
 
     assert mellow_ok, "MellowDLP download failed"
     assert ytdlp_ok, "yt-dlp download failed"
@@ -116,7 +117,7 @@ def test_sleep_interval_zero_is_faster(tmp_path):
     """
     import downloader
 
-    PLAYLIST_3 = "https://youtube.com/playlist?list=PL29g0AFkwZD9LG2WOIiPqzXNmXbcQdAoC"
+    playlist_3_url = "https://youtube.com/playlist?list=PL29g0AFkwZD9LG2WOIiPqzXNmXbcQdAoC"
     base_opts = {
         "mode": "audio", "quality": "best", "audio_format": "mp3",
         "embed_thumbnail": False, "embed_chapters": False,
@@ -129,12 +130,12 @@ def test_sleep_interval_zero_is_faster(tmp_path):
     slow_dir.mkdir()
 
     t0 = time.monotonic()
-    downloader.download_video(PLAYLIST_3, str(fast_dir), {**base_opts, "sleep_interval": 0},
+    downloader.download_video(playlist_3_url, str(fast_dir), {**base_opts, "sleep_interval": 0},
                                progress_cb=lambda e: None)
     fast_t = time.monotonic() - t0
 
     t0 = time.monotonic()
-    downloader.download_video(PLAYLIST_3, str(slow_dir), {**base_opts, "sleep_interval": 2},
+    downloader.download_video(playlist_3_url, str(slow_dir), {**base_opts, "sleep_interval": 2},
                                progress_cb=lambda e: None)
     slow_t = time.monotonic() - t0
 
