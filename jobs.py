@@ -22,7 +22,7 @@ from typing import Callable
 import analytics
 import downloader
 import errors
-from config import load_config, update_config
+from config import download_root, load_config, update_config
 from constants import (
     DEFAULT_DOWNLOAD_WORKERS,
     JOB_HISTORY_KEEP,
@@ -193,7 +193,7 @@ class JobManager:
         restored = []
         for j in self.restorable:
             job = self.enqueue(
-                j["url"], j.get("output_dir") or load_config().get("output_dir", ""),
+                j["url"], j.get("output_dir") or download_root(load_config()),
                 j.get("opts") or {}, j.get("library_id"),
                 job_type=j.get("type", "feed"), label=j.get("label", ""),
                 multi_urls=j.get("multi_urls"), sync_path=j.get("sync_path"))
@@ -314,7 +314,7 @@ class JobManager:
             push(terminal or {"status": "error", "message": "Download failed", "url": url})
             return "failed"
         done = next((t for _, r, t in reversed(outcomes) if r != "error" and t), None)
-        complete = dict(done) if done else {"status": "complete", "title": job["label"]}
+        complete = dict(done) if done else {"status": "complete", "title": job.get("label") or job["url"]}
         if failed:
             for url, terminal in failed:
                 push({"status": "item_failed", "reason": "error", "url": url,

@@ -5,13 +5,16 @@
   - `server.py` — Flask routes only; business logic lives in the modules below
   - `jobs.py` — download job queue: worker pool (`download_workers` config, max `MAX_DOWNLOAD_WORKERS`), per-job cancel events, reordering, restart persistence (`~/.mellow_dlp_queue.json`)
   - `downloader.py` — yt-dlp Python API wrapper (returns `success|cancelled|error`; never raises — setup failures become an `error` event)
+  - `desktop.py` — OS integration: show in file manager, open with default app, clipboard, native Tk file/folder dialogs
+  - `ytdlp_update.py` — yt-dlp version check (PyPI) and in-app self-update
+  - `applog.py` — rotating log file `~/.mellow_dlp.log` (the packaged app has no console); modules log via `logging.getLogger(__name__)`, never `print`
   - `ffmpeg_locate.py` — the one ffmpeg lookup (config override → PATH → next to the app → known install folders), shared by downloader, vault and `/api/system`
   - `errors.py` — `explain()` maps raw yt-dlp errors to `{code, title, hint, action}`; `jobs._make_cb` annotates every `error`/`item_failed` event, `/api/info` errors too
-  - `analytics.py` — DuckDB (shared per-path connection handed out as cursors)
+  - `analytics.py` — DuckDB only (shared per-path connection handed out as cursors); filesystem scans live in `vault.py`
   - `scheduler.py` — vault auto-sync loop (config: `auto_sync_enabled`, `vault_sync_schedule`)
   - `vault.py` / `library.py` — vault & library business logic
   - `backup.py` — config+DB zip export/restore (touches the DB file only inside `analytics.exclusive_file_access()`; DuckDB locks an open file on Windows)
-  - `config.py` — atomic config persistence + `update_config()` for read-modify-write; `load_config()` layers the saved file over `_DEFAULTS`, so new keys need no per-caller fallback
+  - `config.py` — atomic config persistence + `update_config()` for read-modify-write; `load_config()` layers the saved file over `_DEFAULTS`, so new keys need no per-caller fallback. `download_root(cfg)` is the download folder (never re-derive `~/Downloads/MellowDLP`); `request_settings()` / `download_settings()` are the cookie/network/tuning opts every yt-dlp call and job copies
   - `constants.py` / `version.py` — all tuning knobs and the single APP_VERSION
 - Frontend (React UMD, bundled by esbuild from ES modules):
   - `gui/app.jsx` — App root: SSE hub, routing, clipboard watcher, shortcuts
@@ -58,6 +61,9 @@ All job-originated events carry `job_id`, `job_type`, `job_label` (multi-worker 
 - Vault thumbnails: `.jpg` sidecars saved at download time (`_save_thumbnail_sidecar`), ffmpeg frame-grab fallback in `vault.get_thumb_bytes`, served via `/api/vault/thumb?path=...`
 - The App root pins the main progress panel to one "primary" job; concurrent jobs render in the Queue page jobs list via `activeJobs`
 - Mutating `/api/` requests require a JSON content type (CSRF guard); `/api/backup/restore` is the only multipart exception
+- `gui/lib/api.js`: every `API.*` call rejects on a 4xx/5xx with `Error(body.error)` plus `err.data` (full body) and `err.status` — handle failures in `.catch`, never by checking `d.error` in `.then`
+- A library entry's folder is `library.folder_path_for_entry(entry, download_root(cfg))` — used by syncs, the vault listing and entry↔folder matching alike
+- Deleting a media file goes through `vault.delete_media_file()` (sidecars + history rows too)
 - All magic numbers live in `constants.py` (backend) / `gui/lib/constants.js` (frontend)
 - Stats polling: 3s during active download, 30s idle (frontend constants)
 - Format lists (qualities, containers, audio formats, bitrates) live only in `gui/lib/constants.js`

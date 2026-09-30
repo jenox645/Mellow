@@ -47,23 +47,23 @@ def test_quality_map_has_all_tiers():
 
 
 def test_parse_url_file_plain():
-    from server import _parse_url_file
+    from downloader import parse_url_file
     content = "https://youtube.com/watch?v=a\nhttps://youtube.com/watch?v=b\n"
-    urls, fmt = _parse_url_file(content)
+    urls, fmt = parse_url_file(content)
     assert fmt == 'url_list'
     assert len(urls) == 2
 
 
 def test_parse_url_file_archive():
-    from server import _parse_url_file
+    from downloader import parse_url_file
     content = "youtube dQw4w9WgXcQ\nyoutube xxxxxxxxxxx\n"
-    urls, fmt = _parse_url_file(content)
+    urls, fmt = parse_url_file(content)
     assert fmt == 'archive'
     assert all('youtube.com' in u for u in urls)
 
 
 def test_parse_url_file_ignores_comments():
-    from server import _parse_url_file
+    from downloader import parse_url_file
     content = "# comment\nhttps://youtube.com/watch?v=a\n"
-    urls, _ = _parse_url_file(content)
+    urls, _ = parse_url_file(content)
     assert len(urls) == 1

@@ -3,25 +3,13 @@ from __future__ import annotations
 import json
 import logging
 import os
-import platform
 import queue
 import shutil
-import subprocess
 import sys
 import threading
 import time
-
-try:
-    import tkinter
-    import tkinter.filedialog
-    _tkinter_available = True
-except ModuleNotFoundError:
-    tkinter = None  # type: ignore[assignment]
-    _tkinter_available = False
 import uuid
 from pathlib import Path
-from typing import Any
-from urllib.error import URLError
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
@@ -30,20 +18,21 @@ from flask import Flask, Response, jsonify, request, send_file, send_from_direct
 import analytics
 import applog
 import backup as _backup
+import desktop
 import downloader
 import errors
 import jobs
 import library as _library
 import scheduler
 import vault as _vault
-from config import download_settings, load_config, request_settings, update_config
+import ytdlp_update
+from config import download_root, download_settings, load_config, request_settings, update_config
 from constants import (
     HISTORY_DEFAULT_LIMIT,
     HISTORY_MAX_LIMIT,
     LOW_DISK_WARN_BYTES,
     MEDIA_EXTS,
     MEDIA_MIME,
-    PYPI_CHECK_TIMEOUT_SECS,
     SSE_PING_INTERVAL_SECS,
     SSE_QUEUE_MAXSIZE,
     THUMB_CACHE_SECS,
@@ -57,8 +46,6 @@ log = logging.getLogger(__name__)
 STATIC_DIR = Path(__file__).parent / "static"
 
 app = Flask(__name__, static_folder=None)
-
-_tk_lock = threading.Lock()
 
 # ── SSE broadcast ──────────────────────────────────────────────────────────────
 # One queue per connected client. A single shared queue meant each event went
@@ -101,8 +88,8 @@ def _fire_webhooks(event_type: str, payload: dict) -> None:
                 urlopen(req, timeout=WEBHOOK_TIMEOUT_SECS)
             except Exception as wh_exc:
                 log.warning(f"webhook {event_type} → {wh_url} failed: {wh_exc}")
-    except Exception:
-        pass
+    except Exception as exc:
+        log.warning(f"webhooks for {event_type} not sent: {exc}")
 
 
 def _push_progress(event: dict) -> None:
@@ -126,17 +113,11 @@ def _push_progress(event: dict) -> None:
 jobs.manager.start(_push_progress)
 
 
-def _library_entry_for(path: str) -> dict | None:
+def _library_entry_for(path: str, cfg: dict) -> dict | None:
     """The library entry whose download folder is `path`, if any."""
-    return next((e for e in analytics.get_library_entries() if e.get("folder") == path or
-                 str(Path(e.get("folder", "")) / (e.get("folder_name") or "")) == path), None)
-
-
-def _remember_sync_format(path: str, chosen: dict) -> None:
-    def _save(cfg: dict) -> None:
-        formats = cfg.setdefault("vault_sync_formats", {})
-        formats[path] = {**formats.get(path, {}), **chosen}
-    update_config(_save)
+    root = download_root(cfg)
+    return next((e for e in analytics.get_library_entries()
+                 if _library.folder_path_for_entry(e, root) == path), None)
 
 
 def _enqueue_vault_sync(path: str, data: dict | None = None,
@@ -154,14 +135,11 @@ def _enqueue_vault_sync(path: str, data: dict | None = None,
     playlist_urls = [u for u in list(vp) if u in requested_urls] if requested_urls else list(vp)
     if not playlist_urls:
         return None
-    lib = _library_entry_for(path)
+    lib = _library_entry_for(path, cfg)
     opts = _vault.build_sync_opts(data, lib, cfg, path)
     library_id = lib["id"] if lib else None
-    chosen = {k: data[k] for k in _vault.SYNC_FORMAT_KEYS if k in data}
-    if chosen:
-        # Remember what the user picked, so auto-sync and "sync all" (which
-        # have no dialog) keep downloading this folder the same way
-        _remember_sync_format(path, chosen)
+    if any(k in data for k in _vault.SYNC_FORMAT_KEYS):
+        update_config(lambda c: _vault.remember_sync_format(c, path, data))
     label = f"Sync — {Path(path).name} ({len(playlist_urls)} playlist(s))"
     return _enqueue_job(playlist_urls[0] if len(playlist_urls) == 1 else path,
                         path, opts, library_id, job_type="sync", label=label,
@@ -204,87 +182,6 @@ def _api_write_guard() -> Response | None:
     return None
 
 
-def _open_in_explorer(path: str) -> None:
-    p = Path(path)
-    system = platform.system()
-    if system == "Windows":
-        norm = os.path.normpath(str(p))
-        if p.is_file():
-            subprocess.Popen(["explorer", f"/select,{norm}"])
-        else:
-            target = os.path.normpath(str(p if p.is_dir() else p.parent))
-            subprocess.Popen(["explorer", target])
-    elif system == "Darwin":
-        if p.is_file():
-            subprocess.Popen(["open", "-R", str(p)])
-        else:
-            subprocess.Popen(["open", str(p if p.is_dir() else p.parent)])
-    else:
-        subprocess.Popen(["xdg-open", str(p if p.is_dir() else p.parent)])
-
-
-def _open_file(path: str) -> None:
-    system = platform.system()
-    if system == "Windows":
-        getattr(os, "startfile")(path)
-    elif system == "Darwin":
-        subprocess.Popen(["open", path])
-    else:
-        subprocess.Popen(["xdg-open", path])
-
-
-def _get_clipboard_text() -> str:
-    system = platform.system()
-    try:
-        if system == "Windows" and _tkinter_available:
-            # Use tkinter clipboard — no shell window, no PowerShell spawned.
-            # Tk isn't thread-safe, so serialize all Tk use behind _tk_lock.
-            with _tk_lock:
-                root = tkinter.Tk()
-                root.withdraw()
-                try:
-                    text = root.clipboard_get()
-                except tkinter.TclError:
-                    text = ""
-                finally:
-                    root.destroy()
-            return text.strip()
-        if system == "Darwin":
-            result = subprocess.run(["pbpaste"], capture_output=True, text=True, timeout=5)
-            return result.stdout.strip()
-        result = subprocess.run(
-            ["xclip", "-selection", "clipboard", "-o"],
-            capture_output=True, text=True, timeout=5
-        )
-        return result.stdout.strip()
-    except Exception:
-        return ""
-
-
-def _tk_dialog(dialog_fn: Any, **kwargs: Any) -> str:
-    if not _tkinter_available:
-        return ""
-    result: list[str] = []
-
-    def _run() -> None:
-        with _tk_lock:
-            root = tkinter.Tk()
-            root.withdraw()
-            root.attributes("-topmost", True)  # stay above app window
-            root.lift()
-            root.focus_force()
-            try:
-                val = dialog_fn(**kwargs)
-                result.append(str(val) if val else "")
-            finally:
-                root.destroy()
-
-    t = threading.Thread(target=_run, daemon=True)
-    t.start()
-    t.join(timeout=120)
-    return result[0] if result else ""
-
-
 # ── Static ────────────────────────────────────────────────────────────────────
 
 @app.route("/")
@@ -309,7 +206,7 @@ def static_root(filename: str) -> Response:
 
 @app.route("/api/clipboard")
 def api_clipboard() -> Response:
-    return jsonify({"text": _get_clipboard_text()})
+    return jsonify({"text": desktop.clipboard_text()})
 
 
 @app.route("/api/open-folder", methods=["POST"])
@@ -317,57 +214,16 @@ def api_open_folder() -> Response:
     data = request.get_json(force=True) or {}
     path = data.get("path", "")
     if path:
-        threading.Thread(target=_open_in_explorer, args=(path,), daemon=True).start()
+        threading.Thread(target=desktop.show_in_folder, args=(path,), daemon=True).start()
     return jsonify({"ok": True})
 
 
 @app.route("/api/browse-file", methods=["POST"])
 def api_browse_file() -> Response:
-    if not _tkinter_available:
+    if not desktop.tkinter_available:
         return jsonify({"path": "", "error": "File dialogs unavailable (tkinter missing)"})
     data = request.get_json(force=True) or {}
-    filt = data.get("filter", "")
-    filetypes = [("Text files", f"*{filt}"), ("All files", "*.*")] if filt else [("All files", "*.*")]
-    path = _tk_dialog(tkinter.filedialog.askopenfilename, filetypes=filetypes)
-    return jsonify({"path": path})
-
-
-_ARCHIVE_PLATFORM_MAP = {
-    # yt-dlp extractor key → reconstructable public URL
-    "youtube":     "https://www.youtube.com/watch?v={}",
-    "vimeo":       "https://vimeo.com/{}",
-    "twitter":     "https://twitter.com/i/status/{}",
-    "twitch":      "https://www.twitch.tv/videos/{}",
-    "twitchvod":   "https://www.twitch.tv/videos/{}",
-    "bilibili":    "https://www.bilibili.com/video/{}",
-    "dailymotion": "https://www.dailymotion.com/video/{}",
-    "nicovideo":   "https://www.nicovideo.jp/watch/{}",
-    # soundcloud / tiktok / instagram / bandcamp: numeric IDs stored by yt-dlp
-    # cannot be turned back into a working public URL — entries are skipped.
-}
-
-
-def _parse_url_file(content: str) -> tuple[list[str], str]:
-    """Parse a text file of URLs or a yt-dlp archive file.
-    Returns (urls, detected_format).
-    """
-    urls: list[str] = []
-    fmt = "url_list"
-    for line in content.strip().splitlines():
-        line = line.strip()
-        if not line or line.startswith("#"):
-            continue
-        if line.startswith("http"):
-            urls.append(line)
-        else:
-            parts = line.split()
-            if len(parts) == 2:
-                platform_name, video_id = parts
-                tmpl = _ARCHIVE_PLATFORM_MAP.get(platform_name.lower())
-                if tmpl:
-                    urls.append(tmpl.format(video_id))
-                    fmt = "archive"
-    return urls, fmt
+    return jsonify({"path": desktop.ask_open_file(data.get("filter", ""))})
 
 
 @app.route("/api/read-url-file", methods=["POST"])
@@ -380,7 +236,7 @@ def api_read_url_file() -> Response:
         return jsonify({"error": "Only .txt files are supported"}), 400
     try:
         content = open(path, encoding="utf-8", errors="ignore").read()
-        urls, fmt = _parse_url_file(content)
+        urls, fmt = downloader.parse_url_file(content)
         return jsonify({"urls": urls, "format": fmt, "count": len(urls)})
     except Exception as exc:
         return jsonify({"error": str(exc)}), 500
@@ -388,12 +244,10 @@ def api_read_url_file() -> Response:
 
 @app.route("/api/browse-folder", methods=["POST"])
 def api_browse_folder() -> Response:
-    if not _tkinter_available:
+    if not desktop.tkinter_available:
         return jsonify({"path": "", "error": "File dialogs unavailable (tkinter missing)"})
     data = request.get_json(force=True) or {}
-    initial = data.get("initial", str(Path.home()))
-    path = _tk_dialog(tkinter.filedialog.askdirectory, initialdir=initial, mustexist=False)
-    return jsonify({"path": path})
+    return jsonify({"path": desktop.ask_folder(data.get("initial") or str(Path.home()))})
 
 
 @app.route("/api/system")
@@ -407,7 +261,7 @@ def api_system() -> Response:
     # Same lookup the downloader uses, so the status light can't disagree
     # with what a download will actually do.
     ffmpeg_path = find_ffmpeg()
-    disk_free = _free_bytes_near(load_config().get("output_dir") or str(Path.home()))
+    disk_free = _free_bytes_near(download_root(load_config()))
     return jsonify({
         "ffmpeg": ffmpeg_path is not None,
         "ffmpeg_path": ffmpeg_path,
@@ -426,120 +280,18 @@ def api_open_log() -> Response:
     """Open the log file (Config → About) — what to attach to a bug report."""
     if not applog.LOG_PATH.exists():
         return jsonify({"error": "No log file yet"}), 404
-    threading.Thread(target=_open_file, args=(str(applog.LOG_PATH),), daemon=True).start()
+    threading.Thread(target=desktop.open_file, args=(str(applog.LOG_PATH),), daemon=True).start()
     return jsonify({"ok": True})
-
-
-def _parse_ytdlp_ver(v: str) -> tuple:
-    try:
-        return tuple(int(x) for x in v.strip().split("."))
-    except Exception:
-        return (0, 0, 0)
 
 
 @app.route("/api/check-ytdlp-update")
 def api_check_ytdlp_update() -> Response:
-    def _check() -> dict:
-        try:
-            import importlib
-
-            import yt_dlp as _ydlp
-            importlib.reload(_ydlp.version)
-            installed = _ydlp.version.__version__
-        except Exception:
-            installed = "unknown"
-        log.debug(f"yt-dlp check: installed {installed}")
-        try:
-            with urlopen("https://pypi.org/pypi/yt-dlp/json", timeout=PYPI_CHECK_TIMEOUT_SECS) as resp:
-                payload = json.loads(resp.read().decode())
-            latest = payload["info"]["version"]
-        except (URLError, KeyError, Exception) as exc:
-            return {"error": str(exc), "installed": installed, "latest": None, "current": installed}
-        update_available = _parse_ytdlp_ver(latest) > _parse_ytdlp_ver(installed)
-        log.info(f"yt-dlp check: installed={installed} latest={latest} update={update_available}")
-        return {
-            "installed": installed, "latest": latest, "current": installed,
-            "update_available": update_available,
-        }
-    return jsonify(_check())
+    return jsonify(ytdlp_update.check())
 
 
 @app.route("/api/update-ytdlp", methods=["POST"])
 def api_update_ytdlp() -> Response:
-    def _update() -> None:
-        import shutil as _sh
-        old_ver = "unknown"
-        try:
-            import yt_dlp as _ytdlp_mod_check
-            ytdlp_file = Path(_ytdlp_mod_check.__file__).parent
-            old_ver = _ytdlp_mod_check.version.__version__
-            log.debug(f"yt-dlp update: module at {ytdlp_file}, version {old_ver}")
-        except Exception:
-            pass
-
-        _kw: dict = {"capture_output": True}
-        if platform.system() == "Windows":
-            _kw["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
-
-        exe = sys.executable
-        frozen = getattr(sys, "frozen", False)
-        guard = frozen or "mellowdlp" in exe.lower()
-        log.debug(f"yt-dlp update: exe={exe!r} frozen={frozen} guard={guard}")
-
-        try:
-            if guard:
-                ytdlp_bin = _sh.which("yt-dlp") or _sh.which("yt-dlp.exe")
-                if ytdlp_bin and "mellowdlp" not in ytdlp_bin.lower():
-                    log.info(f"yt-dlp update: running {ytdlp_bin} -U")
-                    subprocess.run([ytdlp_bin, "-U"], check=True, **_kw)
-                else:
-                    python = _sh.which("python") or _sh.which("python3")
-                    if not python or "mellowdlp" in python.lower():
-                        raise RuntimeError("No suitable Python found for yt-dlp update")
-                    log.info(f"yt-dlp update: pip via {python}")
-                    subprocess.run([python, "-m", "pip", "install", "--upgrade", "yt-dlp"], check=True, **_kw)
-            else:
-                log.info(f"yt-dlp update: pip via {exe}")
-                subprocess.run([exe, "-m", "pip", "install", "--upgrade", "yt-dlp"], check=True, **_kw)
-
-            # Re-check version after update (force reload of version submodule)
-            try:
-                import importlib
-
-                import yt_dlp as _ytdlp_mod
-                importlib.reload(_ytdlp_mod.version)
-                importlib.reload(_ytdlp_mod)
-                new_ver = _ytdlp_mod.version.__version__
-                log.info(f"yt-dlp update: now {new_ver}")
-                if _parse_ytdlp_ver(new_ver) > _parse_ytdlp_ver(old_ver):
-                    # The files on disk are new, but every extractor already
-                    # imported by this process is still the old code.
-                    _push_progress({
-                        "status": "ytdlp_updated", "ok": True, "new_version": new_ver,
-                        "restart_required": True,
-                        "message": f"yt-dlp {new_ver} installed. Restart MellowDLP to start using it.",
-                    })
-                elif frozen:
-                    # The packaged app imports the yt-dlp frozen inside the
-                    # .exe; updating a copy elsewhere on the machine never
-                    # reaches it. Say so instead of reporting success.
-                    _push_progress({
-                        "status": "ytdlp_updated", "ok": False,
-                        "error": (f"This build bundles yt-dlp {old_ver} and cannot replace it "
-                                  "from inside the app. Install a newer MellowDLP build, or "
-                                  "run from source to update yt-dlp."),
-                    })
-                else:
-                    _push_progress({"status": "ytdlp_updated", "ok": True, "new_version": new_ver,
-                                    "message": f"yt-dlp is already up to date ({new_ver})."})
-            except Exception as reload_exc:
-                log.warning(f"yt-dlp update: reload error: {reload_exc}")
-                _push_progress({"status": "ytdlp_updated", "ok": True})
-        except Exception as exc:
-            log.warning(f"yt-dlp update failed: {exc}")
-            _push_progress({"status": "ytdlp_updated", "ok": False, "error": str(exc)})
-
-    threading.Thread(target=_update, daemon=True).start()
+    threading.Thread(target=ytdlp_update.run_update, args=(_push_progress,), daemon=True).start()
     return jsonify({"status": "updating"})
 
 
@@ -586,7 +338,7 @@ def api_download() -> Response:
     if not url:
         return jsonify({"error": "No URL provided"}), 400
     cfg = load_config()
-    output_dir = data.get("output_dir") or cfg.get("output_dir") or str(Path.home() / "Downloads" / "MellowDLP")
+    output_dir = data.get("output_dir") or download_root(cfg)
     log.info(f"download queued: {url} -> {output_dir}")
     opts = {
         "mode": data.get("mode", "video"),
@@ -850,7 +602,7 @@ def api_analytics_vacuum() -> Response:
 @app.route("/api/vault")
 def api_vault() -> Response:
     cfg = load_config()
-    base_path = request.args.get("path") or cfg.get("output_dir", str(Path.home() / "Downloads" / "MellowDLP"))
+    base_path = request.args.get("path") or download_root(cfg)
     folders = _vault.build_folder_list(base_path, cfg)
     return jsonify({"folders": folders, "base_path": base_path})
 
@@ -946,7 +698,7 @@ def api_vault_open_file() -> Response:
     data = request.get_json(force=True) or {}
     path = data.get("path", "")
     if path and Path(path).exists():
-        threading.Thread(target=_open_file, args=(path,), daemon=True).start()
+        threading.Thread(target=desktop.open_file, args=(path,), daemon=True).start()
     return jsonify({"ok": True})
 
 
@@ -956,7 +708,7 @@ def api_vault_play_files() -> Response:
     paths = data.get("paths", [])
     if not paths:
         return jsonify({"error": "No files provided"}), 400
-    result = _vault.launch_playlist(paths, _open_file)
+    result = _vault.launch_playlist(paths, desktop.open_file)
     return jsonify({"status": "ok", "method": result})
 
 
@@ -976,7 +728,7 @@ def api_vault_playlists_get() -> Response:
         "playlists": cfg.get("vault_playlists", {}).get(path, []),
         # What a sync of this folder will use unless told otherwise — the
         # sync dialog starts from it instead of always offering 1080p video
-        "sync_format": _vault.default_sync_format(path, _library_entry_for(path), cfg) if path else {},
+        "sync_format": _vault.default_sync_format(path, _library_entry_for(path, cfg), cfg) if path else {},
     })
 
 
@@ -988,16 +740,12 @@ def api_vault_playlists_post() -> Response:
     if not path or not url_val:
         return jsonify({"error": "path and url required"}), 400
     fmt = data.get("sync_format") if isinstance(data.get("sync_format"), dict) else {}
-    chosen = {k: v for k, v in fmt.items() if k in _vault.SYNC_FORMAT_KEYS}
 
     def _add_pl(cfg: dict) -> None:
-        vp = cfg.setdefault("vault_playlists", {})
-        urls = vp.setdefault(path, [])
+        urls = cfg.setdefault("vault_playlists", {}).setdefault(path, [])
         if url_val not in urls:
             urls.append(url_val)
-        if chosen:
-            formats = cfg.setdefault("vault_sync_formats", {})
-            formats[path] = {**formats.get(path, {}), **chosen}
+        _vault.remember_sync_format(cfg, path, fmt)
     cfg = update_config(_add_pl)
     return jsonify({"ok": True, "playlists": cfg["vault_playlists"][path]})
 
@@ -1114,7 +862,8 @@ def api_vault_mirror_preview() -> Response:
     vp = cfg.get("vault_playlists", {}).get(path, [])
     if not vp:
         return jsonify({"error": "No playlist linked"}), 400
-    return jsonify(_vault.get_mirror_preview(path, vp, request_settings(cfg)))
+    result = _vault.get_mirror_preview(path, vp, request_settings(cfg))
+    return jsonify(result), 500 if result.get("error") else 200
 
 
 @app.route("/api/vault/mirror-confirm", methods=["POST"])
@@ -1193,8 +942,7 @@ def api_vault_cleanup_candidates() -> Response:
 def api_vault_duplicates() -> Response:
     """Cross-folder duplicate scan by yt-dlp [videoID] filename pattern."""
     cfg = load_config()
-    base = cfg.get("output_dir", str(Path.home() / "Downloads" / "MellowDLP"))
-    folders = {f["path"] for f in _vault.build_folder_list(base, cfg)}
+    folders = {f["path"] for f in _vault.build_folder_list(download_root(cfg), cfg)}
     groups = _vault.find_duplicates(sorted(folders))
     return jsonify({
         "groups": groups,
@@ -1264,7 +1012,7 @@ def api_library_post() -> Response:
         # No folder picked: put it in its own subfolder of the download
         # folder. Left empty, the entry never showed up in the Vault and its
         # syncs landed loose in the download folder root.
-        data["folder"] = load_config().get("output_dir") or str(Path.home() / "Downloads" / "MellowDLP")
+        data["folder"] = download_root(load_config())
         data["use_subfolder"] = True
     entry_id = str(uuid.uuid4())
     now = time.strftime("%Y-%m-%d %H:%M:%S")
@@ -1290,8 +1038,7 @@ def api_library_post() -> Response:
 @app.route("/api/library/<entry_id>", methods=["PUT"])
 def api_library_put(entry_id: str) -> Response:
     data = request.get_json(force=True) or {}
-    entries = analytics.get_library_entries()
-    existing = next((e for e in entries if e["id"] == entry_id), None)
+    existing = analytics.get_library_entry(entry_id)
     if not existing:
         return jsonify({"error": "Not found"}), 404
     existing.update(data)
@@ -1310,8 +1057,7 @@ def api_library_delete(entry_id: str) -> Response:
 def api_library_sync(entry_id: str) -> Response:
     data = request.get_json(force=True) or {}
     sync_mode = data.get("mode", "add")
-    entries = analytics.get_library_entries()
-    entry = next((e for e in entries if e["id"] == entry_id), None)
+    entry = analytics.get_library_entry(entry_id)
     if not entry:
         return jsonify({"error": "Not found"}), 404
     cfg = load_config()

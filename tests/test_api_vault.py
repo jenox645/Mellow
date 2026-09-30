@@ -45,7 +45,7 @@ def test_vault_playlists_crud(client, tmp_dir):
 def test_vault_play_files_opens(client, tmp_dir):
     fpath = os.path.join(tmp_dir, 'test.mp4')
     open(fpath, 'w').close()
-    with patch('server._open_file') as mock_open:
+    with patch('desktop.open_file') as mock_open:
         with patch('subprocess.Popen') as mock_popen:
             r = client.post('/api/vault/play-files', json={'paths': [fpath]})
             assert r.status_code == 200

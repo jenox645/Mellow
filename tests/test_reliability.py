@@ -14,7 +14,7 @@ import downloader
 import ffmpeg_locate
 import jobs
 import scheduler
-import server
+import ytdlp_update
 
 TERMINAL = ('complete', 'error', 'cancelled')
 DEFAULT_INFO = {'title': 'T', 'id': 'abc'}
@@ -285,9 +285,9 @@ def _run_update(client, *, frozen, version_after):
 
     with patch.object(yt_dlp.version, '__version__', '2026.06.09'), \
             patch('server._push_progress', side_effect=push), \
-            patch('server.subprocess.run'), \
+            patch('ytdlp_update.subprocess.run'), \
             patch('importlib.reload', side_effect=fake_reload), \
-            patch.object(server.sys, 'frozen', frozen, create=True), \
+            patch.object(ytdlp_update.sys, 'frozen', frozen, create=True), \
             patch('shutil.which', return_value='/usr/bin/yt-dlp'):
         assert client.post('/api/update-ytdlp', json={}).status_code == 200
         assert done.wait(10)

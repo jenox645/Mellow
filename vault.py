@@ -6,15 +6,19 @@ import glob as _glob
 import logging
 import os
 import re as _re
+import shutil
 import subprocess
+import tempfile
 import threading
+import time
 from pathlib import Path
 from typing import Callable
 from urllib.parse import quote
 
 import analytics
-from config import download_settings
+from config import download_root, download_settings
 from constants import (
+    AUDIO_FORMATS,
     FILE_THUMBS_LIMIT,
     IMAGE_EXTS,
     M3U8_TEMP_MAX_AGE_SECS,
@@ -23,9 +27,11 @@ from constants import (
     THUMB_FFMPEG_TIMEOUT_SECS,
     THUMB_FFMPEG_WIDTH,
     THUMB_PREVIEW_LIMIT,
+    VIDEO_CONTAINERS,
     VIDEO_EXTS,
 )
 from ffmpeg_locate import find_ffmpeg
+from library import folder_path_for_entry
 
 log = logging.getLogger(__name__)
 
@@ -58,7 +64,7 @@ _MPC_PATHS = [
 ]
 
 
-# ── Folder stats helper ───────────────────────────────────────────────────────
+# ── Vault folder list ─────────────────────────────────────────────────────────
 
 def get_folder_media_stats(path: str) -> dict:
     p = Path(path)
@@ -70,82 +76,70 @@ def get_folder_media_stats(path: str) -> dict:
             if entry.is_file() and not entry.name.startswith(".") and entry.suffix.lower() in MEDIA_EXTS:
                 total += entry.stat().st_size
                 count += 1
-    except PermissionError:
+    except OSError:
         pass
     return {"item_count": count, "size_bytes": total}
 
 
-# ── Vault folder list ─────────────────────────────────────────────────────────
+def _folder_record(path: str, name: str, **extra) -> dict:
+    """One vault folder card: media count and size plus the folder's times."""
+    try:
+        st = Path(path).stat()
+    except OSError:
+        st = None
+    return {
+        "path": path, "name": name, **get_folder_media_stats(path),
+        "created_at": st.st_ctime if st else None,
+        "modified_at": st.st_mtime if st else None,
+        **extra,
+    }
+
+
+def _download_root_folders(base_path: str) -> list[dict]:
+    """Every subfolder of the download folder."""
+    root = Path(base_path)
+    try:
+        subdirs = sorted(d for d in root.iterdir() if d.is_dir() and not d.name.startswith("."))
+    except OSError:
+        return []
+    return [_folder_record(str(d), d.name) for d in subdirs]
+
 
 def build_folder_list(base_path: str, cfg: dict) -> list[dict]:
-    """Return the full vault folder list (db + watched + library-linked)."""
-    all_folders = analytics.get_vault_folders(base_path)
-    all_paths: set[str] = {f["path"] for f in all_folders}
+    """Return the full vault folder list (download folder + watched + library-linked)."""
+    all_folders = _download_root_folders(base_path)
+    by_path: dict[str, dict] = {f["path"]: f for f in all_folders}
 
     for wp in cfg.get("watched_folders", []):
-        p = Path(wp)
-        norm = str(p)
-        if norm not in all_paths and p.exists() and p.is_dir():
-            try:
-                ms = get_folder_media_stats(norm)
-                st = p.stat()
-            except Exception:
-                ms, st = {"item_count": 0, "size_bytes": 0}, None
-            all_folders.append({
-                "path": norm, "name": p.name,
-                "item_count": ms["item_count"], "size_bytes": ms["size_bytes"],
-                "watched": True,
-                "created_at": st.st_ctime if st else None,
-                "modified_at": st.st_mtime if st else None,
-            })
-            all_paths.add(norm)
+        norm = str(Path(wp))
+        if norm not in by_path and Path(norm).is_dir():
+            by_path[norm] = _folder_record(norm, Path(norm).name, watched=True)
+            all_folders.append(by_path[norm])
 
+    root = download_root(cfg)
     for entry in analytics.get_library_entries():
-        folder = entry.get("folder") or ""
-        folder_name = entry.get("folder_name") or ""
-        use_sub = entry.get("use_subfolder", True)
-        if use_sub and folder and folder_name:
-            actual_path = str(Path(folder) / folder_name)
-        elif folder:
-            actual_path = folder
-        else:
+        if not (entry.get("folder") or entry.get("folder_name")):
             continue
+        actual_path = folder_path_for_entry(entry, root)
         norm = str(Path(actual_path))
-        found = False
-        for f in all_folders:
-            if f["path"] == norm:
-                f.setdefault("library_id", entry["id"])
-                f.setdefault("library_name", entry["name"])
-                found = True
-                break
-        if not found and norm not in all_paths:
-            p = Path(actual_path)
-            if p.exists() and p.is_dir():
-                try:
-                    ms = get_folder_media_stats(actual_path)
-                    st = p.stat()
-                except Exception:
-                    ms, st = {"item_count": 0, "size_bytes": 0}, None
-            else:
-                ms, st = {"item_count": 0, "size_bytes": 0}, None
-            all_folders.append({
-                "path": actual_path,
-                "name": folder_name or Path(actual_path).name,
-                "item_count": ms["item_count"], "size_bytes": ms["size_bytes"],
-                "library_id": entry["id"], "library_name": entry["name"],
-                "created_at": st.st_ctime if st else None,
-                "modified_at": st.st_mtime if st else None,
-            })
-            all_paths.add(norm)
+        link = {"library_id": entry["id"], "library_name": entry["name"]}
+        if norm in by_path:
+            for key, value in link.items():
+                by_path[norm].setdefault(key, value)
+            continue
+        # A library folder shows even before its first sync created it
+        by_path[norm] = _folder_record(actual_path, entry.get("folder_name") or Path(actual_path).name,
+                                       **link)
+        all_folders.append(by_path[norm])
 
     vault_names = cfg.get("vault_names", {})
     vault_hidden = set(cfg.get("vault_hidden", []))
     vault_sync_times = cfg.get("vault_sync_times", {})
+    vault_playlists = cfg.get("vault_playlists", {})
     for f in all_folders:
         if f["path"] in vault_names:
             f["name"] = vault_names[f["path"]]
-        has_playlists = bool(cfg.get("vault_playlists", {}).get(f["path"]))
-        if has_playlists and f["path"] in vault_sync_times:
+        if vault_playlists.get(f["path"]) and f["path"] in vault_sync_times:
             f["last_synced"] = vault_sync_times[f["path"]]
     return [f for f in all_folders if f["path"] not in vault_hidden]
 
@@ -418,12 +412,15 @@ def get_mirror_preview(path: str, vp: list[str], request_opts: dict | None = Non
     # IDs backed by an actual file on disk (deletable) vs archive-only IDs
     # (no file — listing them as deletable produced size-0 phantom entries).
     file_ids: dict[str, str] = {}
-    for f in p.iterdir():
-        if not f.is_file() or f.suffix.lower() not in MEDIA_EXTS:
-            continue
-        m = _re.search(r'\[([A-Za-z0-9_-]{11})\]', f.name)
-        if m:
-            file_ids[m.group(1)] = f.name
+    try:
+        for f in p.iterdir():
+            if not f.is_file() or f.suffix.lower() not in MEDIA_EXTS:
+                continue
+            m = _YT_ID_RE.search(f.name)
+            if m:
+                file_ids[m.group(1)] = f.name
+    except OSError as exc:
+        return {"error": f"Cannot read {p}: {exc}"}
     # The default "%(title)s" names carry no [id]; recover it from the
     # download history, or mirror mode could never remove anything.
     for vid_id, fname in _history_ids_in(p).items():
@@ -706,8 +703,6 @@ def find_duplicates(folders: list[str]) -> list[dict]:
 
 def launch_playlist(paths: list[str], open_file_fn: Callable[[str], None]) -> str:
     """Open media files in a player. Returns method name used."""
-    import shutil
-    import tempfile
     valid = [p for p in paths if Path(p).exists()]
     if not valid:
         return "no_files"
@@ -742,8 +737,7 @@ def launch_playlist(paths: list[str], open_file_fn: Callable[[str], None]) -> st
     # Sweep playlist temp files older than a day before writing a new one
     tmp_dir = Path(tempfile.gettempdir())
     try:
-        import time as _time
-        cutoff = _time.time() - M3U8_TEMP_MAX_AGE_SECS
+        cutoff = time.time() - M3U8_TEMP_MAX_AGE_SECS
         for old in tmp_dir.glob("mellow_*.m3u8"):
             if old.stat().st_mtime < cutoff:
                 old.unlink(missing_ok=True)
@@ -766,8 +760,6 @@ SYNC_FORMAT_KEYS = (
     "sync_audio", "audio_format", "audio_quality", "quality", "container",
     "embed_thumbnail", "embed_subs", "embed_chapters", "embed_metadata", "sponsorblock",
 )
-_AUDIO_SYNC_FORMATS = ("mp3", "m4a", "aac", "flac", "opus", "wav")
-_VIDEO_SYNC_CONTAINERS = ("mp4", "mkv", "webm")
 
 
 def infer_folder_format(path: str) -> dict:
@@ -788,9 +780,18 @@ def infer_folder_format(path: str) -> dict:
         return {}
     if sum(audio.values()) > sum(video.values()):
         fmt = max(audio, key=audio.get)
-        return {"sync_audio": True, "audio_format": fmt if fmt in _AUDIO_SYNC_FORMATS else "mp3"}
+        return {"sync_audio": True, "audio_format": fmt if fmt in AUDIO_FORMATS else "mp3"}
     ext = max(video, key=video.get)
-    return {"sync_audio": False, "container": ext if ext in _VIDEO_SYNC_CONTAINERS else "mp4"}
+    return {"sync_audio": False, "container": ext if ext in VIDEO_CONTAINERS else "mp4"}
+
+
+def remember_sync_format(cfg: dict, path: str, chosen: dict) -> None:
+    """Store a folder's format choice (inside an update_config mutator), so
+    auto-sync and "sync all", which have no dialog, keep using it."""
+    chosen = {k: v for k, v in chosen.items() if k in SYNC_FORMAT_KEYS}
+    if chosen:
+        formats = cfg.setdefault("vault_sync_formats", {})
+        formats[path] = {**formats.get(path, {}), **chosen}
 
 
 def default_sync_format(path: str, lib: dict | None, cfg: dict) -> dict:

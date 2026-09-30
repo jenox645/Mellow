@@ -11,6 +11,7 @@ import yt_dlp
 
 import analytics
 from constants import (
+    AUDIO_FORMATS,
     PAUSE_POLL_SECS,
     SOCKET_TIMEOUT_SECS,
     SPONSORBLOCK_REMOVE_CATEGORIES,
@@ -115,14 +116,7 @@ def _merged_format(quality: str, container: str) -> tuple[str, str]:
     return fmt, "webm/mkv"
 
 
-AUDIO_FORMAT_MAP: dict[str, str] = {
-    "mp3": "mp3",
-    "aac": "aac",
-    "flac": "flac",
-    "m4a": "m4a",
-    "opus": "opus",
-    "wav": "wav",
-}
+AUDIO_FORMAT_MAP: dict[str, str] = {fmt: fmt for fmt in AUDIO_FORMATS}
 
 # Audio quality choice -> FFmpegExtractAudio preferredquality ("0" = best VBR).
 # Ignored by lossless targets (flac, wav).
@@ -324,6 +318,44 @@ def _detect_platform(url: str) -> str:
     if "soundcloud.com" in url_lower:
         return "SoundCloud"
     return "Other"
+
+
+# yt-dlp extractor key → reconstructable public URL, for archive files.
+# soundcloud / tiktok / instagram / bandcamp store numeric IDs that can't be
+# turned back into a working public URL; their entries are skipped.
+_ARCHIVE_URL_TEMPLATES = {
+    "youtube":     "https://www.youtube.com/watch?v={}",
+    "vimeo":       "https://vimeo.com/{}",
+    "twitter":     "https://twitter.com/i/status/{}",
+    "twitch":      "https://www.twitch.tv/videos/{}",
+    "twitchvod":   "https://www.twitch.tv/videos/{}",
+    "bilibili":    "https://www.bilibili.com/video/{}",
+    "dailymotion": "https://www.dailymotion.com/video/{}",
+    "nicovideo":   "https://www.nicovideo.jp/watch/{}",
+}
+
+
+def parse_url_file(content: str) -> tuple[list[str], str]:
+    """URLs from a text file of URLs or a yt-dlp archive file ("youtube <id>").
+
+    Returns (urls, "url_list" | "archive").
+    """
+    urls: list[str] = []
+    fmt = "url_list"
+    for line in content.strip().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("http"):
+            urls.append(line)
+            continue
+        parts = line.split()
+        if len(parts) == 2:
+            tmpl = _ARCHIVE_URL_TEMPLATES.get(parts[0].lower())
+            if tmpl:
+                urls.append(tmpl.format(parts[1]))
+                fmt = "archive"
+    return urls, fmt
 
 
 def _parse_time(s: str) -> float | None:

@@ -48,3 +48,47 @@ def test_library_sync_does_not_stamp_last_synced_before_it_runs(client, tmp_dir)
         jobs.manager.wait_idle(timeout=10)
     entry = next(e for e in client.get('/api/library').get_json() if e['id'] == entry_id)
     assert entry['last_synced'] is None
+
+
+def test_audio_entry_without_audio_format_is_mp3_not_mp4():
+    """The legacy "audio format in container" fallback turned the default
+    container into audio_format "mp4"."""
+    import library
+    entry = library.build_entry({'name': 'A', 'url': 'u', 'mode': 'AUDIO'}, 'id', 'now')
+    assert (entry['audio_format'], entry['container']) == ('mp3', 'mp4')
+    legacy = library.build_entry({'name': 'A', 'url': 'u', 'mode': 'AUDIO', 'container': 'FLAC'},
+                                 'id', 'now')
+    assert (legacy['audio_format'], legacy['container']) == ('flac', 'mp4')
+    video = library.build_entry({'name': 'V', 'url': 'u', 'mode': 'VIDEO', 'container': 'mkv'},
+                                'id', 'now')
+    assert (video['audio_format'], video['container']) == ('mp3', 'mkv')
+
+
+def test_entry_without_folder_syncs_where_the_vault_shows_it(client, tmp_path):
+    """An entry with no folder of its own lives in the download folder; the
+    vault never listed it."""
+    import analytics
+    import library
+    from config import load_config, update_config
+    root = tmp_path / 'root'
+    update_config(lambda c: c.__setitem__('output_dir', str(root)))
+    analytics.upsert_library_entry({'id': 'e1', 'name': 'Lofi', 'url': 'https://x/pl',
+                                    'folder': '', 'folder_name': 'Lofi', 'use_subfolder': True})
+    entry = analytics.get_library_entry('e1')
+    _, output_dir = library.build_sync_opts(entry, load_config(), 'add')
+    assert output_dir == str(root / 'Lofi')
+    folders = client.get('/api/vault').get_json()['folders']
+    assert [(f['path'], f.get('library_id')) for f in folders] == [(str(root / 'Lofi'), 'e1')]
+
+
+def test_library_entry_is_not_matched_to_its_parent_folder(client, tmp_path):
+    """Syncing the download folder itself must not pick up the settings of a
+    library entry that merely lives inside it."""
+    import analytics
+    import server
+    from config import load_config
+    analytics.upsert_library_entry({'id': 'e2', 'name': 'Sub', 'url': 'https://x/pl',
+                                    'folder': str(tmp_path), 'folder_name': 'Sub'})
+    cfg = load_config()
+    assert server._library_entry_for(str(tmp_path / 'Sub'), cfg)['id'] == 'e2'
+    assert server._library_entry_for(str(tmp_path), cfg) is None

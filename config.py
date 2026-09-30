@@ -108,6 +108,11 @@ def save_config(cfg: dict) -> None:
             raise
 
 
+def download_root(cfg: dict) -> str:
+    """The download folder; an emptied Config field means the default one."""
+    return cfg.get("output_dir") or _DEFAULTS["output_dir"]
+
+
 def request_settings(cfg: dict) -> dict:
     """Cookies and network settings every yt-dlp request needs (analyze,
     playlist listing, mirror preview and downloads alike)."""
