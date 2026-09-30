@@ -120,7 +120,7 @@ function HistoryPanel({ showNotif, refreshStats }) {
 
   const redownload = (r) => {
     API.post('/api/download', { url: r.url, mode: r.format === 'audio' ? 'audio' : 'video', quality: r.quality || 'best' })
-      .then(d => d.error ? showNotif('Error', d.error, 'error') : showNotif('Re-queued', r.title || r.url))
+      .then(() => showNotif('Re-queued', r.title || r.url))
       .catch(e => showNotif('Error', e.message, 'error'));
   };
 

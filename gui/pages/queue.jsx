@@ -28,7 +28,9 @@ export function QueuePage({ dlState, showNotif, activeJobs, playlistItems, setPl
   }, [loadJobs]);
 
   const handleCancel = () => {
-    API.post('/api/cancel', {}).then(() => showNotif('Cancelled', 'Download stopped'));
+    API.post('/api/cancel', {})
+      .then(() => showNotif('Cancelled', 'Download stopped'))
+      .catch(e => showNotif('Error', e.message, 'error'));
   };
 
   const handleCancelJob = (job) => {
@@ -43,7 +45,7 @@ export function QueuePage({ dlState, showNotif, activeJobs, playlistItems, setPl
   const handleRetryFailed = (item) => {
     if (!item.url) return;
     API.post('/api/download', { url: item.url })
-      .then(d => d.error ? showNotif('Error', d.error, 'error') : showNotif('Re-queued', item.url))
+      .then(() => showNotif('Re-queued', item.url))
       .catch(e => showNotif('Error', e.message, 'error'));
   };
 

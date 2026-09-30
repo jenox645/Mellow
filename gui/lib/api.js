@@ -1,21 +1,28 @@
 // Thin JSON fetch wrapper used by every page.
 'use strict';
 
+// Resolves with the JSON body. A failed request (4xx/5xx) rejects with an
+// Error carrying the server's message, the full body as `data` and `status`.
+// Resolving on those made every caller without its own `d.error` check report
+// success for a request the server had refused.
+const request = (method, url, body) => fetch(url, body === undefined ? { method } : {
+  method,
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify(body),
+}).then(async r => {
+  const data = await r.json().catch(() => null);
+  if (!r.ok) {
+    const err = new Error((data && data.error) || r.statusText || ('HTTP ' + r.status));
+    err.data = data;
+    err.status = r.status;
+    throw err;
+  }
+  return data;
+});
+
 export const API = {
-  get: (url) => fetch(url).then(r => { if (!r.ok) throw new Error(r.statusText); return r.json(); }),
-  post: (url, body) => fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
-  }).then(r => r.json()),
-  put: (url, body) => fetch(url, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
-  }).then(r => r.json()),
-  del: (url, body) => fetch(url, {
-    method: 'DELETE',
-    headers: { 'Content-Type': 'application/json' },
-    body: body ? JSON.stringify(body) : undefined
-  }).then(r => r.json()),
+  get: (url) => request('GET', url),
+  post: (url, body) => request('POST', url, body),
+  put: (url, body) => request('PUT', url, body),
+  del: (url, body) => request('DELETE', url, body),
 };

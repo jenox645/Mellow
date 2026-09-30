@@ -141,9 +141,8 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
     setSyncingId(selectedFolder);
     const label = libEntry ? libEntry.name : selectedFolder.split(/[\\/]/).pop();
     API.post('/api/vault/sync', { path: selectedFolder })
-      .then(d => {
-        if (!d.error) return d;
-        if (!libEntry) throw new Error(d.error);
+      .catch(e => {
+        if (!libEntry || e.status !== 400) throw e;
         return API.post('/api/library/' + libEntry.id + '/sync', { mode: libEntry.sync_mode || 'add' });
       })
       .then(() => showNotif('Sync started', label))
@@ -188,10 +187,13 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
   const handleDeleteSelected = React.useCallback(() => {
     if (!selectedFiles.size) return;
     const paths = [...selectedFiles];
-    Promise.all(paths.map(p => API.del('/api/vault/file', { path: p }).catch(() => null)))
-      .then(() => {
-        setFiles(f => f.filter(x => !selectedFiles.has(x.path)));
-        showNotif('Deleted', paths.length + ' file(s)');
+    Promise.all(paths.map(p => API.del('/api/vault/file', { path: p }).then(() => p, () => null)))
+      .then(results => {
+        const deleted = new Set(results.filter(Boolean));
+        setFiles(f => f.filter(x => !deleted.has(x.path)));
+        const failed = paths.length - deleted.size;
+        if (deleted.size) showNotif('Deleted', deleted.size + ' file(s)');
+        if (failed) showNotif('Not Deleted', failed + ' file(s) could not be deleted (in use or read-only?)', 'error');
         setSelectedFiles(new Set());
         setSelectionMode(false);
       });

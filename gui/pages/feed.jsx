@@ -98,11 +98,6 @@ export function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats
     setPlaylistItems && setPlaylistItems(null);
     API.post('/api/info', { url: target })
       .then(data => {
-        if (data.error) {
-          // Explained when the backend recognises it; the raw text otherwise
-          showNotif(data.title || 'Error', data.hint || data.error, 'error');
-          return;
-        }
         setInfo(data);
         if (data.is_playlist) {
           setFetchingItems(true);
@@ -116,7 +111,11 @@ export function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats
             .finally(() => setFetchingItems(false));
         }
       })
-      .catch(e => showNotif('Error', e.message, 'error'))
+      .catch(e => {
+        // Explained when the backend recognises it; the raw text otherwise
+        const d = e.data || {};
+        showNotif(d.title || 'Error', d.hint || e.message, 'error');
+      })
       .finally(() => setAnalyzing(false));
   }, [url, showNotif, setPlaylistItems]);
 
@@ -242,8 +241,7 @@ export function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats
       sponsorblock,
       ...(downloadPath ? { output_dir: downloadPath } : {}),
     }).then(d => {
-      if (d.error) { showNotif('Error', d.error, 'error'); setSubmitting(false); }
-      else if (d.disk_warning) showNotif('Low Disk Space', d.disk_warning, 'warn');
+      if (d.disk_warning) showNotif('Low Disk Space', d.disk_warning, 'warn');
     }).catch(e => { showNotif('Error', e.message, 'error'); setSubmitting(false); });
   }, [importedUrls, importedFileName, mode, quality, container, audioFmt, audioQuality, embedThumb, embedChapters, embedMeta, embedSubs, sponsorblock, downloadPath, onPlaylistDownload, showNotif]);
 
@@ -298,8 +296,7 @@ export function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats
       ...(playlistItemsParam ? { playlist_items: playlistItemsParam } : {}),
       ...extra,
     }).then(d => {
-      if (d.error) { showNotif('Error', d.error, 'error'); setSubmitting(false); }
-      else if (d.disk_warning) showNotif('Low Disk Space', d.disk_warning, 'warn');
+      if (d.disk_warning) showNotif('Low Disk Space', d.disk_warning, 'warn');
     }).catch(e => { showNotif('Error', e.message, 'error'); setSubmitting(false); });
   }, [url, mode, quality, container, audioFmt, audioQuality, embedThumb, embedChapters, embedMeta, embedSubs, sponsorblock, startTime, endTime, customFmt, downloadPath, playlistItems, info, showNotif]);
 
@@ -307,7 +304,9 @@ export function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats
   startDownloadRef.current = startDownload;
 
   const handleCancel = React.useCallback(() => {
-    API.post('/api/cancel', {}).then(() => showNotif('Cancelled', 'Download cancelled'));
+    API.post('/api/cancel', {})
+      .then(() => showNotif('Cancelled', 'Download cancelled'))
+      .catch(e => showNotif('Error', e.message, 'error'));
   }, [showNotif]);
 
   const handlePaste = React.useCallback(() => {
@@ -846,8 +845,7 @@ function VaultLinkPromptModal({ info, url, config, opts, onClose, onJustDownload
     setSaving(true);
     // Actually link the playlist, so the folder's Sync picks it up later
     API.post('/api/vault/playlists', { path: selectedFolder, url: url.trim(), sync_format: syncFormat })
-      .then(d => {
-        if (d.error) throw new Error(d.error);
+      .then(() => {
         showNotif('Linked', 'Playlist linked to ' + selectedFolder.split(/[\\/]/).pop(), 'success');
         downloadInto(selectedFolder);
       })
@@ -869,7 +867,6 @@ function VaultLinkPromptModal({ info, url, config, opts, onClose, onJustDownload
       embed_metadata: opts.embed_metadata, embed_subs: opts.embed_subs,
       sponsorblock: opts.sponsorblock,
     }).then(entry => {
-      if (entry.error) throw new Error(entry.error);
       // Also remember the full format (incl. bitrate, which library entries
       // don't store) for the folder's future syncs
       return API.post('/api/vault/playlists', { path: entry.folder_path, url: url.trim(), sync_format: syncFormat })

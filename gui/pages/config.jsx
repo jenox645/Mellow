@@ -58,7 +58,9 @@ export function ConfigPage({ config, setConfig, showNotif, sysInfo, refreshStats
       rate_limit: '', proxy: '', external_downloader: '',
       concurrent_fragments: 4, sleep_interval: 0, retries: 3,
       write_metadata: true, filename_template: '',
-    }).then(() => API.get('/api/config').then(c => { setLocal(c); setConfig(c); showNotif('Reset', 'Defaults restored', 'success'); }));
+    }).then(() => API.get('/api/config'))
+      .then(c => { setLocal(c); setConfig(c); showNotif('Reset', 'Defaults restored', 'success'); })
+      .catch(e => showNotif('Error', e.message, 'error'));
   };
 
   const browseFolder = () => {
@@ -503,8 +505,9 @@ export function ConfigPage({ config, setConfig, showNotif, sysInfo, refreshStats
                 </div>
                 <div className="settings-ctrl">
                   <button className="btn btn-secondary btn-sm" onClick={() => API.post('/api/open-log', {})
-                    .then(d => { if (d.error) showNotif('No log yet', d.error, 'info'); })
-                    .catch(e => showNotif('Error', e.message, 'error'))}>OPEN LOG</button>
+                    .catch(e => e.status === 404
+                      ? showNotif('No log yet', e.message, 'info')
+                      : showNotif('Error', e.message, 'error'))}>OPEN LOG</button>
                 </div>
               </div>
               <div className="settings-row">

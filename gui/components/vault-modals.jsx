@@ -362,11 +362,16 @@ export function SyncPlaylistModal({ folder, onClose, showNotif, onRefreshVault, 
     const pathsToDelete = (mirrorPreview?.to_delete || []).map(f => f.path);
     const fmtOpts = mirrorPreview?.fmtOpts || buildFmtOpts();
     const activePlaylists = playlists ? playlists.filter(p => !selectedPlaylists || selectedPlaylists.has(p)) : [];
+    let removed = { deleted: 0, errors: [] };
     API.post('/api/vault/mirror-confirm', { path: folder.path, paths: pathsToDelete })
+      .then(r => { removed = r; })
       .then(() => API.post('/api/vault/sync', { path: folder.path, mode: 'add', playlist_urls: activePlaylists.length ? activePlaylists : undefined, ...fmtOpts }))
       .then(() => {
         const label = folder.name + ' — mirror sync';
-        showNotif('Mirror Done', 'Deleted ' + pathsToDelete.length + ' file(s), syncing new items', 'success');
+        showNotif('Mirror Done', 'Deleted ' + removed.deleted + ' file(s), syncing new items', 'success');
+        if (removed.errors && removed.errors.length) {
+          showNotif('Not Deleted', removed.errors.length + ' file(s) could not be deleted (in use or read-only?)', 'error');
+        }
         onSyncStart && onSyncStart(label);
         if (onSyncItems && activePlaylists.length) {
           onSyncItems(null, 0, folder.name);
@@ -583,9 +588,12 @@ export function DuplicatesModal({ onClose, showNotif, onRefreshVault }) {
     const targets = groups.flatMap(g => g.copies.slice(1));
     if (!targets.length) return;
     setDeleting(true);
-    Promise.all(targets.map(c => API.del('/api/vault/file', { path: c.path }).catch(() => null)))
-      .then(() => {
-        showNotif('Deduplicated', targets.length + ' smaller cop' + (targets.length === 1 ? 'y' : 'ies') + ' deleted', 'success');
+    Promise.all(targets.map(c => API.del('/api/vault/file', { path: c.path }).then(() => true, () => false)))
+      .then(results => {
+        const deleted = results.filter(Boolean).length;
+        const failed = results.length - deleted;
+        if (deleted) showNotif('Deduplicated', deleted + ' smaller cop' + (deleted === 1 ? 'y' : 'ies') + ' deleted', 'success');
+        if (failed) showNotif('Not Deleted', failed + ' cop' + (failed === 1 ? 'y' : 'ies') + ' could not be deleted', 'error');
         onRefreshVault && onRefreshVault();
         load();
       })
