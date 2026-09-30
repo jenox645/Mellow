@@ -495,6 +495,7 @@ function App() {
             setDlState={setDlState}
             setAppState={setAppState}
             stats={stats}
+            sysInfo={sysInfo}
             refreshStats={refreshStats}
             showNotif={showNotif}
             switchPage={switchPage}

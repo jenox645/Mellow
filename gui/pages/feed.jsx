@@ -2,7 +2,7 @@
 'use strict';
 
 import { API, cancelShownDownload } from '../lib/api.js';
-import { fmtBytes, fmtSpeed, fmtEta, fmtDuration, timeAgo } from '../lib/util.js';
+import { estimateDownloadBytes, fmtBytes, fmtSpeed, fmtEta, fmtDuration, timeAgo } from '../lib/util.js';
 import { SVG, Ico } from '../components/icons.jsx';
 import { Modal, Mascot, Pipeline } from '../components/common.jsx';
 import { MASCOT_CHILLING } from '../lib/mascots.js';
@@ -11,7 +11,7 @@ import {
   SPONSORBLOCK_HINT,
 } from '../lib/constants.js';
 
-export function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats, showNotif, switchPage, config, setConfig, suggestedUrl, onSuggestedConsumed, onPlaylistDownload, playlistItems, setPlaylistItems, completedItems, failedItems, playlistTotalCount, playlistCompletedCount, isPaused, syncJobLabel, fetchingPlaylistItems, onPause, onResume, onClearCompleted }) {
+export function FeedPage({ dlState, setDlState, setAppState, stats, sysInfo, refreshStats, showNotif, switchPage, config, setConfig, suggestedUrl, onSuggestedConsumed, onPlaylistDownload, playlistItems, setPlaylistItems, completedItems, failedItems, playlistTotalCount, playlistCompletedCount, isPaused, syncJobLabel, fetchingPlaylistItems, onPause, onResume, onClearCompleted }) {
   const ss = (k, fb) => { try { const v = sessionStorage.getItem(k); return v !== null ? v : fb; } catch { return fb; } };
   const ssJ = (k, fb) => { try { const v = sessionStorage.getItem(k); return v ? JSON.parse(v) : fb; } catch { return fb; } };
   const hasSS = (k) => { try { return sessionStorage.getItem(k) !== null; } catch { return false; } };
@@ -307,6 +307,12 @@ export function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats
     cancelShownDownload(dlState).catch(e => showNotif('Error', e.message, 'error'));
   }, [dlState, showNotif]);
 
+  const estimatedBytes = info && !info.is_playlist
+    ? estimateDownloadBytes(info, { mode, quality, audioFmt, audioQuality, startTime, endTime })
+    : null;
+  const diskFree = sysInfo && sysInfo.disk_free_bytes;
+  const wontFit = !!(estimatedBytes && diskFree && estimatedBytes > diskFree);
+
   const handlePaste = React.useCallback(() => {
     API.get('/api/clipboard').then(d => {
       if (d.text) setUrl(d.text);
@@ -568,6 +574,13 @@ export function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats
                   <span className="tag cyan">{info.platform || 'URL'}</span>
                   {info.is_playlist && <span className="tag amber">PLAYLIST · {info.playlist_count}</span>}
                   {mode === 'video' ? <span className="tag">{quality.toUpperCase()}</span> : <span className="tag amber">{audioFmt.toUpperCase()}</span>}
+                  {estimatedBytes && (
+                    <span className={'tag' + (wontFit ? ' red' : '')}
+                      title={wontFit ? 'Only ' + fmtBytes(diskFree) + ' free on the download drive'
+                        : 'Estimated from the formats the site offers'}>
+                      ≈ {fmtBytes(estimatedBytes)}{wontFit ? ' · WON\'T FIT' : ''}
+                    </span>
+                  )}
                 </div>
               </div>
               {/* RIGHT: action area */}

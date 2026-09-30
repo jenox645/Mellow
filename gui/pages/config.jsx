@@ -5,7 +5,9 @@ import { API } from '../lib/api.js';
 import { fmtBytes } from '../lib/util.js';
 import { Toggle, Modal, Mascot } from '../components/common.jsx';
 import { MASCOT_FRUSTRATED } from '../lib/mascots.js';
-import { AUDIO_FORMATS, AUDIO_QUALITIES, CONTAINERS, QUALITIES } from '../lib/constants.js';
+import {
+  AUDIO_FORMATS, AUDIO_QUALITIES, CONTAINERS, QUALITIES, TEMPLATE_PREVIEW_DEBOUNCE_MS,
+} from '../lib/constants.js';
 
 export function ConfigPage({ config, setConfig, showNotif, sysInfo, refreshStats }) {
   const [local, setLocal] = React.useState({ ...config });
@@ -28,7 +30,7 @@ export function ConfigPage({ config, setConfig, showNotif, sysInfo, refreshStats
     'cookies_browser', 'cookies_browser_profile', 'cookies_file',
     'rate_limit', 'proxy', 'force_ipv4', 'external_downloader',
     'concurrent_fragments', 'sleep_interval', 'retries',
-    'write_metadata',
+    'write_metadata', 'skip_shorts', 'skip_live',
     'ui_victory_animation', 'ui_victory_sync',
     'default_mode', 'default_quality', 'default_container', 'default_audio_format', 'default_audio_quality',
     'download_workers', 'auto_sync_enabled', 'auto_sync_default_interval',
@@ -66,6 +68,43 @@ export function ConfigPage({ config, setConfig, showNotif, sysInfo, refreshStats
       set('output_dir', d.path);
       API.post('/api/config', { output_dir: d.path }).catch(() => {});
     });
+  };
+
+  // What a download would be named with the template being typed
+  const [namePreview, setNamePreview] = React.useState(null);
+  React.useEffect(() => {
+    const template = local.filename_template || '';
+    const t = setTimeout(() => {
+      API.post('/api/filename-preview', { template })
+        .then(d => setNamePreview(d))
+        .catch(e => setNamePreview({ ok: false, error: e.message }));
+    }, TEMPLATE_PREVIEW_DEBOUNCE_MS);
+    return () => clearTimeout(t);
+  }, [local.filename_template]);
+
+  // Reads the cookies with the values on screen, before they are saved
+  const [testingCookies, setTestingCookies] = React.useState(false);
+  const testCookies = () => {
+    setTestingCookies(true);
+    API.post('/api/cookies/test', {
+      cookies_browser: local.cookies_browser, cookies_browser_profile: local.cookies_browser_profile,
+      cookies_file: local.cookies_file,
+    })
+      .then(d => {
+        const yt = d.youtube_signed_in ? 'signed in to YouTube' : 'not signed in to YouTube';
+        if (d.undecryptable) {
+          showNotif('Cookies Partly Readable', `${d.count} cookies read, ${d.undecryptable} encrypted by the browser — ${yt}. Firefox or a cookies.txt avoids this.`, 'warn');
+        } else if (!d.count) {
+          showNotif('No Cookies', 'The source is readable but empty — sign in with that browser/profile first.', 'warn');
+        } else {
+          showNotif('Cookies OK', `${d.count} cookies read — ${yt}.`, d.youtube_signed_in ? 'success' : 'info');
+        }
+      })
+      .catch(e => {
+        const d = e.data || {};
+        showNotif(d.title || 'Cookies Not Readable', d.hint ? d.hint + ' (' + e.message + ')' : e.message, 'error');
+      })
+      .finally(() => setTestingCookies(false));
   };
 
   const browseCookies = () => {
@@ -170,10 +209,17 @@ export function ConfigPage({ config, setConfig, showNotif, sysInfo, refreshStats
               <div className="settings-row">
                 <div className="settings-label">
                   <div className="sl-name">Filename Template</div>
-                  <div className="sl-sub">yt-dlp output template</div>
+                  <div className="sl-sub">yt-dlp output template — a "/" makes subfolders</div>
+                  {namePreview && (
+                    <div className="sl-sub" title="A sample video, named with this template"
+                      style={{ color: namePreview.ok ? 'var(--cyan)' : 'var(--red)', wordBreak: 'break-all' }}>
+                      {namePreview.ok ? '→ ' + namePreview.example : '✕ ' + namePreview.error}
+                    </div>
+                  )}
                 </div>
                 <div className="settings-ctrl">
-                  <input className="inp-sm" style={{ width: 220 }} value={local.filename_template || ''} onChange={e => set('filename_template', e.target.value)} placeholder="%(title)s [%(id)s].%(ext)s" />
+                  <input className="inp-sm" style={{ width: 220, borderColor: namePreview && !namePreview.ok ? 'var(--red)' : undefined }}
+                    value={local.filename_template || ''} onChange={e => set('filename_template', e.target.value)} placeholder="%(title)s [%(id)s].%(ext)s" />
                 </div>
               </div>
               <div className="settings-row">
@@ -260,6 +306,24 @@ export function ConfigPage({ config, setConfig, showNotif, sysInfo, refreshStats
                   </select>
                 </div>
               </div>
+              <div className="settings-row">
+                <div className="settings-label">
+                  <div className="sl-name">Skip YouTube Shorts</div>
+                  <div className="sl-sub">In playlists, channels and vault syncs — a single pasted link still downloads</div>
+                </div>
+                <div className="settings-ctrl">
+                  <Toggle checked={local.skip_shorts === true} onChange={v => set('skip_shorts', v)} />
+                </div>
+              </div>
+              <div className="settings-row">
+                <div className="settings-label">
+                  <div className="sl-name">Skip Live Streams</div>
+                  <div className="sl-sub">Streams that are live or not started yet would record until they end, holding up a sync. Recordings of finished streams still download.</div>
+                </div>
+                <div className="settings-ctrl">
+                  <Toggle checked={local.skip_live !== false} onChange={v => set('skip_live', v)} />
+                </div>
+              </div>
             </div>
           </div>
 
@@ -313,13 +377,19 @@ export function ConfigPage({ config, setConfig, showNotif, sysInfo, refreshStats
                   <div className="sl-name">Auth Status</div>
                   <div className="sl-sub">Current authentication method active</div>
                 </div>
-                <div className="settings-ctrl">
+                <div className="settings-ctrl" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                   {(local.cookies_browser && local.cookies_browser !== 'none')
                     ? <span style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: 'var(--green)' }}>Browser cookies ({local.cookies_browser}){local.cookies_browser_profile ? ' · custom profile' : ''}</span>
                     : local.cookies_file
                     ? <span style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: 'var(--cyan)' }}>Cookies file active</span>
                     : <span style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: 'var(--t4)' }}>No auth — public videos only</span>
                   }
+                  {((local.cookies_browser && local.cookies_browser !== 'none') || local.cookies_file) && (
+                    <button className="btn btn-secondary btn-sm" onClick={testCookies} disabled={testingCookies}
+                      title="Load the cookies the way a download would (unsaved changes included)">
+                      {testingCookies ? 'TESTING...' : 'TEST'}
+                    </button>
+                  )}
                 </div>
               </div>
             </div>

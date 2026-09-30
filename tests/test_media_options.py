@@ -257,3 +257,35 @@ def test_ffmpeg_found_off_path_is_added_to_path(tmp_path):
     with patch('mellow.ffmpeg_locate._search', return_value=str(fake)):
         ffmpeg_locate.find_ffmpeg(refresh=True)
     assert os.environ['PATH'].split(os.pathsep).count(str(tmp_path)) == 1
+
+
+def test_playlists_skip_shorts_and_live_streams_as_configured(tmp_dir):
+    ydl_opts, _, _ = _opts_for(tmp_dir, {'mode': 'library', 'skip_shorts': True, 'skip_live': True})
+    skip = ydl_opts['match_filter']
+    assert skip({'id': 's', 'media_type': 'short'}, incomplete=False)
+    assert skip({'id': 'l', 'live_status': 'is_live'}, incomplete=False)
+    assert skip({'id': 'u', 'live_status': 'is_upcoming'}, incomplete=False)
+    assert skip({'id': 'v', 'media_type': 'video', 'live_status': 'not_live'}, incomplete=False) is None
+    assert skip({'id': 'r', 'media_type': 'livestream', 'live_status': 'was_live'}, incomplete=False) is None
+    # a flat playlist entry carries neither field yet
+    assert skip({'id': 'f'}, incomplete=True) is None
+
+
+def test_a_single_link_is_never_filtered(tmp_dir):
+    """What the user pasted is what they asked for, Short or not."""
+    ydl_opts, _, _ = _opts_for(tmp_dir, {'mode': 'video', 'skip_shorts': True, 'skip_live': True})
+    assert 'match_filter' not in ydl_opts
+
+
+def test_skip_settings_reach_every_download(client, tmp_dir):
+    from unittest.mock import patch
+
+    from mellow import jobs
+    from mellow.config import download_settings, load_config
+    assert download_settings(load_config())['skip_live'] is True
+    assert download_settings(load_config())['skip_shorts'] is False
+    client.post('/api/config', json={'skip_shorts': True})
+    with patch('mellow.downloader.download_video') as dl:
+        client.post('/api/download', json={'url': 'https://youtube.com/playlist?list=X', 'output_dir': tmp_dir})
+        assert jobs.manager.wait_idle(10)
+    assert dl.call_args[0][2]['skip_shorts'] is True

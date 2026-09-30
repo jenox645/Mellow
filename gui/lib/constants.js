@@ -29,6 +29,7 @@ export const LIVE_EVENTS_KEEP = 50;
 // History browser
 export const HISTORY_LIMIT = 25;
 export const HISTORY_SEARCH_DEBOUNCE_MS = 250;
+export const TEMPLATE_PREVIEW_DEBOUNCE_MS = 300;  // Config filename template → example name
 
 // yt-dlp update check on launch
 export const UPDATE_CHECK_EVERY_MS = 24 * 60 * 60 * 1000;

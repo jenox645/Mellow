@@ -91,3 +91,42 @@ def test_bad_clip_time_fails_the_download_with_a_terminal_error(tmp_path):
     assert status == 'error'
     assert not ydl.called
     assert events[-1]['status'] == 'error' and 'abc' in events[-1]['message']
+
+
+def _yt_like_formats():
+    """Separate video/audio streams, worst to best (the order yt-dlp sorts them in)."""
+    formats = [
+        {'format_id': '140', 'ext': 'm4a', 'vcodec': 'none', 'acodec': 'mp4a', 'filesize': 3_000_000},
+        {'format_id': '251', 'ext': 'webm', 'vcodec': 'none', 'acodec': 'opus', 'filesize': 3_500_000},
+        {'format_id': '134', 'ext': 'mp4', 'vcodec': 'avc1', 'acodec': 'none', 'height': 360, 'filesize': 10_000_000},
+        {'format_id': '136', 'ext': 'mp4', 'vcodec': 'avc1', 'acodec': 'none', 'height': 720, 'filesize': 30_000_000},
+        {'format_id': '137', 'ext': 'mp4', 'vcodec': 'avc1', 'acodec': 'none', 'height': 1080,
+         'filesize_approx': 60_000_000},
+    ]
+    return [{**f, 'url': f"https://media.example/{f['format_id']}"} for f in formats]
+
+
+def test_size_estimates_follow_the_download_format_selection():
+    """The Feed shows what a download will fetch: best video under the height
+    plus the m4a audio the format strings prefer."""
+    from unittest.mock import patch
+    with downloader.yt_dlp.YoutubeDL({'quiet': True}) as ydl, \
+            patch('mellow.downloader.find_ffmpeg', return_value='/usr/bin/ffmpeg'):
+        est = downloader._size_estimates(ydl, {'formats': _yt_like_formats(), 'duration': 300})
+    assert est['video']['1080p'] == 63_000_000
+    assert est['video']['720p'] == 33_000_000
+    assert est['video']['360p'] == 13_000_000
+    assert est['video']['best'] == 63_000_000
+    assert est['audio'] == 3_500_000  # bestaudio: the opus stream
+
+
+def test_size_estimates_without_ffmpeg_use_single_file_formats():
+    from unittest.mock import patch
+    formats = [*_yt_like_formats(),
+               {'format_id': '18', 'ext': 'mp4', 'vcodec': 'avc1', 'acodec': 'mp4a', 'height': 360,
+                'filesize': 12_000_000, 'url': 'https://media.example/18'}]
+    with downloader.yt_dlp.YoutubeDL({'quiet': True}) as ydl, \
+            patch('mellow.downloader.find_ffmpeg', return_value=None):
+        est = downloader._size_estimates(ydl, {'formats': formats})
+    assert est['video']['1080p'] == 12_000_000  # only the combined 360p file can be saved
+    assert est['audio'] == 3_000_000  # bestaudio[ext=m4a]

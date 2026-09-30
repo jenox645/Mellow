@@ -97,6 +97,10 @@ NO_FFMPEG_ERROR_HINT = ("Note: ffmpeg isn't installed. Sites that serve video an
                         "ffmpeg (Windows: winget install Gyan.FFmpeg) and try again.")
 
 
+# Output name when no filename template is set
+_DEFAULT_TEMPLATE = "%(title)s.%(ext)s"
+
+
 def _single_file_format(quality: str) -> str:
     height = _QUALITY_MAX_HEIGHT.get(quality)
     return f"best[height<={height}]/best" if height else "best"
@@ -451,7 +455,7 @@ def _build_ydl_opts(url: str, out_dir: Path, opts: dict, *, ffmpeg: str | None,
     start_time = _opt_str(opts, "start_time")
     end_time = _opt_str(opts, "end_time")
     embed_subs = bool(opts.get("embed_subs")) and not want_audio
-    filename_template = _opt_str(opts, "filename_template") or "%(title)s.%(ext)s"
+    filename_template = _opt_str(opts, "filename_template") or _DEFAULT_TEMPLATE
     outtmpl = str(out_dir / filename_template)
     log.debug(f"yt-dlp outtmpl={outtmpl!r} mode={mode} audio_format={audio_fmt} "
               f"quality={quality} container={container}")
@@ -561,7 +565,27 @@ def _build_ydl_opts(url: str, out_dir: Path, opts: dict, *, ffmpeg: str | None,
     # For playlist-like downloads: skip geo-blocked/failed items instead of aborting
     if playlist_items or "list=" in url or "/playlist" in url.lower():
         ydl_opts["ignoreerrors"] = True
+    if ydl_opts.get("ignoreerrors"):
+        # Playlists, channels and syncs only: a single pasted link is what the
+        # user asked for, Short or live or not
+        skip = _entry_filters(opts)
+        if skip:
+            ydl_opts["match_filter"] = yt_dlp.utils.match_filter_func(skip)
     return ydl_opts, warning
+
+
+def _entry_filters(opts: dict) -> str:
+    """yt-dlp match filter for the entries a playlist-like download skips.
+
+    "?" lets entries without the field through (other sites, flat listings).
+    A finished stream's recording (live_status "was_live") is kept.
+    """
+    parts = []
+    if opts.get("skip_shorts"):
+        parts.append("media_type!=?short")
+    if opts.get("skip_live"):
+        parts += ["live_status!=?is_live", "live_status!=?is_upcoming"]
+    return " & ".join(parts)
 
 
 def _saved_file(info: dict | None) -> dict:
@@ -802,6 +826,98 @@ def _apply_cookie_opts(ydl_opts: dict, cookie_opts: dict) -> None:
         ydl_opts["cookiefile"] = cookie_file
 
 
+class _CollectingLogger:
+    """yt-dlp logger that keeps every message (cookie loading reports what
+    it could not decrypt only as a log line)."""
+
+    def __init__(self) -> None:
+        self.lines: list[str] = []
+
+    def debug(self, msg: str) -> None:
+        self.lines.append(msg)
+
+    info = warning = error = debug
+
+
+def test_cookies(cookie_opts: dict) -> dict:
+    """Load the configured cookies the way a download would, and say what came of it.
+
+    {"ok": True, "count", "youtube", "youtube_signed_in", "undecryptable"} or
+    {"ok": False, "error"}.
+    """
+    ydl_opts: dict = {"quiet": True, "no_warnings": False}
+    _apply_cookie_opts(ydl_opts, cookie_opts)
+    if "cookiesfrombrowser" not in ydl_opts and "cookiefile" not in ydl_opts:
+        return {"ok": False, "error": "No cookie source set: pick a browser or a cookies.txt file."}
+    if "cookiefile" in ydl_opts and not Path(ydl_opts["cookiefile"]).is_file():
+        return {"ok": False, "error": f"Cookie file not found: {ydl_opts['cookiefile']}"}
+    logger = _CollectingLogger()
+    ydl_opts["logger"] = logger
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            cookies = list(ydl.cookiejar)
+    except Exception as exc:
+        # CookieLoadError says only "failed to load cookies"; the cause is chained
+        causes = [str(exc)]
+        cause = exc.__cause__ or exc.__context__
+        while cause is not None and len(causes) < 4:
+            causes.append(str(cause))
+            cause = cause.__cause__ or cause.__context__
+        return {"ok": False, "error": " — ".join(c for c in causes if c)}
+    undecryptable = 0
+    for line in logger.lines:
+        m = re.search(r"(\d+) could not be decrypted", line)
+        if m:
+            undecryptable = int(m.group(1))
+    youtube = [c for c in cookies if c.domain.endswith("youtube.com")]
+    return {
+        "ok": True,
+        "count": len(cookies),
+        "youtube": len(youtube),
+        # YouTube sets these only for a signed-in session
+        "youtube_signed_in": any(c.name in ("SID", "__Secure-3PSID", "LOGIN_INFO") for c in youtube),
+        "undecryptable": undecryptable,
+    }
+
+
+# What a filename template is previewed with in Config
+_SAMPLE_VIDEO = {
+    "id": "dQw4w9WgXcQ", "title": "Never Gonna Give You Up (Official Video)", "ext": "mp4",
+    "uploader": "Rick Astley", "channel": "Rick Astley", "upload_date": "20091025",
+    "duration": 213, "height": 1080, "resolution": "1920x1080", "extractor": "youtube",
+    "webpage_url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+    "playlist": "80s Mix", "playlist_title": "80s Mix", "playlist_index": 3, "playlist_count": 25,
+}
+
+
+def preview_filename(template: str) -> dict:
+    """{"ok": True, "example"} with a sample video's filename, or {"ok": False, "error"}.
+
+    Catches the templates that break downloads or lose files: syntax errors,
+    no %(ext)s (the file gets no extension and the vault never lists it) and
+    absolute paths (they ignore the download folder).
+    """
+    template = (template or "").strip()
+    if not template:
+        return {"ok": True, "example": _preview(_DEFAULT_TEMPLATE)}
+    error = yt_dlp.YoutubeDL.validate_outtmpl(template)
+    if error:
+        return {"ok": False, "error": f"Invalid template: {error}"}
+    if "%(ext)s" not in template:
+        return {"ok": False, "error": "The template must end with .%(ext)s, or files get no extension."}
+    if Path(template).is_absolute() or template.startswith(("/", "\\")):
+        return {"ok": False, "error": "Use a path relative to the download folder."}
+    try:
+        return {"ok": True, "example": _preview(template)}
+    except Exception as exc:
+        return {"ok": False, "error": f"Invalid template: {exc}"}
+
+
+def _preview(template: str) -> str:
+    with yt_dlp.YoutubeDL({"outtmpl": template, "windows_filenames": True, "quiet": True}) as ydl:
+        return ydl.prepare_filename(dict(_SAMPLE_VIDEO))
+
+
 def get_video_info(url: str, cookie_opts: dict | None = None) -> dict:
     ydl_opts = {
         "quiet": True,
@@ -815,9 +931,10 @@ def get_video_info(url: str, cookie_opts: dict | None = None) -> dict:
         _apply_network_opts(ydl_opts, cookie_opts)
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=False)
-    if not info:
-        return {}
-    is_playlist = info.get("_type") == "playlist" or "entries" in info
+        if not info:
+            return {}
+        is_playlist = info.get("_type") == "playlist" or "entries" in info
+        estimates = None if is_playlist else _size_estimates(ydl, info)
     playlist_count = 0
     thumbnail = info.get("thumbnail")
     if is_playlist:
@@ -838,7 +955,38 @@ def get_video_info(url: str, cookie_opts: dict | None = None) -> dict:
         "playlist_count": playlist_count,
         "id": info.get("id"),
         "webpage_url": info.get("webpage_url") or url,
+        "size_estimates": estimates,
     }
+
+
+def _size_estimates(ydl: yt_dlp.YoutubeDL, info: dict) -> dict | None:
+    """Expected download size (bytes) per video quality, and of the audio stream.
+
+    Runs yt-dlp's own format selector over the formats, with the same format
+    strings a download uses, so the estimate is for what would be fetched.
+    Sizes come from the site or from bitrate × duration; None when unknown.
+    """
+    formats = info.get("formats")
+    if not formats:
+        return None
+    ffmpeg = find_ffmpeg()
+
+    def size_of(spec: str) -> int | None:
+        try:
+            chosen = ydl._select_formats(formats, ydl.build_format_selector(spec))
+        except Exception:
+            return None
+        if not chosen:
+            return None
+        size = chosen[0].get("filesize") or chosen[0].get("filesize_approx")
+        return int(size) if size else None
+
+    video = {q: size_of(_merged_format(q, "mp4")[0] if ffmpeg else _single_file_format(q))
+             for q in QUALITY_MAP}
+    audio = size_of("bestaudio/best" if ffmpeg else NO_FFMPEG_AUDIO_FORMAT)
+    if not any(video.values()) and not audio:
+        return None
+    return {"video": video, "audio": audio}
 
 
 def get_playlist_items(url: str, cookie_opts: dict | None = None) -> list[dict]:

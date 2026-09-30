@@ -39,6 +39,11 @@ _DEFAULTS: dict = {
     "concurrent_fragments": 4,
     "sleep_interval": 0,
     "retries": 3,
+    # Playlist / channel / sync downloads only (a pasted single link is always
+    # downloaded): YouTube Shorts, and streams that are live or not started yet
+    # (those record until the stream ends, holding up the rest of a sync)
+    "skip_shorts": False,
+    "skip_live": True,
     "write_metadata": True,
     "filename_template": "",
     # Download defaults applied when the Feed has no session state yet
@@ -145,6 +150,8 @@ def download_settings(cfg: dict) -> dict:
         "concurrent_fragments": cfg.get("concurrent_fragments", 4),
         "sleep_interval": cfg.get("sleep_interval", 0),
         "retries": cfg.get("retries", 3),
+        "skip_shorts": bool(cfg.get("skip_shorts", False)),
+        "skip_live": bool(cfg.get("skip_live", True)),
     }
 
 

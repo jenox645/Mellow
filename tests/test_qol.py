@@ -130,3 +130,59 @@ def test_fileless_success_rows_do_not_count_as_already_downloaded(tmp_dir):
     analytics.record_download({'url': url, 'status': 'success', 'file_path': None})  # older builds
     prev = analytics.find_previous_download([url], 'bbbbbbbbbbb')
     assert prev['file_path'] == str(f) and prev['exists'] is True
+
+
+def _cookie_file(tmp_dir, lines):
+    p = Path(tmp_dir) / 'cookies.txt'
+    p.write_text('# Netscape HTTP Cookie File\n' + ''.join(
+        f'{domain}\tTRUE\t/\tTRUE\t2147483647\t{name}\tv\n' for domain, name in lines))
+    return str(p)
+
+
+def test_cookie_test_reads_a_cookies_txt(client, tmp_dir):
+    path = _cookie_file(tmp_dir, [('.youtube.com', 'SID'), ('.youtube.com', 'PREF'), ('.example.com', 'a')])
+    r = client.post('/api/cookies/test', json={'cookies_browser': 'none', 'cookies_file': path})
+    assert r.status_code == 200
+    assert r.get_json() == {'ok': True, 'count': 3, 'youtube': 2, 'youtube_signed_in': True,
+                            'undecryptable': 0}
+
+
+def test_cookie_test_explains_a_missing_browser(client, tmp_dir):
+    # A machine without Firefox: its profile folder search finds nothing
+    with patch('yt_dlp.cookies._firefox_browser_dirs', return_value=[tmp_dir]):
+        r = client.post('/api/cookies/test', json={'cookies_browser': 'firefox'})
+    data = r.get_json()
+    assert r.status_code == 400
+    assert 'could not find firefox cookies database' in data['error']
+    assert data['code'] == 'cookies_not_found' and data['hint']
+
+
+def test_cookie_test_without_a_source_or_with_a_missing_file(client, tmp_dir):
+    r = client.post('/api/cookies/test', json={'cookies_browser': 'none', 'cookies_file': ''})
+    assert r.status_code == 400 and 'No cookie source' in r.get_json()['error']
+    r = client.post('/api/cookies/test', json={'cookies_file': str(Path(tmp_dir) / 'nope.txt')})
+    assert r.status_code == 400 and 'not found' in r.get_json()['error']
+
+
+@pytest.mark.parametrize('raw,code', [
+    ('ERROR: Could not copy Chrome cookie database. See  https://github.com/yt-dlp/yt-dlp/issues/7271', 'cookies_locked'),
+    ('failed to load cookies — could not find chrome cookies database in "/x"', 'cookies_not_found'),
+    ('Extracted 12 cookies from edge (40 could not be decrypted)', 'cookies_encrypted'),
+    ('ERROR: failed to load cookies', 'cookies'),
+])
+def test_cookie_errors_are_explained(raw, code):
+    assert errors.explain(raw)['code'] == code
+
+
+@pytest.mark.parametrize('template,ok,shown', [
+    ('', True, 'Never Gonna Give You Up (Official Video).mp4'),
+    ('%(uploader)s/%(playlist_index)03d - %(title)s.%(ext)s', True, '003 - Never Gonna'),
+    ('%(title)s', False, 'must end with .%(ext)s'),
+    ('/music/%(title)s.%(ext)s', False, 'relative to the download folder'),
+    ('%(title.%(ext)s', False, 'Invalid template'),
+])
+def test_filename_template_preview(client, template, ok, shown):
+    r = client.post('/api/filename-preview', json={'template': template})
+    data = r.get_json()
+    assert data['ok'] is ok and r.status_code == (200 if ok else 400)
+    assert shown in (data.get('example') or data.get('error'))

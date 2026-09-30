@@ -309,6 +309,22 @@ def api_config_post() -> Response:
     return jsonify({"ok": True})
 
 
+@app.route("/api/cookies/test", methods=["POST"])
+def api_cookies_test() -> Response:
+    """Load cookies with the settings in the request (the unsaved Config form)."""
+    data = request.get_json(force=True) or {}
+    result = downloader.test_cookies(request_settings(data))
+    if not result["ok"]:
+        return jsonify({**result, **(errors.explain(result["error"]) or {})}), 400
+    return jsonify(result)
+
+
+@app.route("/api/filename-preview", methods=["POST"])
+def api_filename_preview() -> Response:
+    result = downloader.preview_filename((request.get_json(force=True) or {}).get("template", ""))
+    return jsonify(result), 200 if result["ok"] else 400
+
+
 @app.route("/api/config/reset", methods=["POST"])
 def api_config_reset() -> Response:
     return jsonify(reset_settings())

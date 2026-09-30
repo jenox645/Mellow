@@ -82,10 +82,13 @@ All job-originated events carry `job_id`, `job_type`, `job_label` (multi-worker 
 - Stats polling: 3s during active download, 30s idle (frontend constants)
 - Format lists (qualities, containers, audio formats, bitrates) live only in `gui/lib/constants.js`
 - A vault folder's sync format: request → `vault_sync_formats[path]` (last choice, saved by the sync dialog and the Feed's vault link) → its library entry → `infer_folder_format()` (what the files are). Auto-sync and "sync all" send no format, so this chain decides them
-- Every yt-dlp call (analyze, playlist items, mirror preview, downloads) goes through `_apply_cookie_opts` + `_apply_network_opts` (proxy, `force_ipv4`, socket timeout); build them with `server._request_opts(cfg)`
+- Every yt-dlp call (analyze, playlist items, mirror preview, cookie test, downloads) goes through `_apply_cookie_opts` + `_apply_network_opts` (proxy, `force_ipv4`, socket timeout); build them with `config.request_settings(cfg)`
 - Mirror preview proposes no deletions when any linked playlist failed to load; ids for "%(title)s"-named files come from the download history
 - Sidecar thumbnails share the media file's full stem (`p.parent / (p.stem + ".jpg")`), never `with_suffix("")`
 - `/api/info` returns `previous_download` for single videos (history match by URL or YouTube id); `/api/download` returns `disk_warning` when the target drive is low
+- `/api/info` also returns `size_estimates` for single videos (`{video: {quality: bytes}, audio: bytes}`), computed by running yt-dlp's own format selector with the download's format strings; the Feed turns it into "≈ size" (`util.estimateDownloadBytes`) and flags a file that won't fit the drive
+- `skip_shorts` / `skip_live` (config, copied by `download_settings`) become a yt-dlp `match_filter` only on playlist-like runs (`ignoreerrors`); a single pasted link is never filtered
+- `/api/cookies/test` loads cookies from the request's (unsaved) settings; `/api/filename-preview` validates a template and names a sample video with it. Cookie failures are explained by `errors.py` (`cookies_locked` / `cookies_encrypted` / `cookies_not_found`)
 - Victory overlay at App root (outside all page components), z-index 9999
 - Every job must end in exactly one terminal event (`complete`/`error`/`cancelled`) — the UI has no timeout; `jobs._worker` pushes `error` if a job crashes
 - `jobs.run_job` holds back each downloader run's terminal event and emits the job's one terminal itself: with several URLs, a failed one becomes `item_failed` + a `warning` on `complete` (all failed → one `error`)

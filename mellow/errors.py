@@ -16,6 +16,27 @@ OPEN_CONFIG = "open_config"
 
 # First match wins, so specific causes come before generic ones
 _RULES: list[tuple[str, str, str, str, str | None]] = [
+    (r"could not copy chrome cookie database|cookies?\.sqlite.{0,40}locked|database is locked",
+     "cookies_locked",
+     "The browser is holding on to its cookies",
+     "Close the browser completely (also from the system tray), then try again — or use Firefox.",
+     OPEN_CONFIG),
+    (r"could not be decrypted|failed to decrypt|dpapi|app.bound",
+     "cookies_encrypted",
+     "The browser's cookies are encrypted",
+     "Chrome and Edge lock their cookies away from other apps. Use Firefox, or export a "
+     "cookies.txt with a browser extension and choose it in Config → Authentication.",
+     OPEN_CONFIG),
+    (r"could not find \S+ cookies database|could not find (safari|firefox) cookies|"
+     r"could not find firefox container",
+     "cookies_not_found",
+     "No cookies found for that browser",
+     "Check the browser and profile in Config → Authentication, or point it at a cookies.txt file.",
+     OPEN_CONFIG),
+    (r"failed to load cookies|unsupported browser", "cookies",
+     "Couldn't load the cookies",
+     "Check Config → Authentication (TEST shows what's wrong).",
+     OPEN_CONFIG),
     (r"sign in to confirm|not a bot", "bot_check",
      "YouTube wants a sign-in to confirm you're not a bot",
      "Set Cookies from browser in Config (a browser where you're logged in to YouTube), or try again later.",

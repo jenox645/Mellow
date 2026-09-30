@@ -61,3 +61,35 @@ export function platformTagClass(platform) {
   return 'platform-tag default';
 }
 
+
+// "90", "1:30" or "1:01:30" → seconds; null when unreadable
+export function parseClock(s) {
+  const t = String(s || '').trim();
+  if (!t) return null;
+  if (!/^\d+(\.\d+)?$|^\d+:\d{1,2}(\.\d+)?$|^\d+:\d{1,2}:\d{1,2}(\.\d+)?$/.test(t)) return null;
+  return t.split(':').reduce((acc, part) => acc * 60 + parseFloat(part), 0);
+}
+
+// Rough output size of a single-video download, from /api/info's
+// size_estimates (what yt-dlp would fetch). Converted audio is sized by its
+// bitrate; lossless targets by their typical rate. Scaled down for a clip.
+// null when the site gave nothing to go on.
+export function estimateDownloadBytes(info, { mode, quality, audioFmt, audioQuality, startTime, endTime }) {
+  const est = info && info.size_estimates;
+  if (!est) return null;
+  const duration = info.duration || 0;
+  let bytes;
+  if (mode === 'audio') {
+    const kbps = audioFmt === 'wav' ? 1411 : audioFmt === 'flac' ? 900 : parseInt(audioQuality, 10);
+    bytes = kbps && duration ? duration * kbps * 125 : est.audio;
+  } else {
+    bytes = est.video && est.video[quality];
+  }
+  if (!bytes) return null;
+  const start = parseClock(startTime), end = parseClock(endTime);
+  if (duration && (start !== null || end !== null)) {
+    const span = Math.min(end !== null ? end : duration, duration) - Math.max(start || 0, 0);
+    if (span > 0) bytes = bytes * span / duration;
+  }
+  return bytes;
+}
