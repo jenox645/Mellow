@@ -25,13 +25,13 @@ Personal desktop GUI for [yt-dlp](https://github.com/yt-dlp/yt-dlp). Download au
 ## Features
 
 - **Feed**: paste a URL, analyze it, pick format/quality, download. Supports videos, playlists, audio-only, and multi-URL batch jobs.
-- **Queue**: serial download jobs with live progress (speed, ETA, per-item thumbnails). Pause, resume, or cancel mid-download.
+- **Queue**: download jobs with live progress (speed, ETA, per-item thumbnails). Pause, resume, reorder, or cancel; run up to 3 at once (`download_workers`, default 1).
 - **Vault**: browse your local media library by folder. Thumbnail previews, file stats, direct media player launch.
 - **Library sync**: link a vault folder to a playlist URL. Add-only or mirror mode (deletes local files no longer in the playlist).
 - **Archive file**: `mellow_archive.txt` per folder tracks downloaded URLs so yt-dlp skips duplicates. Auto-updated on download, sync, and delete. Import in Feed to reproduce the same library on another device.
 - **Analytics**: download history with stats by platform, format, and uploader. CSV export and custom SQL.
 - **Cookies**: pull cookies from your browser for age-restricted content.
-- **yt-dlp self-update**: update yt-dlp from the Config page without rebuilding.
+- **yt-dlp self-update**: update yt-dlp from the Config page when running from source (takes effect after a restart). The packaged `.exe` can't replace its bundled copy — see Limitations.
 
 Formats: MP4, MKV, WebM, MP3, FLAC, M4A, OGG, Opus / Quality: best, 4K, 1080p, 720p, 480p, 360p, 128k, 320k.
 
@@ -41,7 +41,7 @@ Formats: MP4, MKV, WebM, MP3, FLAC, M4A, OGG, Opus / Quality: best, 4K, 1080p, 7
 
 | Layer | Tech |
 |---|---|
-| Backend | Python 3.11+, Flask, yt-dlp |
+| Backend | Python 3.12+, Flask, yt-dlp |
 | Frontend | React (UMD, no npm), esbuild |
 | Desktop window | FlaskWebGUI (Tkinter) |
 
@@ -49,21 +49,35 @@ Formats: MP4, MKV, WebM, MP3, FLAC, M4A, OGG, Opus / Quality: best, 4K, 1080p, 7
 
 ## Requirements
 
-- Python 3.11+
-- [ffmpeg](https://ffmpeg.org/)
+- Python 3.12+ (flaskwebgui uses 3.12-only syntax)
+- [ffmpeg](https://ffmpeg.org/) — see below, it is not optional in practice
 - Node.js + esbuild (build step only)
 - **Linux:** `python3-tk` (`sudo apt install python3-tk`)
+
+### ffmpeg
+
+ffmpeg does the merging, converting, trimming and embedding. It is **not bundled**; install it once:
+
+| OS | Command |
+|---|---|
+| Windows | `winget install Gyan.FFmpeg` |
+| macOS | `brew install ffmpeg` |
+| Linux | `sudo apt install ffmpeg` |
+
+MellowDLP looks on `PATH`, next to the app (`ffmpeg/`), and in the usual winget / Chocolatey / Scoop / Homebrew folders, so a fresh install is picked up without restarting. For any other location set `"ffmpeg_location"` in `~/.mellow_dlp.json` to the binary or its folder. The status bar shows whether it was found.
+
+Without ffmpeg the app still runs, with limits it tells you about: audio is saved in its original format (usually `.m4a`) instead of being converted, and sites that serve video and audio as separate streams (YouTube) cannot be saved as video at all.
 
 ---
 
 ## Installation
 
-**Windows** — download the `.exe` installer from Releases. ffmpeg is bundled.
+**Windows** — download the `.exe` installer from Releases, then install ffmpeg (above).
 
 **Linux:**
 ```bash
-git clone https://github.com/jenox645/MellowDLP
-cd MellowDLP
+git clone https://github.com/jenox645/Mellow
+cd Mellow
 bash setup.sh
 ./dist/MellowDLP
 ```
@@ -84,11 +98,9 @@ npm install -g esbuild
 python3 build_setup.py
 ```
 
-Rebuild frontend only (after editing `gui/app.jsx` or `gui/index.html`):
+Rebuild frontend only (after editing anything under `gui/`):
 ```bash
-esbuild gui/app.jsx --outfile=static/app.bundle.js --bundle=false --loader:.jsx=jsx \
-  --target=es2017 --jsx=transform --jsx-factory=React.createElement --jsx-fragment=React.Fragment
-cp gui/index.html static/index.html
+python build_setup.py --frontend-only
 ```
 
 Run without building a binary:
@@ -101,14 +113,20 @@ python3 main.py
 ## Tests
 
 ```bash
-python -m pytest tests/ -v
+pip install -r requirements.txt -r requirements-dev.txt
+python -m pytest tests/ -m "not e2e and not slow"
+ruff check .
 ```
+
+Tests never touch your real config, database or queue — every test runs against a temp folder. The `e2e` and `slow` markers download from real sites and are run by hand.
+
+`python scripts/canary.py` checks that extraction still works against live sites; CI runs it weekly on the yt-dlp pre-release.
 
 ---
 
 ## Limitations
 
-- One download at a time (serial queue, no parallelism).
+- ffmpeg must be installed separately (see Requirements).
 - No auto-update for MellowDLP itself — pull and rebuild manually.
 - Desktop window uses Tkinter via FlaskWebGUI, not a real browser engine.
-- yt-dlp can break when platforms change their APIs — update it from the Config page.
+- yt-dlp breaks whenever platforms change their APIs (a copy a few months old gets `HTTP Error 403` on most YouTube downloads). From source, update it on the Config page or with `pip install -U yt-dlp` and restart. The packaged `.exe` freezes yt-dlp at build time, so it needs a rebuild to get a newer one.

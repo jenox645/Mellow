@@ -14,8 +14,9 @@ def test_post_config_persists(client):
 
 
 def test_config_rejects_non_json(client):
+    # text/plain is what a cross-origin "simple" POST sends — must be rejected
     r = client.post('/api/config', data='bad', content_type='text/plain')
-    assert r.status_code in (200, 400)
+    assert r.status_code == 415
 
 
 def test_config_retries_field(client):

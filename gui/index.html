@@ -396,10 +396,12 @@
     .notif{position:fixed;top:54px;right:18px;background:var(--bg2);border:1px solid var(--border2);border-left:3px solid var(--cyan);padding:10px 14px;width:270px;z-index:2000;animation:notif-in 0.3s ease-out}
     .notif.error{border-left-color:var(--red)}
     .notif.success{border-left-color:var(--green)}
+    .notif.warn{border-left-color:var(--amber)}
     @keyframes notif-in{from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1}}
     .notif-title{font-family:'Oxanium',sans-serif;font-size:12px;font-weight:600;color:var(--cyan);margin-bottom:3px}
     .notif.error .notif-title{color:var(--red)}
     .notif.success .notif-title{color:var(--green)}
+    .notif.warn .notif-title{color:var(--amber)}
     .notif-body{font-family:'Share Tech Mono',monospace;font-size:9.5px;color:var(--t2)}
     /* MISC */
     .deco-line{height:1px;background:linear-gradient(90deg,transparent,var(--cyan),transparent);opacity:0.2;margin:18px 0}

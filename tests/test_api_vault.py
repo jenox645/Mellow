@@ -57,9 +57,10 @@ def test_vault_play_files_opens(client, tmp_dir):
 
 
 def test_vault_thumb_unicode_filename(client, tmp_dir):
-    """Thumb endpoint must handle filenames with ⧸, ：, quotes, and Japanese characters."""
-    # Create a fake video file and sidecar jpg with special Unicode name
-    tricky = '「天使のテーゼ」⧸Zankoku na Tenshi no Te-ze "Thesis".mp4'
+    """Thumb endpoint must handle filenames with ⧸, ＂ and Japanese characters."""
+    # The lookalikes yt-dlp's windows_filenames writes in place of / and " —
+    # a plain ASCII quote is not a legal filename character on Windows.
+    tricky = '「天使のテーゼ」⧸Zankoku na Tenshi no Te-ze ＂Thesis＂.mp4'
     vpath = os.path.join(tmp_dir, tricky)
     jpath = os.path.join(tmp_dir, tricky.replace('.mp4', '.jpg'))
     open(vpath, 'w').close()

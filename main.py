@@ -1,12 +1,23 @@
 from __future__ import annotations
 
+import atexit
+import json
 import socket
 import sys
+import webbrowser
 from pathlib import Path
+from urllib.request import urlopen
 
 from flaskwebgui import FlaskUI
 
 from server import init_app
+
+WINDOW_WIDTH = 1100
+WINDOW_HEIGHT = 780
+INSTANCE_PROBE_TIMEOUT_SECS = 2
+
+# Written on startup with the live port; lets a second launch find us
+PORT_FILE = Path.home() / ".mellow_dlp.port"
 
 
 def _find_free_port() -> int:
@@ -16,9 +27,54 @@ def _find_free_port() -> int:
         return s.getsockname()[1]
 
 
+def _running_instance_url() -> str | None:
+    """URL of an already-running MellowDLP, or None.
+
+    The port file may be stale (crash, reboot) — only trust it if the
+    server there answers /api/system with our app_version marker.
+    """
+    try:
+        port = int(PORT_FILE.read_text(encoding="utf-8").strip())
+    except (OSError, ValueError):
+        return None
+    url = f"http://127.0.0.1:{port}"
+    try:
+        with urlopen(f"{url}/api/system", timeout=INSTANCE_PROBE_TIMEOUT_SECS) as resp:
+            payload = json.loads(resp.read().decode())
+        if "app_version" in payload:
+            return url
+    except Exception:
+        pass
+    return None
+
+
+def _write_port_file(port: int) -> None:
+    try:
+        PORT_FILE.write_text(str(port), encoding="utf-8")
+        atexit.register(_remove_port_file)
+    except OSError:
+        pass
+
+
+def _remove_port_file() -> None:
+    try:
+        PORT_FILE.unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
 def main() -> None:
+    # Single-instance guard: a second launch opens the existing UI instead of
+    # spawning a duplicate server + window.
+    existing = _running_instance_url()
+    if existing:
+        print(f"MellowDLP is already running at {existing} — opening it.")
+        webbrowser.open(existing)
+        sys.exit(0)
+
     flask_app = init_app()
     port = _find_free_port()
+    _write_port_file(port)
 
     static_dir = Path(__file__).parent / "static"
     if not static_dir.exists():
@@ -30,8 +86,8 @@ def main() -> None:
         app=flask_app,
         server="flask",
         port=port,
-        width=1100,
-        height=780,
+        width=WINDOW_WIDTH,
+        height=WINDOW_HEIGHT,
     )
     ui.run()
 

@@ -12,9 +12,17 @@ from urllib.parse import quote
 
 import analytics
 from constants import (
-    IMAGE_EXTS, MEDIA_EXTS,
-    THUMB_PREVIEW_LIMIT, FILE_THUMBS_LIMIT, VIDEO_EXTS,
+    FILE_THUMBS_LIMIT,
+    IMAGE_EXTS,
+    M3U8_TEMP_MAX_AGE_SECS,
+    MEDIA_EXTS,
+    THUMB_FFMPEG_SEEK_SECS,
+    THUMB_FFMPEG_TIMEOUT_SECS,
+    THUMB_FFMPEG_WIDTH,
+    THUMB_PREVIEW_LIMIT,
+    VIDEO_EXTS,
 )
+from ffmpeg_locate import find_ffmpeg
 
 # Matches yt-dlp's YouTube ID embedded in filenames: [dQw4w9WgXcW]
 _YT_ID_RE = _re.compile(r'\[([A-Za-z0-9_-]{11})\]')
@@ -27,7 +35,7 @@ _VLC_PATHS = [
     "/usr/bin/vlc",
     "/usr/local/bin/vlc",
     "/snap/bin/vlc",
-    "/flatpak/exports/bin/org.videolan.VLC",
+    "/var/lib/flatpak/exports/bin/org.videolan.VLC",
 ]
 _MPV_PATHS = [
     "/usr/bin/mpv",
@@ -164,6 +172,29 @@ def list_folder_files(path: str) -> list[dict]:
 
 # ── Thumbnail serving ─────────────────────────────────────────────────────────
 
+def _generate_video_thumb(video: Path, sidecar: Path) -> bool:
+    """Extract a frame as a cached sidecar .jpg for files with no thumbnail."""
+    ffmpeg = find_ffmpeg()
+    if not ffmpeg:
+        return False
+    scale = f"scale={THUMB_FFMPEG_WIDTH}:-1"
+    try:
+        kw: dict = {"capture_output": True, "timeout": THUMB_FFMPEG_TIMEOUT_SECS}
+        if os.name == "nt":
+            kw["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+        result = subprocess.run(
+            [ffmpeg, "-ss", str(THUMB_FFMPEG_SEEK_SECS), "-i", str(video), "-frames:v", "1",
+             "-vf", scale, "-q:v", "4", "-y", str(sidecar)], **kw)
+        if result.returncode != 0 or not sidecar.exists() or sidecar.stat().st_size == 0:
+            # Short clips: retry from the start
+            result = subprocess.run(
+                [ffmpeg, "-i", str(video), "-frames:v", "1",
+                 "-vf", scale, "-q:v", "4", "-y", str(sidecar)], **kw)
+        return result.returncode == 0 and sidecar.exists() and sidecar.stat().st_size > 0
+    except Exception:
+        return False
+
+
 def get_thumb_bytes(path: str) -> tuple[bytes, str] | None:
     """Return (raw_bytes, mime_type) for a thumbnail, or None if not found."""
     p = Path(path)
@@ -181,6 +212,15 @@ def get_thumb_bytes(path: str) -> tuple[bytes, str] | None:
         if thumb.exists():
             try:
                 return thumb.read_bytes(), _mime_for_ext(ext)
+            except Exception:
+                return None
+    # No sidecar (pre-existing file / watched folder): generate one frame with
+    # ffmpeg on demand and cache it as the .jpg sidecar.
+    if p.suffix.lower() in VIDEO_EXTS:
+        sidecar = base.with_suffix(".jpg")
+        if _generate_video_thumb(p, sidecar):
+            try:
+                return sidecar.read_bytes(), "image/jpeg"
             except Exception:
                 return None
     return None
@@ -258,28 +298,43 @@ def resolve_file_thumbs(paths: list[str], get_conn: Callable) -> dict[str, str]:
 
 def get_folder_stats(path: str, linked_playlists: list) -> dict:
     p = Path(path)
-    all_files = [f for f in p.rglob("*") if f.is_file() and not f.name.startswith(".")]
-    media_files = [f for f in all_files if f.suffix.lower() in MEDIA_EXTS]
-    total_size = sum(f.stat().st_size for f in media_files if f.exists())
-    video_count = sum(1 for f in media_files if f.suffix.lower() in VIDEO_EXTS)
-    audio_count = len(media_files) - video_count
+    # Single pass: stat() each file once (rglob over network/WSL mounts is
+    # slow, and the previous version statted every file 3-4 times).
+    file_count = 0
+    media: list[tuple[str, int, float, str]] = []  # (name, size, mtime, ext)
+    try:
+        for f in p.rglob("*"):
+            if not f.is_file() or f.name.startswith("."):
+                continue
+            file_count += 1
+            ext = f.suffix.lower()
+            if ext in MEDIA_EXTS:
+                try:
+                    st = f.stat()
+                except OSError:
+                    continue
+                media.append((f.name, st.st_size, st.st_mtime, ext))
+    except PermissionError:
+        pass
+    total_size = sum(m[1] for m in media)
+    video_count = sum(1 for m in media if m[3] in VIDEO_EXTS)
+    audio_count = len(media) - video_count
     format_counts: dict = {}
-    for f in media_files:
-        ext = f.suffix.lower().lstrip(".")
+    for m in media:
+        ext = m[3].lstrip(".")
         if ext:
             format_counts[ext] = format_counts.get(ext, 0) + 1
-    sizes = [(f.stat().st_size, f) for f in media_files if f.exists()]
-    sizes.sort(key=lambda x: x[0], reverse=True)
-    avg_size = int(total_size / len(sizes)) if sizes else 0
-    largest = {"name": sizes[0][1].name, "size": sizes[0][0]} if sizes else None
-    smallest = {"name": sizes[-1][1].name, "size": sizes[-1][0]} if sizes else None
-    mtimes = [(f.stat().st_mtime, f) for f in media_files if f.exists()]
-    newest = {"name": max(mtimes, key=lambda x: x[0])[1].name, "ts": max(mtimes, key=lambda x: x[0])[0]} if mtimes else None
-    oldest = {"name": min(mtimes, key=lambda x: x[0])[1].name, "ts": min(mtimes, key=lambda x: x[0])[0]} if mtimes else None
+    by_size = sorted(media, key=lambda m: m[1], reverse=True)
+    avg_size = int(total_size / len(media)) if media else 0
+    largest = {"name": by_size[0][0], "size": by_size[0][1]} if by_size else None
+    smallest = {"name": by_size[-1][0], "size": by_size[-1][1]} if by_size else None
+    by_mtime = sorted(media, key=lambda m: m[2])
+    newest = {"name": by_mtime[-1][0], "ts": by_mtime[-1][2]} if by_mtime else None
+    oldest = {"name": by_mtime[0][0], "ts": by_mtime[0][2]} if by_mtime else None
     return {
         "path": str(p),
-        "file_count": len(all_files),
-        "media_count": len(media_files),
+        "file_count": file_count,
+        "media_count": len(media),
         "video_count": video_count,
         "audio_count": audio_count,
         "total_size_bytes": total_size,
@@ -311,37 +366,44 @@ def get_mirror_preview(path: str, vp: list[str]) -> dict:
             print(f"[MIRROR-PREVIEW] failed to fetch {playlist_url}: {exc}", flush=True)
 
     p = Path(path)
-    local_ids: dict[str, str] = {}
+    # IDs backed by an actual file on disk (deletable) vs archive-only IDs
+    # (no file — listing them as deletable produced size-0 phantom entries).
+    file_ids: dict[str, str] = {}
     for f in p.iterdir():
         if not f.is_file() or f.suffix.lower() not in MEDIA_EXTS:
             continue
         m = _re.search(r'\[([A-Za-z0-9_-]{11})\]', f.name)
         if m:
-            local_ids[m.group(1)] = f.name
+            file_ids[m.group(1)] = f.name
+    archive_ids: set[str] = set()
     for archive_file in [p / "mellow_archive.txt", *p.glob(".mellow_archive_*.txt")]:
         if not archive_file.exists():
             continue
         try:
             for line in archive_file.read_text(encoding="utf-8", errors="ignore").splitlines():
                 parts = line.strip().split()
-                if len(parts) == 2:
-                    local_ids.setdefault(parts[1], parts[1])
+                # Only youtube entries can be matched against YouTube playlist IDs
+                if len(parts) == 2 and parts[0].lower() == "youtube":
+                    archive_ids.add(parts[1])
         except Exception:
             pass
 
     to_delete = []
-    for vid_id, fname in local_ids.items():
-        if vid_id not in playlist_ids and playlist_ids:
-            f_path = p / fname
-            size = f_path.stat().st_size if f_path.exists() else 0
-            to_delete.append({
-                "path": str(f_path) if f_path.exists() else fname,
-                "name": fname, "size": size, "video_id": vid_id,
-            })
+    if playlist_ids:
+        for vid_id, fname in file_ids.items():
+            if vid_id not in playlist_ids:
+                f_path = p / fname
+                if not f_path.exists():
+                    continue
+                to_delete.append({
+                    "path": str(f_path),
+                    "name": fname, "size": f_path.stat().st_size, "video_id": vid_id,
+                })
+    known_ids = set(file_ids) | archive_ids
     return {
         "to_delete": to_delete,
-        "to_add_count": len(playlist_ids - set(local_ids.keys())),
-        "unchanged_count": len(playlist_ids & set(local_ids.keys())),
+        "to_add_count": len(playlist_ids - known_ids),
+        "unchanged_count": len(playlist_ids & known_ids),
         "playlist_count": len(vp),
         "playlist_ids_found": len(playlist_ids),
     }
@@ -455,11 +517,104 @@ def generate_archive(folder: str, prune: bool = False) -> dict:
     return {"ok": True, "path": str(archive_path), "migrated": migrated, "backfilled": backfilled, "pruned": pruned}
 
 
+# ── Storage budget ────────────────────────────────────────────────────────────
+
+def get_cleanup_candidates(path: str, budget_bytes: int) -> dict:
+    """When a folder exceeds its budget, suggest files to free the overage.
+
+    Suggestion order: oldest first, ties broken by size (largest first).
+    Never deletes anything — the UI presents the list for manual action.
+    """
+    p = Path(path)
+    files: list[dict] = []
+    total = 0
+    try:
+        for f in p.rglob("*"):
+            if not f.is_file() or f.name.startswith(".") or f.suffix.lower() not in MEDIA_EXTS:
+                continue
+            try:
+                st = f.stat()
+            except OSError:
+                continue
+            total += st.st_size
+            files.append({"path": str(f), "name": f.name,
+                          "size": st.st_size, "mtime": st.st_mtime})
+    except PermissionError:
+        pass
+
+    over = total - budget_bytes
+    candidates: list[dict] = []
+    if over > 0:
+        files.sort(key=lambda x: (x["mtime"], -x["size"]))
+        freed = 0
+        for f in files:
+            if freed >= over:
+                break
+            candidates.append(f)
+            freed += f["size"]
+    return {
+        "path": str(p),
+        "total_bytes": total,
+        "budget_bytes": budget_bytes,
+        "over_bytes": max(0, over),
+        "candidates": candidates,
+    }
+
+
+# ── Duplicate finder ──────────────────────────────────────────────────────────
+
+def find_duplicates(folders: list[str]) -> list[dict]:
+    """Scan vault folders for files sharing the same [videoID] across paths.
+
+    Returns groups sorted by wasted bytes; each group lists every copy so the
+    UI can offer to delete the smaller ones.
+    """
+    by_id: dict[str, list[dict]] = {}
+    seen_paths: set[str] = set()
+    for folder in folders:
+        p = Path(folder)
+        if not p.is_dir():
+            continue
+        try:
+            for f in p.iterdir():
+                if not f.is_file() or f.suffix.lower() not in MEDIA_EXTS:
+                    continue
+                key = str(f)
+                if key in seen_paths:
+                    continue
+                seen_paths.add(key)
+                m = _YT_ID_RE.search(f.name)
+                if not m:
+                    continue
+                try:
+                    size = f.stat().st_size
+                except OSError:
+                    continue
+                by_id.setdefault(m.group(1), []).append(
+                    {"path": key, "name": f.name, "folder": str(p), "size": size})
+        except PermissionError:
+            continue
+    groups = []
+    for vid_id, copies in by_id.items():
+        if len(copies) < 2:
+            continue
+        copies.sort(key=lambda c: c["size"], reverse=True)
+        groups.append({
+            "video_id": vid_id,
+            "copies": copies,
+            # Everything except the largest copy is reclaimable
+            "wasted_bytes": sum(c["size"] for c in copies[1:]),
+        })
+    groups.sort(key=lambda g: g["wasted_bytes"], reverse=True)
+    return groups
+
+
 # ── Media player launch ───────────────────────────────────────────────────────
 
 def launch_playlist(paths: list[str], open_file_fn: Callable[[str], None]) -> str:
     """Open media files in a player. Returns method name used."""
-    import tempfile, shutil
+    import shutil
+    import tempfile
     valid = [p for p in paths if Path(p).exists()]
     if not valid:
         return "no_files"
@@ -491,9 +646,20 @@ def launch_playlist(paths: list[str], open_file_fn: Callable[[str], None]) -> st
         ).start()
         return "mpc_direct"
 
+    # Sweep playlist temp files older than a day before writing a new one
+    tmp_dir = Path(tempfile.gettempdir())
+    try:
+        import time as _time
+        cutoff = _time.time() - M3U8_TEMP_MAX_AGE_SECS
+        for old in tmp_dir.glob("mellow_*.m3u8"):
+            if old.stat().st_mtime < cutoff:
+                old.unlink(missing_ok=True)
+    except OSError:
+        pass
+
     lines = ["#EXTM3U"] + [p.replace("\\", "/") for p in valid]
     content = "\n".join(lines)
-    with tempfile.NamedTemporaryFile(mode="wb", suffix=".m3u8", delete=False) as f:
+    with tempfile.NamedTemporaryFile(mode="wb", prefix="mellow_", suffix=".m3u8", delete=False) as f:
         f.write(b"\xef\xbb\xbf" + content.encode("utf-8"))
         temp_path = f.name
     threading.Thread(target=open_file_fn, args=(temp_path,), daemon=True).start()
@@ -505,12 +671,13 @@ def launch_playlist(paths: list[str], open_file_fn: Callable[[str], None]) -> st
 def build_sync_opts(data: dict, lib: dict | None, cfg: dict) -> dict:
     """Build a yt-dlp opts dict for a vault sync request."""
     q = data.get("quality") or (lib["quality"] if lib else cfg.get("quality_default", "1080p"))
+    lib_is_audio = bool(lib) and (lib.get("mode") or "").upper() == "AUDIO"
     return {
         "mode": "library",
         "quality": q,
-        "container": (data.get("container") or "mp4").lower(),
-        "sync_audio": data.get("sync_audio", False),
-        "audio_format": data.get("audio_format", "mp3"),
+        "container": (data.get("container") or (lib or {}).get("container") or "mp4").lower(),
+        "sync_audio": data.get("sync_audio", lib_is_audio),
+        "audio_format": (data.get("audio_format") or (lib or {}).get("audio_format") or "mp3").lower(),
         "embed_thumbnail": data.get("embed_thumbnail", lib["embed_thumbnail"] if lib else cfg.get("embed_thumbnail", True)),
         "embed_chapters": data.get("embed_chapters", lib["embed_chapters"] if lib else True),
         "embed_metadata": data.get("embed_metadata", lib["embed_metadata"] if lib else True),

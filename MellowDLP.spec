@@ -35,6 +35,7 @@ a = Analysis(
         "click",
         "itsdangerous",
         "duckdb",
+        "mutagen",
         "analytics",
     ] + (["tkinter", "tkinter.filedialog"] if _has_tkinter else []),
     hookspath=[],

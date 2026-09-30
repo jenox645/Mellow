@@ -1,0 +1,34 @@
+name: yt-dlp canary
+
+# Weekly check that the app's extraction paths still work against the
+# latest (pre-release) yt-dlp — find out about extractor breakage before
+# a user does. Fails loudly; does not block normal CI.
+#
+# scripts/canary.py separates "yt-dlp broke" (fails the run) from "the site
+# refused this runner" (warning only): GitHub's datacenter IPs regularly hit
+# bot checks and login walls that say nothing about the app.
+
+on:
+  schedule:
+    - cron: "0 6 * * 1" # Mondays 06:00 UTC
+  workflow_dispatch:
+
+jobs:
+  canary:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install deps with yt-dlp pre-release
+        run: |
+          pip install -r requirements.txt
+          pip install --upgrade --pre yt-dlp
+
+      - name: Show yt-dlp version
+        run: python -c "import yt_dlp; print(yt_dlp.version.__version__)"
+
+      - name: Probe stable URLs through the app's downloader
+        run: python scripts/canary.py

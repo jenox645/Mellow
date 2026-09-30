@@ -1,4 +1,5 @@
 import pytest
+
 import downloader
 
 PLAYLIST_3 = 'https://youtube.com/playlist?list=PL29g0AFkwZD9LG2WOIiPqzXNmXbcQdAoC'
@@ -59,17 +60,12 @@ def test_download_playlist_100_count(tmp_path):
 
 @pytest.mark.e2e
 def test_multi_url_single_complete(tmp_path):
-    """Regression for flaw #2: multi-URL job via server fires complete once."""
-    import server
-    from unittest.mock import patch
+    """Regression for flaw #2: a multi-URL job fires complete once."""
+    import jobs
 
-    complete_count = [0]
-    real_push = server._push_progress
-
-    def counting_push(event):
-        if event.get('status') == 'complete':
-            complete_count[0] += 1
-        real_push(event)
+    events = []
+    manager = jobs.JobManager()
+    manager._push = events.append
 
     opts = {
         'mode': 'audio', 'quality': 'best', 'audio_format': 'mp3',
@@ -77,12 +73,13 @@ def test_multi_url_single_complete(tmp_path):
         'embed_metadata': False, 'embed_subs': False, 'sleep_interval': 0,
     }
     job = {
-        'id': 'e2e-test', 'type': 'sync', 'url': PLAYLIST_3,
+        'id': 'e2e-test', 'type': 'sync', 'label': 'e2e', 'url': PLAYLIST_3,
         'multi_urls': [PLAYLIST_3, PLAYLIST_4],
         'output_dir': str(tmp_path), 'opts': opts,
         'library_id': 'test-lib', 'status': 'active',
     }
-    with patch('server._push_progress', side_effect=counting_push):
-        server._run_job(job)
+    assert manager.run_job(job) == 'complete'
 
-    assert complete_count[0] == 1, f"Expected 1 complete for 2-URL job, got {complete_count[0]}"
+    completes = [e for e in events if e.get('status') == 'complete']
+    assert len(completes) == 1, f"Expected 1 complete for 2-URL job, got {len(completes)}"
+    assert job['counts']['new'] == 7, job['counts']
