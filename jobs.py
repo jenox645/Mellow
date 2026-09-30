@@ -39,6 +39,8 @@ _PERSIST_KEYS = ("id", "type", "label", "url", "multi_urls",
 PUBLIC_SKIP_KEYS = ("opts", "multi_urls", "cancel_event", "_t0")
 
 TERMINAL_STATUSES = ("complete", "failed", "cancelled")
+# SSE events that end a job; the UI expects exactly one per job
+TERMINAL_EVENTS = ("complete", "error", "cancelled")
 
 
 def configured_workers() -> int:
@@ -236,7 +238,7 @@ class JobManager:
                     status = "failed"
                     job["error"] = str(exc)
                     # The UI is waiting on a terminal event for this job
-                    self._make_cb(job, True)(
+                    self._make_cb(job)(
                         {"status": "error", "message": str(exc), "url": job.get("url")})
                 with self._cv:
                     job["status"] = status
@@ -267,40 +269,69 @@ class JobManager:
     # ── Job execution ──────────────────────────────────────────────────────────
 
     def run_job(self, job: dict) -> str:
-        """Run all URLs of a job. Returns aggregate status."""
+        """Run all URLs of a job and emit its one terminal event.
+
+        Returns the aggregate status. Every downloader run ends in its own
+        terminal event; with several URLs (a folder linked to more than one
+        playlist) passing those through told the UI "failed" mid-job, or
+        showed an error for a job that then counted as complete. They are held
+        back here and summed up into exactly one.
+        """
         urls = job.get("multi_urls") or [job["url"]]
-        last_idx = len(urls) - 1
         cancel_event = job.setdefault("cancel_event", threading.Event())
         job.setdefault("counts", {"new": 0, "errors": 0})
         # The metadata toggle is read at run time so config changes apply to
         # already-queued jobs too.
         job["opts"]["write_metadata"] = load_config().get("write_metadata", True)
-        results: list[str] = []
-        for i, url in enumerate(urls):
+        push = self._make_cb(job)
+        outcomes: list[tuple[str, str, dict]] = []  # (url, result, terminal event)
+        for url in urls:
             if cancel_event.is_set():
-                results.append("cancelled")
                 break
-            results.append(downloader.download_video(
-                url, job["output_dir"], job["opts"], self._make_cb(job, i == last_idx),
-                job.get("library_id"), cancel_event=cancel_event,
-                pause_event=downloader._pause_event))
+            terminal: dict = {}
 
-        if any(r == "cancelled" for r in results) or cancel_event.is_set():
+            def _cb(event: dict, terminal: dict = terminal) -> None:
+                if event.get("status") in TERMINAL_EVENTS:
+                    terminal.update(event)
+                else:
+                    push(event)
+
+            result = downloader.download_video(
+                url, job["output_dir"], job["opts"], _cb,
+                job.get("library_id"), cancel_event=cancel_event,
+                pause_event=downloader._pause_event)
+            outcomes.append((url, result, terminal))
+        return self._emit_terminal(job, outcomes, push)
+
+    def _emit_terminal(self, job: dict, outcomes: list[tuple[str, str, dict]],
+                       push: Callable[[dict], None]) -> str:
+        if job["cancel_event"].is_set() or any(r == "cancelled" for _, r, _ in outcomes):
+            push({"status": "cancelled"})
             return "cancelled"
-        if results and all(r == "error" for r in results):
+        failed = [(url, t) for url, r, t in outcomes if r == "error"]
+        if outcomes and len(failed) == len(outcomes):
+            url, terminal = failed[-1]
+            push(terminal or {"status": "error", "message": "Download failed", "url": url})
             return "failed"
+        done = next((t for _, r, t in reversed(outcomes) if r != "error" and t), None)
+        complete = dict(done) if done else {"status": "complete", "title": job["label"]}
+        if failed:
+            for url, terminal in failed:
+                push({"status": "item_failed", "reason": "error", "url": url,
+                      "code": terminal.get("code"),
+                      "message": terminal.get("message") or f"Could not download {url}"})
+            note = f"{len(failed)} of {len(outcomes)} links could not be downloaded."
+            complete["warning"] = " ".join(w for w in (complete.get("warning"), note) if w)
+        push(complete)
         return "complete"
 
-    def _make_cb(self, job: dict, final: bool) -> Callable[[dict], None]:
+    def _make_cb(self, job: dict) -> Callable[[dict], None]:
         def _cb(event: dict) -> None:
             status = event.get("status")
             if status == "item_done":
                 job["counts"]["new"] += 1
             elif status == "item_failed":
                 job["counts"]["errors"] += 1
-            # Suppress intermediate complete events so only the final URL fires once
-            if status == "complete" and not final:
-                return
             # Tag so the frontend can attribute events with concurrent workers
             event.setdefault("job_id", job["id"])
             event.setdefault("job_type", job["type"])
@@ -314,13 +345,15 @@ class JobManager:
         """Post-job bookkeeping: sync timestamps and the sync_log fact table."""
         if job.get("type") != "sync" or status != "complete":
             return
+        # Stamped on completion, not enqueue, so a failed sync isn't "synced"
         t_done = time.strftime("%Y-%m-%dT%H:%M:%S")
         sync_path = job.get("sync_path")
         if sync_path:
-            # Stamped on completion, not enqueue, so a failed sync isn't "synced"
             def _stamp(cfg: dict) -> None:
                 cfg.setdefault("vault_sync_times", {})[sync_path] = t_done
             update_config(_stamp)
+        if job.get("library_id"):
+            analytics.update_library_last_synced(job["library_id"])
         counts = job.get("counts", {})
         duration = int(time.monotonic() - job.get("_t0", time.monotonic()))
         analytics.record_sync_log(

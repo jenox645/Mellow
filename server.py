@@ -1066,18 +1066,10 @@ def api_vault_delete_file() -> Response:
     if p.suffix.lower() not in MEDIA_EXTS:
         return jsonify({"error": "Only media files can be deleted via this endpoint"}), 400
     try:
-        p.unlink()
-        for sidecar_ext in (".jpg", ".jpeg", ".png", ".webp"):
-            sidecar = p.with_suffix(sidecar_ext)
-            if sidecar.exists():
-                try:
-                    sidecar.unlink()
-                except OSError:
-                    pass
-        analytics.delete_history_by_path(str(p))
-        return jsonify({"ok": True})
+        _vault.delete_media_file(p)
     except OSError as exc:
         return jsonify({"error": str(exc)}), 500
+    return jsonify({"ok": True})
 
 
 @app.route("/api/vault/sync", methods=["POST"])
@@ -1324,8 +1316,7 @@ def api_library_sync(entry_id: str) -> Response:
         return jsonify({"error": "Not found"}), 404
     cfg = load_config()
     opts, output_dir = _library.build_sync_opts(entry, cfg, sync_mode)
-
-    analytics.update_library_last_synced(entry_id)
+    # last_synced is stamped by the worker when the sync completes
     job = _enqueue_job(entry["url"], output_dir, opts, entry_id,
                        job_type="sync", label=f"Library sync — {entry.get('name','')}")
     return jsonify({"status": "started", "library_id": entry_id, "job_id": job["id"]})

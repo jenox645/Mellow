@@ -68,6 +68,8 @@ All job-originated events carry `job_id`, `job_type`, `job_label` (multi-worker 
 - `/api/info` returns `previous_download` for single videos (history match by URL or YouTube id); `/api/download` returns `disk_warning` when the target drive is low
 - Victory overlay at App root (outside all page components), z-index 9999
 - Every job must end in exactly one terminal event (`complete`/`error`/`cancelled`) — the UI has no timeout; `jobs._worker` pushes `error` if a job crashes
+- `jobs.run_job` holds back each downloader run's terminal event and emits the job's one terminal itself: with several URLs, a failed one becomes `item_failed` + a `warning` on `complete` (all failed → one `error`)
+- Sync timestamps (`vault_sync_times`, library `last_synced`) are written by `JobManager._on_finished` when a sync completes, never on enqueue
 - No ffmpeg → `downloader` requests single-file formats and no ffmpeg postprocessors, and says so via `warning`; never build a `a+b` format or an `FFmpeg*` postprocessor without checking `find_ffmpeg()`
 - Cancel is per job (`job["cancel_event"]`); pause is one flag for all running downloads, owned by `JobManager` (cleared when the queue goes idle)
 - A run where yt-dlp logged errors and no file finished (`_download_retcode` set, `speed_tracker["finished"]` == 0) is an `error`, never `complete` — that is a dead/private playlist or every item refused (HTTP 403 from a stale yt-dlp). No errors and no files is an up-to-date archive sync and stays a success

@@ -1,6 +1,7 @@
 """Vault business logic — folder listing, thumbnails, media player, mirror ops."""
 from __future__ import annotations
 
+import contextlib
 import glob as _glob
 import logging
 import os
@@ -181,6 +182,9 @@ def list_folder_files(path: str) -> list[dict]:
 # cover art spawned ffmpeg again every time.
 _thumb_failed: set[tuple[str, float]] = set()
 
+# Thumbnail files next to a media file, sharing its stem
+_SIDECAR_EXTS = (".jpg", ".jpeg", ".png", ".webp")
+
 
 def _generate_thumb(media: Path, sidecar: Path) -> bool:
     """Make a cached sidecar .jpg for a file that has none.
@@ -242,7 +246,7 @@ def get_thumb_bytes(path: str) -> tuple[bytes, str] | None:
     # Sidecars share the media file's full stem: "Episode.10.mp4" pairs with
     # "Episode.10.jpg" (with_suffix would look for "Episode.jpg", which is a
     # different video's thumbnail or nothing)
-    for ext in (".jpg", ".jpeg", ".png", ".webp"):
+    for ext in _SIDECAR_EXTS:
         thumb = p.parent / (p.stem + ext)
         if thumb.exists():
             try:
@@ -485,21 +489,34 @@ def _history_ids_in(folder: Path) -> dict[str, str]:
     return ids
 
 
+def delete_media_file(path: Path) -> None:
+    """Delete a media file, its thumbnail sidecars and its history rows.
+
+    Without the history rows going too, "you already have this" kept pointing
+    at a deleted file. Raises OSError when the media file itself can't go.
+    """
+    path.unlink()
+    for ext in _SIDECAR_EXTS:
+        with contextlib.suppress(OSError):
+            path.with_suffix(ext).unlink(missing_ok=True)
+    try:
+        analytics.delete_history_by_path(str(path))
+    except Exception as exc:
+        log.warning(f"history cleanup failed for {path.name}: {exc}")
+
+
 def confirm_mirror_delete(paths: list[str]) -> dict:
-    deleted, errors = [], []
+    deleted, errors = 0, []
     for fp in paths:
+        f = Path(fp)
+        if not f.is_file():
+            continue
         try:
-            f = Path(fp)
-            if f.exists() and f.is_file():
-                f.unlink()
-                deleted.append(fp)
-                for ext in (".jpg", ".jpeg", ".png", ".webp"):
-                    sidecar = f.with_suffix(ext)
-                    if sidecar.exists():
-                        sidecar.unlink()
-        except Exception as exc:
+            delete_media_file(f)
+            deleted += 1
+        except OSError as exc:
             errors.append({"path": fp, "error": str(exc)})
-    return {"deleted": len(deleted), "errors": errors}
+    return {"deleted": deleted, "errors": errors}
 
 
 # ── Archive file ──────────────────────────────────────────────────────────────

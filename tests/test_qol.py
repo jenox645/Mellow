@@ -43,7 +43,7 @@ def test_queue_events_carry_the_explanation():
     m = jobs.JobManager()
     m._push = events.append
     job = {'id': 'j', 'type': 'feed', 'label': 'x', 'counts': {'new': 0, 'errors': 0}}
-    cb = m._make_cb(job, True)
+    cb = m._make_cb(job)
     cb({'status': 'error', 'message': 'HTTP Error 403: Forbidden'})
     cb({'status': 'error', 'message': 'merge failed', 'code': 'ffmpeg_missing'})
     cb({'status': 'item_failed', 'message': 'ERROR: [youtube] a: Private video'})

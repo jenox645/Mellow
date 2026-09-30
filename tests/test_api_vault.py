@@ -84,3 +84,40 @@ def test_vault_play_files_empty(client):
 def test_vault_sync_requires_playlist(client, tmp_dir):
     r = client.post('/api/vault/sync', json={'path': tmp_dir, 'mode': 'add'})
     assert r.status_code in (400, 404)
+
+
+def _record_file(path):
+    import analytics
+    analytics.record_download({'url': 'https://youtu.be/dQw4w9WgXcQ', 'title': 'x',
+                               'file_path': str(path), 'status': 'success'})
+
+
+def _history_paths():
+    import analytics
+    return [r['file_path'] for r in analytics.get_history(100)]
+
+
+def test_vault_delete_file_removes_sidecar_and_history(client, tmp_dir):
+    from pathlib import Path
+    media = Path(tmp_dir) / 'Episode.10.mp4'
+    media.write_bytes(b'x')
+    (Path(tmp_dir) / 'Episode.10.jpg').write_bytes(b'j')
+    _record_file(media)
+    r = client.delete('/api/vault/file', json={'path': str(media)})
+    assert r.get_json() == {'ok': True}
+    assert sorted(p.name for p in Path(tmp_dir).iterdir()) == []
+    assert _history_paths() == []
+
+
+def test_vault_mirror_delete_also_forgets_history(client, tmp_dir):
+    """Mirror mode left the history rows behind, so analyzing the video again
+    still said "you already have this" for a deleted file."""
+    from pathlib import Path
+    media = Path(tmp_dir) / 'Gone [dQw4w9WgXcQ].mp3'
+    media.write_bytes(b'x')
+    _record_file(media)
+    client.post('/api/vault/playlists', json={'path': tmp_dir, 'url': 'https://youtube.com/playlist?list=P'})
+    r = client.post('/api/vault/mirror-confirm', json={'path': tmp_dir, 'paths': [str(media)]})
+    assert r.get_json() == {'deleted': 1, 'errors': []}
+    assert not media.exists()
+    assert _history_paths() == []
