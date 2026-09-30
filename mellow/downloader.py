@@ -34,12 +34,18 @@ GEO_BLOCK_PATTERNS = [
 ]
 
 
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
+# "[download] <title> does not pass filter (media_type!=?short ...), skipping .."
+_FILTERED_RE = re.compile(r"\[download\] (.+?) does not pass filter")
+
+
 class _GeoBlockLogger:
     def __init__(self, progress_cb: Callable, library_id: str | None) -> None:
         self._cb = progress_cb
         self._lid = library_id
         self._seen: set[str] = set()
         self.last_error: str | None = None
+        self.skipped = 0  # items the archive already had, or the skip filters removed
 
     def _emit_once(self, reason: str, msg: str) -> None:
         # yt-dlp logs several error lines per failed item (retries, final
@@ -55,7 +61,17 @@ class _GeoBlockLogger:
         self._cb(event)
 
     def debug(self, msg: str) -> None:
-        pass
+        # yt-dlp's screen output: the items it skipped (for the sync report)
+        text = _ANSI_RE.sub("", msg)
+        if "has already been recorded in the archive" in text:
+            self.skipped += 1
+            self._cb({"status": "item_skipped", "reason": "archive", "library_id": self._lid})
+            return
+        m = _FILTERED_RE.search(text)
+        if m:
+            self.skipped += 1
+            self._cb({"status": "item_skipped", "reason": "filtered", "title": m.group(1),
+                      "library_id": self._lid})
 
     def info(self, msg: str) -> None:
         pass
@@ -744,12 +760,14 @@ def _download_video(
                     _EmbedThumbnailBestEffort(ydl, already_have_thumbnail=True),
                     when="post_process")
             info = ydl.extract_info(url, download=True)
-            if getattr(ydl, "_download_retcode", 0) and not speed_tracker.get("finished"):
+            if (getattr(ydl, "_download_retcode", 0) and not speed_tracker.get("finished")
+                    and not (logger and logger.skipped)):
                 # ignoreerrors swallowed every failure (dead or private
                 # playlist, or each item refused with e.g. HTTP 403). Surface
                 # it instead of reporting an empty download as "complete".
-                # Items skipped via the archive log no error, so an
-                # up-to-date sync still counts as success.
+                # Items the archive (or a skip filter) passed over prove the
+                # playlist is alive: an up-to-date sync with one item gone
+                # private is a success with a failed item, not a failure.
                 raise yt_dlp.utils.DownloadError(
                     (logger.last_error if logger else None)
                     or "Nothing could be downloaded from this URL")

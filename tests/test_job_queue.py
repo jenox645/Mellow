@@ -421,3 +421,49 @@ def test_scheduled_job_starts_by_itself_when_due(tmp_path):
             _time.sleep(0.1)
     assert job['status'] == 'complete'
     assert due <= started_at[0] < due + 1.0, 'should start right when due, not a poll interval later'
+
+
+def test_sync_report_records_what_a_sync_did(client, tmp_path):
+    """Added titles, failures with their reason, items the archive already
+    had and items skipped as Shorts/live — per folder, whatever the outcome."""
+    from mellow import jobs as jobs_mod
+    pushed = []
+
+    def fake_dl(url, out, opts, cb, lib_id=None, cancel_event=None, pause_event=None):
+        cb({'status': 'item_skipped', 'reason': 'archive'})
+        cb({'status': 'item_skipped', 'reason': 'archive'})
+        cb({'status': 'item_skipped', 'reason': 'filtered', 'title': 'A Short'})
+        cb({'status': 'item_done', 'title': 'New Song'})
+        cb({'status': 'item_failed', 'reason': 'error', 'url': 'https://www.youtube.com/watch?v=aaaaaaaaaaa',
+            'message': 'ERROR: [youtube] aaaaaaaaaaa: Private video. Sign in if you have access'})
+        cb({'status': 'complete', 'title': 'Mix'})
+        return 'success'
+
+    with patch('mellow.downloader.download_video', side_effect=fake_dl), \
+            patch.object(jobs_mod.manager, '_push', side_effect=pushed.append):
+        jobs_mod.manager.enqueue('https://youtube.com/playlist?list=P', str(tmp_path), {'mode': 'library'},
+                                 job_type='sync', label='Sync — Mix', sync_path=str(tmp_path))
+        assert jobs_mod.manager.wait_idle(10)
+    assert not [e for e in pushed if e['status'] == 'item_skipped'], 'skips are report-only'
+    report = client.get('/api/vault/sync-report', query_string={'path': str(tmp_path)}).get_json()['report']
+    assert report['status'] == 'complete'
+    assert report['added'] == ['New Song']
+    assert report['archived'] == 2 and report['filtered'] == ['A Short']
+    assert report['failed'][0]['url'].endswith('aaaaaaaaaaa')
+    assert report['failed'][0]['hint']  # explained: private video
+
+
+def test_failed_sync_still_leaves_a_report(client, tmp_path):
+    from mellow import jobs as jobs_mod
+    with patch('mellow.downloader.download_video', side_effect=lambda url, out, opts, cb, *a, **k: (
+            cb({'status': 'error', 'message': 'ERROR: [youtube:tab] PLx: The playlist does not exist.'}),
+            'error')[1]):
+        jobs_mod.manager.enqueue('https://youtube.com/playlist?list=PLx', str(tmp_path), {'mode': 'library'},
+                                 job_type='sync', label='Sync', sync_path=str(tmp_path))
+        assert jobs_mod.manager.wait_idle(10)
+    report = client.get('/api/vault/sync-report', query_string={'path': str(tmp_path)}).get_json()['report']
+    assert report['status'] == 'failed' and 'does not exist' in report['error']
+
+
+def test_no_report_before_the_first_sync(client, tmp_path):
+    assert client.get('/api/vault/sync-report', query_string={'path': str(tmp_path)}).get_json() == {'report': None}

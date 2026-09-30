@@ -135,3 +135,20 @@ def test_vault_folders_report_their_linked_playlists(client, tmp_path):
     folders = {f['name']: f for f in client.get('/api/vault').get_json()['folders']}
     assert folders['Mix']['playlist_count'] == 1
     assert folders['Plain']['playlist_count'] == 0
+
+
+def test_retry_item_downloads_into_the_folder_in_its_format(client, tmp_dir):
+    """A failed item retried from the sync report comes back as the folder's
+    format (here MP3), not with the Feed defaults."""
+    from unittest.mock import patch
+
+    from mellow import jobs
+    client.post('/api/vault/playlists', json={'path': tmp_dir, 'url': 'https://youtube.com/playlist?list=P',
+                                              'sync_format': {'sync_audio': True, 'audio_format': 'mp3'}})
+    with patch('mellow.downloader.download_video') as dl:
+        r = client.post('/api/vault/retry-item', json={'path': tmp_dir, 'url': 'https://youtu.be/aaaaaaaaaaa'})
+        assert r.status_code == 200
+        assert jobs.manager.wait_idle(10)
+    url, out, opts = dl.call_args[0][:3]
+    assert (url, out) == ('https://youtu.be/aaaaaaaaaaa', tmp_dir)
+    assert opts['mode'] == 'library' and opts['sync_audio'] is True and opts['audio_format'] == 'mp3'

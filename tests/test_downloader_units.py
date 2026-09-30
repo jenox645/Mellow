@@ -142,3 +142,13 @@ def test_failed_playlist_items_name_their_url():
     logger = downloader._GeoBlockLogger(events.append, None)
     logger.error('ERROR: [youtube] dQw4w9WgXcQ: Private video')
     assert events[0]['url'] == 'https://www.youtube.com/watch?v=dQw4w9WgXcQ'
+
+
+def test_logger_reports_archive_and_filter_skips():
+    events = []
+    logger = downloader._GeoBlockLogger(events.append, None)
+    logger.debug('[download] \x1b[0;33mdQw4w9WgXcQ\x1b[0m: Some Title has already been recorded in the archive')
+    logger.debug('[download] A Short does not pass filter (media_type!=?short), skipping ..')
+    logger.debug('[youtube] Extracting URL: https://youtu.be/x')
+    assert [(e['status'], e['reason'], e.get('title')) for e in events] == [
+        ('item_skipped', 'archive', None), ('item_skipped', 'filtered', 'A Short')]

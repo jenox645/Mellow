@@ -480,3 +480,29 @@ def test_backup_and_restore_while_db_is_open(client):
                      content_type='multipart/form-data')
     assert r2.status_code == 200, r2.get_json()
     assert [h['title'] for h in analytics.get_history()] == ['kept']
+
+
+def test_sync_with_one_failed_item_and_the_rest_archived_is_not_a_failure(tmp_dir):
+    """A playlist where one video went private: every later sync saw errors
+    and no new file, and was reported (and retried) as a dead playlist."""
+    def fake_extract(url, download=True):
+        logger = ydl_cls.call_args[0][0]['logger']
+        logger.debug('[download] aaaaaaaaaaa: Song A has already been recorded in the archive')
+        logger.error('ERROR: [youtube] bbbbbbbbbbb: Private video')
+        return {'_type': 'playlist', 'title': 'Mix', 'entries': []}
+
+    ydl_cls = _fake_ydl({}, retcode=1)
+    ydl_cls.return_value.__enter__.return_value.extract_info.side_effect = fake_extract
+    events = []
+    with patch('mellow.downloader.yt_dlp.YoutubeDL', ydl_cls), \
+            patch('mellow.downloader.find_ffmpeg', return_value='/usr/bin/ffmpeg'):
+        result = downloader.download_video('https://youtube.com/playlist?list=P', tmp_dir,
+                                           {'mode': 'library'}, events.append)
+    assert result == 'success'
+    assert [e['status'] for e in events if e['status'] in TERMINAL] == ['complete']
+    assert [e['status'] for e in events].count('item_failed') == 1
+
+
+def test_playlist_where_everything_failed_is_still_a_failure(tmp_dir):
+    result, events, _ = _run(tmp_dir, {'mode': 'library'}, retcode=1)
+    assert result == 'error'

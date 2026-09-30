@@ -3,6 +3,7 @@ from __future__ import annotations
 import contextlib
 import csv
 import io
+import json
 import logging
 import re
 import threading
@@ -12,6 +13,8 @@ from pathlib import Path
 from typing import Any
 
 import duckdb
+
+from .constants import SYNC_REPORTS_KEEP
 
 log = logging.getLogger(__name__)
 
@@ -160,8 +163,20 @@ def init_db() -> None:
             )
         """)
         _add_missing_columns(con, "sync_log", [("duration_seconds", "INTEGER")])
+        # What each vault/library sync of a folder did, item by item
+        con.execute("""
+            CREATE TABLE IF NOT EXISTS sync_reports (
+                id INTEGER PRIMARY KEY,
+                folder TEXT NOT NULL,
+                finished_at TIMESTAMP DEFAULT now(),
+                status TEXT,
+                duration_seconds INTEGER,
+                details TEXT
+            )
+        """)
         con.execute("CREATE SEQUENCE IF NOT EXISTS downloads_seq START 1")
         con.execute("CREATE SEQUENCE IF NOT EXISTS sync_log_seq START 1")
+        con.execute("CREATE SEQUENCE IF NOT EXISTS sync_reports_seq START 1")
         # Flush schema changes into the database file now: an ALTER TABLE left
         # in the WAL is exactly what DuckDB cannot replay (see _connect), and
         # a desktop app is often killed rather than closed.
@@ -634,6 +649,38 @@ def record_sync_log(
                 INSERT INTO sync_log (id, library_id, new_items, skipped, errors, duration_seconds)
                 VALUES (nextval('sync_log_seq'),?,?,?,?,?)
             """, [library_id, new_items, skipped, errors, duration_seconds])
+
+
+def record_sync_report(folder: str, status: str, report: dict, duration_seconds: int,
+                       error: str | None = None) -> None:
+    """Store what a sync of `folder` did; keeps the last SYNC_REPORTS_KEEP per folder.
+
+    report: {"added": [titles], "failed": [{message, url, title, hint}],
+             "filtered": [titles], "archived": count}
+    """
+    details = json.dumps({**report, "error": error})
+    with get_conn() as con:
+        con.execute(
+            "INSERT INTO sync_reports (id, folder, status, duration_seconds, details) "
+            "VALUES (nextval('sync_reports_seq'), ?, ?, ?, ?)",
+            [folder, status, duration_seconds, details])
+        con.execute("""
+            DELETE FROM sync_reports WHERE folder = ? AND id NOT IN (
+                SELECT id FROM sync_reports WHERE folder = ? ORDER BY id DESC LIMIT ?)
+        """, [folder, folder, SYNC_REPORTS_KEEP])
+
+
+def get_sync_report(folder: str) -> dict | None:
+    """The latest sync report for a folder, or None."""
+    with get_conn() as con:
+        row = con.execute(
+            "SELECT finished_at, status, duration_seconds, details FROM sync_reports "
+            "WHERE folder = ? ORDER BY id DESC LIMIT 1", [folder]).fetchone()
+    if not row:
+        return None
+    finished_at, status, duration, details = row
+    return {"finished_at": str(finished_at) if finished_at else None, "status": status,
+            "duration_seconds": duration, **json.loads(details or "{}")}
 
 
 def get_library_entries() -> list[dict]:

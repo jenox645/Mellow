@@ -1028,6 +1028,30 @@ def api_vault_file_thumbs() -> Response:
     return jsonify({"thumbs": _vault.resolve_file_thumbs(paths, analytics.get_conn)})
 
 
+@app.route("/api/vault/retry-item", methods=["POST"])
+def api_vault_retry_item() -> Response:
+    """Download one item into a vault folder, in the format the folder syncs with."""
+    data = request.get_json(force=True) or {}
+    path = (data.get("path") or "").strip()
+    url = (data.get("url") or "").strip()
+    if not path or not url:
+        return jsonify({"error": "path and url required"}), 400
+    cfg = load_config()
+    lib = _library_entry_for(path, cfg)
+    job = _enqueue_job(url, path, _vault.build_sync_opts({}, lib, cfg, path), lib["id"] if lib else None,
+                       job_type="feed", label=f"Retry — {url}")
+    return jsonify({"ok": True, "job_id": job["id"]})
+
+
+@app.route("/api/vault/sync-report")
+def api_vault_sync_report() -> Response:
+    """What the last sync of a folder added, skipped and failed on."""
+    path = request.args.get("path", "")
+    if not path:
+        return jsonify({"error": "path required"}), 400
+    return jsonify({"report": analytics.get_sync_report(path)})
+
+
 @app.route("/api/vault/folder-stats")
 def api_vault_folder_stats() -> Response:
     path = request.args.get("path", "")

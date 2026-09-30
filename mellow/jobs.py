@@ -27,6 +27,7 @@ from .constants import (
     DEFAULT_SCHEDULE_START,
     JOB_HISTORY_KEEP,
     MAX_DOWNLOAD_WORKERS,
+    SYNC_REPORT_ITEMS_KEEP,
     WORKER_POLL_SECS,
 )
 
@@ -414,7 +415,8 @@ class JobManager:
         failed = [(url, t, reported) for url, r, t, reported in outcomes if r == "error"]
         if outcomes and len(failed) == len(outcomes):
             url, terminal, _ = failed[-1]
-            push(terminal or {"status": "error", "message": "Download failed", "url": url})
+            job["error"] = terminal.get("message") or "Download failed"
+            push(terminal or {"status": "error", "message": job["error"], "url": url})
             return "failed"
         done = next((t for _, r, t, _ in reversed(outcomes) if r != "error" and t), None)
         complete = dict(done) if done else {"status": "complete", "title": job.get("label") or job["url"]}
@@ -431,10 +433,20 @@ class JobManager:
         return "complete"
 
     def _make_cb(self, job: dict) -> Callable[[dict], None]:
+        report = job.setdefault("report", _empty_report())
+
         def _cb(event: dict) -> None:
             status = event.get("status")
+            if status == "item_skipped":
+                # For the sync report only; one per archived item is no UI news
+                if event.get("reason") == "filtered":
+                    _keep(report["filtered"], event.get("title") or "?")
+                else:
+                    report["archived"] += 1
+                return
             if status == "item_done":
                 job["counts"]["new"] += 1
+                _keep(report["added"], event.get("title") or "?")
             elif status == "item_failed":
                 job["counts"]["errors"] += 1
             # Tag so the frontend can attribute events with concurrent workers
@@ -443,12 +455,27 @@ class JobManager:
             event.setdefault("job_label", job["label"])
             # Plain-language title/hint/action next to yt-dlp's raw message
             errors.annotate(event)
+            if status == "item_failed":
+                _keep(report["failed"], {"message": event.get("message"), "url": event.get("url"),
+                                         "title": event.get("title"), "hint": event.get("hint")})
             self._push(event)
         return _cb
 
     def _on_finished(self, job: dict, status: str) -> None:
-        """Post-job bookkeeping: sync timestamps and the sync_log fact table."""
-        if job.get("type") != "sync" or status != "complete":
+        """Post-job bookkeeping for syncs: the folder's sync report (whatever
+        the outcome), and on success the sync timestamps and sync_log row."""
+        if job.get("type") != "sync":
+            return
+        duration = int(time.monotonic() - job.get("_t0", time.monotonic()))
+        report = job.get("report") or _empty_report()
+        folder = job.get("sync_path") or job.get("output_dir")
+        if folder:
+            try:
+                analytics.record_sync_report(folder, status, report, duration,
+                                             error=job.get("error"))
+            except Exception as exc:
+                log.warning(f"sync report not saved: {exc}")
+        if status != "complete":
             return
         # Stamped on completion, not enqueue, so a failed sync isn't "synced"
         t_done = time.strftime("%Y-%m-%dT%H:%M:%S")
@@ -460,10 +487,20 @@ class JobManager:
         if job.get("library_id"):
             analytics.update_library_last_synced(job["library_id"])
         counts = job.get("counts", {})
-        duration = int(time.monotonic() - job.get("_t0", time.monotonic()))
         analytics.record_sync_log(
-            job.get("library_id") or "", counts.get("new", 0), 0,
-            counts.get("errors", 0), duration)
+            job.get("library_id") or "", counts.get("new", 0),
+            report["archived"] + len(report["filtered"]), counts.get("errors", 0), duration)
+
+
+def _empty_report() -> dict:
+    """What a sync did, item by item (see analytics.record_sync_report)."""
+    return {"added": [], "failed": [], "filtered": [], "archived": 0}
+
+
+def _keep(items: list, item) -> None:
+    """Append to a report list, up to SYNC_REPORT_ITEMS_KEEP entries."""
+    if len(items) < SYNC_REPORT_ITEMS_KEEP:
+        items.append(item)
 
 
 manager = JobManager()
