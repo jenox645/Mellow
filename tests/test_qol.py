@@ -26,6 +26,9 @@ import jobs
     ('<urlopen error [Errno 11001] getaddrinfo failed>', 'network', errors.OPEN_CONFIG),
     ('[Errno 28] No space left on device', 'disk_full', errors.OPEN_CONFIG),
     ('HTTP Error 429: Too Many Requests', 'rate_limited', errors.OPEN_CONFIG),
+    ("ERROR: [generic] x: Unable to download webpage: <urlopen error Tunnel connection failed: "
+     "403 Forbidden> (caused by ProxyError('<urlopen error Tunnel connection failed: 403 Forbidden>'))",
+     'proxy', errors.OPEN_CONFIG),
 ])
 def test_known_errors_are_explained(raw, code, action):
     found = errors.explain(raw)

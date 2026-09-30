@@ -50,6 +50,13 @@ _RULES: list[tuple[str, str, str, str, str | None]] = [
      "Too many requests",
      "The site is rate-limiting you. Wait a while; a Sleep Interval (Config → Network) helps with big playlists.",
      OPEN_CONFIG),
+    # Before the 403 rule: a proxy refusing the tunnel reads "403 Forbidden"
+    # too, and updating yt-dlp does nothing for it
+    (r"tunnel connection failed|proxyerror|unable to connect to proxy|cannot connect to proxy",
+     "proxy",
+     "Couldn't connect through the proxy",
+     "Check or clear the proxy in Config → Network, or your system's proxy settings.",
+     OPEN_CONFIG),
     (r"http error 403|forbidden", "forbidden",
      "The site refused the download (HTTP 403)",
      "This almost always means yt-dlp is out of date. Update it and try again.",

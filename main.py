@@ -85,15 +85,16 @@ def main() -> None:
         webbrowser.open(existing)
         sys.exit(0)
 
+    static_dir = Path(__file__).parent / "static"
+    if not static_dir.exists():
+        # Logged, not printed: the packaged app has no console
+        log.critical(f"static/ directory not found at {static_dir}; "
+                     "run build_setup.py first to generate static assets")
+        sys.exit(1)
+
     flask_app = init_app()
     port = _find_free_port()
     _write_port_file(port)
-
-    static_dir = Path(__file__).parent / "static"
-    if not static_dir.exists():
-        print(f"ERROR: static/ directory not found at {static_dir}", file=sys.stderr)
-        print("Run build_setup.py first to generate static assets.", file=sys.stderr)
-        sys.exit(1)
 
     ui = FlaskUI(
         app=flask_app,
