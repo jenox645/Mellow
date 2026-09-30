@@ -12,6 +12,7 @@ import yt_dlp
 from . import analytics
 from .constants import (
     AUDIO_FORMATS,
+    MAX_CHOSEN_CHAPTERS,
     PAUSE_POLL_SECS,
     SOCKET_TIMEOUT_SECS,
     SPONSORBLOCK_REMOVE_CATEGORIES,
@@ -463,6 +464,33 @@ def _clip_range(start_time: str, end_time: str) -> tuple[float, float]:
     return start, end
 
 
+def _chosen_chapters(value: Any) -> list[dict]:
+    """The chapters a download asked for, checked: [{"index", "title", "start", "end"}]."""
+    if not isinstance(value, list):
+        return []
+    chosen = []
+    for c in value[:MAX_CHOSEN_CHAPTERS]:
+        try:
+            start, end = float(c["start"]), float(c["end"])
+        except (TypeError, KeyError, ValueError):
+            raise ValueError(f"Unreadable chapter: {c!r}") from None
+        if not 0 <= start < end:
+            raise ValueError(f"Chapter ends before it starts: {c!r}")
+        chosen.append({"index": int(c.get("index") or len(chosen) + 1),
+                       "title": str(c.get("title") or f"Chapter {len(chosen) + 1}")[:120],
+                       "start": start, "end": end})
+    return chosen
+
+
+def _chapter_ranges(chapters: list[dict]) -> Callable:
+    """yt-dlp download_ranges callable: one section per chosen chapter, carrying
+    its number and title (section_number / section_title in the filename)."""
+    def ranges(info_dict: dict, ydl: Any):
+        for c in chapters:
+            yield {"start_time": c["start"], "end_time": c["end"], "title": c["title"], "index": c["index"]}
+    return ranges
+
+
 def _rate_limit(value: Any) -> float | None:
     """The UI stores CLI-style strings ("5M"); the Python API needs bytes/sec."""
     if isinstance(value, (int, float)):
@@ -488,8 +516,17 @@ def _build_ydl_opts(url: str, out_dir: Path, opts: dict, *, ffmpeg: str | None,
     custom_format = _opt_str(opts, "custom_format")
     start_time = _opt_str(opts, "start_time")
     end_time = _opt_str(opts, "end_time")
+    chapters = _chosen_chapters(opts.get("chapters"))
+    if chapters:
+        start_time = end_time = ""  # the chapters are the clip
     embed_subs = bool(opts.get("embed_subs")) and not want_audio
     filename_template = _opt_str(opts, "filename_template") or _DEFAULT_TEMPLATE
+    if chapters:
+        # One file per chapter: "<name> - 03 Chapter title.ext" (the same
+        # name for every section would have each overwrite the last)
+        stem = filename_template[:-len(".%(ext)s")] if filename_template.endswith(".%(ext)s") \
+            else filename_template.replace("%(ext)s", "").rstrip(".")
+        filename_template = f"{stem} - %(section_number)02d %(section_title)s.%(ext)s"
     outtmpl = str(out_dir / filename_template)
     log.debug(f"yt-dlp outtmpl={outtmpl!r} mode={mode} audio_format={audio_fmt} "
               f"quality={quality} container={container}")
@@ -499,12 +536,12 @@ def _build_ydl_opts(url: str, out_dir: Path, opts: dict, *, ffmpeg: str | None,
     if ffmpeg:
         ydl_opts["ffmpeg_location"] = ffmpeg
         cut_sponsors = bool(opts.get("sponsorblock"))
-        if cut_sponsors and (start_time or end_time):
+        if cut_sponsors and (start_time or end_time or chapters):
             # SponsorBlock times refer to the whole video; yt-dlp would apply
             # them unshifted to the trimmed file and cut the wrong parts.
             cut_sponsors = False
             warning = ("SponsorBlock was skipped: it can't be combined with a clip "
-                       "start/end time.")
+                       "start/end time or chosen chapters.")
             warn("sponsorblock_skipped", warning)
         pps = _build_postprocessors(opts, embed_subs=embed_subs, cut_sponsors=cut_sponsors)
         if want_audio:
@@ -519,8 +556,9 @@ def _build_ydl_opts(url: str, out_dir: Path, opts: dict, *, ffmpeg: str | None,
             fmt, ydl_opts["merge_output_format"] = _merged_format(quality, container)
             fmt = custom_format or fmt
     else:
-        if start_time or end_time:
-            raise RuntimeError("Trimming (start/end time) needs ffmpeg, which isn't installed.")
+        if start_time or end_time or chapters:
+            raise RuntimeError("Trimming (start/end time or chapters) needs ffmpeg, "
+                               "which isn't installed.")
         pps = []
         if want_audio:
             fmt = NO_FFMPEG_AUDIO_FORMAT
@@ -578,7 +616,10 @@ def _build_ydl_opts(url: str, out_dir: Path, opts: dict, *, ffmpeg: str | None,
     if retries is not None:
         ydl_opts["retries"] = retries
 
-    if start_time or end_time:
+    if chapters:
+        ydl_opts["download_ranges"] = _chapter_ranges(chapters)
+        ydl_opts["force_keyframes_at_cuts"] = True
+    elif start_time or end_time:
         ydl_opts["download_ranges"] = yt_dlp.utils.download_range_func(
             None, [_clip_range(start_time, end_time)])
         ydl_opts["force_keyframes_at_cuts"] = True
@@ -796,21 +837,29 @@ def _download_video(
         if info and ("entries" in info or info.get("_type") == "playlist"):
             rows = _playlist_records(info, base, speed_tracker.get("items", {}), wanted_ext,
                                      avg_speed, elapsed)
-        elif not (saved["path"] and Path(saved["path"]).is_file()):
-            # Nothing was saved: the archive already had it (a sync that is up
-            # to date). A "success" row without a file inflated the stats and
-            # made "already downloaded" report the file as moved.
-            rows = []
         else:
-            if saved["thumbnail"]:
-                _save_thumbnail_sidecar(saved["path"], saved["thumbnail"])
-            rows = [{
-                **base, "title": saved["title"], "uploader": saved["uploader"],
-                "duration_seconds": saved["duration"], "file_size_bytes": saved["size"],
-                "container": _file_ext(saved["path"], wanted_ext), "file_path": saved["path"],
-                "thumbnail_url": saved["thumbnail"], "status": "success",
-                "download_speed_avg_bps": avg_speed, "elapsed_seconds": elapsed,
-            }]
+            # One row per file on disk: a video, or one per chosen chapter.
+            # Nothing on disk (the archive already had it — an up-to-date
+            # sync) is no row: a "success" without a file inflated the stats
+            # and made "already downloaded" report the file as moved.
+            rows = []
+            for part in (info or {}).get("requested_downloads") or []:
+                fp = part.get("filepath") or part.get("_filename") if isinstance(part, dict) else None
+                if not fp or not Path(fp).is_file():
+                    continue
+                if saved["thumbnail"]:
+                    _save_thumbnail_sidecar(fp, saved["thumbnail"])
+                section = part.get("section_title")
+                rows.append({
+                    **base,
+                    "title": f"{saved['title']} — {section}" if section else saved["title"],
+                    "uploader": saved["uploader"],
+                    "duration_seconds": part.get("duration") or saved["duration"],
+                    "file_size_bytes": Path(fp).stat().st_size,
+                    "container": _file_ext(fp, wanted_ext), "file_path": fp,
+                    "thumbnail_url": saved["thumbnail"], "status": "success",
+                    "download_speed_avg_bps": avg_speed, "elapsed_seconds": elapsed,
+                })
         for row in rows:
             _record(row)
         return "success"
@@ -992,7 +1041,19 @@ def get_video_info(url: str, cookie_opts: dict | None = None) -> dict:
         "id": info.get("id"),
         "webpage_url": info.get("webpage_url") or url,
         "size_estimates": estimates,
+        "chapters": None if is_playlist else _chapter_list(info),
     }
+
+
+def _chapter_list(info: dict) -> list[dict] | None:
+    """The video's chapters as [{"index", "title", "start", "end"}], or None."""
+    chapters = [c for c in (info.get("chapters") or [])
+                if isinstance(c, dict) and c.get("end_time") is not None]
+    if not chapters:
+        return None
+    return [{"index": i, "title": c.get("title") or f"Chapter {i}",
+             "start": float(c.get("start_time") or 0), "end": float(c["end_time"])}
+            for i, c in enumerate(chapters, 1)]
 
 
 def _size_estimates(ydl: yt_dlp.YoutubeDL, info: dict) -> dict | None:

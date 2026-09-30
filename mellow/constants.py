@@ -63,6 +63,7 @@ PAUSE_POLL_SECS: float = 0.2         # progress-hook pause loop cadence
 # ── SponsorBlock ──────────────────────────────────────────────────────────────
 # Segment types the "SponsorBlock" option cuts out of a download
 # (https://wiki.sponsor.ajay.app/w/Types)
+MAX_CHOSEN_CHAPTERS: int = 200       # chapters one download may pick
 SPONSORBLOCK_REMOVE_CATEGORIES: tuple[str, ...] = ("sponsor", "intro", "outro", "selfpromo")
 
 # ── Misc ──────────────────────────────────────────────────────────────────────

@@ -29,6 +29,11 @@ export function FeedPage({ dlState, setDlState, setAppState, stats, sysInfo, ref
   const [info, setInfo] = React.useState(() => ssJ('feed_info', null));
   const [optsOpen, setOptsOpen] = React.useState(false);
   const [advOpen, setAdvOpen] = React.useState(false);
+  // Chapter picker: indexes of the chosen chapters of the analyzed video
+  const [chaptersOpen, setChaptersOpen] = React.useState(false);
+  const [chapterSel, setChapterSel] = React.useState(() => new Set());
+  const videoChapters = (info && !info.is_playlist && info.chapters) || [];
+  const chosenChapters = videoChapters.filter(c => chapterSel.has(c.index));
   const [mode, setMode] = React.useState(() => ss('feed_mode', 'video'));
   const [quality, setQuality] = React.useState(() => ss('feed_quality', '1080p'));
   const [container, setContainer] = React.useState(() => ss('feed_container', 'mp4'));
@@ -304,10 +309,11 @@ export function FeedPage({ dlState, setDlState, setAppState, stats, sysInfo, ref
       custom_format: customFmt,
       ...(downloadPath ? { output_dir: downloadPath } : {}),
       ...(playlistItemsParam ? { playlist_items: playlistItemsParam } : {}),
+      ...(chosenChapters.length ? { chapters: chosenChapters } : {}),
       scheduled: scheduleLater,
       ...extra,
     }).then(onQueued).catch(e => { showNotif('Error', e.message, 'error'); setSubmitting(false); });
-  }, [url, mode, quality, container, audioFmt, audioQuality, embedThumb, embedChapters, embedMeta, embedSubs, sponsorblock, startTime, endTime, customFmt, downloadPath, playlistItems, info, showNotif, scheduleLater, onQueued]);
+  }, [url, mode, quality, container, audioFmt, audioQuality, embedThumb, embedChapters, embedMeta, embedSubs, sponsorblock, startTime, endTime, customFmt, downloadPath, playlistItems, info, showNotif, scheduleLater, onQueued, chosenChapters]);
 
   // Keep ref in sync with latest startDownload (assigned during render, safe to read in callbacks)
   startDownloadRef.current = startDownload;
@@ -317,10 +323,13 @@ export function FeedPage({ dlState, setDlState, setAppState, stats, sysInfo, ref
   }, [dlState, showNotif]);
 
   const estimatedBytes = info && !info.is_playlist
-    ? estimateDownloadBytes(info, { mode, quality, audioFmt, audioQuality, startTime, endTime })
+    ? estimateDownloadBytes(info, { mode, quality, audioFmt, audioQuality, startTime, endTime, chapters: chosenChapters })
     : null;
   const diskFree = sysInfo && sysInfo.disk_free_bytes;
   const wontFit = !!(estimatedBytes && diskFree && estimatedBytes > diskFree);
+
+  // A new analysis starts with no chapters chosen
+  React.useEffect(() => { setChapterSel(new Set()); }, [info && info.webpage_url]);
 
   const handlePaste = React.useCallback(() => {
     API.get('/api/clipboard').then(d => {
@@ -510,6 +519,38 @@ export function FeedPage({ dlState, setDlState, setAppState, stats, sysInfo, ref
                 </label>
               ))}
             </div>
+
+            {videoChapters.length > 0 && (
+              <div className="opts-advanced">
+                <div className="opts-adv-toggle" onClick={() => setChaptersOpen(o => !o)}>
+                  <span dangerouslySetInnerHTML={{ __html: chaptersOpen ? SVG.chevron_down : SVG.chevron_right }} />
+                  CHAPTERS · {videoChapters.length}
+                  {chosenChapters.length > 0 && <span style={{ color: 'var(--cyan)', marginLeft: 8 }}>{chosenChapters.length} CHOSEN</span>}
+                </div>
+                <div className={'opts-adv-body' + (chaptersOpen ? ' open' : '')}>
+                  <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: 'var(--t3)', margin: '4px 0 6px', display: 'flex', gap: 12 }}>
+                    <span>Each chosen chapter is saved as its own file (clip start/end is ignored).</span>
+                    <span style={{ cursor: 'pointer', color: 'var(--cyan)' }} onClick={() => setChapterSel(new Set(videoChapters.map(c => c.index)))}>ALL</span>
+                    <span style={{ cursor: 'pointer', color: 'var(--cyan)' }} onClick={() => setChapterSel(new Set())}>NONE</span>
+                  </div>
+                  <div style={{ maxHeight: 220, overflowY: 'auto' }}>
+                    {videoChapters.map(c => (
+                      <label key={c.index} className="opts-toggle-item" style={{ display: 'flex', gap: 8, padding: '2px 0' }}>
+                        <input type="checkbox" checked={chapterSel.has(c.index)} onChange={() => setChapterSel(prev => {
+                          const next = new Set(prev);
+                          if (next.has(c.index)) next.delete(c.index); else next.add(c.index);
+                          return next;
+                        })} />
+                        <span style={{ fontFamily: 'Share Tech Mono, monospace', color: 'var(--t4)', minWidth: 90 }}>
+                          {fmtDuration(c.start)} – {fmtDuration(c.end)}
+                        </span>
+                        {c.title}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
 
             <div className="opts-advanced">
               <div className="opts-adv-toggle" onClick={() => setAdvOpen(o => !o)}>

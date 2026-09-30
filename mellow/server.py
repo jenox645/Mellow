@@ -413,6 +413,7 @@ def api_download() -> Response:
         "custom_format": data.get("custom_format", ""),
         "start_time": data.get("start_time", ""),
         "end_time": data.get("end_time", ""),
+        "chapters": data.get("chapters") or [],
         "playlist_start": data.get("playlist_start"),
         "playlist_end": data.get("playlist_end"),
         "playlist_items": data.get("playlist_items", ""),

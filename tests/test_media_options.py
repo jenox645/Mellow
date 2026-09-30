@@ -289,3 +289,50 @@ def test_skip_settings_reach_every_download(client, tmp_dir):
         client.post('/api/download', json={'url': 'https://youtube.com/playlist?list=X', 'output_dir': tmp_dir})
         assert jobs.manager.wait_idle(10)
     assert dl.call_args[0][2]['skip_shorts'] is True
+
+
+CHAPTERS = [{'index': 2, 'title': 'Verse', 'start': 30, 'end': 90}, {'index': 5, 'title': 'Outro', 'start': 200, 'end': 240}]
+
+
+def _outtmpl(ydl_opts):
+    tmpl = ydl_opts['outtmpl']
+    return tmpl['default'] if isinstance(tmpl, dict) else tmpl
+
+
+def test_chosen_chapters_become_one_named_file_each(tmp_dir):
+    ydl_opts, _, _ = _opts_for(tmp_dir, {'mode': 'audio', 'chapters': CHAPTERS, 'start_time': '0:05'})
+    sections = list(ydl_opts['download_ranges']({}, None))
+    assert sections == [{'start_time': 30.0, 'end_time': 90.0, 'title': 'Verse', 'index': 2},
+                        {'start_time': 200.0, 'end_time': 240.0, 'title': 'Outro', 'index': 5}]
+    assert ydl_opts['force_keyframes_at_cuts'] is True
+    # a name per chapter, or each section would overwrite the last
+    assert _outtmpl(ydl_opts).endswith('%(title)s - %(section_number)02d %(section_title)s.%(ext)s')
+
+
+def test_chapters_keep_a_custom_template_and_skip_sponsorblock(tmp_dir):
+    ydl_opts, _, events = _opts_for(tmp_dir, {'chapters': CHAPTERS, 'sponsorblock': True,
+                                              'filename_template': '%(uploader)s/%(title)s.%(ext)s'})
+    assert _outtmpl(ydl_opts).endswith(
+        '%(uploader)s/%(title)s - %(section_number)02d %(section_title)s.%(ext)s')
+    assert not any(pp['key'] in ('SponsorBlock', 'ModifyChapters') for pp in ydl_opts['postprocessors'])
+    assert any(e.get('code') == 'sponsorblock_skipped' for e in events)
+
+
+def test_bad_chapters_are_refused(tmp_dir):
+    from unittest.mock import patch
+    for bad in ([{'start': 'x', 'end': 5}], [{'start': 50, 'end': 10}], [{'title': 'no times'}]):
+        events = []
+        with patch('mellow.downloader.find_ffmpeg', return_value=FFMPEG), \
+                patch('mellow.downloader.yt_dlp.YoutubeDL') as ydl:
+            assert downloader.download_video('https://youtu.be/abc', tmp_dir, {'chapters': bad},
+                                             events.append) == 'error'
+        assert not ydl.called and 'hapter' in events[-1]['message']
+
+
+def test_info_lists_the_videos_chapters():
+    info = {'chapters': [{'start_time': 0, 'end_time': 61.5, 'title': 'Intro'},
+                         {'start_time': 61.5, 'end_time': 300, 'title': ''}]}
+    assert downloader._chapter_list(info) == [
+        {'index': 1, 'title': 'Intro', 'start': 0.0, 'end': 61.5},
+        {'index': 2, 'title': 'Chapter 2', 'start': 61.5, 'end': 300.0}]
+    assert downloader._chapter_list({'chapters': None}) is None

@@ -24,7 +24,9 @@ export function fmtEta(s) {
 }
 
 export function fmtDuration(s) {
-  if (!s) return '';
+  // 0 is a time ("0:00", a chapter's start); only a missing value is blank
+  if (s === null || s === undefined || s === '' || isNaN(s)) return '';
+  s = Math.floor(s);
   const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
   if (h) return h + ':' + String(m).padStart(2, '0') + ':' + String(sec).padStart(2, '0');
   return m + ':' + String(sec).padStart(2, '0');
@@ -74,7 +76,7 @@ export function parseClock(s) {
 // size_estimates (what yt-dlp would fetch). Converted audio is sized by its
 // bitrate; lossless targets by their typical rate. Scaled down for a clip.
 // null when the site gave nothing to go on.
-export function estimateDownloadBytes(info, { mode, quality, audioFmt, audioQuality, startTime, endTime }) {
+export function estimateDownloadBytes(info, { mode, quality, audioFmt, audioQuality, startTime, endTime, chapters }) {
   const est = info && info.size_estimates;
   if (!est) return null;
   const duration = info.duration || 0;
@@ -86,6 +88,11 @@ export function estimateDownloadBytes(info, { mode, quality, audioFmt, audioQual
     bytes = est.video && est.video[quality];
   }
   if (!bytes) return null;
+  if (duration && chapters && chapters.length) {
+    // Only the chosen chapters are downloaded (clip start/end is ignored then)
+    const span = chapters.reduce((t, c) => t + Math.max(0, c.end - c.start), 0);
+    return span ? bytes * Math.min(span, duration) / duration : bytes;
+  }
   const start = parseClock(startTime), end = parseClock(endTime);
   if (duration && (start !== null || end !== null)) {
     const span = Math.min(end !== null ? end : duration, duration) - Math.max(start || 0, 0);
