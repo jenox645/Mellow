@@ -139,7 +139,8 @@ def build_folder_list(base_path: str, cfg: dict) -> list[dict]:
     for f in all_folders:
         if f["path"] in vault_names:
             f["name"] = vault_names[f["path"]]
-        if vault_playlists.get(f["path"]) and f["path"] in vault_sync_times:
+        f["playlist_count"] = len(vault_playlists.get(f["path"]) or [])
+        if f["playlist_count"] and f["path"] in vault_sync_times:
             f["last_synced"] = vault_sync_times[f["path"]]
     return [f for f in all_folders if f["path"] not in vault_hidden]
 

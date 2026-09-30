@@ -121,3 +121,17 @@ def test_vault_mirror_delete_also_forgets_history(client, tmp_dir):
     assert r.get_json() == {'deleted': 1, 'errors': []}
     assert not media.exists()
     assert _history_paths() == []
+
+
+def test_vault_folders_report_their_linked_playlists(client, tmp_path):
+    """The folder view offered SYNC NOW only after a first sync; a folder
+    with linked playlists needs to say so from the start."""
+    from config import update_config
+    root = tmp_path / 'dl'
+    (root / 'Mix').mkdir(parents=True)
+    (root / 'Plain').mkdir()
+    update_config(lambda c: c.update(output_dir=str(root)))
+    client.post('/api/vault/playlists', json={'path': str(root / 'Mix'), 'url': 'https://youtube.com/playlist?list=M'})
+    folders = {f['name']: f for f in client.get('/api/vault').get_json()['folders']}
+    assert folders['Mix']['playlist_count'] == 1
+    assert folders['Plain']['playlist_count'] == 0

@@ -284,39 +284,45 @@ class JobManager:
         # already-queued jobs too.
         job["opts"]["write_metadata"] = load_config().get("write_metadata", True)
         push = self._make_cb(job)
-        outcomes: list[tuple[str, str, dict]] = []  # (url, result, terminal event)
+        # (url, result, terminal event, whether the run already reported item_failed)
+        outcomes: list[tuple[str, str, dict, bool]] = []
         for url in urls:
             if cancel_event.is_set():
                 break
             terminal: dict = {}
+            reported: list[bool] = []
 
-            def _cb(event: dict, terminal: dict = terminal) -> None:
+            def _cb(event: dict, terminal: dict = terminal, reported: list = reported) -> None:
                 if event.get("status") in TERMINAL_EVENTS:
                     terminal.update(event)
-                else:
-                    push(event)
+                    return
+                if event.get("status") == "item_failed":
+                    reported.append(True)
+                push(event)
 
             result = downloader.download_video(
                 url, job["output_dir"], job["opts"], _cb,
                 job.get("library_id"), cancel_event=cancel_event,
                 pause_event=downloader._pause_event)
-            outcomes.append((url, result, terminal))
+            outcomes.append((url, result, terminal, bool(reported)))
         return self._emit_terminal(job, outcomes, push)
 
-    def _emit_terminal(self, job: dict, outcomes: list[tuple[str, str, dict]],
+    def _emit_terminal(self, job: dict, outcomes: list[tuple[str, str, dict, bool]],
                        push: Callable[[dict], None]) -> str:
-        if job["cancel_event"].is_set() or any(r == "cancelled" for _, r, _ in outcomes):
+        if job["cancel_event"].is_set() or any(r == "cancelled" for _, r, _, _ in outcomes):
             push({"status": "cancelled"})
             return "cancelled"
-        failed = [(url, t) for url, r, t in outcomes if r == "error"]
+        failed = [(url, t, reported) for url, r, t, reported in outcomes if r == "error"]
         if outcomes and len(failed) == len(outcomes):
-            url, terminal = failed[-1]
+            url, terminal, _ = failed[-1]
             push(terminal or {"status": "error", "message": "Download failed", "url": url})
             return "failed"
-        done = next((t for _, r, t in reversed(outcomes) if r != "error" and t), None)
+        done = next((t for _, r, t, _ in reversed(outcomes) if r != "error" and t), None)
         complete = dict(done) if done else {"status": "complete", "title": job.get("label") or job["url"]}
         if failed:
-            for url, terminal in failed:
+            for url, terminal, reported in failed:
+                if reported:
+                    continue  # its items were already listed as failed
                 push({"status": "item_failed", "reason": "error", "url": url,
                       "code": terminal.get("code"),
                       "message": terminal.get("message") or f"Could not download {url}"})

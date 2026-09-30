@@ -235,3 +235,23 @@ def test_library_last_synced_is_stamped_on_completion_only():
     assert last_synced() is None
     m._on_finished(job, 'complete')
     assert last_synced() is not None
+
+
+def test_failed_link_that_reported_its_own_items_is_not_counted_twice():
+    """Library runs log each failure as item_failed already; the job summary
+    must not add a second one for the same link."""
+    events = []
+    urls = ['https://youtube.com/playlist?list=A', 'https://youtube.com/playlist?list=B']
+
+    def fake_dl(url, out, opts, cb, lib_id=None, cancel_event=None, pause_event=None):
+        if url == urls[0]:
+            cb({'status': 'item_failed', 'reason': 'error', 'message': 'HTTP Error 404'})
+            cb({'status': 'error', 'message': 'HTTP Error 404', 'url': url})
+            return 'error'
+        cb({'status': 'complete', 'title': url})
+        return 'success'
+
+    with tempfile.TemporaryDirectory() as tmp, patch('downloader.download_video', side_effect=fake_dl):
+        assert _make_manager(events).run_job(_multi_job(tmp, urls)) == 'complete'
+    assert len([e for e in events if e['status'] == 'item_failed']) == 1
+    assert '1 of 2' in _terminal(events)[0]['warning']

@@ -127,9 +127,11 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
   }, [vaultFolders]);
 
   const selectedFolderMeta = vaultFolders.find(f => f.path === selectedFolder);
+  // The server links a folder to its library entry (library_id); matching on
+  // the folder name here attached "My Music" to an entry called "Music"
   const libEntry = selectedFolderMeta && selectedFolderMeta.library_id
     ? libraryEntries.find(e => e.id === selectedFolderMeta.library_id)
-    : libraryEntries.find(e => e.folder_name && selectedFolder && selectedFolder.endsWith(e.folder_name));
+    : null;
 
   // Same sync as the folder card: every linked playlist, in the format the
   // folder remembers. (It used to sync only the library entry's first URL,
@@ -154,7 +156,8 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
   const lastSynced = [libEntry && libEntry.last_synced, selectedFolderMeta && selectedFolderMeta.last_synced]
     .filter(Boolean)
     .sort((a, b) => new Date(b) - new Date(a))[0] || null;
-  const canSync = !!(libEntry || (selectedFolderMeta && selectedFolderMeta.last_synced));
+  // A folder with linked playlists can sync before its first sync, too
+  const canSync = !!(libEntry || (selectedFolderMeta && selectedFolderMeta.playlist_count > 0));
 
   const handleRandomize = React.useCallback(() => {
     const mediaFiles = files.filter(f => /\.(mp4|mkv|webm|mp3|m4a|flac|wav|aac|avi|mov|opus)$/i.test(f.name));
@@ -307,11 +310,9 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
               ))}
             </div>
             <button className="btn btn-secondary btn-sm" onClick={() => { onRefreshVault && onRefreshVault(); refreshLibraryEntries(); }} title="Refresh vault">↻ REFRESH</button>
-            {vaultFolders.some(f => f.last_synced !== undefined || f.library_id) && (
-              <button className="btn btn-secondary btn-sm" title="Sync all linked folders"
+            {vaultFolders.some(f => f.playlist_count > 0) && (
+              <button className="btn btn-secondary btn-sm" title="Sync all folders with linked playlists"
                 onClick={() => {
-                  const linked = vaultFolders.filter(f => f.library_id || f.last_synced);
-                  if (!linked.length) { showNotif('Nothing to sync', 'No linked folders found', 'info'); return; }
                   API.post('/api/vault/sync-all', {})
                     .then(d => showNotif('Sync All Queued', d.count + ' folder(s) queued', 'success'))
                     .catch(e => showNotif('Sync Error', e.message, 'error'));
@@ -373,7 +374,7 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
                   }}>⋮</div>
 
                   {/* Quick sync button — only shows when folder has a linked playlist */}
-                  {folder.library_id && (
+                  {(folder.playlist_count > 0 || folder.library_id) && (
                     <div className="vfc-sync-btn" title="Sync" onClick={e => { e.stopPropagation(); setSyncModal(folder); }}>↻</div>
                   )}
 
