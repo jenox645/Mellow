@@ -4,6 +4,7 @@ import contextlib
 import csv
 import io
 import logging
+import re
 import threading
 import time
 from datetime import datetime, timedelta
@@ -547,9 +548,15 @@ def delete_history_by_path(file_path: str) -> int:
     return count
 
 
+# Leading "-- line" and "/* block */" comments, skipped when checking what
+# kind of statement a query is
+_LEADING_SQL_COMMENTS = re.compile(r"\A(?:\s+|--[^\n]*(?:\n|\Z)|/\*.*?\*/)*", re.DOTALL)
+
+
 def run_query(sql: str) -> dict:
     stripped = sql.strip()
-    first_word = stripped.split(None, 1)[0].upper() if stripped else ""
+    body = _LEADING_SQL_COMMENTS.sub("", stripped, count=1)
+    first_word = body.split(None, 1)[0].upper() if body else ""
     if first_word not in ("SELECT", "WITH"):
         return {"error": "Only SELECT statements (including WITH ... SELECT) are permitted.",
                 "columns": [], "rows": [], "time_ms": 0}
