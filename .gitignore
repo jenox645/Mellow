@@ -3,9 +3,13 @@ build/
 __pycache__/
 *.pyc
 .venv/
-static/app.bundle.js
-static/react.min.js
-static/react-dom.min.js
+# Build output: build_setup.py regenerates all of static/ (bundle, React,
+# index.html, mascots.js, favicon) and the installer/package images
+/static/
+assets/mellow_256.png
+# yt-dlp binary the build downloads for bundling (latest at build time)
+/yt-dlp
+/yt-dlp.exe
 *.spec.bak
 node_modules/
 .vscode/

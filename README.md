@@ -1,6 +1,6 @@
 <div align="center">
 
-![MellowDLP Banner](assets/Ai%20made%20banner.png)
+![MellowDLP Banner](assets/banner.png)
 
 # MellowDLP
 
@@ -36,7 +36,7 @@ Personal desktop GUI for [yt-dlp](https://github.com/yt-dlp/yt-dlp). Download au
 - **Notifications**: optional desktop notification when a download finishes or fails in the background.
 - **yt-dlp self-update**: update yt-dlp from the Config page when running from source (takes effect after a restart). The packaged `.exe` can't replace its bundled copy — see Limitations.
 
-Formats: MP4, MKV, WebM, MP3, FLAC, M4A, OGG, Opus / Quality: best, 4K, 1080p, 720p, 480p, 360p, 128k, 320k.
+Video: MP4, MKV, WebM at best, 4K, 1080p, 720p, 480p or 360p. Audio: MP3, M4A, AAC, Opus (best, 320, 256, 192 or 128 kbps), FLAC, WAV.
 
 ---
 
@@ -106,8 +106,9 @@ Rebuild frontend only (after editing anything under `gui/`):
 python build_setup.py --frontend-only
 ```
 
-Run without building a binary:
+Run without building a binary (`static/` is build output, so build the frontend once first):
 ```bash
+python build_setup.py --frontend-only
 python3 main.py
 ```
 
