@@ -52,13 +52,10 @@ export function ConfigPage({ config, setConfig, showNotif, sysInfo, refreshStats
       .catch(e => showNotif('Error', e.message, 'error'));
   };
 
+  // Every setting back to the server's defaults (a list kept here missed
+  // most of them); vault playlists, schedules, budgets and presets stay
   const handleReset = () => {
-    API.post('/api/config', {
-      output_dir: '', cookies_browser: 'none', cookies_file: '', cookies_browser_profile: '',
-      rate_limit: '', proxy: '', external_downloader: '',
-      concurrent_fragments: 4, sleep_interval: 0, retries: 3,
-      write_metadata: true, filename_template: '',
-    }).then(() => API.get('/api/config'))
+    API.post('/api/config/reset', {})
       .then(c => { setLocal(c); setConfig(c); showNotif('Reset', 'Defaults restored', 'success'); })
       .catch(e => showNotif('Error', e.message, 'error'));
   };

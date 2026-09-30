@@ -26,7 +26,14 @@ import library as _library
 import scheduler
 import vault as _vault
 import ytdlp_update
-from config import download_root, download_settings, load_config, request_settings, update_config
+from config import (
+    download_root,
+    download_settings,
+    load_config,
+    request_settings,
+    reset_settings,
+    update_config,
+)
 from constants import (
     HISTORY_DEFAULT_LIMIT,
     HISTORY_MAX_LIMIT,
@@ -307,6 +314,11 @@ def api_config_post() -> Response:
     data = request.get_json(force=True) or {}
     update_config(lambda cfg: cfg.update(data))
     return jsonify({"ok": True})
+
+
+@app.route("/api/config/reset", methods=["POST"])
+def api_config_reset() -> Response:
+    return jsonify(reset_settings())
 
 
 # ── Download ──────────────────────────────────────────────────────────────────

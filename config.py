@@ -57,8 +57,14 @@ _DEFAULTS: dict = {
     "clipboard_watch": True,          # Feed banner when a media URL is copied
     "completion_sound": False,        # chime when a download finishes
     "desktop_notifications": False,   # system notification when unfocused
+    "ui_victory_animation": True,     # celebration after a playlist download
+    "ui_victory_sync": True,          # ... and after a vault sync
     "download_presets": [],           # saved option bundles for the Feed
 }
+
+# Defaults that hold the user's own data rather than a setting: RESET
+# DEFAULTS leaves them alone
+_USER_DATA_KEYS = frozenset({"vault_sync_schedule", "vault_budgets", "download_presets"})
 
 
 def load_config() -> dict:
@@ -140,6 +146,15 @@ def download_settings(cfg: dict) -> dict:
         "sleep_interval": cfg.get("sleep_interval", 0),
         "retries": cfg.get("retries", 3),
     }
+
+
+def reset_settings() -> dict:
+    """Put every setting back to its default (per-folder data and playlists stay)."""
+    def _reset(cfg: dict) -> None:
+        for key, value in _DEFAULTS.items():
+            if key not in _USER_DATA_KEYS:
+                cfg[key] = copy.deepcopy(value)
+    return update_config(_reset)
 
 
 def update_config(mutator: Callable[[dict], None]) -> dict:
