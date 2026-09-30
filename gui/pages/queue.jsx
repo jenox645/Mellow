@@ -1,7 +1,7 @@
 // QUEUE page — server job queue, active download, playlist tabs.
 'use strict';
 
-import { API } from '../lib/api.js';
+import { API, cancelShownDownload } from '../lib/api.js';
 import { fmtBytes, fmtSpeed, fmtEta, fmtDuration, timeAgo } from '../lib/util.js';
 import { Ico } from '../components/icons.jsx';
 import { Mascot } from '../components/common.jsx';
@@ -28,9 +28,7 @@ export function QueuePage({ dlState, showNotif, activeJobs, playlistItems, setPl
   }, [loadJobs]);
 
   const handleCancel = () => {
-    API.post('/api/cancel', {})
-      .then(() => showNotif('Cancelled', 'Download stopped'))
-      .catch(e => showNotif('Error', e.message, 'error'));
+    cancelShownDownload(dlState).catch(e => showNotif('Error', e.message, 'error'));
   };
 
   const handleCancelJob = (job) => {

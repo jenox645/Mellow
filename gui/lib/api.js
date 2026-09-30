@@ -26,3 +26,10 @@ export const API = {
   put: (url, body) => request('PUT', url, body),
   del: (url, body) => request('DELETE', url, body),
 };
+
+// Stop the download a progress panel shows (its latest event carries the
+// job id). With several downloads running, /api/cancel stopped all of them.
+// The resulting `cancelled` event is what tells the user it stopped.
+export const cancelShownDownload = (dlState) => (dlState && dlState.job_id
+  ? API.del('/api/queue/' + encodeURIComponent(dlState.job_id))
+  : API.post('/api/cancel', {}));

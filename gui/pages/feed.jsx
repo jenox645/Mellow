@@ -1,7 +1,7 @@
 // FEED page — URL ingest, options, active download, queue preview.
 'use strict';
 
-import { API } from '../lib/api.js';
+import { API, cancelShownDownload } from '../lib/api.js';
 import { fmtBytes, fmtSpeed, fmtEta, fmtDuration, timeAgo } from '../lib/util.js';
 import { SVG, Ico } from '../components/icons.jsx';
 import { Modal, Mascot, Pipeline } from '../components/common.jsx';
@@ -304,10 +304,8 @@ export function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats
   startDownloadRef.current = startDownload;
 
   const handleCancel = React.useCallback(() => {
-    API.post('/api/cancel', {})
-      .then(() => showNotif('Cancelled', 'Download cancelled'))
-      .catch(e => showNotif('Error', e.message, 'error'));
-  }, [showNotif]);
+    cancelShownDownload(dlState).catch(e => showNotif('Error', e.message, 'error'));
+  }, [dlState, showNotif]);
 
   const handlePaste = React.useCallback(() => {
     API.get('/api/clipboard').then(d => {
