@@ -28,6 +28,7 @@ from flask import Flask, Response, jsonify, request, send_from_directory
 import analytics
 import backup as _backup
 import downloader
+import errors
 import jobs
 import library as _library
 import scheduler
@@ -577,9 +578,16 @@ def api_info() -> Response:
         return jsonify({"error": "No URL"}), 400
     try:
         info = downloader.get_video_info(url, cookie_opts=_request_opts(load_config()))
-        return jsonify(info)
     except Exception as exc:
-        return jsonify({"error": str(exc)}), 500
+        return jsonify({"error": str(exc), **(errors.explain(str(exc)) or {})}), 500
+    if info and not info.get("is_playlist"):
+        # "You already have this": saves re-downloading the same video
+        try:
+            info["previous_download"] = analytics.find_previous_download(
+                [url, info.get("webpage_url")], info.get("id"))
+        except Exception as exc:
+            print(f"[INFO] history lookup failed: {exc}", flush=True)
+    return jsonify(info)
 
 
 @app.route("/api/download", methods=["POST"])
@@ -634,7 +642,23 @@ def api_download() -> Response:
                            label=multi_urls[0], multi_urls=multi_urls)
     else:
         job = _enqueue_job(url, output_dir, opts, job_type="feed", label=url)
-    return jsonify({"status": "started", "job_id": job["id"]})
+    resp = {"status": "started", "job_id": job["id"]}
+    free = _free_bytes_near(output_dir)
+    if free is not None and free < LOW_DISK_WARN_BYTES:
+        # Queued anyway; the user decides whether it will fit
+        resp["disk_warning"] = f"Only {free / 1024 ** 3:.1f} GB free on the download drive."
+    return jsonify(resp)
+
+
+def _free_bytes_near(path: str) -> int | None:
+    """Free space on the drive holding `path` (or its nearest existing parent)."""
+    p = Path(path)
+    while not p.exists() and p.parent != p:
+        p = p.parent
+    try:
+        return shutil_disk_free(p)
+    except OSError:
+        return None
 
 
 @app.route("/api/cancel", methods=["POST"])

@@ -32,7 +32,7 @@ export function ConfigPage({ config, setConfig, showNotif, sysInfo, refreshStats
     'ui_victory_animation', 'ui_victory_sync',
     'default_mode', 'default_quality', 'default_container', 'default_audio_format', 'default_audio_quality',
     'download_workers', 'auto_sync_enabled', 'auto_sync_default_interval',
-    'update_check_on_launch', 'clipboard_watch', 'completion_sound',
+    'update_check_on_launch', 'clipboard_watch', 'completion_sound', 'desktop_notifications',
   ];
   const NUMERIC_DEFAULTS = { concurrent_fragments: 4, sleep_interval: 0, retries: 3, download_workers: 1 };
 
@@ -422,6 +422,23 @@ export function ConfigPage({ config, setConfig, showNotif, sysInfo, refreshStats
                 </div>
                 <div className="settings-ctrl">
                   <Toggle checked={local.clipboard_watch !== false} onChange={v => set('clipboard_watch', v)} />
+                </div>
+              </div>
+              <div className="settings-row">
+                <div className="settings-label">
+                  <div className="sl-name">Desktop Notifications</div>
+                  <div className="sl-sub">System notification when a download finishes or fails while the window is in the background</div>
+                </div>
+                <div className="settings-ctrl">
+                  <Toggle checked={local.desktop_notifications === true} onChange={v => {
+                    set('desktop_notifications', v);
+                    // Ask on this click: browsers only prompt from a user action
+                    if (v && typeof Notification !== 'undefined' && Notification.permission === 'default') {
+                      Notification.requestPermission().then(p => {
+                        if (p !== 'granted') { set('desktop_notifications', false); showNotif('Notifications blocked', 'Allow notifications for this app to use this', 'warn'); }
+                      });
+                    }
+                  }} />
                 </div>
               </div>
               <div className="settings-row">

@@ -50,6 +50,7 @@ export default [
         FormData: 'readonly',
         navigator: 'readonly',
         globalThis: 'readonly',
+        Notification: 'readonly',
       },
       parserOptions: {
         ecmaFeatures: { jsx: true },

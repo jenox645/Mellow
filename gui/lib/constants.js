@@ -8,6 +8,9 @@ export const LOADING_MIN_MS = 1000;            // click-to-skip floor
 export const NOTIF_TIMEOUT_MS = 6000;
 export const NOTIF_ACTION_TIMEOUT_MS = 12000;  // toasts with buttons linger
 
+// Analyze
+export const ANALYZE_SLOW_MS = 15000;          // show the "still analyzing" hint after this
+
 // Polling
 export const STATS_POLL_ACTIVE_MS = 3000;      // while downloading
 export const STATS_POLL_IDLE_MS = 30000;

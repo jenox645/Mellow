@@ -814,6 +814,8 @@ def get_video_info(url: str, cookie_opts: dict | None = None) -> dict:
         "platform": _detect_platform(url),
         "is_playlist": is_playlist,
         "playlist_count": playlist_count,
+        "id": info.get("id"),
+        "webpage_url": info.get("webpage_url") or url,
     }
 
 

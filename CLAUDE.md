@@ -6,6 +6,7 @@
   - `jobs.py` — download job queue: worker pool (`download_workers` config, max `MAX_DOWNLOAD_WORKERS`), per-job cancel events, reordering, restart persistence (`~/.mellow_dlp_queue.json`)
   - `downloader.py` — yt-dlp Python API wrapper (returns `success|cancelled|error`; never raises — setup failures become an `error` event)
   - `ffmpeg_locate.py` — the one ffmpeg lookup (config override → PATH → next to the app → known install folders), shared by downloader, vault and `/api/system`
+  - `errors.py` — `explain()` maps raw yt-dlp errors to `{code, title, hint, action}`; `jobs._make_cb` annotates every `error`/`item_failed` event, `/api/info` errors too
   - `analytics.py` — DuckDB (shared per-path connection handed out as cursors)
   - `scheduler.py` — vault auto-sync loop (config: `auto_sync_enabled`, `vault_sync_schedule`)
   - `vault.py` / `library.py` — vault & library business logic
@@ -47,6 +48,7 @@ All job-originated events carry `job_id`, `job_type`, `job_label` (multi-worker 
 - `warning` — non-fatal notice with `code` + `message` (today: `ffmpeg_missing`, `sponsorblock_skipped`)
 - `complete` — entire download finished: `title`, `file_path`, `file_size`, `warning` (set when it was saved with limits)
 - `error` (includes `url` for retry, `code: ffmpeg_missing` when that is the likely cause) / `cancelled` — terminal states
+- `error` and `item_failed` also carry `code`, `title`, `hint` and `action` (`update_ytdlp` | `open_config` | null) when `errors.explain()` recognises the message; the UI shows title + hint and a button for the action
 - `paused` / `resumed` — pause toggles
 - `ytdlp_updated` — after yt-dlp self-update
 
@@ -58,6 +60,12 @@ All job-originated events carry `job_id`, `job_type`, `job_label` (multi-worker 
 - Mutating `/api/` requests require a JSON content type (CSRF guard); `/api/backup/restore` is the only multipart exception
 - All magic numbers live in `constants.py` (backend) / `gui/lib/constants.js` (frontend)
 - Stats polling: 3s during active download, 30s idle (frontend constants)
+- Format lists (qualities, containers, audio formats, bitrates) live only in `gui/lib/constants.js`
+- A vault folder's sync format: request → `vault_sync_formats[path]` (last choice, saved by the sync dialog and the Feed's vault link) → its library entry → `infer_folder_format()` (what the files are). Auto-sync and "sync all" send no format, so this chain decides them
+- Every yt-dlp call (analyze, playlist items, mirror preview, downloads) goes through `_apply_cookie_opts` + `_apply_network_opts` (proxy, `force_ipv4`, socket timeout); build them with `server._request_opts(cfg)`
+- Mirror preview proposes no deletions when any linked playlist failed to load; ids for "%(title)s"-named files come from the download history
+- Sidecar thumbnails share the media file's full stem (`p.parent / (p.stem + ".jpg")`), never `with_suffix("")`
+- `/api/info` returns `previous_download` for single videos (history match by URL or YouTube id); `/api/download` returns `disk_warning` when the target drive is low
 - Victory overlay at App root (outside all page components), z-index 9999
 - Every job must end in exactly one terminal event (`complete`/`error`/`cancelled`) — the UI has no timeout; `jobs._worker` pushes `error` if a job crashes
 - No ffmpeg → `downloader` requests single-file formats and no ffmpeg postprocessors, and says so via `warning`; never build a `a+b` format or an `FFmpeg*` postprocessor without checking `find_ffmpeg()`

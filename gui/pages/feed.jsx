@@ -7,7 +7,8 @@ import { SVG, Ico } from '../components/icons.jsx';
 import { Modal, Mascot, Pipeline } from '../components/common.jsx';
 import { MASCOT_CHILLING } from '../lib/mascots.js';
 import {
-  AUDIO_FORMATS, AUDIO_QUALITIES, CONTAINERS, LOSSLESS_AUDIO, QUALITIES, SPONSORBLOCK_HINT,
+  ANALYZE_SLOW_MS, AUDIO_FORMATS, AUDIO_QUALITIES, CONTAINERS, LOSSLESS_AUDIO, QUALITIES,
+  SPONSORBLOCK_HINT,
 } from '../lib/constants.js';
 
 export function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats, showNotif, switchPage, config, setConfig, suggestedUrl, onSuggestedConsumed, onPlaylistDownload, playlistItems, setPlaylistItems, completedItems, failedItems, playlistTotalCount, playlistCompletedCount, isPaused, syncJobLabel, fetchingPlaylistItems, onPause, onResume, onClearCompleted }) {
@@ -17,6 +18,13 @@ export function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats
 
   const [url, setUrl] = React.useState(() => ss('feed_url', ''));
   const [analyzing, setAnalyzing] = React.useState(false);
+  // Analyze normally takes a few seconds; past ANALYZE_SLOW_MS say why it may hang
+  const [analyzeSlow, setAnalyzeSlow] = React.useState(false);
+  React.useEffect(() => {
+    if (!analyzing) { setAnalyzeSlow(false); return undefined; }
+    const t = setTimeout(() => setAnalyzeSlow(true), ANALYZE_SLOW_MS);
+    return () => clearTimeout(t);
+  }, [analyzing]);
   const [fetchingItems, setFetchingItems] = React.useState(false);
   const [info, setInfo] = React.useState(() => ssJ('feed_info', null));
   const [optsOpen, setOptsOpen] = React.useState(false);
@@ -90,7 +98,11 @@ export function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats
     setPlaylistItems && setPlaylistItems(null);
     API.post('/api/info', { url: target })
       .then(data => {
-        if (data.error) { showNotif('Error', data.error, 'error'); return; }
+        if (data.error) {
+          // Explained when the backend recognises it; the raw text otherwise
+          showNotif(data.title || 'Error', data.hint || data.error, 'error');
+          return;
+        }
         setInfo(data);
         if (data.is_playlist) {
           setFetchingItems(true);
@@ -231,6 +243,7 @@ export function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats
       ...(downloadPath ? { output_dir: downloadPath } : {}),
     }).then(d => {
       if (d.error) { showNotif('Error', d.error, 'error'); setSubmitting(false); }
+      else if (d.disk_warning) showNotif('Low Disk Space', d.disk_warning, 'warn');
     }).catch(e => { showNotif('Error', e.message, 'error'); setSubmitting(false); });
   }, [importedUrls, importedFileName, mode, quality, container, audioFmt, audioQuality, embedThumb, embedChapters, embedMeta, embedSubs, sponsorblock, downloadPath, onPlaylistDownload, showNotif]);
 
@@ -286,6 +299,7 @@ export function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats
       ...extra,
     }).then(d => {
       if (d.error) { showNotif('Error', d.error, 'error'); setSubmitting(false); }
+      else if (d.disk_warning) showNotif('Low Disk Space', d.disk_warning, 'warn');
     }).catch(e => { showNotif('Error', e.message, 'error'); setSubmitting(false); });
   }, [url, mode, quality, container, audioFmt, audioQuality, embedThumb, embedChapters, embedMeta, embedSubs, sponsorblock, startTime, endTime, customFmt, downloadPath, playlistItems, info, showNotif]);
 
@@ -371,6 +385,11 @@ export function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats
         <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: 'var(--t4)', paddingTop: 3 }}>
           ENTER: {!url.trim() ? 'paste' : !info && !analyzing ? 'analyze' : 'download'}
           {importedFileName && <span style={{ color: 'var(--cyan)', marginLeft: 10 }}>↑ {importedFileName} ({importedUrls ? importedUrls.length : 0} URLs)</span>}
+          {analyzeSlow && (
+            <span style={{ color: 'var(--amber)', marginLeft: 10 }}>
+              STILL ANALYZING — big playlists take a while. If it never finishes, try Config → Network → Force IPv4.
+            </span>
+          )}
         </div>
 
         {/* OPTIONS PANEL */}
@@ -535,6 +554,19 @@ export function FeedPage({ dlState, setDlState, setAppState, stats, refreshStats
                 <div className="info-meta">
                   {[info.uploader, info.platform, info.is_playlist ? (info.playlist_count + ' items') : null].filter(Boolean).join(' · ')}
                 </div>
+                {info.previous_download && (
+                  <div className="info-prev" title={info.previous_download.file_path || ''}>
+                    <span className="tag green">✓ ALREADY DOWNLOADED {timeAgo(info.previous_download.timestamp).toUpperCase()}</span>
+                    {info.previous_download.exists ? (
+                      <>
+                        <span className="info-prev-link" onClick={() => API.post('/api/vault/open-file', { path: info.previous_download.file_path }).catch(() => {})}>OPEN</span>
+                        <span className="info-prev-link" onClick={() => API.post('/api/open-folder', { path: info.previous_download.file_path }).catch(() => {})}>SHOW IN FOLDER</span>
+                      </>
+                    ) : (
+                      <span style={{ color: 'var(--t4)' }}>file moved or deleted since</span>
+                    )}
+                  </div>
+                )}
                 <div className="info-tags">
                   <span className="tag cyan">{info.platform || 'URL'}</span>
                   {info.is_playlist && <span className="tag amber">PLAYLIST · {info.playlist_count}</span>}

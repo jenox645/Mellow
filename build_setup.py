@@ -42,7 +42,7 @@ REACT_DOM_URL = f"https://unpkg.com/react-dom@{REACT_VERSION}/umd/react-dom.prod
 PYTHON_FILES = [
     "main.py", "server.py", "downloader.py", "analytics.py",
     "config.py", "constants.py", "vault.py", "library.py",
-    "jobs.py", "scheduler.py", "backup.py", "ffmpeg_locate.py",
+    "jobs.py", "scheduler.py", "backup.py", "ffmpeg_locate.py", "errors.py",
     "version.py", "build_setup.py",
 ]
 

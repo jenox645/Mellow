@@ -499,6 +499,38 @@ def delete_history(
     return 0
 
 
+def find_previous_download(urls: list[str], video_id: str | None = None) -> dict | None:
+    """Latest successful download of the same video, or None.
+
+    Matches any of the given URLs exactly; for an 11-character (YouTube-style)
+    id also any history URL that contains it, since the same video arrives as
+    watch?v=, youtu.be/ or a playlist entry URL.
+    """
+    urls = [u for u in urls if u]
+    if not urls and not video_id:
+        return None
+    conditions = ["url = ?"] * len(urls)
+    params: list[Any] = list(urls)
+    if video_id and len(video_id) == 11:
+        conditions.append("url LIKE ?")
+        params.append(f"%{video_id}%")
+    with get_conn() as con:
+        row = con.execute(f"""
+            SELECT title, file_path, timestamp FROM downloads
+            WHERE status = 'success' AND ({' OR '.join(conditions)})
+            ORDER BY timestamp DESC LIMIT 1
+        """, params).fetchone()
+    if not row:
+        return None
+    title, file_path, ts = row
+    return {
+        "title": title,
+        "file_path": file_path,
+        "timestamp": str(ts) if ts else None,
+        "exists": bool(file_path) and Path(file_path).is_file(),
+    }
+
+
 def delete_history_by_path(file_path: str) -> int:
     """Delete download rows whose file_path matches (used by vault file delete)."""
     if not file_path:

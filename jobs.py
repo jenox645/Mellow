@@ -20,6 +20,7 @@ from typing import Callable
 
 import analytics
 import downloader
+import errors
 from config import load_config, update_config
 from constants import (
     DEFAULT_DOWNLOAD_WORKERS,
@@ -301,6 +302,8 @@ class JobManager:
             event.setdefault("job_id", job["id"])
             event.setdefault("job_type", job["type"])
             event.setdefault("job_label", job["label"])
+            # Plain-language title/hint/action next to yt-dlp's raw message
+            errors.annotate(event)
             self._push(event)
         return _cb
 

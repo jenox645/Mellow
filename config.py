@@ -54,6 +54,7 @@ _DEFAULTS: dict = {
     "update_check_on_launch": True,   # yt-dlp staleness toast on startup
     "clipboard_watch": True,          # Feed banner when a media URL is copied
     "completion_sound": False,        # chime when a download finishes
+    "desktop_notifications": False,   # system notification when unfocused
     "download_presets": [],           # saved option bundles for the Feed
 }
 

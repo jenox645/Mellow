@@ -208,8 +208,9 @@ export function QueuePage({ dlState, showNotif, activeJobs, playlistItems, setPl
                   <span style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 8, color: item.reason === 'geo_blocked' ? 'var(--amber)' : 'var(--red)', minWidth: 70 }}>
                     {(item.reason || 'error').toUpperCase()}
                   </span>
-                  <span style={{ flex: 1, fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: 'var(--t2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={item.title}>
-                    {item.title}
+                  <span style={{ flex: 1, minWidth: 0, fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: 'var(--t2)' }} title={item.title}>
+                    {item.hint && <div style={{ color: 'var(--t1)', marginBottom: 2 }}>{item.hint}</div>}
+                    <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: item.hint ? 'var(--t4)' : undefined }}>{item.title}</div>
                   </span>
                   <span style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 8, color: 'var(--t4)' }}>{timeAgo(item.failedAt)}</span>
                   {item.url && (
