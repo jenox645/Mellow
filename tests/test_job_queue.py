@@ -255,3 +255,31 @@ def test_failed_link_that_reported_its_own_items_is_not_counted_twice():
         assert _make_manager(events).run_job(_multi_job(tmp, urls)) == 'complete'
     assert len([e for e in events if e['status'] == 'item_failed']) == 1
     assert '1 of 2' in _terminal(events)[0]['warning']
+
+
+def test_download_running_at_exit_is_offered_again():
+    """Only queued jobs were saved: the download in progress when the app
+    closed was lost. It is saved (first), and dropped once it finishes."""
+    import json
+    started, release = threading.Event(), threading.Event()
+
+    def fake_dl(url, out, opts, cb, lib_id=None, cancel_event=None, pause_event=None):
+        started.set()
+        release.wait(timeout=10)
+        return 'success'
+
+    with tempfile.TemporaryDirectory() as tmp, \
+            patch.object(jobs, 'QUEUE_STATE_PATH', jobs.Path(tmp) / 'queue.json'), \
+            patch('jobs.load_config', return_value={'download_workers': 1}), \
+            patch('downloader.download_video', side_effect=fake_dl):
+        m = jobs.JobManager()
+        m.start(lambda e: None)
+        running = m.enqueue('https://youtu.be/running', tmp, {})
+        assert started.wait(10)
+        queued = m.enqueue('https://youtu.be/queued', tmp, {})
+        saved = json.loads(jobs.QUEUE_STATE_PATH.read_text())
+        assert [j['id'] for j in saved] == [running['id'], queued['id']]
+        assert jobs.JobManager().restorable[0]['url'] == 'https://youtu.be/running'
+        release.set()
+        assert m.wait_idle(10)
+        assert not jobs.QUEUE_STATE_PATH.exists()

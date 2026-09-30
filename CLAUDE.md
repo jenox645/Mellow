@@ -31,7 +31,7 @@
 - Queue: `playlistItems` (pending) and `completedItems` (done) — both at App root
 - Options (format, quality, checkboxes): survive URL change AND section navigation via sessionStorage
 - Victory overlay: state at App root, triggered by `item_done` events accumulating then `complete`
-- Queued jobs survive restarts (resume prompt on launch)
+- Unfinished jobs (running or queued) survive restarts (resume prompt on launch)
 
 ## Download Flow
 1. User pastes URL → ANALYZE → POST `/api/info` → yt-dlp `--dump-json`

@@ -181,7 +181,7 @@ function App() {
       .catch(() => {});
   }, [config.output_dir]);
 
-  // Jobs that were still queued when the app last exited
+  // Jobs that were running or queued when the app last exited
   React.useEffect(() => {
     API.get('/api/queue/restorable')
       .then(d => { if (d.jobs && d.jobs.length) setRestorableJobs(d.jobs); })
@@ -664,7 +664,7 @@ function App() {
         >
           <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 10, color: 'var(--t2)' }}>
             <div style={{ marginBottom: 8, color: 'var(--t3)' }}>
-              {restorableJobs.length} download(s) were still queued when the app last closed:
+              {restorableJobs.length} download(s) hadn't finished when the app last closed:
             </div>
             {restorableJobs.slice(0, 8).map(j => (
               <div key={j.id} style={{ padding: '3px 0', borderBottom: '1px solid var(--border)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>

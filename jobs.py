@@ -6,8 +6,8 @@ live so changing it applies to already-queued work. Every SSE event emitted
 through a job is tagged with `job_id`/`job_type`/`job_label` so the frontend
 can attribute progress when more than one download is active.
 
-Queued jobs are persisted to QUEUE_STATE_PATH so a restart can offer to
-resume them.
+Unfinished jobs (running or queued) are persisted to QUEUE_STATE_PATH so a
+restart can offer to resume them.
 """
 from __future__ import annotations
 
@@ -169,9 +169,16 @@ class JobManager:
     # ── Restart persistence ────────────────────────────────────────────────────
 
     def _persist(self) -> None:
+        """Save every unfinished job: running ones first, then the queue.
+
+        A download still running when the app closes is the one most worth
+        offering again (yt-dlp resumes its .part file); saving only the
+        queued jobs lost it.
+        """
         try:
             with self._cv:
-                pending = [{k: j.get(k) for k in _PERSIST_KEYS} for j in self._pending]
+                unfinished = [j for j in self._jobs if j["status"] == "active"] + self._pending
+                pending = [{k: j.get(k) for k in _PERSIST_KEYS} for j in unfinished]
             if pending:
                 QUEUE_STATE_PATH.write_text(json.dumps(pending), encoding="utf-8")
             elif QUEUE_STATE_PATH.exists():
@@ -189,7 +196,7 @@ class JobManager:
             log.warning(f"could not read persisted queue: {exc}")
 
     def restore_pending(self) -> list[str]:
-        """Re-enqueue jobs that were still queued when the app last exited."""
+        """Re-enqueue jobs that were unfinished when the app last exited."""
         restored = []
         for j in self.restorable:
             job = self.enqueue(
@@ -252,6 +259,7 @@ class JobManager:
                         downloader.resume()
                     self._trim_finished()
                     self._cv.notify_all()
+                self._persist()
 
     def wait_idle(self, timeout: float | None = None) -> bool:
         """Block until nothing is queued or running. False on timeout."""
