@@ -296,7 +296,8 @@ CHAPTERS = [{'index': 2, 'title': 'Verse', 'start': 30, 'end': 90}, {'index': 5,
 
 def _outtmpl(ydl_opts):
     tmpl = ydl_opts['outtmpl']
-    return tmpl['default'] if isinstance(tmpl, dict) else tmpl
+    tmpl = tmpl['default'] if isinstance(tmpl, dict) else tmpl
+    return tmpl.replace('\\', '/')  # the template is joined with the OS separator
 
 
 def test_chosen_chapters_become_one_named_file_each(tmp_dir):
