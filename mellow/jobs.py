@@ -115,6 +115,25 @@ class JobManager:
         self._persist()
         return job
 
+    def retry(self, job_id: str, url: str | None = None) -> dict | None:
+        """Run job `job_id` again, or just `url` from it, with its options and folder.
+
+        A plain re-download used the Feed defaults, so an item of an MP3
+        playlist came back as video. One item is a plain download (no sync
+        time or sync log); the whole job is re-run as what it was, a sync
+        included. None when the job is no longer known.
+        """
+        with self._cv:
+            job = next((j for j in self._jobs if j["id"] == job_id), None)
+        if job is None:
+            return None
+        if url:
+            return self.enqueue(url, job["output_dir"], dict(job["opts"]), job.get("library_id"),
+                                job_type="feed", label=f"Retry — {url}")
+        return self.enqueue(job["url"], job["output_dir"], dict(job["opts"]), job.get("library_id"),
+                            job_type=job["type"], label=job["label"],
+                            multi_urls=job.get("multi_urls"), sync_path=job.get("sync_path"))
+
     def has_sync_for(self, sync_path: str) -> bool:
         """True when a sync for this folder is already queued or running."""
         with self._cv:

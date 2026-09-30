@@ -130,3 +130,15 @@ def test_size_estimates_without_ffmpeg_use_single_file_formats():
         est = downloader._size_estimates(ydl, {'formats': formats})
     assert est['video']['1080p'] == 12_000_000  # only the combined 360p file can be saved
     assert est['audio'] == 3_000_000  # bestaudio[ext=m4a]
+
+
+def test_failed_playlist_items_name_their_url():
+    """So the Queue can retry just that item."""
+    assert downloader.item_url_from_error('ERROR: [youtube] dQw4w9WgXcQ: Video unavailable') \
+        == 'https://www.youtube.com/watch?v=dQw4w9WgXcQ'
+    assert downloader.item_url_from_error('ERROR: [generic] missing: HTTP Error 404') is None
+    assert downloader.item_url_from_error('ERROR: [youtube:tab] PLx: does not exist') is None
+    events = []
+    logger = downloader._GeoBlockLogger(events.append, None)
+    logger.error('ERROR: [youtube] dQw4w9WgXcQ: Private video')
+    assert events[0]['url'] == 'https://www.youtube.com/watch?v=dQw4w9WgXcQ'

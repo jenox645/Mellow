@@ -433,6 +433,16 @@ def api_queue_cancel_job(job_id: str) -> Response:
     return jsonify({"ok": True, "status": "cancelling"})
 
 
+@app.route("/api/queue/<job_id>/retry", methods=["POST"])
+def api_queue_retry(job_id: str) -> Response:
+    """Run a finished job again, or one item of it (`url`), with the job's options."""
+    url = ((request.get_json(force=True) or {}).get("url") or "").strip() or None
+    job = jobs.manager.retry(job_id, url)
+    if job is None:
+        return jsonify({"error": "That job is no longer in the queue history"}), 404
+    return jsonify({"ok": True, "job_id": job["id"]})
+
+
 @app.route("/api/queue/<job_id>/reorder", methods=["POST"])
 def api_queue_reorder(job_id: str) -> Response:
     data = request.get_json(force=True) or {}

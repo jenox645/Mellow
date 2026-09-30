@@ -48,7 +48,11 @@ class _GeoBlockLogger:
         if key in self._seen:
             return
         self._seen.add(key)
-        self._cb({"status": "item_failed", "reason": reason, "message": msg, "library_id": self._lid})
+        event = {"status": "item_failed", "reason": reason, "message": msg, "library_id": self._lid}
+        url = item_url_from_error(msg)
+        if url:
+            event["url"] = url  # lets the Queue retry just this item
+        self._cb(event)
 
     def debug(self, msg: str) -> None:
         pass
@@ -328,6 +332,20 @@ _ARCHIVE_URL_TEMPLATES = {
     "dailymotion": "https://www.dailymotion.com/video/{}",
     "nicovideo":   "https://www.nicovideo.jp/watch/{}",
 }
+
+
+# yt-dlp error lines name the item: "ERROR: [youtube] dQw4w9WgXcQ: Video unavailable"
+_ERROR_ITEM_RE = re.compile(r"\[([A-Za-z0-9_:]+)\] ([A-Za-z0-9_-]+): ")
+
+
+def item_url_from_error(message: str) -> str | None:
+    """Public URL of the playlist item a yt-dlp error is about, when the site's
+    ids map back to one (the same sites archive files can be imported from)."""
+    m = _ERROR_ITEM_RE.search(message or "")
+    if not m:
+        return None
+    tmpl = _ARCHIVE_URL_TEMPLATES.get(m.group(1).lower())
+    return tmpl.format(m.group(2)) if tmpl else None
 
 
 def parse_url_file(content: str) -> tuple[list[str], str]:

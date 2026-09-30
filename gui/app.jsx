@@ -372,6 +372,7 @@ function App() {
           reason: data.code || data.reason || 'error',
           hint: data.title ? data.title + ' — ' + data.hint : null,
           url: data.url || null,
+          jobId: jobId,
           failedAt: Date.now(),
         }, ...prev].slice(0, FAILED_ITEMS_KEEP));
       } else if (data.status === 'complete') {
@@ -424,7 +425,7 @@ function App() {
         if (jobId) setActiveJobs(prev => { const next = { ...prev }; delete next[jobId]; return next; });
         const msg = data.message || 'Download failed';
         setFailedItems(prev => [{
-          title: msg, reason: data.code || 'error', url: data.url || null, failedAt: Date.now(),
+          title: msg, reason: data.code || 'error', url: data.url || null, jobId: jobId, failedAt: Date.now(),
           hint: data.title ? data.title + ' — ' + data.hint : null,
         }, ...prev].slice(0, FAILED_ITEMS_KEEP));
         setFailedCount(c => c + 1);

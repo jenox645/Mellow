@@ -40,11 +40,29 @@ export function QueuePage({ dlState, showNotif, activeJobs, playlistItems, setPl
       .catch(e => showNotif('Error', e.message, 'error'));
   };
 
+  // Same options and folder as the job it failed in (a plain /api/download
+  // used the Feed defaults: an MP3 playlist's item came back as video)
+  const retryItem = (item) => (item.jobId
+    ? API.post('/api/queue/' + encodeURIComponent(item.jobId) + '/retry', { url: item.url })
+      .catch(e => { if (e.status === 404) return API.post('/api/download', { url: item.url }); throw e; })
+    : API.post('/api/download', { url: item.url }));
+
   const handleRetryFailed = (item) => {
     if (!item.url) return;
-    API.post('/api/download', { url: item.url })
+    retryItem(item)
       .then(() => showNotif('Re-queued', item.url))
       .catch(e => showNotif('Error', e.message, 'error'));
+  };
+
+  const handleRetryAll = () => {
+    const items = (failedItems || []).filter(i => i.url);
+    const seen = new Set();
+    const unique = items.filter(i => !seen.has(i.url) && seen.add(i.url));
+    Promise.all(unique.map(i => retryItem(i).then(() => true, () => false)))
+      .then(results => {
+        const ok = results.filter(Boolean).length;
+        showNotif('Re-queued', ok + ' of ' + unique.length + ' failed item(s)', ok === unique.length ? 'success' : 'warn');
+      });
   };
 
   const handleReorder = (job, delta) => {
@@ -132,6 +150,13 @@ export function QueuePage({ dlState, showNotif, activeJobs, playlistItems, setPl
                 {(job.status === 'queued' || job.status === 'active') && (
                   <div className="q-del" title={job.status === 'active' ? 'Cancel this job' : 'Remove from queue'} onClick={() => handleCancelJob(job)}><Ico name="x" /></div>
                 )}
+                {(job.status === 'failed' || job.status === 'cancelled') && (
+                  <button className="btn btn-secondary btn-sm" style={{ padding: '3px 8px', fontSize: 8 }}
+                    title="Run this job again, with the same options"
+                    onClick={() => API.post('/api/queue/' + encodeURIComponent(job.id) + '/retry', {})
+                      .then(() => { showNotif('Re-queued', job.label || job.url); loadJobs(); })
+                      .catch(e => showNotif('Error', e.message, 'error'))}>↻ RETRY</button>
+                )}
               </div>
             );
           })}
@@ -197,8 +222,13 @@ export function QueuePage({ dlState, showNotif, activeJobs, playlistItems, setPl
             {qTab === 'completed' && completedItems && completedItems.length > 0 && onClearCompleted && (
               <span style={{ marginLeft: 'auto', cursor: 'pointer', fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: 'var(--red)', padding: '0 10px' }} onClick={onClearCompleted}>CLEAR ✕</span>
             )}
+            {qTab === 'failed' && failedItems && failedItems.filter(i => i.url).length > 1 && (
+              <span style={{ marginLeft: 'auto', cursor: 'pointer', fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: 'var(--cyan)', padding: '0 10px' }}
+                title="Download every failed item again, with the options of the job it failed in"
+                onClick={handleRetryAll}>↻ RETRY ALL</span>
+            )}
             {qTab === 'failed' && failedItems && failedItems.length > 0 && onClearFailed && (
-              <span style={{ marginLeft: 'auto', cursor: 'pointer', fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: 'var(--red)', padding: '0 10px' }} onClick={onClearFailed}>CLEAR ✕</span>
+              <span style={{ marginLeft: failedItems.filter(i => i.url).length > 1 ? 0 : 'auto', cursor: 'pointer', fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: 'var(--red)', padding: '0 10px' }} onClick={onClearFailed}>CLEAR ✕</span>
             )}
           </div>
           {qTab === 'failed' ? (

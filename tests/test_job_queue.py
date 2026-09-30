@@ -283,3 +283,43 @@ def test_download_running_at_exit_is_offered_again():
         release.set()
         assert m.wait_idle(10)
         assert not jobs.QUEUE_STATE_PATH.exists()
+
+
+def test_retry_uses_the_failed_jobs_options_and_folder(client, tmp_path):
+    """Retrying an item of an MP3 playlist re-downloaded it with the Feed
+    defaults (video)."""
+    from mellow import jobs as jobs_mod
+    audio_opts = {'mode': 'library', 'sync_audio': True, 'audio_format': 'mp3'}
+    with patch('mellow.downloader.download_video', return_value='success') as dl:
+        job = jobs_mod.manager.enqueue('https://youtube.com/playlist?list=P', str(tmp_path), audio_opts,
+                                       'lib1', job_type='sync', label='Sync — Music', sync_path=str(tmp_path))
+        assert jobs_mod.manager.wait_idle(10)
+        r = client.post(f"/api/queue/{job['id']}/retry", json={'url': 'https://www.youtube.com/watch?v=aaaaaaaaaaa'})
+        assert r.status_code == 200
+        assert jobs_mod.manager.wait_idle(10)
+    url, out, opts = dl.call_args[0][:3]
+    assert url == 'https://www.youtube.com/watch?v=aaaaaaaaaaa' and out == str(tmp_path)
+    assert opts['sync_audio'] is True and opts['audio_format'] == 'mp3'
+    retried = next(j for j in jobs_mod.manager.status()['jobs'] if j['id'] == r.get_json()['job_id'])
+    assert retried['type'] == 'feed' and retried.get('sync_path') is None  # not a sync: no sync stamp
+
+
+def test_retry_of_an_unknown_job_is_a_404(client):
+    r = client.post('/api/queue/nope/retry', json={'url': 'https://youtu.be/x'})
+    assert r.status_code == 404
+
+
+def test_retrying_a_whole_job_reruns_it_as_it_was(client, tmp_path):
+    """A failed sync retried from the job list is a sync again, all its links."""
+    from mellow import jobs as jobs_mod
+    urls = ['https://youtube.com/playlist?list=A', 'https://youtube.com/playlist?list=B']
+    with patch('mellow.downloader.download_video', return_value='error') as dl:
+        job = jobs_mod.manager.enqueue(urls[0], str(tmp_path), {'mode': 'library'}, 'lib1',
+                                       job_type='sync', label='Sync — Mix', multi_urls=urls,
+                                       sync_path=str(tmp_path))
+        assert jobs_mod.manager.wait_idle(10)
+        r = client.post(f"/api/queue/{job['id']}/retry", json={})
+        assert jobs_mod.manager.wait_idle(10)
+    assert [c[0][0] for c in dl.call_args_list] == urls + urls
+    again = next(j for j in jobs_mod.manager.status()['jobs'] if j['id'] == r.get_json()['job_id'])
+    assert (again['type'], again['sync_path'], again['label']) == ('sync', str(tmp_path), 'Sync — Mix')

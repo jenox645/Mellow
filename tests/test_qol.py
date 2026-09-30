@@ -25,6 +25,7 @@ from mellow import errors, jobs
     ('<urlopen error [Errno 11001] getaddrinfo failed>', 'network', errors.OPEN_CONFIG),
     ('[Errno 28] No space left on device', 'disk_full', errors.OPEN_CONFIG),
     ('HTTP Error 429: Too Many Requests', 'rate_limited', errors.OPEN_CONFIG),
+    ('ERROR: [generic] late: Unable to download webpage: HTTP Error 404: NOT FOUND', 'not_found', None),
     ("ERROR: [generic] x: Unable to download webpage: <urlopen error Tunnel connection failed: "
      "403 Forbidden> (caused by ProxyError('<urlopen error Tunnel connection failed: 403 Forbidden>'))",
      'proxy', errors.OPEN_CONFIG),
