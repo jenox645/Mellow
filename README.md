@@ -41,7 +41,7 @@ Formats: MP4, MKV, WebM, MP3, FLAC, M4A, OGG, Opus / Quality: best, 4K, 1080p, 7
 
 | Layer | Tech |
 |---|---|
-| Backend | Python 3.11+, Flask, yt-dlp |
+| Backend | Python 3.12+, Flask, yt-dlp |
 | Frontend | React (UMD, no npm), esbuild |
 | Desktop window | FlaskWebGUI (Tkinter) |
 
@@ -49,7 +49,7 @@ Formats: MP4, MKV, WebM, MP3, FLAC, M4A, OGG, Opus / Quality: best, 4K, 1080p, 7
 
 ## Requirements
 
-- Python 3.11+
+- Python 3.12+ (flaskwebgui uses 3.12-only syntax)
 - [ffmpeg](https://ffmpeg.org/) — see below, it is not optional in practice
 - Node.js + esbuild (build step only)
 - **Linux:** `python3-tk` (`sudo apt install python3-tk`)

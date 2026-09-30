@@ -70,6 +70,7 @@ All job-originated events carry `job_id`, `job_type`, `job_label` (multi-worker 
 - `download_range_func` takes `(start, end)` tuples, not dicts
 - yt-dlp's ffmpeg downloader ignores `ffmpeg_location`; `find_ffmpeg()` therefore also prepends the folder to `PATH`
 - yt-dlp update: a pip upgrade only takes effect after a restart (`restart_required`); the frozen app can't replace its bundled yt-dlp at all and says so
+- DuckDB cannot replay an `ALTER TABLE` from its WAL when the table has a `DEFAULT now()` column (all three tables do). `init_db()` therefore only ALTERs columns that are missing and ends with `CHECKPOINT`; `analytics._connect()` moves an unreplayable WAL aside (`*.wal.unreplayable-<time>`, never deleted) and reopens. Any new migration goes through `_add_missing_columns()` inside `init_db()`
 
 ## Build Sequence
 ```bash

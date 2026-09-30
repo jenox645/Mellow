@@ -31,8 +31,39 @@ def get_conn() -> duckdb.DuckDBPyConnection:
             with contextlib.suppress(Exception):
                 _conns.pop(old_key).close()
         if key not in _conns:
-            _conns[key] = duckdb.connect(key)
+            _conns[key] = _connect(key)
         return _conns[key].cursor()
+
+
+def _connect(path: str) -> duckdb.DuckDBPyConnection:
+    """Open the database, surviving a write-ahead log DuckDB cannot replay.
+
+    DuckDB fails to replay an ALTER TABLE on a table that has a DEFAULT now()
+    column ("GetDefaultDatabase with no default database set"). If the app is
+    killed after a schema migration and before a checkpoint, every later
+    launch dies on that WAL. The database file itself is intact, so the WAL
+    is moved aside (kept, not deleted) and the file is opened without it;
+    init_db() then re-applies the migrations.
+    """
+    try:
+        return duckdb.connect(path)
+    except duckdb.Error as exc:
+        wal = Path(path + ".wal")
+        if "WAL" not in str(exc) or not wal.exists():
+            raise
+        aside = wal.with_name(f"{wal.name}.unreplayable-{time.strftime('%Y%m%d-%H%M%S')}")
+        wal.replace(aside)
+        print(f"[ANALYTICS] write-ahead log could not be replayed; moved to {aside.name}. "
+              f"Reason: {str(exc).splitlines()[0]}", flush=True)
+        return duckdb.connect(path)
+
+
+def _add_missing_columns(con: duckdb.DuckDBPyConnection, table: str,
+                         columns: list[tuple[str, str]]) -> None:
+    existing = {row[1] for row in con.execute(f"PRAGMA table_info('{table}')").fetchall()}
+    for col, typ in columns:
+        if col not in existing:
+            con.execute(f"ALTER TABLE {table} ADD COLUMN {col} {typ}")
 
 
 def _close_all_locked() -> None:
@@ -82,15 +113,11 @@ def init_db() -> None:
                 elapsed_seconds INTEGER
             )
         """)
-        for col, typ in [
+        _add_missing_columns(con, "downloads", [
             ("download_speed_avg_bps", "BIGINT"),
             ("elapsed_seconds", "INTEGER"),
             ("thumbnail_url", "TEXT"),
-        ]:
-            try:
-                con.execute(f"ALTER TABLE downloads ADD COLUMN {col} {typ}")
-            except Exception:
-                pass
+        ])
 
         con.execute("""
             CREATE TABLE IF NOT EXISTS library (
@@ -114,14 +141,10 @@ def init_db() -> None:
                 created_at TIMESTAMP DEFAULT now()
             )
         """)
-        for col, typ in [
+        _add_missing_columns(con, "library", [
             ("container", "TEXT DEFAULT 'mp4'"),
             ("audio_format", "TEXT DEFAULT 'mp3'"),
-        ]:
-            try:
-                con.execute(f"ALTER TABLE library ADD COLUMN {col} {typ}")
-            except Exception:
-                pass
+        ])
 
         con.execute("""
             CREATE TABLE IF NOT EXISTS sync_log (
@@ -134,12 +157,14 @@ def init_db() -> None:
                 duration_seconds INTEGER
             )
         """)
-        try:
-            con.execute("ALTER TABLE sync_log ADD COLUMN duration_seconds INTEGER")
-        except Exception:
-            pass
+        _add_missing_columns(con, "sync_log", [("duration_seconds", "INTEGER")])
         con.execute("CREATE SEQUENCE IF NOT EXISTS downloads_seq START 1")
         con.execute("CREATE SEQUENCE IF NOT EXISTS sync_log_seq START 1")
+        # Flush schema changes into the database file now: an ALTER TABLE left
+        # in the WAL is exactly what DuckDB cannot replay (see _connect), and
+        # a desktop app is often killed rather than closed.
+        with contextlib.suppress(duckdb.Error):
+            con.execute("CHECKPOINT")
 
 
 def record_download(meta: dict) -> None:
