@@ -4,7 +4,8 @@
 ```
 main.py            desktop entry point (single-instance guard, FlaskWebGUI window)
 mellow/            backend package — modules import each other relatively (`from . import jobs`)
-gui/               frontend source (React ES modules + index.html/CSS)
+gui/               frontend source (React ES modules, index.html with the Classic CSS,
+                   studio.css for the Studio layout)
 static/            build output only (gitignored): bundle, React, index.html, mascots.js
 assets/            icons, mascot art (*_vector used by the build), installer images;
                    originals/ holds unused source art
@@ -32,11 +33,11 @@ build_setup.py     the build (SETUP.bat / setup.sh call it); MellowDLP.spec, ins
   - `constants.py` / `version.py` — all tuning knobs and the single APP_VERSION
 - Frontend (React UMD, bundled by esbuild from ES modules):
   - `gui/app.jsx` — App root: SSE hub, routing, clipboard watcher, shortcuts
-  - `gui/lib/` — `api.js`, `util.js`, `constants.js`, `mascots.js`, `sound.js`
-  - `gui/components/` — `common.jsx`, `icons.jsx`, `chrome.jsx`, `loading.jsx`, `vault-modals.jsx`
+  - `gui/lib/` — `api.js`, `util.js`, `constants.js`, `mascots.js`, `sound.js`, `layout.js`
+  - `gui/components/` — `common.jsx`, `icons.jsx`, `chrome.jsx` (Classic sidebar/top/status bars), `studio-chrome.jsx` (Studio sidebar), `loading.jsx`, `vault-modals.jsx`
   - `gui/pages/` — `feed.jsx`, `queue.jsx`, `vault.jsx`, `analytics.jsx`, `signal.jsx`, `config.jsx`
 - Communication: SSE (`EventSource('/api/progress')`) for download progress; HTTP for everything else
-- Build: `python build_setup.py` → esbuild **bundles** `gui/app.jsx` (+imports) → `static/app.bundle.js`; copies `gui/index.html` → `static/index.html`
+- Build: `python build_setup.py` → esbuild **bundles** `gui/app.jsx` (+imports) → `static/app.bundle.js`; copies `gui/index.html` and `gui/studio.css` → `static/`
 - Config: JSON at `~/.mellow_dlp.json`; analytics DB at `~/.mellow_dlp.duckdb`
 - Desktop wrapper: FlaskWebGUI (Tkinter-based, NOT Electron); `main.py` has a single-instance guard via `~/.mellow_dlp.port`
 
@@ -90,6 +91,8 @@ All job-originated events carry `job_id`, `job_type`, `job_label` (multi-worker 
 - `skip_shorts` / `skip_live` (config, copied by `download_settings`) become a yt-dlp `match_filter` only on playlist-like runs (`ignoreerrors`); a single pasted link is never filtered
 - `/api/cookies/test` loads cookies from the request's (unsaved) settings; `/api/filename-preview` validates a template and names a sample video with it. Cookie failures are explained by `errors.py` (`cookies_locked` / `cookies_encrypted` / `cookies_not_found`)
 - Victory overlay at App root (outside all page components), z-index 9999
+- Two layouts, same pages: config `ui_layout` (`classic` | `studio`, switched from the sidebar/status bar, Config → App Behavior or the `L` key) sets `<html data-layout>` (mirrored in localStorage `mellow-layout` so index.html applies it before the first paint). Classic CSS lives in index.html; `gui/studio.css` scopes every rule to `:root[data-layout="studio"]` (a test enforces it). Components read the layout with `useLayout()`; page titles go through `PageHead` (Classic HUD title vs Studio header); Classic-only decoration (`.ja` text, `deco`) is hidden in Studio
+- Inline styles use the tokens, never literals: `fontFamily: 'var(--font-mono)'` (`--font-body`, `--font-display`) and `fontSize: 'var(--fs-9)'` for 7–12px text, so a layout can restyle them. Canvas charts can't read `var()`: they use `util.cssVar()` / `canvasFont()` and the `--chart-*` tokens and redraw on a layout change
 - Every job must end in exactly one terminal event (`complete`/`error`/`cancelled`) — the UI has no timeout; `jobs._worker` pushes `error` if a job crashes
 - `jobs.run_job` holds back each downloader run's terminal event and emits the job's one terminal itself: with several URLs, a failed one becomes `item_failed` + a `warning` on `complete` (all failed → one `error`)
 - Sync timestamps (`vault_sync_times`, library `last_synced`) are written by `JobManager._on_finished` when a sync completes, never on enqueue

@@ -2,6 +2,8 @@
 'use strict';
 
 import { Ico } from './icons.jsx';
+import { useLayout } from '../lib/layout.js';
+import { canvasFont, cssVar } from '../lib/util.js';
 
 export function Toggle({ checked, onChange }) {
   return (
@@ -9,6 +11,38 @@ export function Toggle({ checked, onChange }) {
       className={'toggle' + (checked ? ' on' : '')}
       onClick={() => onChange(!checked)}
     />
+  );
+}
+
+// A page's title row. Classic: the HUD label over a two-tone title, with
+// `deco` (classic-only flourish) and the page's `actions` on the right.
+// Studio: the plain page `name`, a line saying what the page is for (`sub`),
+// an optional `crumb` above the title, and the same actions.
+export function PageHead({ label, title, name, sub, crumb, deco, actions }) {
+  const layout = useLayout();
+  if (layout === 'studio') {
+    return (
+      <header className="s-head">
+        <div className="s-head-text">
+          {crumb && <div className="s-head-crumb">{crumb}</div>}
+          <h1 className="s-head-title">{name}</h1>
+          {sub && <div className="s-head-sub">{sub}</div>}
+        </div>
+        {actions && <div className="s-head-actions">{actions}</div>}
+      </header>
+    );
+  }
+  return (
+    <div className="vhead">
+      <div>
+        <div className="vlabel">{label}</div>
+        <div className="vtitle">{title}</div>
+      </div>
+      {deco}
+      {actions && (
+        <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>{actions}</div>
+      )}
+    </div>
   );
 }
 
@@ -140,6 +174,7 @@ export function Pipeline({ stage }) {
 
 export function LineChart({ data, color = 'rgba(0,216,255,0.85)', height = 120, yFormat }) {
   const ref = React.useRef(null);
+  const layout = useLayout();
   React.useEffect(() => {
     const c = ref.current;
     if (!c) return;
@@ -157,10 +192,10 @@ export function LineChart({ data, color = 'rgba(0,216,255,0.85)', height = 120, 
     const fmt = yFormat || (v => String(Math.round(v)));
     [0, 0.5, 1].forEach(f => {
       const y = pad.t + ch * (1 - f);
-      ctx.strokeStyle = 'rgba(61,96,112,0.25)'; ctx.lineWidth = 0.5; ctx.setLineDash([2, 3]);
+      ctx.strokeStyle = cssVar('--chart-grid'); ctx.lineWidth = 0.5; ctx.setLineDash([2, 3]);
       ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(pad.l + cw, y); ctx.stroke();
       ctx.setLineDash([]);
-      ctx.fillStyle = 'rgba(61,96,112,0.6)'; ctx.font = '8px Share Tech Mono'; ctx.textAlign = 'left';
+      ctx.fillStyle = cssVar('--chart-axis'); ctx.font = canvasFont(8); ctx.textAlign = 'left';
       ctx.fillText(fmt(maxV * f), 0, y + 3);
     });
     // One point has no line to draw: put it in the middle as a dot
@@ -180,12 +215,12 @@ export function LineChart({ data, color = 'rgba(0,216,255,0.85)', height = 120, 
       pts.forEach((v, i) => (i === 0 ? ctx.moveTo(xAt(i), yAt(v)) : ctx.lineTo(xAt(i), yAt(v))));
       ctx.stroke();
     }
-    ctx.fillStyle = 'rgba(61,96,112,0.6)'; ctx.font = '7px Share Tech Mono'; ctx.textAlign = 'center';
+    ctx.fillStyle = cssVar('--chart-axis'); ctx.font = canvasFont(7); ctx.textAlign = 'center';
     labels.forEach((l, i) => {
       if (i % Math.ceil(labels.length / 8) === 0) {
         ctx.fillText(String(l).slice(5), xAt(i), height - 5);
       }
     });
-  }, [data, color, height, yFormat]);
+  }, [data, color, height, yFormat, layout]);
   return <canvas ref={ref} className="chart" height={height} />;
 }

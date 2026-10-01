@@ -4,7 +4,7 @@
 import { API, cancelShownDownload } from '../lib/api.js';
 import { estimateDownloadBytes, fmtBytes, fmtSpeed, fmtEta, fmtDuration, timeAgo } from '../lib/util.js';
 import { SVG, Ico } from '../components/icons.jsx';
-import { Modal, Mascot, Pipeline } from '../components/common.jsx';
+import { Modal, Mascot, PageHead, Pipeline } from '../components/common.jsx';
 import { MASCOT_CHILLING } from '../lib/mascots.js';
 import {
   ANALYZE_SLOW_MS, AUDIO_FORMATS, AUDIO_QUALITIES, CONTAINERS, LOSSLESS_AUDIO, QUALITIES,
@@ -359,23 +359,25 @@ export function FeedPage({ dlState, setDlState, setAppState, stats, sysInfo, ref
 
   return (
     <div className="content active">
-      <div className="vhead">
-        <div>
-          <div className="vlabel">ダッシュボード / COMMAND FEED</div>
-          <div className="vtitle"><span className="c">FEED</span> COMMAND</div>
-        </div>
-        <div className="vright">
-          <div>USER // <span className="acc">ADMIN</span></div>
-          <div>{new Date().toLocaleDateString()}</div>
-        </div>
-      </div>
+      <PageHead
+        label="ダッシュボード / COMMAND FEED"
+        title={<><span className="c">FEED</span> COMMAND</>}
+        name="Feed"
+        sub="Paste a link, pick a format, download"
+        deco={
+          <div className="vright">
+            <div>USER // <span className="acc">ADMIN</span></div>
+            <div>{new Date().toLocaleDateString()}</div>
+          </div>
+        }
+      />
 
       {/* URL INGEST PANEL */}
-      <div className="panel" style={{ marginBottom: 16 }}>
+      <div className="panel feed-ingest" style={{ marginBottom: 16 }}>
         <div className="panel-hud" /><div className="panel-hud-br" />
         <div className="ph">
           <span className="ptag">INGEST</span>
-          <span className="ptitle">URL PASTE — URLを貼り付け</span>
+          <span className="ptitle">URL PASTE<span className="ja"> — URLを貼り付け</span></span>
           <span className="psub">PASTE URL HERE</span>
         </div>
         <div className="url-row">
@@ -390,20 +392,20 @@ export function FeedPage({ dlState, setDlState, setAppState, stats, sysInfo, ref
             />
           </div>
           <button
-            className={'btn btn-secondary btn-sm' + (optsOpen ? ' active-btn' : '')}
+            className={'btn btn-secondary btn-sm feed-opts-btn' + (optsOpen ? ' active-btn' : '')}
             onClick={() => setOptsOpen(o => !o)}
           >
             OPTIONS
           </button>
           {!info && (
-            <button className="btn btn-primary" onClick={handleAnalyze} disabled={analyzing}>
+            <button className="btn btn-primary feed-analyze-btn" onClick={handleAnalyze} disabled={analyzing}>
               {analyzing ? 'ANALYZING...' : 'ANALYZE →'}
             </button>
           )}
-          <button className="btn btn-secondary btn-sm" onClick={handlePaste}>PASTE</button>
-          <button className="btn btn-secondary btn-sm" onClick={handleImportFile} title="Import URLs from .txt file">IMPORT FILE</button>
+          <button className="btn btn-secondary btn-sm feed-aux-btn" onClick={handlePaste}>PASTE</button>
+          <button className="btn btn-secondary btn-sm feed-aux-btn" onClick={handleImportFile} title="Import URLs from .txt file">IMPORT FILE</button>
         </div>
-        <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: 'var(--t4)', paddingTop: 3 }}>
+        <div className="url-hint" style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-9)', color: 'var(--t4)', paddingTop: 3 }}>
           ENTER: {!url.trim() ? 'paste' : !info && !analyzing ? 'analyze' : 'download'}
           {importedFileName && <span style={{ color: 'var(--cyan)', marginLeft: 10 }}>↑ {importedFileName} ({importedUrls ? importedUrls.length : 0} URLs)</span>}
           {analyzeSlow && (
@@ -528,7 +530,7 @@ export function FeedPage({ dlState, setDlState, setAppState, stats, sysInfo, ref
                   {chosenChapters.length > 0 && <span style={{ color: 'var(--cyan)', marginLeft: 8 }}>{chosenChapters.length} CHOSEN</span>}
                 </div>
                 <div className={'opts-adv-body' + (chaptersOpen ? ' open' : '')}>
-                  <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: 'var(--t3)', margin: '4px 0 6px', display: 'flex', gap: 12 }}>
+                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-9)', color: 'var(--t3)', margin: '4px 0 6px', display: 'flex', gap: 12 }}>
                     <span>Each chosen chapter is saved as its own file (clip start/end is ignored).</span>
                     <span style={{ cursor: 'pointer', color: 'var(--cyan)' }} onClick={() => setChapterSel(new Set(videoChapters.map(c => c.index)))}>ALL</span>
                     <span style={{ cursor: 'pointer', color: 'var(--cyan)' }} onClick={() => setChapterSel(new Set())}>NONE</span>
@@ -541,7 +543,7 @@ export function FeedPage({ dlState, setDlState, setAppState, stats, sysInfo, ref
                           if (next.has(c.index)) next.delete(c.index); else next.add(c.index);
                           return next;
                         })} />
-                        <span style={{ fontFamily: 'Share Tech Mono, monospace', color: 'var(--t4)', minWidth: 90 }}>
+                        <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--t4)', minWidth: 90 }}>
                           {fmtDuration(c.start)} – {fmtDuration(c.end)}
                         </span>
                         {c.title}
@@ -572,7 +574,7 @@ export function FeedPage({ dlState, setDlState, setAppState, stats, sysInfo, ref
                     <input className="inp-sm" value={customFmt} onChange={e => setCustomFmt(e.target.value)} placeholder="bv[height<=1080]+ba/best" />
                   </div>
                   <div style={{ gridColumn: '1 / -1' }}>
-                    <div className="inp-label">TARGET FOLDER <span style={{ color: 'var(--t4)', fontSize: 7 }}>(OVERRIDE — empty uses Config default)</span></div>
+                    <div className="inp-label">TARGET FOLDER <span style={{ color: 'var(--t4)', fontSize: 'var(--fs-7)' }}>(OVERRIDE — empty uses Config default)</span></div>
                     <div style={{ display: 'flex', gap: 6 }}>
                       <input className="inp-sm" style={{ flex: 1 }} value={downloadPath} onChange={e => setDownloadPath(e.target.value)} placeholder={config.output_dir || 'Default from Config'} />
                       <button className="btn btn-secondary btn-sm" onClick={browseDownloadPath}>BROWSE</button>
@@ -664,7 +666,7 @@ export function FeedPage({ dlState, setDlState, setAppState, stats, sysInfo, ref
         <div className="panel-hud" /><div className="panel-hud-br" />
         <div className="ph">
           <span className="ptag">ACTIVE</span>
-          <span className="ptitle">NOW PROCESSING — 処理中</span>
+          <span className="ptitle">NOW PROCESSING<span className="ja"> — 処理中</span></span>
           <span className="psub">
             {playlistTotalCount > 1
               ? `${playlistCompletedCount + 1} / ${playlistTotalCount} ACTIVE`
@@ -681,7 +683,7 @@ export function FeedPage({ dlState, setDlState, setAppState, stats, sysInfo, ref
                 }
                 <div className="dl-info">
                   {info && info.is_playlist && dlState.current_item_title && (
-                    <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: '#8899aa', marginBottom: 3, letterSpacing: '0.1em' }}>
+                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-9)', color: '#8899aa', marginBottom: 3, letterSpacing: '0.1em' }}>
                       FROM: {(info.title || '').toUpperCase().slice(0, 32)}
                     </div>
                   )}
@@ -707,7 +709,7 @@ export function FeedPage({ dlState, setDlState, setAppState, stats, sysInfo, ref
                   </div>
                 </div>
                 <div className="dl-side">
-                  <div className="dl-side-title">DETAILS — 詳細</div>
+                  <div className="dl-side-title">DETAILS<span className="ja"> — 詳細</span></div>
                   <div className="dl-kv"><span className="k">FORMAT</span><span className="v">{mode === 'audio' ? audioFmt.toUpperCase() : container.toUpperCase()}</span></div>
                   <div className="dl-kv"><span className="k">QUALITY</span><span className="v">{mode === 'audio' ? (LOSSLESS_AUDIO.includes(audioFmt) ? 'LOSSLESS' : (AUDIO_QUALITIES.find(q => q[0] === audioQuality) || ['', 'BEST'])[1]) : quality.toUpperCase()}</span></div>
                   <div className="dl-kv"><span className="k">PLATFORM</span><span className="v">{info && info.platform || '—'}</span></div>
@@ -727,12 +729,12 @@ export function FeedPage({ dlState, setDlState, setAppState, stats, sysInfo, ref
       </div>
 
       {/* QUEUE PREVIEW + STATS */}
-      <div className="g2">
+      <div className="g2 feed-bottom">
         <div className="panel">
           <div className="panel-hud" /><div className="panel-hud-br" />
           <div className="ph">
             <span className="ptag">QUEUE</span>
-            <span className="ptitle">WAITING — 待機中</span>
+            <span className="ptitle">WAITING<span className="ja"> — 待機中</span></span>
             <span className="psub">{feedQTab === 'pending' ? (playlistItems ? playlistItems.length : 0) + ' ITEMS' : (completedItems ? completedItems.length : 0) + ' DONE'}</span>
             {url && <span style={{ marginLeft: 'auto', cursor: 'pointer', color: 'var(--t3)', fontSize: 13, padding: '0 4px' }} title="Refresh queue" onClick={() => { if (url.trim()) { API.post('/api/playlist-items', { url: url.trim() }).then(r => { if (r.items && setPlaylistItems) setPlaylistItems(r.items.map(i => ({ ...i, selected: true }))); }).catch(() => {}); } }}>↻</span>}
           </div>
@@ -745,7 +747,7 @@ export function FeedPage({ dlState, setDlState, setAppState, stats, sysInfo, ref
                 COMPLETED ({completedItems ? completedItems.length : 0})
               </div>
               {feedQTab === 'completed' && completedItems && completedItems.length > 0 && onClearCompleted && (
-                <span style={{ marginLeft: 'auto', cursor: 'pointer', fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: 'var(--red)', padding: '0 10px' }} onClick={onClearCompleted}>CLEAR ✕</span>
+                <span style={{ marginLeft: 'auto', cursor: 'pointer', fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-9)', color: 'var(--red)', padding: '0 10px' }} onClick={onClearCompleted}>CLEAR ✕</span>
               )}
             </div>
           )}
@@ -753,11 +755,11 @@ export function FeedPage({ dlState, setDlState, setAppState, stats, sysInfo, ref
             playlistItems && playlistItems.length > 0 ? (
               <div>
                 <div className="queue-list-header">
-                  <span className="qlh-left">PENDING ITEMS — 待機中</span>
+                  <span className="qlh-left">PENDING ITEMS<span className="ja"> — 待機中</span></span>
                   <span className="qlh-right">{playlistItems.length} TRACKS · CLICK ✕ TO REMOVE</span>
                 </div>
                 {syncJobLabel && (
-                  <div style={{ padding: '6px 14px', background: 'var(--bg3)', borderBottom: '1px solid var(--border)', fontFamily: 'Share Tech Mono', fontSize: 9, color: 'var(--cyan)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <div style={{ padding: '6px 14px', background: 'var(--bg3)', borderBottom: '1px solid var(--border)', fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-9)', color: 'var(--cyan)', display: 'flex', alignItems: 'center', gap: 6 }}>
                     <span style={{ animation: 'spin 1s linear infinite', display: 'inline-block' }}>⟳</span>
                     SYNC QUEUED: {syncJobLabel}
                   </div>
@@ -792,7 +794,7 @@ export function FeedPage({ dlState, setDlState, setAppState, stats, sysInfo, ref
                     </div>
                   ))}
                   {playlistItems.length > 12 && (
-                    <div style={{ padding: '6px 14px', fontFamily: 'Share Tech Mono', fontSize: 9, color: 'var(--t4)', textAlign: 'center' }}>
+                    <div style={{ padding: '6px 14px', fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-9)', color: 'var(--t4)', textAlign: 'center' }}>
                       +{playlistItems.length - 12} more ·{' '}
                       <span style={{ color: 'var(--cyan)', cursor: 'pointer' }} onClick={() => switchPage('queue')}>VIEW ALL →</span>
                     </div>
@@ -800,7 +802,7 @@ export function FeedPage({ dlState, setDlState, setAppState, stats, sysInfo, ref
                 </div>
               </div>
             ) : (fetchingItems || fetchingPlaylistItems) ? (
-              <div style={{ padding: '20px', fontFamily: 'Share Tech Mono', fontSize: 9, color: 'var(--t3)', textAlign: 'center' }}>
+              <div style={{ padding: '20px', fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-9)', color: 'var(--t3)', textAlign: 'center' }}>
                 FETCHING PLAYLIST ITEMS...
               </div>
             ) : (
@@ -828,12 +830,12 @@ export function FeedPage({ dlState, setDlState, setAppState, stats, sysInfo, ref
                 </div>
               ))}
               {(!completedItems || completedItems.length === 0) && (
-                <div style={{ padding: '20px', fontFamily: 'Share Tech Mono', fontSize: 9, color: 'var(--t4)', textAlign: 'center' }}>NO COMPLETED ITEMS YET</div>
+                <div style={{ padding: '20px', fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-9)', color: 'var(--t4)', textAlign: 'center' }}>NO COMPLETED ITEMS YET</div>
               )}
             </div>
           )}
         </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div className="feed-stats" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           <div className="g2" style={{ marginBottom: 0 }}>
             <div className="stat">
               <div className="stat-label">TOTAL RECORDS</div>
@@ -949,7 +951,7 @@ function VaultLinkPromptModal({ info, url, config, opts, onClose, onJustDownload
     <Modal title="SAVE TO VAULT?" onClose={onClose} footer={null}>
       {step === 'choose' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 10, color: 'var(--t3)', textAlign: 'center', marginBottom: 6 }}>
+          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-10)', color: 'var(--t3)', textAlign: 'center', marginBottom: 6 }}>
             This is a playlist. Would you like to save it to the Vault?
           </div>
           <button className="btn btn-secondary btn-sm" style={{ width: '100%' }} onClick={() => setStep('link-existing')}>LINK TO EXISTING VAULT FOLDER</button>

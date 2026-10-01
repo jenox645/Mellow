@@ -29,6 +29,8 @@ import { MASCOT_VICTORY_SAFE } from './lib/mascots.js';
 import { Modal, Notif, Mascot } from './components/common.jsx';
 import { LoadingScreen } from './components/loading.jsx';
 import { Sidebar, TopBar, StatusBar } from './components/chrome.jsx';
+import { StudioSidebar } from './components/studio-chrome.jsx';
+import { LayoutContext, applyLayout, currentLayout } from './lib/layout.js';
 import { FeedPage } from './pages/feed.jsx';
 import { QueuePage } from './pages/queue.jsx';
 import { VaultPage } from './pages/vault.jsx';
@@ -39,6 +41,7 @@ import { AddVaultModal } from './components/vault-modals.jsx';
 
 const KEYBOARD_SHORTCUTS = [
   ['1 – 6', 'Jump to Feed / Queue / Vault / Analytics / Signal / Config'],
+  ['L', 'Switch between the Classic and Studio layouts'],
   ['?', 'Toggle this help'],
   ['Esc', 'Close dialogs'],
   ['Enter (Feed)', 'Paste → Analyze → Download'],
@@ -50,7 +53,7 @@ function ShortcutHelpOverlay({ onClose }) {
     <Modal title="KEYBOARD SHORTCUTS" onClose={onClose} footer={
       <button className="btn btn-secondary btn-sm" onClick={onClose}>CLOSE</button>
     }>
-      <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 11 }}>
+      <div style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-11)' }}>
         {KEYBOARD_SHORTCUTS.map(([key, desc]) => (
           <div key={key} style={{ display: 'flex', gap: 14, padding: '6px 0', borderBottom: '1px solid var(--border)' }}>
             <span style={{ color: 'var(--cyan)', minWidth: 90 }}>{key}</span>
@@ -92,6 +95,7 @@ function App() {
   const [restorableJobs, setRestorableJobs] = React.useState(null);
   const [clipboardSuggestion, setClipboardSuggestion] = React.useState(null);
   const [shortcutHelp, setShortcutHelp] = React.useState(false);
+  const [layout, setLayout] = React.useState(currentLayout);
   const playlistActiveRef = React.useRef(false);
   const currentPlaylistRef = React.useRef({ name: '', count: 0 });
   const configRef = React.useRef(config);
@@ -104,6 +108,18 @@ function App() {
   const lastClipboardRef = React.useRef('');
 
   React.useEffect(() => { configRef.current = config; }, [config]);
+
+  // The saved ui_layout decides (localStorage only spared a flash at startup)
+  React.useEffect(() => {
+    if (config.ui_layout) setLayout(applyLayout(config.ui_layout));
+  }, [config.ui_layout]);
+
+  const switchLayout = React.useCallback((next) => {
+    const l = applyLayout(next);
+    setLayout(l);
+    setConfig(c => ({ ...c, ui_layout: l }));
+    API.post('/api/config', { ui_layout: l }).catch(() => {});
+  }, []);
 
   const showNotif = React.useCallback((title, body, type = 'info', actions = null) => {
     setNotif({ title, body, type, actions });
@@ -271,6 +287,8 @@ function App() {
       const num = parseInt(e.key, 10);
       if (num >= 1 && num <= PAGE_ORDER.length) {
         setPage(PAGE_ORDER[num - 1]);
+      } else if (e.key === 'l' || e.key === 'L') {
+        switchLayout(currentLayout() === 'studio' ? 'classic' : 'studio');
       } else if (e.key === '?') {
         setShortcutHelp(s => !s);
       } else if (e.key === 'Escape') {
@@ -279,7 +297,7 @@ function App() {
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, []);
+  }, [switchLayout]);
 
   // Live progress in the window title
   React.useEffect(() => {
@@ -495,19 +513,38 @@ function App() {
     return <LoadingScreen onReady={() => setLoading(false)} />;
   }
 
+  const studio = layout === 'studio';
+  const pauseAll = () => API.post('/api/download/pause', {}).catch(() => {});
+  const resumeAll = () => API.post('/api/download/resume', {}).catch(() => {});
+
   return (
+    <LayoutContext.Provider value={layout}>
     <div className="app">
-      <Sidebar
-        page={page}
-        setPage={setPage}
-        appState={appState}
-        stats={stats}
-        speedHistory={speedHistory}
-        sysInfo={sysInfo}
-      />
+      {studio ? (
+        <StudioSidebar
+          page={page}
+          setPage={setPage}
+          activeJobs={activeJobs}
+          isPaused={isPaused}
+          stats={stats}
+          sysInfo={sysInfo}
+          onPause={pauseAll}
+          onResume={resumeAll}
+          onSwitchLayout={switchLayout}
+        />
+      ) : (
+        <Sidebar
+          page={page}
+          setPage={setPage}
+          appState={appState}
+          stats={stats}
+          speedHistory={speedHistory}
+          sysInfo={sysInfo}
+        />
+      )}
 
       <div className="main">
-        <TopBar page={page} />
+        {!studio && <TopBar page={page} />}
 
         {page === 'feed' && (
           <FeedPage
@@ -540,8 +577,8 @@ function App() {
             isPaused={isPaused}
             syncJobLabel={syncJobLabel}
             fetchingPlaylistItems={fetchingPlaylistItems}
-            onPause={() => API.post('/api/download/pause', {}).catch(() => {})}
-            onResume={() => API.post('/api/download/resume', {}).catch(() => {})}
+            onPause={pauseAll}
+            onResume={resumeAll}
             onClearCompleted={() => setCompletedItems([])}
           />
         )}
@@ -561,8 +598,8 @@ function App() {
             failedCount={failedCount}
             syncJobLabel={syncJobLabel}
             fetchingPlaylistItems={fetchingPlaylistItems}
-            onPause={() => API.post('/api/download/pause', {}).catch(() => {})}
-            onResume={() => API.post('/api/download/resume', {}).catch(() => {})}
+            onPause={pauseAll}
+            onResume={resumeAll}
             onClearCompleted={() => setCompletedItems([])}
             onClearFailed={() => { setFailedItems([]); setFailedCount(0); }}
           />
@@ -608,10 +645,14 @@ function App() {
             showNotif={showNotif}
             sysInfo={sysInfo}
             refreshStats={refreshStats}
+            layout={layout}
+            onSwitchLayout={switchLayout}
           />
         )}
 
-        <StatusBar sysInfo={sysInfo} speedHistory={speedHistory} config={config} />
+        {!studio && (
+          <StatusBar sysInfo={sysInfo} speedHistory={speedHistory} config={config} onSwitchLayout={switchLayout} />
+        )}
       </div>
 
       <Notif notif={notif} dismiss={() => setNotif(null)} />
@@ -641,12 +682,12 @@ function App() {
           <Mascot src={MASCOT_VICTORY_SAFE} className="victory-mascot" wrapClass="victory-mascot" />
           <div className="victory-text">✦ PLAYLIST COMPLETE ✦</div>
           {victoryData && victoryData.playlistName && (
-            <div style={{ fontFamily: "'Exo 2', sans-serif", fontSize: 16, color: '#e0e8f0', fontStyle: 'italic', textAlign: 'center', maxWidth: 400 }}>
+            <div style={{ fontFamily: 'var(--font-body)', fontSize: 16, color: '#e0e8f0', fontStyle: 'italic', textAlign: 'center', maxWidth: 400 }}>
               "{victoryData.playlistName}"
             </div>
           )}
           {victoryData && (victoryData.itemCount > 0) && (
-            <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 13, color: '#8899aa', letterSpacing: '0.1em' }}>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 13, color: '#8899aa', letterSpacing: '0.1em' }}>
               {victoryData.itemCount} ITEMS DOWNLOADED
             </div>
           )}
@@ -683,7 +724,7 @@ function App() {
             </>
           }
         >
-          <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 10, color: 'var(--t2)' }}>
+          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-10)', color: 'var(--t2)' }}>
             <div style={{ marginBottom: 8, color: 'var(--t3)' }}>
               {restorableJobs.length} download(s) hadn't finished when the app last closed:
             </div>
@@ -700,6 +741,7 @@ function App() {
         </Modal>
       )}
     </div>
+    </LayoutContext.Provider>
   );
 }
 

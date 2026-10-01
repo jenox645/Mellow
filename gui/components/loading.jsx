@@ -88,7 +88,7 @@ export function LoadingScreen({ onReady }) {
       <div className="loading-sub">MELLOW // DATA LAKE COMMANDER{appVersion ? ' v' + appVersion : ''}</div>
       <div className="loading-bar"><div className="loading-bar-fill" /></div>
       {attempts > 0 && (
-        <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: '9px', color: 'var(--t4)' }}>
+        <div style={{ fontFamily: 'var(--font-mono)', fontSize: '9px', color: 'var(--t4)' }}>
           CONNECTING... ATTEMPT {attempts}/5
         </div>
       )}
