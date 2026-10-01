@@ -36,11 +36,6 @@ export const UPDATE_CHECK_EVERY_MS = 24 * 60 * 60 * 1000;
 export const UPDATE_CHECK_STORAGE_KEY = 'mellow_ytdlp_check_ts';
 export const APP_UPDATE_CHECK_STORAGE_KEY = 'mellow_app_check_ts';
 
-// Layouts (config ui_layout); the last one used is also kept in localStorage so
-// index.html can apply it before the first paint
-export const LAYOUTS = ['classic', 'studio'];
-export const LAYOUT_STORAGE_KEY = 'mellow-layout';
-
 // Clipboard watcher
 export const CLIPBOARD_URL_RE = /^https?:\/\/\S+$/;
 

@@ -4,8 +4,7 @@
 import { API } from '../lib/api.js';
 import { fmtBytes, fmtDate, timeAgo } from '../lib/util.js';
 import { Ico } from '../components/icons.jsx';
-import { Modal, Mascot, PageHead } from '../components/common.jsx';
-import { useLayout } from '../lib/layout.js';
+import { Modal, Mascot } from '../components/common.jsx';
 import {
   MASCOT_CHILLING, MASCOT_TIRED, MASCOT_FRUSTRATED, MASCOT_COMFY_SAFE,
 } from '../lib/mascots.js';
@@ -45,7 +44,7 @@ function SyncReport({ report, folder, showNotif }) {
     filtered.length ? filtered.length + ' skipped (Shorts / live)' : null,
     failed.length ? failed.length + ' failed' : null,
   ].filter(Boolean);
-  const mono = { fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-9)' };
+  const mono = { fontFamily: 'Share Tech Mono, monospace', fontSize: 9 };
   const statusColor = report.status === 'complete' ? 'var(--green)' : report.status === 'failed' ? 'var(--red)' : 'var(--t3)';
   // Into this folder, in the format it syncs with
   const retry = (url) => API.post('/api/vault/retry-item', { path: folder, url })
@@ -73,7 +72,7 @@ function SyncReport({ report, folder, showNotif }) {
                 {f.title ? <span style={{ color: 'var(--t1)' }}>{f.title} — {f.hint} </span> : null}
                 <span style={{ color: f.title ? 'var(--t4)' : undefined }}>{f.message}</span>
               </span>
-              {f.url && <button className="btn btn-secondary btn-sm" style={{ padding: '2px 7px', fontSize: 'var(--fs-8)' }} onClick={() => retry(f.url)}>↻ RETRY</button>}
+              {f.url && <button className="btn btn-secondary btn-sm" style={{ padding: '2px 7px', fontSize: 8 }} onClick={() => retry(f.url)}>↻ RETRY</button>}
             </div>
           ))}
           {added.map((t, i) => (
@@ -97,7 +96,6 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
   const [deleteConfirm, setDeleteConfirm] = React.useState(null);
   const [dragOver, setDragOver] = React.useState(false);
   const [dropModal, setDropModal] = React.useState(null);
-  const studio = useLayout() === 'studio';
   const [vaultSearch, setVaultSearch] = React.useState('');
   const [vaultSort, setVaultSort] = React.useState('name');
   const [folderMosaics, setFolderMosaics] = React.useState({});
@@ -365,12 +363,12 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
       >
-        <PageHead
-          label="メディアボールト / MEDIA VAULT"
-          title={<>VAULT <span className="c">BROWSER</span></>}
-          name="Vault"
-          sub="Your download folders and the playlists they keep in sync"
-          actions={<>
+        <div className="vhead">
+          <div>
+            <div className="vlabel">メディアボールト / MEDIA VAULT</div>
+            <div className="vtitle">VAULT <span className="c">BROWSER</span></div>
+          </div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
             <div className="pills" style={{ marginBottom: 0 }}>
               {['sm','md','lg'].map(s => (
                 <div key={s} className={'pill' + (vaultScale === s ? ' active' : '')}
@@ -393,8 +391,8 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
               <Ico name="folder" /> WATCH FOLDER
             </button>
             <button className="btn btn-primary btn-sm" onClick={onAddVault}>ADD PLAYLIST</button>
-          </>}
-        />
+          </div>
+        </div>
 
         {vaultFolders.length === 0 ? (
           <div className="empty-state">
@@ -412,7 +410,7 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
                   {/* Thumbnail mosaic or folder icon */}
                   {showMosaic ? (
                     thumbs.length === 1 ? (
-                      <img src={thumbs[0]} style={{ width: '100%', flex: 1, minHeight: 0, objectFit: 'cover', display: 'block' }} alt=""
+                      <img src={thumbs[0]} style={{width:'100%',height:'100%',objectFit:'cover',display:'block'}} alt=""
                         onError={e => { e.target.style.display='none'; }} />
                     ) : (
                       <div className="vfc-mosaic">
@@ -514,9 +512,9 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
               </>
             }
           >
-            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-10)', color: 'var(--t2)', textAlign: 'center', lineHeight: 2 }}>
+            <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 10, color: 'var(--t2)', textAlign: 'center', lineHeight: 2 }}>
               Dropped: <span style={{ color: 'var(--cyan)' }}>{dropModal.name}</span><br />
-              <span style={{ color: 'var(--t4)', fontSize: 'var(--fs-9)' }}>What would you like to do?</span>
+              <span style={{ color: 'var(--t4)', fontSize: 9 }}>What would you like to do?</span>
             </div>
           </Modal>
         )}
@@ -546,10 +544,10 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
               </>
             }
           >
-            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-10)', color: 'var(--t2)', lineHeight: 2 }}>
+            <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 10, color: 'var(--t2)', lineHeight: 2 }}>
               <div style={{ color: 'var(--cyan)', marginBottom: 6 }}>{watchArchivePrompt.path}</div>
               <div>Create a <span style={{ color: 'var(--amber)' }}>mellow_archive.txt</span> in this folder?</div>
-              <div style={{ color: 'var(--t4)', fontSize: 'var(--fs-9)', marginTop: 4 }}>
+              <div style={{ color: 'var(--t4)', fontSize: 9, marginTop: 4 }}>
                 This file tracks downloaded items so syncs skip duplicates,<br />
                 and can be imported as a URL list in the Feed section.
               </div>
@@ -560,11 +558,11 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
         {folderStatsModal && (
           <Modal title={'STATS — ' + folderStatsModal.name.toUpperCase()} onClose={() => setFolderStatsModal(null)}>
             {!folderStatsData ? (
-              <div style={{ padding: 24, textAlign: 'center', color: 'var(--t3)', fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-11)' }}>Loading...</div>
+              <div style={{ padding: 24, textAlign: 'center', color: 'var(--t3)', fontFamily: 'Share Tech Mono, monospace', fontSize: 11 }}>Loading...</div>
             ) : folderStatsData.error ? (
-              <div style={{ padding: 24, color: 'var(--red)', fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-11)' }}>{folderStatsData.error}</div>
+              <div style={{ padding: 24, color: 'var(--red)', fontFamily: 'Share Tech Mono, monospace', fontSize: 11 }}>{folderStatsData.error}</div>
             ) : (
-              <div style={{ padding: '8px 0', fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-11)' }}>
+              <div style={{ padding: '8px 0', fontFamily: 'Share Tech Mono, monospace', fontSize: 11 }}>
                 {(() => {
                   const s = folderStatsData;
                   const rows = [
@@ -582,20 +580,20 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
                   return rows.map(([label, val]) => (
                     <div key={label} style={{ display: 'flex', gap: 12, padding: '5px 0', borderBottom: '1px solid var(--border)' }}>
                       <span style={{ color: 'var(--t3)', minWidth: 120, flexShrink: 0 }}>{label}</span>
-                      <span style={{ color: 'var(--cyan)', wordBreak: 'break-all', fontSize: 'var(--fs-10)' }}>{val || '—'}</span>
+                      <span style={{ color: 'var(--cyan)', wordBreak: 'break-all', fontSize: 10 }}>{val || '—'}</span>
                     </div>
                   ));
                 })()}
                 {/* STORAGE BUDGET */}
                 <div style={{ marginTop: 14, paddingTop: 10, borderTop: '1px solid var(--border)' }}>
-                  <div style={{ color: 'var(--amber)', fontSize: 'var(--fs-9)', letterSpacing: '0.1em', marginBottom: 6 }}>STORAGE BUDGET</div>
+                  <div style={{ color: 'var(--amber)', fontSize: 9, letterSpacing: '0.1em', marginBottom: 6 }}>STORAGE BUDGET</div>
                   <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                     <input
                       className="inp-sm" type="number" min="0" step="0.5" style={{ width: 90 }}
                       placeholder="GB" value={budgetInput}
                       onChange={e => setBudgetInput(e.target.value)}
                     />
-                    <span style={{ color: 'var(--t4)', fontSize: 'var(--fs-9)' }}>GB</span>
+                    <span style={{ color: 'var(--t4)', fontSize: 9 }}>GB</span>
                     <button className="btn btn-primary btn-sm" onClick={() => handleSetBudget(folderStatsModal.path, budgetInput)}>SET</button>
                     {budgets[folderStatsModal.path] && (
                       <button className="btn btn-secondary btn-sm" onClick={() => { setBudgetInput(''); handleSetBudget(folderStatsModal.path, null); }}>CLEAR</button>
@@ -603,7 +601,7 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
                   </div>
                   {budgets[folderStatsModal.path] && folderStatsData.total_size_bytes > budgets[folderStatsModal.path] && (
                     <div style={{ marginTop: 8 }}>
-                      <div style={{ color: 'var(--red)', fontSize: 'var(--fs-10)' }}>
+                      <div style={{ color: 'var(--red)', fontSize: 10 }}>
                         ⚠ {fmtBytes(folderStatsData.total_size_bytes - budgets[folderStatsModal.path])} over budget
                       </div>
                       <button className="btn btn-secondary btn-sm" style={{ marginTop: 6 }}
@@ -613,18 +611,18 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
                     </div>
                   )}
                   {cleanupData === 'loading' && (
-                    <div style={{ color: 'var(--t4)', fontSize: 'var(--fs-9)', marginTop: 6 }}>SCANNING...</div>
+                    <div style={{ color: 'var(--t4)', fontSize: 9, marginTop: 6 }}>SCANNING...</div>
                   )}
                   {cleanupData && cleanupData !== 'loading' && (cleanupData.candidates || []).length > 0 && (
                     <div style={{ maxHeight: 140, overflow: 'auto', marginTop: 8 }}>
-                      <div style={{ color: 'var(--t3)', fontSize: 'var(--fs-9)', marginBottom: 4 }}>
+                      <div style={{ color: 'var(--t3)', fontSize: 9, marginBottom: 4 }}>
                         Oldest files to free {fmtBytes(cleanupData.over_bytes)} (nothing is deleted automatically):
                       </div>
                       {cleanupData.candidates.map(f => (
-                        <div key={f.path} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--fs-9)', padding: '2px 0', borderBottom: '1px solid var(--border)' }}>
+                        <div key={f.path} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 9, padding: '2px 0', borderBottom: '1px solid var(--border)' }}>
                           <span style={{ flex: 1, color: 'var(--t2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</span>
                           <span style={{ color: 'var(--t4)', flexShrink: 0 }}>{fmtBytes(f.size)} · {fmtDate(f.mtime * 1000)}</span>
-                          <button className="btn btn-danger btn-sm" style={{ padding: '1px 6px', fontSize: 'var(--fs-8)', flexShrink: 0 }}
+                          <button className="btn btn-danger btn-sm" style={{ padding: '1px 6px', fontSize: 8, flexShrink: 0 }}
                             onClick={() => {
                               API.del('/api/vault/file', { path: f.path })
                                 .then(() => { showNotif('Deleted', f.name); loadCleanupCandidates(folderStatsModal.path); onRefreshVault && onRefreshVault(); })
@@ -657,12 +655,12 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
-      <PageHead
-        label="メディアボールト / MEDIA VAULT"
-        title={<>VAULT <span className="c">{folderName.toUpperCase().slice(0, 16)}</span></>}
-        name={folderName}
-        crumb={<span className="s-crumb-link" onClick={() => setSelectedFolder(null)}>Vault</span>}
-        actions={<>
+      <div className="vhead">
+        <div>
+          <div className="vlabel">メディアボールト / MEDIA VAULT</div>
+          <div className="vtitle">VAULT <span className="c">{folderName.toUpperCase().slice(0, 16)}</span></div>
+        </div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
           <div className="pills" style={{ marginBottom: 0 }}>
             {['sm','md','lg'].map(s => (
               <div key={s} className={'pill' + (vaultScale === s ? ' active' : '')}
@@ -695,8 +693,8 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
           <button className="btn btn-secondary btn-sm" onClick={() => handleOpenFolder(selectedFolder)}>
             OPEN IN EXPLORER
           </button>
-        </>}
-      />
+        </div>
+      </div>
 
       {/* BREADCRUMB */}
       <div className="vault-breadcrumb">
@@ -722,10 +720,10 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
         <>
           <div className="vault-lib-controls">
             <div className="vault-lib-search-wrap">
-              <span className="vault-lib-search-icon"><Ico name={studio ? 'search' : 'signal'} size={studio ? 14 : 12} /></span>
+              <span className="vault-lib-search-icon"><Ico name="signal" size={12} /></span>
               <input
                 className="vault-lib-search"
-                placeholder={studio ? 'Search this folder' : 'SEARCH IN LIBRARY — ライブラリを検索'}
+                placeholder="SEARCH IN LIBRARY — ライブラリを検索"
                 value={vaultSearch}
                 onChange={e => setVaultSearch(e.target.value)}
               />
@@ -736,7 +734,6 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
               <option value="date">SORT BY: DATE</option>
             </select>
           </div>
-          <div className="vault-tools">
           <div className="vault-lib-count">TOTAL: <span>{files.filter(f => !vaultSearch || f.name.toLowerCase().includes(vaultSearch.toLowerCase())).length} ITEMS</span></div>
           <div className="randomizer-bar">
             <span className="opts-label">RANDOMIZE</span>
@@ -748,7 +745,7 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
             <button className="btn btn-secondary btn-sm" onClick={handleRandomize}>PICK</button>
             {randomizedFiles && (
               <>
-                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-9)', color: 'var(--cyan)' }}>
+                <span style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: 'var(--cyan)' }}>
                   {new Set([...randomizedFiles.map(f => f.path), ...selectedFiles]).size} selected
                 </span>
                 <button className="btn btn-primary btn-sm" onClick={handlePlayRandom}>
@@ -771,7 +768,6 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
                 <button className="btn btn-danger btn-sm" onClick={handleDeleteSelected}>DELETE ({selectedFiles.size})</button>
               </>
             )}
-          </div>
           </div>
         </>
       )}
@@ -824,7 +820,7 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
                   {file.ext.toUpperCase()}
                 </div>
                 {selectionMode && (
-                  <div style={{ position: 'absolute', top: 6, right: 6, zIndex: 3, width: 16, height: 16, borderRadius: 3, border: '2px solid var(--cyan)', background: isFileSelected ? 'var(--cyan)' : 'var(--bg1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 'var(--fs-10)', color: 'var(--bg1)' }}>
+                  <div style={{ position: 'absolute', top: 6, right: 6, zIndex: 3, width: 16, height: 16, borderRadius: 3, border: '2px solid var(--cyan)', background: isFileSelected ? 'var(--cyan)' : 'var(--bg1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, color: 'var(--bg1)' }}>
                     {isFileSelected && '✓'}
                   </div>
                 )}
@@ -833,7 +829,7 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
                 <div className="lib-title">{file.name.replace(/\.[^.]+$/, '')}</div>
                 <div className="lib-meta">{fmtBytes(file.size_bytes)}</div>
                 {file.created && (
-                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-8)', color: 'var(--t4)', marginTop: 2 }}>{fmtDate(file.created * 1000)}</div>
+                  <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 8, color: 'var(--t4)', marginTop: 2 }}>{fmtDate(file.created * 1000)}</div>
                 )}
               </div>
               <div
@@ -880,9 +876,9 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
         >
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14 }}>
             <Mascot src={MASCOT_FRUSTRATED} className="error-mascot" wrapClass="error-mascot" style={{ width: 80 }} />
-            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-11)', color: 'var(--t2)', textAlign: 'center' }}>
+            <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 11, color: 'var(--t2)', textAlign: 'center' }}>
               Delete <span style={{ color: 'var(--red)' }}>{deleteConfirm.name}</span>?<br />
-              <span style={{ color: 'var(--t4)', fontSize: 'var(--fs-9)' }}>This cannot be undone.</span>
+              <span style={{ color: 'var(--t4)', fontSize: 9 }}>This cannot be undone.</span>
             </div>
           </div>
         </Modal>
@@ -897,9 +893,9 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
             </>
           }
         >
-          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-10)', color: 'var(--t2)', textAlign: 'center', lineHeight: 2 }}>
+          <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 10, color: 'var(--t2)', textAlign: 'center', lineHeight: 2 }}>
             Dropped: <span style={{ color: 'var(--cyan)' }}>{dropModal.name}</span><br />
-            <span style={{ color: 'var(--t4)', fontSize: 'var(--fs-9)' }}>Open the folder to manage files directly.</span>
+            <span style={{ color: 'var(--t4)', fontSize: 9 }}>Open the folder to manage files directly.</span>
           </div>
         </Modal>
       )}

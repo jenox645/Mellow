@@ -66,7 +66,6 @@ _DEFAULTS: dict = {
     "desktop_notifications": False,   # system notification when unfocused
     "ui_victory_animation": True,     # celebration after a playlist download
     "ui_victory_sync": True,          # ... and after a vault sync
-    "ui_layout": "classic",           # "classic" (HUD) or "studio"
     "download_presets": [],           # saved option bundles for the Feed
 }
 

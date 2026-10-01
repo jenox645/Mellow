@@ -160,7 +160,7 @@ export function TopBar({ page }) {
   );
 }
 
-export function StatusBar({ sysInfo, speedHistory, config, onSwitchLayout }) {
+export function StatusBar({ sysInfo, speedHistory, config }) {
   const canvasRef = React.useRef(null);
 
   React.useEffect(() => {
@@ -215,11 +215,6 @@ export function StatusBar({ sysInfo, speedHistory, config, onSwitchLayout }) {
       <div className="sb-graph">
         <canvas ref={canvasRef} />
       </div>
-      {onSwitchLayout && (
-        <div className="sb-seg sb-layout" title="Switch to the Studio layout (L)" onClick={() => onSwitchLayout('studio')}>
-          ⇄ STUDIO LAYOUT
-        </div>
-      )}
       <div className="sb-seg sb-path">
         {config.output_dir || '—'}
       </div>

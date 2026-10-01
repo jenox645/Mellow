@@ -356,8 +356,7 @@ src_html = GUI / "index.html"
 if not src_html.exists():
     fail(f"Missing {src_html}")
 shutil.copy2(src_html, STATIC / "index.html")
-shutil.copy2(GUI / "studio.css", STATIC / "studio.css")
-print("  static/index.html, static/studio.css — OK")
+print("  static/index.html — OK")
 
 
 # ── Step 9: Bundle app.jsx with esbuild ───────────────────────────────────────

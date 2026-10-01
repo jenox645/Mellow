@@ -100,15 +100,3 @@ export function estimateDownloadBytes(info, { mode, quality, audioFmt, audioQual
   }
   return bytes;
 }
-
-// A canvas can't resolve CSS variables: read the current layout's value
-export function cssVar(name, fallback) {
-  const v = window.getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-  return v || fallback;
-}
-
-// Canvas font for a Classic pixel size (7–12 scale with the layout's --fs-*)
-export function canvasFont(px, { weight = '', family = '--font-mono' } = {}) {
-  const size = px >= 7 && px <= 12 ? cssVar('--fs-' + px, px + 'px') : px + 'px';
-  return (weight ? weight + ' ' : '') + size + ' ' + cssVar(family, 'monospace');
-}

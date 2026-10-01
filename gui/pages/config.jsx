@@ -3,13 +3,13 @@
 
 import { API } from '../lib/api.js';
 import { fmtBytes } from '../lib/util.js';
-import { Toggle, Modal, Mascot, PageHead } from '../components/common.jsx';
+import { Toggle, Modal, Mascot } from '../components/common.jsx';
 import { MASCOT_FRUSTRATED } from '../lib/mascots.js';
 import {
-  AUDIO_FORMATS, AUDIO_QUALITIES, CONTAINERS, LAYOUTS, QUALITIES, TEMPLATE_PREVIEW_DEBOUNCE_MS,
+  AUDIO_FORMATS, AUDIO_QUALITIES, CONTAINERS, QUALITIES, TEMPLATE_PREVIEW_DEBOUNCE_MS,
 } from '../lib/constants.js';
 
-export function ConfigPage({ config, setConfig, showNotif, sysInfo, refreshStats, layout, onSwitchLayout }) {
+export function ConfigPage({ config, setConfig, showNotif, sysInfo, refreshStats }) {
   const [local, setLocal] = React.useState({ ...config });
   const [updateInfo, setUpdateInfo] = React.useState(null);
   const [appUpdate, setAppUpdate] = React.useState(null);
@@ -176,16 +176,16 @@ export function ConfigPage({ config, setConfig, showNotif, sysInfo, refreshStats
 
   return (
     <div className="content active">
-      <PageHead
-        label="システム設定 / SYSTEM CONFIG"
-        title={<><span style={{ color: 'var(--t1)' }}>SYS</span> <span className="a">CONFIG</span></>}
-        name="Config"
-        sub="Where files go, download defaults, network and behavior"
-        actions={<>
+      <div className="vhead">
+        <div>
+          <div className="vlabel">システム設定 / SYSTEM CONFIG</div>
+          <div className="vtitle"><span style={{ color: 'var(--t1)' }}>SYS</span> <span className="a">CONFIG</span></div>
+        </div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
           <button className="btn btn-secondary btn-sm" onClick={handleReset}>RESET DEFAULTS</button>
           <button className="btn btn-primary btn-sm" onClick={handleSave}>SAVE CONFIG →</button>
-        </>}
-      />
+        </div>
+      </div>
 
       <div className="cfg-layout">
         {/* LEFT COLUMN */}
@@ -213,7 +213,7 @@ export function ConfigPage({ config, setConfig, showNotif, sysInfo, refreshStats
                   <div className="sl-sub">DuckDB analytical database location</div>
                 </div>
                 <div className="settings-ctrl">
-                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-9)', color: 'var(--t3)' }}>~/.mellow_dlp.duckdb</span>
+                  <span style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: 'var(--t3)' }}>~/.mellow_dlp.duckdb</span>
                 </div>
               </div>
               <div className="settings-row">
@@ -238,7 +238,7 @@ export function ConfigPage({ config, setConfig, showNotif, sysInfo, refreshStats
                   <div className="sl-sub">mellow_archive.txt — tracks downloaded items, import as URL list</div>
                 </div>
                 <div className="settings-ctrl" style={{ display: 'flex', gap: 6 }}>
-                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-9)', color: 'var(--t3)' }}>
+                  <span style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: 'var(--t3)' }}>
                     {local.output_dir ? (local.output_dir.replace(/\\/g, '/').split('/').pop() || local.output_dir) + '/mellow_archive.txt' : 'mellow_archive.txt (in download folder)'}
                   </span>
                   <button className="btn btn-secondary btn-sm" onClick={() => {
@@ -358,7 +358,7 @@ export function ConfigPage({ config, setConfig, showNotif, sysInfo, refreshStats
                     ))}
                   </select>
                   {local.cookies_browser && local.cookies_browser !== 'none' && (
-                    <span style={{ fontSize: 'var(--fs-9)', color: 'var(--green)', fontFamily: 'var(--font-mono)' }}>● ACTIVE</span>
+                    <span style={{ fontSize: 9, color: 'var(--green)', fontFamily: 'Share Tech Mono, monospace' }}>● ACTIVE</span>
                   )}
                 </div>
               </div>
@@ -389,10 +389,10 @@ export function ConfigPage({ config, setConfig, showNotif, sysInfo, refreshStats
                 </div>
                 <div className="settings-ctrl" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                   {(local.cookies_browser && local.cookies_browser !== 'none')
-                    ? <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-9)', color: 'var(--green)' }}>Browser cookies ({local.cookies_browser}){local.cookies_browser_profile ? ' · custom profile' : ''}</span>
+                    ? <span style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: 'var(--green)' }}>Browser cookies ({local.cookies_browser}){local.cookies_browser_profile ? ' · custom profile' : ''}</span>
                     : local.cookies_file
-                    ? <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-9)', color: 'var(--cyan)' }}>Cookies file active</span>
-                    : <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-9)', color: 'var(--t4)' }}>No auth — public videos only</span>
+                    ? <span style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: 'var(--cyan)' }}>Cookies file active</span>
+                    : <span style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: 'var(--t4)' }}>No auth — public videos only</span>
                   }
                   {((local.cookies_browser && local.cookies_browser !== 'none') || local.cookies_file) && (
                     <button className="btn btn-secondary btn-sm" onClick={testCookies} disabled={testingCookies}
@@ -461,21 +461,6 @@ export function ConfigPage({ config, setConfig, showNotif, sysInfo, refreshStats
               <span className="ptitle">APP BEHAVIOR</span>
             </div>
             <div className="cfg-body">
-              <div className="settings-row">
-                <div className="settings-label">
-                  <div className="sl-name">Layout</div>
-                  <div className="sl-sub">Classic HUD or the calmer Studio look — applies at once (key: L)</div>
-                </div>
-                <div className="settings-ctrl">
-                  <div className="pills">
-                    {LAYOUTS.map(l => (
-                      <div key={l} className={'pill' + (layout === l ? ' active' : '')} onClick={() => onSwitchLayout(l)}>
-                        {l.toUpperCase()}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
               <div className="settings-row">
                 <div className="settings-label">
                   <div className="sl-name">Concurrent Downloads</div>
@@ -600,7 +585,7 @@ export function ConfigPage({ config, setConfig, showNotif, sysInfo, refreshStats
                   <div className="sl-sub">Analytical columnar database</div>
                 </div>
                 <div className="settings-ctrl">
-                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-9)', color: 'var(--amber)' }}>DuckDB (analytical)</span>
+                  <span style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: 'var(--amber)' }}>DuckDB (analytical)</span>
                 </div>
               </div>
               <div className="settings-row">
@@ -609,7 +594,7 @@ export function ConfigPage({ config, setConfig, showNotif, sysInfo, refreshStats
                   <div className="sl-sub">Current database file size</div>
                 </div>
                 <div className="settings-ctrl">
-                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-10)', color: 'var(--cyan)' }}>{fmtBytes(sysInfo.db_size_bytes || 0)}</span>
+                  <span style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 10, color: 'var(--cyan)' }}>{fmtBytes(sysInfo.db_size_bytes || 0)}</span>
                 </div>
               </div>
               <div className="settings-row">
@@ -759,7 +744,7 @@ export function ConfigPage({ config, setConfig, showNotif, sysInfo, refreshStats
         >
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14 }}>
             <Mascot src={MASCOT_FRUSTRATED} className="error-mascot" wrapClass="error-mascot" style={{ width: 80 }} />
-            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-10)', color: 'var(--t2)', textAlign: 'center', lineHeight: 1.8 }}>
+            <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 10, color: 'var(--t2)', textAlign: 'center', lineHeight: 1.8 }}>
               This will permanently delete all download records from DuckDB.<br />
               <span style={{ color: 'var(--red)' }}>This action cannot be undone.</span>
             </div>

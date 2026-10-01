@@ -3,12 +3,11 @@
 
 import { API } from '../lib/api.js';
 import {
-  canvasFont, cssVar, fmtBytes, fmtDate, fmtEta, fmtSpeed, fmtTimestamp, platformTagClass, timeAgo,
+  fmtBytes, fmtSpeed, fmtEta, fmtDate, fmtTimestamp, timeAgo, platformTagClass,
 } from '../lib/util.js';
 import { Ico } from '../components/icons.jsx';
-import { EditableStat, LineChart, Modal, PageHead } from '../components/common.jsx';
+import { EditableStat, LineChart, Modal } from '../components/common.jsx';
 import { HISTORY_LIMIT, HISTORY_SEARCH_DEBOUNCE_MS } from '../lib/constants.js';
-import { useLayout } from '../lib/layout.js';
 
 const MONTH_LABELS = ['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D'];
 
@@ -36,13 +35,13 @@ function WrappedModal({ onClose }) {
       </>
     }>
       {!data ? (
-        <div style={{ padding: 24, textAlign: 'center', fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-10)', color: 'var(--t3)' }}>CRUNCHING THE NUMBERS...</div>
+        <div style={{ padding: 24, textAlign: 'center', fontFamily: 'Share Tech Mono, monospace', fontSize: 10, color: 'var(--t3)' }}>CRUNCHING THE NUMBERS...</div>
       ) : data.error || !data.total_downloads ? (
-        <div style={{ padding: 24, textAlign: 'center', fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-10)', color: 'var(--t3)' }}>
+        <div style={{ padding: 24, textAlign: 'center', fontFamily: 'Share Tech Mono, monospace', fontSize: 10, color: 'var(--t3)' }}>
           NOTHING DOWNLOADED IN {year} — A QUIET YEAR.
         </div>
       ) : (
-        <div style={{ fontFamily: 'var(--font-mono)' }}>
+        <div style={{ fontFamily: 'Share Tech Mono, monospace' }}>
           <div className="g2" style={{ marginBottom: 10 }}>
             <div className="stat">
               <div className="stat-label">DOWNLOADS</div>
@@ -65,9 +64,9 @@ function WrappedModal({ onClose }) {
           </div>
           {(data.top_uploaders || []).length > 0 && (
             <div style={{ marginBottom: 10 }}>
-              <div style={{ fontSize: 'var(--fs-9)', color: 'var(--amber)', letterSpacing: '0.1em', marginBottom: 4 }}>TOP CHANNELS</div>
+              <div style={{ fontSize: 9, color: 'var(--amber)', letterSpacing: '0.1em', marginBottom: 4 }}>TOP CHANNELS</div>
               {data.top_uploaders.map((u, i) => (
-                <div key={u.uploader} style={{ display: 'flex', gap: 8, fontSize: 'var(--fs-10)', padding: '2px 0' }}>
+                <div key={u.uploader} style={{ display: 'flex', gap: 8, fontSize: 10, padding: '2px 0' }}>
                   <span style={{ color: 'var(--t4)', minWidth: 18 }}>#{i + 1}</span>
                   <span style={{ flex: 1, color: i === 0 ? 'var(--cyan)' : 'var(--t2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.uploader}</span>
                   <span style={{ color: 'var(--t3)' }}>{u.count}</span>
@@ -76,18 +75,18 @@ function WrappedModal({ onClose }) {
             </div>
           )}
           <div style={{ marginBottom: 10 }}>
-            <div style={{ fontSize: 'var(--fs-9)', color: 'var(--amber)', letterSpacing: '0.1em', marginBottom: 4 }}>MONTH BY MONTH</div>
+            <div style={{ fontSize: 9, color: 'var(--amber)', letterSpacing: '0.1em', marginBottom: 4 }}>MONTH BY MONTH</div>
             <div style={{ display: 'flex', alignItems: 'flex-end', gap: 3, height: 50 }}>
               {(data.monthly || []).map((v, i) => (
                 <div key={i} style={{ flex: 1, textAlign: 'center' }} title={`${v} downloads`}>
                   <div style={{ height: Math.max(2, (v / maxMonthly) * 40), background: 'var(--cyan)', opacity: 0.35 + (v / maxMonthly) * 0.65 }} />
-                  <div style={{ fontSize: 'var(--fs-7)', color: 'var(--t4)', marginTop: 2 }}>{MONTH_LABELS[i]}</div>
+                  <div style={{ fontSize: 7, color: 'var(--t4)', marginTop: 2 }}>{MONTH_LABELS[i]}</div>
                 </div>
               ))}
             </div>
           </div>
           {data.busiest_day && (
-            <div style={{ fontSize: 'var(--fs-9)', color: 'var(--t3)' }}>
+            <div style={{ fontSize: 9, color: 'var(--t3)' }}>
               Busiest day: <span style={{ color: 'var(--cyan)' }}>{data.busiest_day.day}</span> with {data.busiest_day.count} downloads
             </div>
           )}
@@ -151,7 +150,7 @@ function HistoryPanel({ showNotif, refreshStats }) {
           <option value="video">VIDEO</option>
           <option value="audio">AUDIO</option>
         </select>
-        <span style={{ marginLeft: 'auto', fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-9)', color: 'var(--t4)' }}>
+        <span style={{ marginLeft: 'auto', fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: 'var(--t4)' }}>
           {offset + 1}–{offset + rows.length}
         </span>
         <button className="btn btn-secondary btn-sm" disabled={offset === 0} onClick={() => setOffset(o => Math.max(0, o - HISTORY_LIMIT))}>‹ PREV</button>
@@ -171,22 +170,22 @@ function HistoryPanel({ showNotif, refreshStats }) {
               <td className="mono">{fmtBytes(r.file_size_bytes)}</td>
               <td className="mono">{fmtDate(r.timestamp)}</td>
               <td>
-                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-8)', padding: '2px 6px', color: r.status === 'success' ? 'var(--green)' : 'var(--red)', border: '1px solid', borderColor: r.status === 'success' ? 'rgba(0,255,148,0.3)' : 'rgba(255,59,97,0.3)' }}
+                <span style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 8, padding: '2px 6px', color: r.status === 'success' ? 'var(--green)' : 'var(--red)', border: '1px solid', borderColor: r.status === 'success' ? 'rgba(0,255,148,0.3)' : 'rgba(255,59,97,0.3)' }}
                   title={r.error_message || ''}>
                   {(r.status || '').toUpperCase()}
                 </span>
               </td>
               <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-                {r.url && <button className="btn btn-secondary btn-sm" style={{ padding: '2px 6px', fontSize: 'var(--fs-8)', marginRight: 4 }} title="Download again" onClick={() => redownload(r)}>↻ DL</button>}
-                {r.file_path && <button className="btn btn-secondary btn-sm" style={{ padding: '2px 6px', fontSize: 'var(--fs-8)', marginRight: 4 }} title="Open file" onClick={() => openFile(r)}>▶ OPEN</button>}
-                <button className="btn btn-danger btn-sm" style={{ padding: '2px 6px', fontSize: 'var(--fs-8)' }} title="Delete record" onClick={() => deleteRow(r)}>✕</button>
+                {r.url && <button className="btn btn-secondary btn-sm" style={{ padding: '2px 6px', fontSize: 8, marginRight: 4 }} title="Download again" onClick={() => redownload(r)}>↻ DL</button>}
+                {r.file_path && <button className="btn btn-secondary btn-sm" style={{ padding: '2px 6px', fontSize: 8, marginRight: 4 }} title="Open file" onClick={() => openFile(r)}>▶ OPEN</button>}
+                <button className="btn btn-danger btn-sm" style={{ padding: '2px 6px', fontSize: 8 }} title="Delete record" onClick={() => deleteRow(r)}>✕</button>
               </td>
             </tr>
           ))}
         </tbody>
       </table>
       {!rows.length && !loading && (
-        <div style={{ padding: '20px', textAlign: 'center', fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-9)', color: 'var(--t4)' }}>
+        <div style={{ padding: '20px', textAlign: 'center', fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: 'var(--t4)' }}>
           NO MATCHING RECORDS
         </div>
       )}
@@ -213,7 +212,6 @@ function dailySeries(rows, range) {
 }
 
 export function AnalyticsPage({ stats, refreshStats, showNotif }) {
-  const layout = useLayout();
   const [range, setRange] = React.useState('30d');
   const [wrappedOpen, setWrappedOpen] = React.useState(false);
   const [localStats, setLocalStats] = React.useState(stats);
@@ -259,15 +257,15 @@ export function AnalyticsPage({ stats, refreshStats, showNotif }) {
     const colors = ['rgba(0,216,255,0.85)','rgba(249,169,0,0.85)','rgba(192,132,252,0.85)','rgba(0,255,148,0.7)','rgba(255,59,97,0.7)','rgba(61,96,112,0.7)'];
     data.forEach((p, i) => {
       const y = pad.t + i * 22;
-      ctx.fillStyle = cssVar('--chart-label'); ctx.font = canvasFont(9); ctx.textAlign = 'right';
+      ctx.fillStyle = 'rgba(138,171,184,0.5)'; ctx.font = '9px Share Tech Mono'; ctx.textAlign = 'right';
       ctx.fillText(p.platform || '—', pad.l - 6, y + 12);
       const bw = (p.count / maxV) * cw;
-      ctx.fillStyle = cssVar('--chart-track'); ctx.fillRect(pad.l, y, cw, 14);
+      ctx.fillStyle = 'rgba(30,58,72,0.5)'; ctx.fillRect(pad.l, y, cw, 14);
       ctx.fillStyle = colors[i % colors.length]; ctx.fillRect(pad.l, y, bw, 14);
-      ctx.fillStyle = cssVar('--chart-value'); ctx.textAlign = 'left'; ctx.font = canvasFont(8);
+      ctx.fillStyle = 'rgba(216,236,245,0.8)'; ctx.textAlign = 'left'; ctx.font = '8px Share Tech Mono';
       ctx.fillText(p.count, pad.l + bw + 4, y + 11);
     });
-  }, [localStats.by_platform, layout]);
+  }, [localStats.by_platform]);
 
   // Draw donut
   React.useEffect(() => {
@@ -289,13 +287,12 @@ export function AnalyticsPage({ stats, refreshStats, showNotif }) {
       start += sweep;
     });
     ctx.beginPath(); ctx.arc(cx, cy, ri, 0, Math.PI * 2);
-    // (fillStyle can't take var(): it kept the last slice's color)
-    ctx.fillStyle = cssVar('--bg1'); ctx.fill();
-    ctx.fillStyle = cssVar('--chart-total'); ctx.font = canvasFont(14, { weight: 'bold', family: '--font-display' }); ctx.textAlign = 'center';
+    ctx.fillStyle = 'var(--bg2)'; ctx.fill();
+    ctx.fillStyle = 'rgba(0,216,255,0.9)'; ctx.font = 'bold 14px Oxanium'; ctx.textAlign = 'center';
     ctx.fillText(fmtBytes(total), cx, cy + 2);
-    ctx.fillStyle = cssVar('--chart-total-sub'); ctx.font = canvasFont(8);
+    ctx.fillStyle = 'rgba(61,96,112,0.9)'; ctx.font = '8px Share Tech Mono';
     ctx.fillText('TOTAL', cx, cy + 14);
-  }, [localStats.storage_by_format, layout]);
+  }, [localStats.storage_by_format]);
 
   const hourly = localStats.hourly_activity || Array(24).fill(0);
   const maxHour = Math.max(...hourly, 1);
@@ -306,12 +303,12 @@ export function AnalyticsPage({ stats, refreshStats, showNotif }) {
 
   return (
     <div className="content active">
-      <PageHead
-        label="データレイク / DATA LAKE"
-        title={<><span style={{ color: 'var(--t1)' }}>DATA</span> <span className="a">LAKE</span></>}
-        name="Analytics"
-        sub="What you've downloaded, and when"
-        actions={<>
+      <div className="vhead">
+        <div>
+          <div className="vlabel">データレイク / DATA LAKE</div>
+          <div className="vtitle"><span style={{ color: 'var(--t1)' }}>DATA</span> <span className="a">LAKE</span></div>
+        </div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
           <div className="range-tabs">
             {['7d','30d','all'].map(r => (
               <div key={r} className={'range-tab' + (range === r ? ' active' : '')} onClick={() => setRange(r)}>
@@ -325,8 +322,8 @@ export function AnalyticsPage({ stats, refreshStats, showNotif }) {
           <button className="btn btn-amber btn-sm" onClick={handleExport}>
             <Ico name="download" /> EXPORT CSV
           </button>
-        </>}
-      />
+        </div>
+      </div>
 
       {wrappedOpen && <WrappedModal onClose={() => setWrappedOpen(false)} />}
 
@@ -418,7 +415,7 @@ export function AnalyticsPage({ stats, refreshStats, showNotif }) {
             <canvas ref={donutRef} width={140} height={140} />
             <div style={{ flex: 1 }}>
               {(localStats.storage_by_format || []).slice(0, 4).map((f, i) => (
-                <div key={f.format} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6, fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-9)', color: 'var(--t2)' }}>
+                <div key={f.format} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6, fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: 'var(--t2)' }}>
                   <span>{(f.format || '—').toUpperCase()}</span>
                   <span style={{ color: 'var(--cyan)' }}>{fmtBytes(f.bytes)}</span>
                 </div>
@@ -486,7 +483,7 @@ export function AnalyticsPage({ stats, refreshStats, showNotif }) {
               color="rgba(255,59,97,0.85)"
             />
           ) : (
-            <div style={{ padding: '30px 0', textAlign: 'center', fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-9)', color: 'var(--t4)' }}>
+            <div style={{ padding: '30px 0', textAlign: 'center', fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: 'var(--t4)' }}>
               NO FAILURES IN RANGE
             </div>
           )}
@@ -502,7 +499,7 @@ export function AnalyticsPage({ stats, refreshStats, showNotif }) {
               <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 6 }}>
                 {days.map((d, di) => (
                   <div key={d} style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-7)', color: 'var(--t4)', width: 24, flexShrink: 0 }}>{d}</span>
+                    <span style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 7, color: 'var(--t4)', width: 24, flexShrink: 0 }}>{d}</span>
                     {Array.from({ length: 24 }, (_, h) => {
                       const v = (grid[di] || [])[h] || 0;
                       return (
@@ -543,7 +540,7 @@ export function AnalyticsPage({ stats, refreshStats, showNotif }) {
             </tbody>
           </table>
         ) : (
-          <div style={{ padding: '20px', textAlign: 'center', fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-9)', color: 'var(--t4)' }}>
+          <div style={{ padding: '20px', textAlign: 'center', fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: 'var(--t4)' }}>
             NO SYNC RUNS LOGGED YET — RUN A VAULT OR LIBRARY SYNC
           </div>
         )}
@@ -575,7 +572,7 @@ export function AnalyticsPage({ stats, refreshStats, showNotif }) {
                 <td className="mono">{fmtBytes(r.file_size_bytes)}</td>
                 <td className="mono">{fmtDate(r.timestamp)}</td>
                 <td>
-                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-8)', padding: '2px 6px', color: r.status === 'success' ? 'var(--green)' : 'var(--red)', border: '1px solid', borderColor: r.status === 'success' ? 'rgba(0,255,148,0.3)' : 'rgba(255,59,97,0.3)' }}>
+                  <span style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 8, padding: '2px 6px', color: r.status === 'success' ? 'var(--green)' : 'var(--red)', border: '1px solid', borderColor: r.status === 'success' ? 'rgba(0,255,148,0.3)' : 'rgba(255,59,97,0.3)' }}>
                     {(r.status || '').toUpperCase()}
                   </span>
                 </td>
@@ -584,7 +581,7 @@ export function AnalyticsPage({ stats, refreshStats, showNotif }) {
           </tbody>
         </table>
         {!(localStats.recent_records || []).length && (
-          <div style={{ padding: '24px', textAlign: 'center', fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-9)', color: 'var(--t4)' }}>
+          <div style={{ padding: '24px', textAlign: 'center', fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: 'var(--t4)' }}>
             NO RECORDS YET — START DOWNLOADING TO POPULATE THE DATA LAKE
           </div>
         )}

@@ -187,28 +187,3 @@ def test_filename_template_preview(client, template, ok, shown):
     data = r.get_json()
     assert data['ok'] is ok and r.status_code == (200 if ok else 400)
     assert shown in (data.get('example') or data.get('error'))
-
-
-def test_layout_defaults_to_classic_and_a_switch_is_saved(client):
-    assert client.get('/api/config').get_json()['ui_layout'] == 'classic'
-    assert client.post('/api/config', json={'ui_layout': 'studio'}).status_code == 200
-    from mellow import config
-    assert config.load_config()['ui_layout'] == 'studio'
-    # RESET DEFAULTS puts the layout back too
-    assert client.post('/api/config/reset', json={}).get_json()['ui_layout'] == 'classic'
-
-
-def test_studio_stylesheet_is_scoped_to_the_studio_layout():
-    # Every Studio rule must leave Classic alone
-    import re
-    from pathlib import Path
-    css = (Path(__file__).resolve().parent.parent / 'gui' / 'studio.css').read_text(encoding='utf-8')
-    css = re.sub(r'/\*.*?\*/', '', css, flags=re.S)
-    css = re.sub(r'@import url\([^)]*\);', '', css)
-    css = re.sub(r'@keyframes[^{]*\{(?:[^{}]*\{[^}]*\})*[^}]*\}', '', css)
-    css = re.sub(r'@media[^{]*\{', '', css)
-    selectors = [s.strip() for block in re.findall(r'([^{}]+)\{[^}]*\}', css) for s in block.split(',')]
-    selectors = [s for s in selectors if s]
-    assert selectors
-    unscoped = [s for s in selectors if not s.startswith(':root[data-layout="studio"]')]
-    assert unscoped == []
