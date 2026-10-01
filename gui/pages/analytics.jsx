@@ -287,7 +287,8 @@ export function AnalyticsPage({ stats, refreshStats, showNotif }) {
       start += sweep;
     });
     ctx.beginPath(); ctx.arc(cx, cy, ri, 0, Math.PI * 2);
-    ctx.fillStyle = 'var(--bg2)'; ctx.fill();
+    // A canvas can't resolve var(): read the panel colour (else the hole kept the last slice's colour)
+    ctx.fillStyle = window.getComputedStyle(c).getPropertyValue('--bg1').trim() || '#0C1118'; ctx.fill();
     ctx.fillStyle = 'rgba(0,216,255,0.9)'; ctx.font = 'bold 14px Oxanium'; ctx.textAlign = 'center';
     ctx.fillText(fmtBytes(total), cx, cy + 2);
     ctx.fillStyle = 'rgba(61,96,112,0.9)'; ctx.font = '8px Share Tech Mono';

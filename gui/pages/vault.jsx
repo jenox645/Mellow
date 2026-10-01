@@ -410,7 +410,7 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
                   {/* Thumbnail mosaic or folder icon */}
                   {showMosaic ? (
                     thumbs.length === 1 ? (
-                      <img src={thumbs[0]} style={{width:'100%',height:'100%',objectFit:'cover',display:'block'}} alt=""
+                      <img src={thumbs[0]} style={{ width: '100%', flex: 1, minHeight: 0, objectFit: 'cover', display: 'block' }} alt=""
                         onError={e => { e.target.style.display='none'; }} />
                     ) : (
                       <div className="vfc-mosaic">
