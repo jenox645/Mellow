@@ -8,22 +8,20 @@
 
 import { API } from './lib/api.js';
 import {
-  BREAKAGE_RE,
   CLIPBOARD_URL_RE,
-  COMPLETED_ITEMS_KEEP,
-  FAILED_ITEMS_KEEP,
   NOTIF_ACTION_TIMEOUT_MS,
   NOTIF_TIMEOUT_MS,
   PAGE_ORDER,
-  SPEED_HISTORY_LEN,
   STATS_POLL_ACTIVE_MS,
   STATS_POLL_IDLE_MS,
+  APP_UPDATE_CHECK_STORAGE_KEY,
   UPDATE_CHECK_EVERY_MS,
   UPDATE_CHECK_STORAGE_KEY,
   VICTORY_AUTO_DISMISS_MS,
   VICTORY_FADE_MS,
 } from './lib/constants.js';
 import { playCompletionChime } from './lib/sound.js';
+import { downloadsReducer, initialDownloads } from './lib/downloads.js';
 import { MASCOT_VICTORY_SAFE } from './lib/mascots.js';
 import { Modal, Notif, Mascot } from './components/common.jsx';
 import { LoadingScreen } from './components/loading.jsx';
@@ -61,45 +59,50 @@ function ShortcutHelpOverlay({ onClose }) {
   );
 }
 
+// OPEN FILE / FOLDER buttons for a "Download Complete" toast
+function fileActions(path) {
+  return [
+    { label: 'OPEN FILE', primary: true, onClick: () => API.post('/api/vault/open-file', { path }).catch(() => {}) },
+    { label: 'FOLDER', onClick: () => API.post('/api/open-folder', { path }).catch(() => {}) },
+  ];
+}
+
 function App() {
   const [loading, setLoading] = React.useState(true);
   const [page, setPage] = React.useState('feed');
-  const [appState, setAppState] = React.useState('idle');
-  const [dlState, setDlState] = React.useState(null);
-  const [activeJobs, setActiveJobs] = React.useState({});
+  // Everything the server's progress events drive (gui/lib/downloads.js)
+  const [dl, dispatch] = React.useReducer(downloadsReducer, undefined, initialDownloads);
+  const {
+    appState, dlState, activeJobs, speedHistory, playlistItems, completedItems, failedItems,
+    playlistTotalCount, playlistCompletedCount, failedCount, isPaused, pausedCount, syncJobLabel,
+    fetchingPlaylistItems,
+  } = dl;
+  // setState-style setters for the pages (stable: dispatch never changes)
+  const setters = React.useMemo(() => {
+    const set = key => value => dispatch({ type: 'set', key, value });
+    return {
+      setPlaylistItems: set('playlistItems'), setCompletedItems: set('completedItems'),
+      setFailedItems: set('failedItems'), setFailedCount: set('failedCount'),
+      setSyncJobLabel: set('syncJobLabel'),
+    };
+  }, []);
+  const { setPlaylistItems, setCompletedItems, setFailedItems, setFailedCount, setSyncJobLabel } = setters;
   const [stats, setStats] = React.useState({});
   const [sysInfo, setSysInfo] = React.useState({});
   const [config, setConfig] = React.useState({});
   const [notif, setNotif] = React.useState(null);
-  const [speedHistory, setSpeedHistory] = React.useState(Array(SPEED_HISTORY_LEN).fill(0));
   const [vaultFolders, setVaultFolders] = React.useState([]);
   const [selectedVaultFolder, setSelectedVaultFolder] = React.useState(null);
   const [addVaultModal, setAddVaultModal] = React.useState(false);
   const [showVictory, setShowVictory] = React.useState(false);
   const [victoryDismissing, setVictoryDismissing] = React.useState(false);
   const [victoryData, setVictoryData] = React.useState(null);
-  const [playlistItems, setPlaylistItems] = React.useState(null);
-  const [completedItems, setCompletedItems] = React.useState([]);
-  const [failedItems, setFailedItems] = React.useState([]);
-  const [playlistTotalCount, setPlaylistTotalCount] = React.useState(0);
-  const [playlistCompletedCount, setPlaylistCompletedCount] = React.useState(0);
-  const [failedCount, setFailedCount] = React.useState(0);
-  const [isPaused, setIsPaused] = React.useState(false);
-  const [pausedCount, setPausedCount] = React.useState(0);
-  const [syncJobLabel, setSyncJobLabel] = React.useState(null);
-  const [fetchingPlaylistItems, setFetchingPlaylistItems] = React.useState(false);
   const [restorableJobs, setRestorableJobs] = React.useState(null);
   const [clipboardSuggestion, setClipboardSuggestion] = React.useState(null);
   const [shortcutHelp, setShortcutHelp] = React.useState(false);
-  const playlistActiveRef = React.useRef(false);
-  const currentPlaylistRef = React.useRef({ name: '', count: 0 });
   const configRef = React.useRef(config);
   const notifTimer = React.useRef(null);
   const victoryTimer = React.useRef(null);
-  const processedCompletions = React.useRef(new Set());
-  // Job whose events drive the main progress panel (others run in background
-  // when download_workers > 1 and are tracked in activeJobs)
-  const primaryJobRef = React.useRef(null);
   const lastClipboardRef = React.useRef('');
 
   React.useEffect(() => { configRef.current = config; }, [config]);
@@ -199,6 +202,20 @@ function App() {
           .catch(() => {});
       }
       if (c.update_check_on_launch !== false) {
+        // Once a day: is there a newer MellowDLP?
+        let lastApp = 0;
+        try { lastApp = parseInt(localStorage.getItem(APP_UPDATE_CHECK_STORAGE_KEY) || '0', 10) || 0; } catch {}
+        if (Date.now() - lastApp > UPDATE_CHECK_EVERY_MS) {
+          try { localStorage.setItem(APP_UPDATE_CHECK_STORAGE_KEY, String(Date.now())); } catch {}
+          API.get('/api/check-app-update').then(u => {
+            if (u && u.update_available) {
+              showNotif('MellowDLP ' + u.latest + ' Available', 'You have ' + u.current + '.', 'info', [{
+                label: 'GET IT', primary: true,
+                onClick: () => API.post('/api/open-release', {}).catch(() => {}),
+              }]);
+            }
+          }).catch(() => {});
+        }
         let last = 0;
         try { last = parseInt(localStorage.getItem(UPDATE_CHECK_STORAGE_KEY) || '0', 10) || 0; } catch {}
         if (Date.now() - last > UPDATE_CHECK_EVERY_MS) {
@@ -283,191 +300,47 @@ function App() {
     es.onmessage = (e) => {
       let data;
       try { data = JSON.parse(e.data); } catch { return; }
-      if (data.status === 'ping') return;
-      const jobId = data.job_id || null;
-      const isPrimary = primaryJobRef.current === null || jobId === null || jobId === primaryJobRef.current;
-
-      if (data.status === 'starting') {
-        if (primaryJobRef.current === null) {
-          primaryJobRef.current = jobId || '_single';
-          processedCompletions.current.clear();
-          setDlState({ status: 'starting', pct: 0 });
-        }
-        setAppState('downloading');
-      } else if (data.status === 'downloading') {
-        setAppState('downloading');
-        if (jobId) {
-          setActiveJobs(prev => ({ ...prev, [jobId]: {
-            pct: data.pct, speed: data.speed, eta: data.eta,
-            title: data.current_item_title || data.filename,
-            thumb: data.current_item_thumb,
-            label: data.job_label, type: data.job_type,
-          } }));
-        }
-        if (primaryJobRef.current === null && jobId) primaryJobRef.current = jobId;
-        if (isPrimary) setDlState(data);
-        setSpeedHistory(h => [...h.slice(1), data.speed || 0]);
-        if (data.current_item_title) {
-          setPlaylistItems(prev => {
-            if (!prev || !prev.length) return prev;
-            const first = prev[0];
-            if (first.url && first.title === first.url) {
-              return [{ ...first, title: data.current_item_title, thumbnail: data.current_item_thumb || first.thumbnail }, ...prev.slice(1)];
-            }
-            return prev;
-          });
-        }
-      } else if (data.status === 'processing') {
-        if (isPrimary) {
-          setAppState('processing');
-          setDlState(prev => prev ? { ...prev, status: 'processing' } : { status: 'processing', pct: 100 });
-        }
-      } else if (data.status === 'item_done') {
-        if (data.video_id && processedCompletions.current.has(data.video_id)) return;
-        if (data.video_id) processedCompletions.current.add(data.video_id);
-        const idx = data.playlist_index;
-        const vid = data.video_id;
-        const title = data.title;
-        setPlaylistItems(prev => {
-          if (!prev) return prev;
-          // Try most specific match first, then fall back
-          if (vid) {
-            const byId = prev.filter(x => x.video_id !== vid);
-            if (byId.length < prev.length) return byId;
-          }
-          if (idx !== undefined && idx !== null) {
-            const byIdx = prev.filter(x => x.idx !== idx);
-            if (byIdx.length < prev.length) return byIdx;
-          }
-          if (title) {
-            const byTitle = prev.filter(x => x.title !== title);
-            if (byTitle.length < prev.length) return byTitle;
-          }
-          // No match: leave the list alone — blindly dropping the head
-          // removed the wrong pending item
-          return prev;
-        });
-        setCompletedItems(prev => {
-          if (data.video_id && prev.some(x => x.video_id === data.video_id)) return prev;
-          return [{
-            video_id: data.video_id,
-            title: data.title,
-            thumbnail: data.thumbnail,
-            completedAt: Date.now(),
-          }, ...prev].slice(0, COMPLETED_ITEMS_KEEP);
-        });
-        setPlaylistCompletedCount(c => c + 1);
-      } else if (data.status === 'paused') {
-        setIsPaused(true);
-        setPausedCount(1);
-        setDlState(prev => prev ? { ...prev, paused: true } : prev);
-      } else if (data.status === 'resumed') {
-        setIsPaused(false);
-        setPausedCount(0);
-        setDlState(prev => prev ? { ...prev, paused: false } : prev);
-      } else if (data.status === 'item_failed') {
-        setFailedCount(c => c + 1);
-        setFailedItems(prev => [{
-          title: data.message || 'Unknown item',
-          reason: data.code || data.reason || 'error',
-          hint: data.title ? data.title + ' — ' + data.hint : null,
-          url: data.url || null,
-          failedAt: Date.now(),
-        }, ...prev].slice(0, FAILED_ITEMS_KEEP));
-      } else if (data.status === 'complete') {
-        if (jobId) setActiveJobs(prev => { const next = { ...prev }; delete next[jobId]; return next; });
-        if (configRef.current.completion_sound) playCompletionChime();
-        const fileActions = data.file_path ? [
-          { label: 'OPEN FILE', primary: true, onClick: () => API.post('/api/vault/open-file', { path: data.file_path }).catch(() => {}) },
-          { label: 'FOLDER', onClick: () => API.post('/api/open-folder', { path: data.file_path }).catch(() => {}) },
-        ] : null;
-        if (data.warning) {
-          // Saved, but not the way it was asked for (e.g. no ffmpeg to convert)
-          showNotif('Downloaded With Limits', data.warning, 'warn', fileActions);
-        } else {
-          showNotif('Download Complete', data.title || 'File saved successfully', 'success', fileActions);
-        }
-        desktopNotify('Download complete', data.title || '');
-        refreshStats();
-        refreshVault();
-        if (!isPrimary) return;  // a background job finished; main panel stays
-        primaryJobRef.current = null;
-        setDlState(null);
-        setAppState('idle');
-        setIsPaused(false);
-        setPausedCount(0);
-        setSyncJobLabel(null);
-        setSpeedHistory(h => [...h.slice(1), 0]);
-        setPlaylistItems(null);
-        setFetchingPlaylistItems(false);
-        if (playlistActiveRef.current) {
-          playlistActiveRef.current = false;
-          const isSyncCompletion = !!data.library_id;
-          const victoryEnabled = isSyncCompletion
-            ? configRef.current.ui_victory_sync !== false
-            : configRef.current.ui_victory_animation !== false;
-          if (victoryEnabled && MASCOT_VICTORY_SAFE) {
-            setVictoryData({
-              playlistName: currentPlaylistRef.current.name,
-              itemCount: currentPlaylistRef.current.count,
-            });
-            setVictoryDismissing(false);
-            setShowVictory(true);
-            if (victoryTimer.current) clearTimeout(victoryTimer.current);
-            victoryTimer.current = setTimeout(() => {
-              setVictoryDismissing(true);
-              setTimeout(() => { setShowVictory(false); setVictoryDismissing(false); }, VICTORY_FADE_MS);
-            }, VICTORY_AUTO_DISMISS_MS);
-          }
-        }
-      } else if (data.status === 'error') {
-        if (jobId) setActiveJobs(prev => { const next = { ...prev }; delete next[jobId]; return next; });
-        const msg = data.message || 'Download failed';
-        setFailedItems(prev => [{
-          title: msg, reason: data.code || 'error', url: data.url || null, failedAt: Date.now(),
-          hint: data.title ? data.title + ' — ' + data.hint : null,
-        }, ...prev].slice(0, FAILED_ITEMS_KEEP));
-        setFailedCount(c => c + 1);
-        if (data.title) {
-          // The backend recognised the error: plain words and the fix
-          showNotif(data.title, data.hint, 'error', errorActions(data.action));
-        } else {
-          // Extraction failures usually mean yt-dlp is outdated — offer the fix
-          // (unless the backend already pinned it on the missing ffmpeg)
-          const looksLikeBreakage = data.code !== 'ffmpeg_missing' && BREAKAGE_RE.test(msg);
-          showNotif('Error', looksLikeBreakage ? msg + ' — this often means yt-dlp is outdated.' : msg, 'error',
-            looksLikeBreakage ? errorActions('update_ytdlp') : null);
-        }
-        desktopNotify(data.title || 'Download failed', data.hint || msg);
-        refreshStats();
-        if (!isPrimary) return;
-        primaryJobRef.current = null;
-        setDlState(null);
-        setAppState('error');
-        setIsPaused(false);
-      } else if (data.status === 'cancelled') {
-        if (jobId) setActiveJobs(prev => { const next = { ...prev }; delete next[jobId]; return next; });
-        showNotif('Cancelled', 'Download stopped');
-        if (!isPrimary) return;
-        primaryJobRef.current = null;
-        setDlState(null);
-        setAppState('idle');
-        setIsPaused(false);
-        setPausedCount(0);
-      } else if (data.status === 'warning') {
-        showNotif('Heads Up', data.message || '', 'warn');
-      } else if (data.status === 'ytdlp_updated') {
-        if (data.ok) {
-          showNotif(data.restart_required ? 'Restart To Finish' : 'Updated',
-            data.message || 'yt-dlp updated successfully', 'success');
-        }
-        else showNotif('Update failed', data.error || '', 'error');
-        refreshStats();
-      }
+      if (data.status !== 'ping') dispatch({ type: 'event', data, now: Date.now() });
     };
     es.onerror = () => {};
     return () => es.close();
-  }, [showNotif, refreshStats, refreshVault, errorActions, desktopNotify]);
+  }, []);
+
+  // Run what the events asked for (toasts, chime, refreshes, celebration)
+  const celebrate = React.useCallback((fx) => {
+    const enabled = fx.sync ? configRef.current.ui_victory_sync !== false
+      : configRef.current.ui_victory_animation !== false;
+    if (!enabled || !MASCOT_VICTORY_SAFE) return;
+    setVictoryData({ playlistName: fx.name, itemCount: fx.count });
+    setVictoryDismissing(false);
+    setShowVictory(true);
+    if (victoryTimer.current) clearTimeout(victoryTimer.current);
+    victoryTimer.current = setTimeout(() => {
+      setVictoryDismissing(true);
+      setTimeout(() => { setShowVictory(false); setVictoryDismissing(false); }, VICTORY_FADE_MS);
+    }, VICTORY_AUTO_DISMISS_MS);
+  }, []);
+
+  React.useEffect(() => {
+    const effects = dl.effects;
+    if (!effects.length) return;
+    for (const fx of effects) {
+      if (fx.type === 'notify') {
+        showNotif(fx.title, fx.body, fx.kind, fx.file ? fileActions(fx.file) : errorActions(fx.action));
+      } else if (fx.type === 'desktop') {
+        desktopNotify(fx.title, fx.body);
+      } else if (fx.type === 'chime') {
+        if (configRef.current.completion_sound) playCompletionChime();
+      } else if (fx.type === 'refreshStats') {
+        refreshStats();
+      } else if (fx.type === 'refreshVault') {
+        refreshVault();
+      } else if (fx.type === 'victory') {
+        celebrate(fx);
+      }
+    }
+    dispatch({ type: 'effects_done', count: effects.length });
+  }, [dl.effects, showNotif, errorActions, desktopNotify, refreshStats, refreshVault, celebrate]);
 
   const switchPage = React.useCallback((p) => setPage(p), []);
 
@@ -492,9 +365,8 @@ function App() {
         {page === 'feed' && (
           <FeedPage
             dlState={dlState}
-            setDlState={setDlState}
-            setAppState={setAppState}
             stats={stats}
+            sysInfo={sysInfo}
             refreshStats={refreshStats}
             showNotif={showNotif}
             switchPage={switchPage}
@@ -502,14 +374,7 @@ function App() {
             setConfig={setConfig}
             suggestedUrl={clipboardSuggestion}
             onSuggestedConsumed={() => setClipboardSuggestion(null)}
-            onPlaylistDownload={(count, name) => {
-              playlistActiveRef.current = true;
-              currentPlaylistRef.current = { name: name || '', count: count || 0 };
-              setPlaylistTotalCount(count || 0);
-              setPlaylistCompletedCount(0);
-              setFailedCount(0);
-              setFailedItems([]);
-            }}
+            onPlaylistDownload={(count, name) => dispatch({ type: 'playlist_started', name, count })}
             playlistItems={playlistItems}
             setPlaylistItems={setPlaylistItems}
             completedItems={completedItems}
@@ -558,22 +423,9 @@ function App() {
             onRefreshVault={refreshVault}
             isDownloading={!!(dlState && dlState.status !== 'complete' && dlState.status !== 'error')}
             onSyncStart={setSyncJobLabel}
-            onSyncItems={(items, count, name) => {
-              if (items === null) {
-                setFetchingPlaylistItems(true);
-                playlistActiveRef.current = true;
-                currentPlaylistRef.current = { name: name || '', count: 0 };
-                setPlaylistTotalCount(0);
-                setPlaylistCompletedCount(0);
-                setFailedCount(0);
-                setFailedItems([]);
-              } else {
-                setPlaylistItems(items.map(i => ({ ...i, selected: true })));
-                setFetchingPlaylistItems(false);
-                setPlaylistTotalCount(count);
-                currentPlaylistRef.current = { name: name || '', count };
-              }
-            }}
+            onSyncItems={(items, count, name) => dispatch(items === null
+              ? { type: 'playlist_started', name, count: 0, fetching: true }
+              : { type: 'playlist_items', items, count, name })}
           />
         )}
         {page === 'analytics' && (

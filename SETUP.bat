@@ -44,7 +44,7 @@ if %BUILD_RESULT% == 0 (
     echo  Build complete!
 ) else (
     echo  Build failed. Scroll up for the first line starting with "ERROR:".
-    echo  Tip: if a tool was just installed (Node, esbuild^), open a NEW
+    echo  Tip: if a tool was just installed (Node^), open a NEW
     echo  terminal so PATH refreshes, then run SETUP.bat again.
 )
 echo.

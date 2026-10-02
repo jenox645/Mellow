@@ -1,0 +1,3 @@
+# Packaging only (build_setup.py installs these into .venv)
+pyinstaller==6.22.3
+pillow==12.3.0

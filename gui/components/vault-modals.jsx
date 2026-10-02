@@ -3,8 +3,9 @@
 
 import { API } from '../lib/api.js';
 import { fmtBytes } from '../lib/util.js';
-import { Modal } from './common.jsx';
-import { AUDIO_FORMATS, CONTAINERS, QUALITIES, SPONSORBLOCK_HINT } from '../lib/constants.js';
+import { FormatToggles, Modal } from './common.jsx';
+import { defaultToggles, togglesFrom } from '../lib/formats.js';
+import { AUDIO_FORMATS, CONTAINERS, QUALITIES } from '../lib/constants.js';
 
 export function AddVaultModal({ onClose, onSaved, showNotif }) {
   const [name, setName] = React.useState('');
@@ -15,11 +16,7 @@ export function AddVaultModal({ onClose, onSaved, showNotif }) {
   const [container, setContainer] = React.useState('mp4');
   const [audioFmt, setAudioFmt] = React.useState('mp3');
   const [mode, setMode] = React.useState('add');
-  const [embedThumb, setEmbedThumb] = React.useState(true);
-  const [embedChapters, setEmbedChapters] = React.useState(true);
-  const [embedMeta, setEmbedMeta] = React.useState(true);
-  const [embedSubs, setEmbedSubs] = React.useState(false);
-  const [sponsorblock, setSponsorblock] = React.useState(false);
+  const [toggles, setToggles] = React.useState(defaultToggles);
   const [saving, setSaving] = React.useState(false);
 
   const browseFolder = () => {
@@ -46,11 +43,7 @@ export function AddVaultModal({ onClose, onSaved, showNotif }) {
       audio_format: audioFmt,
       mode: mediaType === 'audio' ? 'AUDIO' : 'VIDEO',
       sync_mode: mode,
-      embed_thumbnail: embedThumb,
-      embed_chapters: embedChapters,
-      embed_metadata: embedMeta,
-      embed_subs: embedSubs,
-      sponsorblock,
+      ...toggles,
     }).then(() => onSaved())
       .catch(e => showNotif('Error', e.message, 'error'))
       .finally(() => setSaving(false));
@@ -143,20 +136,8 @@ export function AddVaultModal({ onClose, onSaved, showNotif }) {
       </div>
       <div className="form-row">
         <div className="form-label">OPTIONS</div>
-        <div className="opts-toggles">
-          {[
-            { label: 'Embed Thumbnail', val: embedThumb, set: setEmbedThumb },
-            { label: 'Subtitles', val: embedSubs, set: setEmbedSubs },
-            { label: 'Chapters', val: embedChapters, set: setEmbedChapters },
-            { label: 'Metadata', val: embedMeta, set: setEmbedMeta },
-            { label: 'SponsorBlock', val: sponsorblock, set: setSponsorblock, hint: SPONSORBLOCK_HINT },
-          ].map(item => (
-            <label key={item.label} className="opts-toggle-item" title={item.hint}>
-              <input type="checkbox" checked={item.val} onChange={e => item.set(e.target.checked)} />
-              {item.label}
-            </label>
-          ))}
-        </div>
+        <FormatToggles values={toggles} media={mediaType === 'audio' ? 'audio' : 'video'}
+          onChange={(key, value) => setToggles(t => ({ ...t, [key]: value }))} />
       </div>
     </Modal>
   );
@@ -252,11 +233,7 @@ export function SyncPlaylistModal({ folder, onClose, showNotif, onRefreshVault, 
   const [syncQuality, setSyncQuality] = React.useState('1080p');
   const [syncContainer, setSyncContainer] = React.useState('mp4');
   const [syncAudioFmt, setSyncAudioFmt] = React.useState('mp3');
-  const [syncEmbedThumb, setSyncEmbedThumb] = React.useState(true);
-  const [syncEmbedSubs, setSyncEmbedSubs] = React.useState(false);
-  const [syncEmbedChapters, setSyncEmbedChapters] = React.useState(true);
-  const [syncEmbedMeta, setSyncEmbedMeta] = React.useState(true);
-  const [syncSponsorblock, setSyncSponsorblock] = React.useState(false);
+  const [syncToggles, setSyncToggles] = React.useState(defaultToggles);
   const [syncing, setSyncing] = React.useState(false);
   const [mirrorPreview, setMirrorPreview] = React.useState(null);
   const [previewing, setPreviewing] = React.useState(false);
@@ -279,11 +256,7 @@ export function SyncPlaylistModal({ folder, onClose, showNotif, onRefreshVault, 
         if (f.quality) setSyncQuality(f.quality);
         if (f.container) setSyncContainer(f.container);
         if (f.audio_format) setSyncAudioFmt(f.audio_format);
-        if (f.embed_thumbnail !== undefined) setSyncEmbedThumb(!!f.embed_thumbnail);
-        if (f.embed_subs !== undefined) setSyncEmbedSubs(!!f.embed_subs);
-        if (f.embed_chapters !== undefined) setSyncEmbedChapters(!!f.embed_chapters);
-        if (f.embed_metadata !== undefined) setSyncEmbedMeta(!!f.embed_metadata);
-        if (f.sponsorblock !== undefined) setSyncSponsorblock(!!f.sponsorblock);
+        setSyncToggles(togglesFrom(f));
       })
       .catch(() => { setPlaylists([]); setSelectedPlaylists(new Set()); });
     API.get('/api/config').then(c => {
@@ -310,11 +283,7 @@ export function SyncPlaylistModal({ folder, onClose, showNotif, onRefreshVault, 
     ...(syncMediaType === 'audio'
       ? { sync_audio: true, audio_format: syncAudioFmt }
       : { sync_audio: false, quality: syncQuality, container: syncContainer }),
-    embed_thumbnail: syncEmbedThumb,
-    embed_subs: syncEmbedSubs,
-    embed_chapters: syncEmbedChapters,
-    embed_metadata: syncEmbedMeta,
-    sponsorblock: syncSponsorblock,
+    ...syncToggles,
   });
 
   const doSync = (fmtOpts) => {
@@ -537,20 +506,8 @@ export function SyncPlaylistModal({ folder, onClose, showNotif, onRefreshVault, 
           </div>
           <div className="form-row">
             <div className="form-label">OPTIONS</div>
-            <div className="opts-toggles">
-              {[
-                { label: 'Embed Thumbnail', val: syncEmbedThumb, set: setSyncEmbedThumb },
-                { label: 'Subtitles', val: syncEmbedSubs, set: setSyncEmbedSubs },
-                { label: 'Chapters', val: syncEmbedChapters, set: setSyncEmbedChapters },
-                { label: 'Metadata', val: syncEmbedMeta, set: setSyncEmbedMeta },
-                { label: 'SponsorBlock', val: syncSponsorblock, set: setSyncSponsorblock, hint: SPONSORBLOCK_HINT },
-              ].map(item => (
-                <label key={item.label} className="opts-toggle-item" title={item.hint}>
-                  <input type="checkbox" checked={item.val} onChange={e => item.set(e.target.checked)} />
-                  {item.label}
-                </label>
-              ))}
-            </div>
+            <FormatToggles values={syncToggles} media={syncMediaType === 'audio' ? 'audio' : 'video'}
+              onChange={(key, value) => setSyncToggles(t => ({ ...t, [key]: value }))} />
           </div>
         </>
       )}
@@ -665,6 +622,124 @@ export function RenameVaultModal({ folder, initialName, onClose, onSave }) {
           onKeyDown={e => e.key === 'Enter' && name.trim() && onSave(name.trim())}
           autoFocus />
       </div>
+    </Modal>
+  );
+}
+
+// The Feed's "save this playlist to the vault?" step before a playlist download
+export function VaultLinkPromptModal({ info, url, config, opts, onClose, onJustDownload, onLinkAndDownload, showNotif }) {
+  const isAudio = opts.mode === 'audio';
+  // What future syncs of the folder should download: the options chosen now
+  const syncFormat = {
+    sync_audio: isAudio, audio_format: opts.audio_format, audio_quality: opts.audio_quality,
+    quality: opts.quality, container: opts.container,
+    ...togglesFrom(opts),
+  };
+  // Library mode keeps mellow_archive.txt, so items already in the folder are
+  // skipped now and on every later sync
+  const downloadInto = (folderPath) => onLinkAndDownload({ output_dir: folderPath, mode: 'library', sync_audio: isAudio });
+  const [step, setStep] = React.useState('choose'); // 'choose' | 'link-existing' | 'create-new'
+  const [vaultFolders, setVaultFolders] = React.useState([]);
+  const [selectedFolder, setSelectedFolder] = React.useState('');
+  const [newName, setNewName] = React.useState((info && info.title) ? info.title.slice(0, 40) : '');
+  const [newFolder, setNewFolder] = React.useState('');
+  const [saving, setSaving] = React.useState(false);
+
+  React.useEffect(() => {
+    if (step === 'link-existing') {
+      API.get('/api/vault').then(d => setVaultFolders(d.folders || [])).catch(() => {});
+    }
+  }, [step]);
+
+  const browseNewFolder = () => {
+    API.post('/api/browse-folder', {}).then(d => { if (d.path) setNewFolder(d.path); }).catch(() => {});
+  };
+
+  const handleLinkExisting = () => {
+    if (!selectedFolder) return;
+    setSaving(true);
+    // Actually link the playlist, so the folder's Sync picks it up later
+    API.post('/api/vault/playlists', { path: selectedFolder, url: url.trim(), sync_format: syncFormat })
+      .then(() => {
+        showNotif('Linked', 'Playlist linked to ' + selectedFolder.split(/[\\/]/).pop(), 'success');
+        downloadInto(selectedFolder);
+      })
+      .catch(e => { showNotif('Error', e.message, 'error'); setSaving(false); });
+  };
+
+  const handleCreateNew = () => {
+    const name = newName.trim();
+    if (!name) { showNotif('Error', 'Name required', 'error'); return; }
+    setSaving(true);
+    API.post('/api/library', {
+      name, url: url.trim(),
+      // A picked folder is used as-is; otherwise a subfolder of the download folder
+      folder: newFolder || config.output_dir || '',
+      folder_name: name, use_subfolder: !newFolder,
+      mode: isAudio ? 'AUDIO' : 'VIDEO', quality: opts.quality, container: opts.container,
+      audio_format: opts.audio_format, sync_mode: 'add',
+      ...togglesFrom(opts),
+    }).then(entry => {
+      // Also remember the full format (incl. bitrate, which library entries
+      // don't store) for the folder's future syncs
+      return API.post('/api/vault/playlists', { path: entry.folder_path, url: url.trim(), sync_format: syncFormat })
+        .then(() => entry);
+    }).then(entry => {
+      showNotif('Added to VAULT', name + ' saved to library', 'success');
+      downloadInto(entry.folder_path);
+    }).catch(e => { showNotif('Error', e.message, 'error'); setSaving(false); });
+  };
+
+  return (
+    <Modal title="SAVE TO VAULT?" onClose={onClose} footer={null}>
+      {step === 'choose' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 10, color: 'var(--t3)', textAlign: 'center', marginBottom: 6 }}>
+            This is a playlist. Would you like to save it to the Vault?
+          </div>
+          <button className="btn btn-secondary btn-sm" style={{ width: '100%' }} onClick={() => setStep('link-existing')}>LINK TO EXISTING VAULT FOLDER</button>
+          <button className="btn btn-secondary btn-sm" style={{ width: '100%' }} onClick={() => setStep('create-new')}>CREATE NEW VAULT ENTRY</button>
+          <button className="btn btn-primary btn-sm" style={{ width: '100%' }} onClick={onJustDownload}>JUST DOWNLOAD</button>
+        </div>
+      )}
+      {step === 'link-existing' && (
+        <div>
+          <div className="form-row">
+            <div className="form-label">SELECT VAULT FOLDER</div>
+            <select className="sel" style={{ width: '100%' }} value={selectedFolder} onChange={e => setSelectedFolder(e.target.value)}>
+              <option value="">— Select folder —</option>
+              {vaultFolders.map(f => <option key={f.path} value={f.path}>{f.name}</option>)}
+            </select>
+          </div>
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 8 }}>
+            <button className="btn btn-secondary btn-sm" onClick={() => setStep('choose')}>BACK</button>
+            <button className="btn btn-primary btn-sm" onClick={handleLinkExisting} disabled={!selectedFolder || saving}>
+              {saving ? 'LINKING...' : 'LINK AND DOWNLOAD'}
+            </button>
+          </div>
+        </div>
+      )}
+      {step === 'create-new' && (
+        <div>
+          <div className="form-row">
+            <div className="form-label">VAULT ENTRY NAME</div>
+            <input className="form-input" value={newName} onChange={e => setNewName(e.target.value)} placeholder="My Playlist" />
+          </div>
+          <div className="form-row">
+            <div className="form-label">SAVE FOLDER (OPTIONAL)</div>
+            <div className="input-row">
+              <input className="form-input" value={newFolder} onChange={e => setNewFolder(e.target.value)} placeholder="Uses Config default if empty" />
+              <button className="btn btn-secondary btn-sm" onClick={browseNewFolder}>BROWSE</button>
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 8 }}>
+            <button className="btn btn-secondary btn-sm" onClick={() => setStep('choose')}>BACK</button>
+            <button className="btn btn-primary btn-sm" onClick={handleCreateNew} disabled={saving || !newName.trim()}>
+              {saving ? 'SAVING...' : 'CREATE AND DOWNLOAD'}
+            </button>
+          </div>
+        </div>
+      )}
     </Modal>
   );
 }

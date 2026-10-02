@@ -1,6 +1,8 @@
 // Small shared components: toggles, mascot renderer, modals, toasts, charts.
 'use strict';
 
+import { API } from '../lib/api.js';
+import { togglesFor } from '../lib/formats.js';
 import { Ico } from './icons.jsx';
 
 export function Toggle({ checked, onChange }) {
@@ -9,6 +11,34 @@ export function Toggle({ checked, onChange }) {
       className={'toggle' + (checked ? ' on' : '')}
       onClick={() => onChange(!checked)}
     />
+  );
+}
+
+// The on/off download options for a video or audio download (FORMAT_TOGGLES).
+// `values` is {key: bool}; `hints` overrides a toggle's tooltip.
+export function FormatToggles({ values, onChange, media, hints }) {
+  return (
+    <div className="opts-toggles">
+      {togglesFor(media).map(t => (
+        <label key={t.key} className="opts-toggle-item" title={(hints && hints[t.key]) || t.hint}>
+          <input type="checkbox" checked={!!values[t.key]} onChange={e => onChange(t.key, e.target.checked)} />
+          {t.label}
+        </label>
+      ))}
+    </div>
+  );
+}
+
+// OPEN / FOLDER links for a downloaded file (finished-item rows)
+export function FileActions({ path }) {
+  if (!path) return null;
+  const open = (e) => { e.stopPropagation(); API.post('/api/vault/open-file', { path }).catch(() => {}); };
+  const folder = (e) => { e.stopPropagation(); API.post('/api/open-folder', { path }).catch(() => {}); };
+  return (
+    <span className="file-actions" title={path}>
+      <span className="info-prev-link" onClick={open}>OPEN</span>
+      <span className="info-prev-link" onClick={folder}>FOLDER</span>
+    </span>
   );
 }
 
@@ -136,35 +166,6 @@ export function Pipeline({ stage }) {
   });
 
   return <div className="pipeline">{items}</div>;
-}
-
-export function MiniGraph({ data, color, height = 28 }) {
-  const canvasRef = React.useRef(null);
-
-  React.useEffect(() => {
-    const c = canvasRef.current;
-    if (!c) return;
-    const dpr = window.devicePixelRatio || 1;
-    c.width = c.offsetWidth * dpr;
-    c.height = height * dpr;
-    const ctx = c.getContext('2d');
-    ctx.scale(dpr, dpr);
-    const w = c.offsetWidth, h = height;
-    ctx.clearRect(0, 0, w, h);
-    const pts = data && data.length > 0 ? data : Array(20).fill(0);
-    const maxV = Math.max(...pts, 1);
-    ctx.strokeStyle = color || 'rgba(0,216,255,0.6)';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    pts.forEach((v, i) => {
-      const x = (i / (pts.length - 1)) * w;
-      const y = h - (v / maxV) * h * 0.85 - h * 0.05;
-      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
-    });
-    ctx.stroke();
-  }, [data, color, height]);
-
-  return <canvas ref={canvasRef} style={{ width: '100%', height: height + 'px', display: 'block' }} />;
 }
 
 export function LineChart({ data, color = 'rgba(0,216,255,0.85)', height = 120, yFormat }) {

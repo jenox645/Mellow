@@ -3,9 +3,14 @@ build/
 __pycache__/
 *.pyc
 .venv/
-static/app.bundle.js
-static/react.min.js
-static/react-dom.min.js
+# Build output: build_setup.py regenerates all of static/ (bundle, React,
+# index.html, mascots.js, favicon) and the installer/package images
+/static/
+assets/mellow_256.png
+# yt-dlp binaries older builds downloaded for bundling
+/yt-dlp
+/yt-dlp.exe
+/appimagetool
 *.spec.bak
 node_modules/
 .vscode/
@@ -15,6 +20,7 @@ assets/wizard_small.bmp
 *.duckdb.wal
 *.json
 !package.json
+!package-lock.json
 
 # Datalake — actual data files (keep folder structure via .gitkeep)
 datalake/data/raw/**/*.json

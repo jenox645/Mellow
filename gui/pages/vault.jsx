@@ -33,6 +33,60 @@ function MediaPreviewModal({ file, onClose }) {
   );
 }
 
+// Last sync of a folder: counts, then (on demand) what was added, what failed
+// and why. Failed items with a link can be downloaded again from here.
+function SyncReport({ report, folder, showNotif }) {
+  const [open, setOpen] = React.useState(false);
+  const added = report.added || [], failed = report.failed || [], filtered = report.filtered || [];
+  const parts = [
+    added.length + ' new',
+    (report.archived || 0) + ' already there',
+    filtered.length ? filtered.length + ' skipped (Shorts / live)' : null,
+    failed.length ? failed.length + ' failed' : null,
+  ].filter(Boolean);
+  const mono = { fontFamily: 'Share Tech Mono, monospace', fontSize: 9 };
+  const statusColor = report.status === 'complete' ? 'var(--green)' : report.status === 'failed' ? 'var(--red)' : 'var(--t3)';
+  // Into this folder, in the format it syncs with
+  const retry = (url) => API.post('/api/vault/retry-item', { path: folder, url })
+    .then(() => showNotif('Re-queued', url))
+    .catch(e => showNotif('Error', e.message, 'error'));
+  return (
+    <div style={{ padding: '8px 14px', borderTop: '1px solid var(--border)', ...mono }}>
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', color: 'var(--t2)' }}>
+        <span style={{ color: statusColor }}>{(report.status || '').toUpperCase()}</span>
+        <span>{parts.join(' · ')}</span>
+        <span style={{ color: 'var(--t4)' }}>{timeAgo(report.finished_at)}</span>
+        {(added.length || failed.length || filtered.length || report.error) ? (
+          <span style={{ marginLeft: 'auto', cursor: 'pointer', color: 'var(--cyan)' }} onClick={() => setOpen(o => !o)}>
+            {open ? 'HIDE' : 'DETAILS'}
+          </span>
+        ) : null}
+      </div>
+      {open && (
+        <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 260, overflowY: 'auto' }}>
+          {report.error && <div style={{ color: 'var(--red)' }}>{report.error}</div>}
+          {failed.map((f, i) => (
+            <div key={'f' + i} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <span style={{ color: 'var(--red)', minWidth: 52 }}>FAILED</span>
+              <span style={{ flex: 1, minWidth: 0, color: 'var(--t2)' }} title={f.message}>
+                {f.title ? <span style={{ color: 'var(--t1)' }}>{f.title} — {f.hint} </span> : null}
+                <span style={{ color: f.title ? 'var(--t4)' : undefined }}>{f.message}</span>
+              </span>
+              {f.url && <button className="btn btn-secondary btn-sm" style={{ padding: '2px 7px', fontSize: 8 }} onClick={() => retry(f.url)}>↻ RETRY</button>}
+            </div>
+          ))}
+          {added.map((t, i) => (
+            <div key={'a' + i}><span style={{ color: 'var(--green)', display: 'inline-block', minWidth: 60 }}>NEW</span>{t}</div>
+          ))}
+          {filtered.map((t, i) => (
+            <div key={'s' + i}><span style={{ color: 'var(--amber)', display: 'inline-block', minWidth: 60 }}>SKIPPED</span>{t}</div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, config, setConfig, showNotif, onAddVault, onRefreshVault, isDownloading, onSyncStart, onSyncItems }) {
   const [files, setFiles] = React.useState([]);
   const [loading, setLoading] = React.useState(false);
@@ -158,6 +212,16 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
     .sort((a, b) => new Date(b) - new Date(a))[0] || null;
   // A folder with linked playlists can sync before its first sync, too
   const canSync = !!(libEntry || (selectedFolderMeta && selectedFolderMeta.playlist_count > 0));
+
+  // What the folder's last sync did; refetched when a sync finishes (lastSynced moves)
+  const [syncReport, setSyncReport] = React.useState(null);
+  React.useEffect(() => {
+    setSyncReport(null);
+    if (!selectedFolder) return;
+    API.get('/api/vault/sync-report?path=' + encodeURIComponent(selectedFolder))
+      .then(d => setSyncReport(d.report))
+      .catch(() => {});
+  }, [selectedFolder, lastSynced, vaultFolders]);
 
   const handleRandomize = React.useCallback(() => {
     // The folder listing holds media files only
@@ -346,7 +410,7 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
                   {/* Thumbnail mosaic or folder icon */}
                   {showMosaic ? (
                     thumbs.length === 1 ? (
-                      <img src={thumbs[0]} style={{width:'100%',height:'100%',objectFit:'cover',display:'block'}} alt=""
+                      <img src={thumbs[0]} style={{ width: '100%', flex: 1, minHeight: 0, objectFit: 'cover', display: 'block' }} alt=""
                         onError={e => { e.target.style.display='none'; }} />
                     ) : (
                       <div className="vfc-mosaic">
@@ -639,15 +703,16 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
         <span className="vbc-current">{folderName.toUpperCase()}</span>
       </div>
 
-      {libEntry && (
+      {(libEntry || canSync || syncReport) && (
         <div className="panel" style={{ marginBottom: 16 }}>
           <div className="ph">
             <span className="ptag cyan">SYNCED</span>
-            <span className="ptitle">{libEntry.name}</span>
+            <span className="ptitle">{libEntry ? libEntry.name : folderName}</span>
             <span className="psub">
               {lastSynced ? 'Last sync: ' + timeAgo(lastSynced) : 'Never synced'}
             </span>
           </div>
+          {syncReport && <SyncReport report={syncReport} folder={selectedFolder} showNotif={showNotif} />}
         </div>
       )}
 

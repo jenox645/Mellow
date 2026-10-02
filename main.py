@@ -11,8 +11,7 @@ from urllib.request import urlopen
 
 from flaskwebgui import FlaskUI
 
-import applog
-from server import init_app
+from mellow import applog, ytdlp_update
 
 log = logging.getLogger(__name__)
 
@@ -92,9 +91,19 @@ def main() -> None:
                      "run build_setup.py first to generate static assets")
         sys.exit(1)
 
+    # Before anything imports yt_dlp: a newer downloaded one replaces the bundled one
+    ytdlp_update.activate_overlay()
+    from mellow.server import init_app
     flask_app = init_app()
     port = _find_free_port()
     _write_port_file(port)
+
+    if "--no-window" in sys.argv:
+        # Just the server, for your own browser (and the build's smoke test)
+        log.info(f"serving without a window at http://127.0.0.1:{port}")
+        print(f"MellowDLP: http://127.0.0.1:{port}", flush=True)
+        flask_app.run(host="127.0.0.1", port=port, threaded=True)
+        return
 
     ui = FlaskUI(
         app=flask_app,

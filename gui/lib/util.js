@@ -24,7 +24,9 @@ export function fmtEta(s) {
 }
 
 export function fmtDuration(s) {
-  if (!s) return '';
+  // 0 is a time ("0:00", a chapter's start); only a missing value is blank
+  if (s === null || s === undefined || s === '' || isNaN(s)) return '';
+  s = Math.floor(s);
   const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
   if (h) return h + ':' + String(m).padStart(2, '0') + ':' + String(sec).padStart(2, '0');
   return m + ':' + String(sec).padStart(2, '0');
@@ -61,3 +63,67 @@ export function platformTagClass(platform) {
   return 'platform-tag default';
 }
 
+
+// "90", "1:30" or "1:01:30" → seconds; null when unreadable
+export function parseClock(s) {
+  const t = String(s || '').trim();
+  if (!t) return null;
+  if (!/^\d+(\.\d+)?$|^\d+:\d{1,2}(\.\d+)?$|^\d+:\d{1,2}:\d{1,2}(\.\d+)?$/.test(t)) return null;
+  return t.split(':').reduce((acc, part) => acc * 60 + parseFloat(part), 0);
+}
+
+// Rough output size of a single-video download, from /api/info's
+// size_estimates (what yt-dlp would fetch). Converted audio is sized by its
+// bitrate; lossless targets by their typical rate. Scaled down for a clip.
+// null when the site gave nothing to go on.
+export function estimateDownloadBytes(info, { mode, quality, audioFmt, audioQuality, startTime, endTime, chapters }) {
+  const est = info && info.size_estimates;
+  if (!est) return null;
+  const duration = info.duration || 0;
+  let bytes;
+  if (mode === 'audio') {
+    const kbps = audioFmt === 'wav' ? 1411 : audioFmt === 'flac' ? 900 : parseInt(audioQuality, 10);
+    bytes = kbps && duration ? duration * kbps * 125 : est.audio;
+  } else {
+    bytes = est.video && est.video[quality];
+  }
+  if (!bytes) return null;
+  if (duration && chapters && chapters.length) {
+    // Only the chosen chapters are downloaded (clip start/end is ignored then)
+    const span = chapters.reduce((t, c) => t + Math.max(0, c.end - c.start), 0);
+    return span ? bytes * Math.min(span, duration) / duration : bytes;
+  }
+  const start = parseClock(startTime), end = parseClock(endTime);
+  if (duration && (start !== null || end !== null)) {
+    const span = Math.min(end !== null ? end : duration, duration) - Math.max(start || 0, 0);
+    if (span > 0) bytes = bytes * span / duration;
+  }
+  return bytes;
+}
+
+// Playlist positions as yt-dlp's playlist_items wants them: [1,2,3,5,8,9] → "1-3,5,8-9"
+export function idxRanges(indexes) {
+  const sorted = [...new Set(indexes)].sort((a, b) => a - b);
+  const parts = [];
+  for (let i = 0; i < sorted.length; i++) {
+    const start = sorted[i];
+    while (i + 1 < sorted.length && sorted[i + 1] === sorted[i] + 1) i++;
+    parts.push(start === sorted[i] ? String(start) : start + '-' + sorted[i]);
+  }
+  return parts.join(',');
+}
+
+// A link (or a yt-dlp "ytsearch5:..." style input) rather than words to search for
+export function isLinkLike(text) {
+  const t = (text || '').trim();
+  return /^[a-z][a-z0-9+.-]*:\S/i.test(t) || /^(www\.)?[\w-]+(\.[\w-]+)+(\/\S*)?$/i.test(t);
+}
+
+// 1234567 → "1.2M"
+export function fmtCount(n) {
+  if (n == null) return '';
+  if (n >= 1e9) return (n / 1e9).toFixed(1).replace(/\.0$/, '') + 'B';
+  if (n >= 1e6) return (n / 1e6).toFixed(1).replace(/\.0$/, '') + 'M';
+  if (n >= 1e3) return (n / 1e3).toFixed(1).replace(/\.0$/, '') + 'K';
+  return String(n);
+}

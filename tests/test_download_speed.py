@@ -17,7 +17,7 @@ TEST_URL = "https://www.youtube.com/watch?v=BaW_jenozKc"
 
 def _mellow_download(tmp_path, mode="audio"):
     """Time a download through MellowDLP's downloader module."""
-    import downloader
+    from mellow import downloader
     events = []
     opts = {
         "mode": mode,
@@ -115,7 +115,7 @@ def test_sleep_interval_zero_is_faster(tmp_path):
     Downloading with sleep_interval=0 must be faster than sleep_interval=2
     for a 3-item playlist (saves at least 2×2=4 seconds).
     """
-    import downloader
+    from mellow import downloader
 
     playlist_3_url = "https://youtube.com/playlist?list=PL29g0AFkwZD9LG2WOIiPqzXNmXbcQdAoC"
     base_opts = {

@@ -10,11 +10,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-import downloader
-import ffmpeg_locate
-import jobs
-import scheduler
-import ytdlp_update
+from mellow import downloader, ffmpeg_locate, jobs, scheduler, ytdlp_update
 
 TERMINAL = ('complete', 'error', 'cancelled')
 DEFAULT_INFO = {'title': 'T', 'id': 'abc'}
@@ -34,8 +30,8 @@ def _run(tmp_dir, opts, info=DEFAULT_INFO, retcode=0, ffmpeg='/usr/bin/ffmpeg',
          url='https://youtu.be/abc'):
     events = []
     ydl_cls = _fake_ydl(info, retcode)
-    with patch('downloader.yt_dlp.YoutubeDL', ydl_cls), \
-            patch('downloader.find_ffmpeg', return_value=ffmpeg):
+    with patch('mellow.downloader.yt_dlp.YoutubeDL', ydl_cls), \
+            patch('mellow.downloader.find_ffmpeg', return_value=ffmpeg):
         result = downloader.download_video(url, tmp_dir, opts, events.append)
     ydl_opts = ydl_cls.call_args[0][0] if ydl_cls.call_args else None
     return result, events, ydl_opts
@@ -91,7 +87,7 @@ def test_video_failure_without_ffmpeg_points_at_ffmpeg(tmp_dir):
     events = []
     ydl_cls = _fake_ydl(None)
     ydl_cls.return_value.__enter__.return_value.extract_info.side_effect =         downloader.yt_dlp.utils.DownloadError('Requested format is not available')
-    with patch('downloader.yt_dlp.YoutubeDL', ydl_cls),             patch('downloader.find_ffmpeg', return_value=None):
+    with patch('mellow.downloader.yt_dlp.YoutubeDL', ydl_cls),             patch('mellow.downloader.find_ffmpeg', return_value=None):
         result = downloader.download_video('https://youtu.be/abc', tmp_dir, {}, events.append)
     assert result == 'error'
     assert events[-1]['code'] == 'ffmpeg_missing'
@@ -100,7 +96,7 @@ def test_video_failure_without_ffmpeg_points_at_ffmpeg(tmp_dir):
 
 def test_history_records_the_file_that_was_actually_saved(tmp_dir):
     """Asked for MP3 but, without ffmpeg, an .m4a landed on disk."""
-    import analytics
+    from mellow import analytics
     saved = Path(tmp_dir) / 'Song.m4a'
     saved.write_bytes(b'x' * 10)
     info = {'title': 'Song', 'id': 'abc', 'requested_downloads': [{'filepath': str(saved)}]}
@@ -110,7 +106,7 @@ def test_history_records_the_file_that_was_actually_saved(tmp_dir):
 
 
 def test_audio_library_sync_is_recorded_as_audio(tmp_dir):
-    import analytics
+    from mellow import analytics
     saved = Path(tmp_dir) / 'T.opus'
     saved.write_bytes(b'x')
     _run(tmp_dir, {'mode': 'library', 'sync_audio': True, 'audio_format': 'opus'},
@@ -134,24 +130,24 @@ def test_single_file_format_tiers():
 def test_find_ffmpeg_honours_config_override(tmp_path):
     fake = tmp_path / ffmpeg_locate._EXE
     fake.write_bytes(b'')
-    with patch('ffmpeg_locate.load_config', return_value={'ffmpeg_location': str(tmp_path)}):
+    with patch('mellow.ffmpeg_locate.load_config', return_value={'ffmpeg_location': str(tmp_path)}):
         assert ffmpeg_locate.find_ffmpeg(refresh=True) == str(fake)
 
 
 def test_find_ffmpeg_miss_is_cached_then_rechecked(tmp_path):
-    with patch('ffmpeg_locate._search', return_value=None) as search:
+    with patch('mellow.ffmpeg_locate._search', return_value=None) as search:
         assert ffmpeg_locate.find_ffmpeg(refresh=True) is None
         assert ffmpeg_locate.find_ffmpeg() is None
         assert search.call_count == 1, "a miss must not hit the disk on every call"
-        with patch('ffmpeg_locate.FFMPEG_RECHECK_SECS', 0):
+        with patch('mellow.ffmpeg_locate.FFMPEG_RECHECK_SECS', 0):
             ffmpeg_locate.find_ffmpeg()
         assert search.call_count == 2, "a miss must be re-probed after the recheck interval"
 
 
 def test_system_endpoint_reports_ffmpeg(client):
-    with patch('server.find_ffmpeg', return_value=None):
+    with patch('mellow.server.find_ffmpeg', return_value=None):
         assert client.get('/api/system').get_json()['ffmpeg'] is False
-    with patch('server.find_ffmpeg', return_value='/x/ffmpeg'):
+    with patch('mellow.server.find_ffmpeg', return_value='/x/ffmpeg'):
         data = client.get('/api/system').get_json()
         assert data['ffmpeg'] is True and data['ffmpeg_path'] == '/x/ffmpeg'
 
@@ -183,7 +179,7 @@ def test_unwritable_output_folder_reports_error(tmp_path):
 def test_dead_playlist_is_an_error_not_a_success(tmp_dir):
     """ignoreerrors makes yt-dlp return None for a dead playlist; that used to
     be reported as 'complete' and recorded as a successful download."""
-    import analytics
+    from mellow import analytics
     url = 'https://www.youtube.com/playlist?list=PLdead'
     events = []
     ydl_cls = _fake_ydl(None, retcode=1)
@@ -193,8 +189,8 @@ def test_dead_playlist_is_an_error_not_a_success(tmp_dir):
         return None
     ydl_cls.return_value.__enter__.return_value.extract_info.side_effect = _extract
 
-    with patch('downloader.yt_dlp.YoutubeDL', ydl_cls), \
-            patch('downloader.find_ffmpeg', return_value='/usr/bin/ffmpeg'):
+    with patch('mellow.downloader.yt_dlp.YoutubeDL', ydl_cls), \
+            patch('mellow.downloader.find_ffmpeg', return_value='/usr/bin/ffmpeg'):
         result = downloader.download_video(url, tmp_dir, {'mode': 'library'}, events.append)
 
     assert result == 'error'
@@ -228,15 +224,15 @@ def _run_playlist(tmp_dir, entries, finished_ids, errors=()):
     ydl_cls.return_value.__enter__.return_value.extract_info.side_effect = _extract
 
     events = []
-    with patch('downloader.yt_dlp.YoutubeDL', ydl_cls), \
-            patch('downloader.find_ffmpeg', return_value='/usr/bin/ffmpeg'):
+    with patch('mellow.downloader.yt_dlp.YoutubeDL', ydl_cls), \
+            patch('mellow.downloader.find_ffmpeg', return_value='/usr/bin/ffmpeg'):
         result = downloader.download_video(url, tmp_dir, {'mode': 'audio'}, events.append)
     return result, events
 
 
 def test_playlist_where_every_item_fails_is_an_error(tmp_dir):
     """e.g. an outdated yt-dlp: every item extracts, every download gets a 403."""
-    import analytics
+    from mellow import analytics
     entries = [{'id': i, 'title': i, 'requested_downloads': [{'filepath': f'{tmp_dir}/{i}.mp3'}]}
                for i in ('a', 'b')]
     result, events = _run_playlist(
@@ -249,7 +245,7 @@ def test_playlist_where_every_item_fails_is_an_error(tmp_dir):
 
 
 def test_partly_failed_playlist_completes_and_records_only_real_files(tmp_dir):
-    import analytics
+    from mellow import analytics
     ok = Path(tmp_dir) / 'a.mp3'
     ok.write_bytes(b'x' * 7)
     entries = [
@@ -259,7 +255,7 @@ def test_partly_failed_playlist_completes_and_records_only_real_files(tmp_dir):
          'requested_downloads': [{'filepath': str(Path(tmp_dir) / 'b.mp3')}]},
         None,  # skipped by the archive
     ]
-    with patch('downloader._save_thumbnail_sidecar') as sidecar:
+    with patch('mellow.downloader._save_thumbnail_sidecar') as sidecar:
         result, events = _run_playlist(tmp_dir, entries, finished_ids=['a'],
                                        errors=['ERROR: [youtube] b: Video unavailable'])
     assert result == 'success'
@@ -272,8 +268,23 @@ def test_partly_failed_playlist_completes_and_records_only_real_files(tmp_dir):
 
 # ── yt-dlp self-update reports what actually happened ──────────────────────────
 
-def _run_update(client, *, frozen, version_after):
+def _zipapp(path, version):
+    """A minimal stand-in for yt-dlp's release zipapp."""
+    import zipfile
+    with zipfile.ZipFile(path, 'w') as zf:
+        zf.writestr('__main__.py', 'import yt_dlp')
+        zf.writestr('yt_dlp/__init__.py', 'from . import version\nMARKER = "overlay"\n')
+        zf.writestr('yt_dlp/version.py', f"__version__ = '{version}'\n")
+    return path.read_bytes()
+
+
+def _run_update(client, tmp_path, *, running, release, checksum_ok=True):
+    import hashlib
+
     import yt_dlp
+    blob = _zipapp(tmp_path / 'release.zip', release)
+    digest = hashlib.sha256(blob).hexdigest() if checksum_ok else '0' * 64
+    assets = {'SHA2-256SUMS': f'{digest}  yt-dlp\n{"1" * 64}  yt-dlp.exe\n'.encode(), 'yt-dlp': blob}
     events = []
     done = threading.Event()
 
@@ -281,39 +292,58 @@ def _run_update(client, *, frozen, version_after):
         events.append(event)
         done.set()
 
-    def fake_reload(module):
-        if module is yt_dlp.version:
-            module.__version__ = version_after
-        return module
-
-    with patch.object(yt_dlp.version, '__version__', '2026.06.09'), \
-            patch('server._push_progress', side_effect=push), \
-            patch('ytdlp_update.subprocess.run'), \
-            patch('importlib.reload', side_effect=fake_reload), \
-            patch.object(ytdlp_update.sys, 'frozen', frozen, create=True), \
-            patch('shutil.which', return_value='/usr/bin/yt-dlp'):
+    with patch.object(yt_dlp.version, '__version__', running), \
+            patch('mellow.server._push_progress', side_effect=push), \
+            patch('mellow.ytdlp_update._fetch', side_effect=lambda url: assets[url.rsplit('/', 1)[1]]):
         assert client.post('/api/update-ytdlp', json={}).status_code == 200
         assert done.wait(10)
     return events[-1]
 
 
-def test_update_asks_for_restart_when_a_newer_ytdlp_was_installed(client):
-    event = _run_update(client, frozen=False, version_after='2026.09.27')
+def test_update_downloads_the_release_and_asks_for_a_restart(client, tmp_path):
+    event = _run_update(client, tmp_path, running='2026.06.09', release='2026.09.27')
     assert event['ok'] is True and event['restart_required'] is True
     assert '2026.09.27' in event['message'] and 'Restart' in event['message']
+    assert ytdlp_update.overlay_version() == '2026.09.27'
 
 
-def test_update_in_packaged_app_does_not_claim_success(client):
-    """The frozen app imports the yt-dlp inside the .exe; nothing replaces it."""
-    event = _run_update(client, frozen=True, version_after='2026.06.09')
-    assert event['ok'] is False
-    assert 'bundles yt-dlp 2026.06.09' in event['error']
+def test_update_refuses_a_file_that_fails_its_checksum(client, tmp_path):
+    event = _run_update(client, tmp_path, running='2026.06.09', release='2026.09.27', checksum_ok=False)
+    assert event['ok'] is False and 'checksum' in event['error']
+    assert ytdlp_update.overlay_version() is None
 
 
-def test_update_when_already_current(client):
-    event = _run_update(client, frozen=False, version_after='2026.06.09')
+def test_update_when_already_current(client, tmp_path):
+    event = _run_update(client, tmp_path, running='2026.09.27', release='2026.09.27')
     assert event['ok'] is True and 'restart_required' not in event
     assert 'up to date' in event['message']
+
+
+def test_a_newer_download_is_loaded_ahead_of_the_bundled_yt_dlp(tmp_path):
+    """In a fresh interpreter, as main.py does it (sys.modules can't be reset here)."""
+    import subprocess
+    import sys
+    from pathlib import Path
+    root = Path(__file__).resolve().parent.parent
+    code = """
+import sys, importlib.metadata
+from pathlib import Path
+from mellow import ytdlp_update
+ytdlp_update.OVERLAY_PATH = Path(sys.argv[1])
+ytdlp_update.bundled_version = lambda: sys.argv[2]
+print(ytdlp_update.activate_overlay())
+import yt_dlp, yt_dlp.version
+print(getattr(yt_dlp, 'MARKER', 'bundled'), yt_dlp.version.__version__)
+"""
+    def run(overlay_ver, bundled_ver):
+        _zipapp(tmp_path / 'o.zip', overlay_ver)
+        out = subprocess.run([sys.executable, '-c', code, str(tmp_path / 'o.zip'), bundled_ver],
+                             cwd=root, capture_output=True, text=True, timeout=60)
+        assert out.returncode == 0, out.stderr
+        return out.stdout.split()
+    assert run('2099.01.01', '2026.08.19') == ['2099.01.01', 'overlay', '2099.01.01']
+    # A newer app bundles a newer yt-dlp than the old download: the bundled one runs
+    assert run('2020.01.01', '2026.08.19')[:2] == ['None', 'bundled']
 
 
 def test_worker_pushes_error_when_job_crashes(tmp_dir):
@@ -325,7 +355,7 @@ def test_worker_pushes_error_when_job_crashes(tmp_dir):
         if event.get('status') in TERMINAL:
             done.set()
 
-    with patch('downloader.download_video', side_effect=RuntimeError('boom')):
+    with patch('mellow.downloader.download_video', side_effect=RuntimeError('boom')):
         m = jobs.JobManager()
         m.start(push)
         job = m.enqueue('https://youtu.be/a', tmp_dir, {})
@@ -344,13 +374,12 @@ def test_cancelling_one_active_job_leaves_the_other_running(client, tmp_dir):
     started = threading.Semaphore(0)
 
     def fake_dl(url, out, opts, cb, lib_id=None, cancel_event=None, pause_event=None):
-        downloader._current_cancel_event = cancel_event  # what the real one does
         started.release()
         release.wait(10)
         return 'cancelled' if cancel_event.is_set() else 'success'
 
-    with patch('downloader.download_video', side_effect=fake_dl), \
-            patch('jobs.load_config', return_value={'download_workers': 2}):
+    with patch('mellow.downloader.download_video', side_effect=fake_dl), \
+            patch('mellow.jobs.load_config', return_value={'download_workers': 2}):
         first = jobs.manager.enqueue('https://youtu.be/first', tmp_dir, {})
         assert started.acquire(timeout=10)
         second = jobs.manager.enqueue('https://youtu.be/second', tmp_dir, {})
@@ -377,8 +406,8 @@ def test_pause_survives_another_job_finishing_but_not_an_idle_queue(tmp_dir):
         gates[url[-1]].wait(10)
         return 'success'
 
-    with patch('downloader.download_video', side_effect=fake_dl), \
-            patch('jobs.load_config', return_value={'download_workers': 2}):
+    with patch('mellow.downloader.download_video', side_effect=fake_dl), \
+            patch('mellow.jobs.load_config', return_value={'download_workers': 2}):
         m = jobs.JobManager()
         m.start(lambda e: None)
         m.enqueue('https://youtu.be/a', tmp_dir, {})
@@ -428,7 +457,7 @@ def test_failed_auto_sync_is_not_requeued_every_tick():
         queued.append(path)
         return True
 
-    with patch('scheduler.load_config', return_value=cfg):
+    with patch('mellow.scheduler.load_config', return_value=cfg):
         assert scheduler.tick(sync, lambda p: False, now=1000.0) == ['/folder/a']
         assert scheduler.tick(sync, lambda p: False, now=1300.0) == []
         later = 1000.0 + scheduler.SYNC_RETRY_BACKOFF_SECS
@@ -438,14 +467,14 @@ def test_failed_auto_sync_is_not_requeued_every_tick():
 
 def test_tick_skips_folder_already_syncing():
     cfg = {'auto_sync_enabled': True, 'vault_playlists': {'/folder/a': ['https://pl']}}
-    with patch('scheduler.load_config', return_value=cfg):
+    with patch('mellow.scheduler.load_config', return_value=cfg):
         assert scheduler.tick(lambda p: pytest.fail('queued twice'), lambda p: True, now=1.0) == []
 
 
 # ── config ─────────────────────────────────────────────────────────────────────
 
 def test_old_config_file_gains_new_default_keys(isolated_user_files):
-    import config
+    from mellow import config
     config.CONFIG_PATH.write_text(json.dumps({'output_dir': 'X', 'sleep_interval': 1}),
                                   encoding='utf-8')
     cfg = config.load_config()
@@ -455,13 +484,13 @@ def test_old_config_file_gains_new_default_keys(isolated_user_files):
 
 
 def test_config_defaults_are_not_shared_between_loads():
-    import config
+    from mellow import config
     config.load_config()['vault_budgets']['/x'] = 5
     assert config.load_config()['vault_budgets'] == {}
 
 
 def test_config_with_non_object_root_falls_back_to_defaults(isolated_user_files):
-    import config
+    from mellow import config
     config.CONFIG_PATH.write_text('[1, 2, 3]', encoding='utf-8')
     assert config.load_config()['retries'] == 3
     assert config.CONFIG_PATH.with_suffix('.json.corrupt').exists()
@@ -470,7 +499,7 @@ def test_config_with_non_object_root_falls_back_to_defaults(isolated_user_files)
 # ── backup with the database open (the normal state of a running app) ──────────
 
 def test_backup_and_restore_while_db_is_open(client):
-    import analytics
+    from mellow import analytics
     analytics.record_download({'url': 'u1', 'title': 'kept', 'status': 'success'})
 
     r = client.get('/api/backup')
@@ -485,3 +514,29 @@ def test_backup_and_restore_while_db_is_open(client):
                      content_type='multipart/form-data')
     assert r2.status_code == 200, r2.get_json()
     assert [h['title'] for h in analytics.get_history()] == ['kept']
+
+
+def test_sync_with_one_failed_item_and_the_rest_archived_is_not_a_failure(tmp_dir):
+    """A playlist where one video went private: every later sync saw errors
+    and no new file, and was reported (and retried) as a dead playlist."""
+    def fake_extract(url, download=True):
+        logger = ydl_cls.call_args[0][0]['logger']
+        logger.debug('[download] aaaaaaaaaaa: Song A has already been recorded in the archive')
+        logger.error('ERROR: [youtube] bbbbbbbbbbb: Private video')
+        return {'_type': 'playlist', 'title': 'Mix', 'entries': []}
+
+    ydl_cls = _fake_ydl({}, retcode=1)
+    ydl_cls.return_value.__enter__.return_value.extract_info.side_effect = fake_extract
+    events = []
+    with patch('mellow.downloader.yt_dlp.YoutubeDL', ydl_cls), \
+            patch('mellow.downloader.find_ffmpeg', return_value='/usr/bin/ffmpeg'):
+        result = downloader.download_video('https://youtube.com/playlist?list=P', tmp_dir,
+                                           {'mode': 'library'}, events.append)
+    assert result == 'success'
+    assert [e['status'] for e in events if e['status'] in TERMINAL] == ['complete']
+    assert [e['status'] for e in events].count('item_failed') == 1
+
+
+def test_playlist_where_everything_failed_is_still_a_failure(tmp_dir):
+    result, events, _ = _run(tmp_dir, {'mode': 'library'}, retcode=1)
+    assert result == 'error'

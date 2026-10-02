@@ -22,6 +22,7 @@ check_cmd() {
 check_cmd python3 "Install with: sudo apt install python3"
 check_cmd pip3    "Install with: sudo apt install python3-pip"
 check_cmd node    "Install from https://nodejs.org/ or: sudo apt install nodejs npm"
+check_cmd npm     "Install from https://nodejs.org/ or: sudo apt install npm"
 
 if ! command -v ffmpeg &>/dev/null; then
     echo "WARNING: ffmpeg not found — install with: sudo apt install ffmpeg"
@@ -33,30 +34,6 @@ pip3 install -r requirements.txt --quiet 2>/dev/null \
   || pip3 install -r requirements.txt --quiet --break-system-packages \
   || { echo "ERROR: pip install failed"; exit 1; }
 echo "  Python deps — OK"
-
-# ── yt-dlp binary ─────────────────────────────────────────────────────────────
-if [ ! -f "yt-dlp" ]; then
-    echo "  Downloading yt-dlp..."
-    if command -v wget &>/dev/null; then
-        wget -q "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp" -O yt-dlp
-    elif command -v curl &>/dev/null; then
-        curl -sSL "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp" -o yt-dlp
-    else
-        echo "ERROR: need wget or curl to download yt-dlp"
-        exit 1
-    fi
-    chmod +x yt-dlp
-    echo "  yt-dlp downloaded — OK"
-else
-    echo "  yt-dlp already present — OK"
-fi
-
-# ── esbuild ───────────────────────────────────────────────────────────────────
-if ! command -v esbuild &>/dev/null; then
-    echo "  Installing esbuild globally via npm..."
-    npm install -g esbuild --quiet
-fi
-echo "  esbuild $(esbuild --version) — OK"
 
 # ── Build ─────────────────────────────────────────────────────────────────────
 echo ""

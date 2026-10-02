@@ -4,12 +4,14 @@
 import { API, cancelShownDownload } from '../lib/api.js';
 import { fmtBytes, fmtSpeed, fmtEta, fmtDuration, timeAgo } from '../lib/util.js';
 import { Ico } from '../components/icons.jsx';
-import { Mascot } from '../components/common.jsx';
+import { FileActions, Mascot } from '../components/common.jsx';
 import { MASCOT_TIRED } from '../lib/mascots.js';
 import { QUEUE_POLL_MS } from '../lib/constants.js';
 
 export function QueuePage({ dlState, showNotif, activeJobs, playlistItems, setPlaylistItems, completedItems, failedItems, playlistTotalCount, playlistCompletedCount, isPaused, pausedCount, failedCount, syncJobLabel, fetchingPlaylistItems, onPause, onResume, onClearCompleted, onClearFailed }) {
   const isDownloading = dlState && dlState.pct !== undefined;
+  // Every running job (Concurrent Downloads > 1), not just the one on the Feed
+  const activeCount = Math.max(Object.keys(activeJobs || {}).length, isDownloading ? 1 : 0);
   const queueCount = playlistItems ? playlistItems.length : 0;
   const [qTab, setQTab] = React.useState('pending');
   const [removingItems, setRemovingItems] = React.useState(new Set());
@@ -40,11 +42,29 @@ export function QueuePage({ dlState, showNotif, activeJobs, playlistItems, setPl
       .catch(e => showNotif('Error', e.message, 'error'));
   };
 
+  // Same options and folder as the job it failed in (a plain /api/download
+  // used the Feed defaults: an MP3 playlist's item came back as video)
+  const retryItem = (item) => (item.jobId
+    ? API.post('/api/queue/' + encodeURIComponent(item.jobId) + '/retry', { url: item.url })
+      .catch(e => { if (e.status === 404) return API.post('/api/download', { url: item.url }); throw e; })
+    : API.post('/api/download', { url: item.url }));
+
   const handleRetryFailed = (item) => {
     if (!item.url) return;
-    API.post('/api/download', { url: item.url })
+    retryItem(item)
       .then(() => showNotif('Re-queued', item.url))
       .catch(e => showNotif('Error', e.message, 'error'));
+  };
+
+  const handleRetryAll = () => {
+    const items = (failedItems || []).filter(i => i.url);
+    const seen = new Set();
+    const unique = items.filter(i => !seen.has(i.url) && seen.add(i.url));
+    Promise.all(unique.map(i => retryItem(i).then(() => true, () => false)))
+      .then(results => {
+        const ok = results.filter(Boolean).length;
+        showNotif('Re-queued', ok + ' of ' + unique.length + ' failed item(s)', ok === unique.length ? 'success' : 'warn');
+      });
   };
 
   const handleReorder = (job, delta) => {
@@ -81,9 +101,12 @@ export function QueuePage({ dlState, showNotif, activeJobs, playlistItems, setPl
       </div>
 
       <div className="g4" style={{ marginBottom: 16 }}>
-        <div className="stat"><div className="stat-label">ACTIVE</div><div className="stat-value amber">{isDownloading ? 1 : 0}</div></div>
-        <div className="stat"><div className="stat-label">QUEUED</div><div className="stat-value cyan">{queueCount}</div></div>
-        <div className="stat"><div className="stat-label">PAUSED</div><div className="stat-value" style={{ color: 'var(--amber)' }}>{pausedCount || 0}</div></div>
+        <div className="stat"><div className="stat-label">ACTIVE</div><div className="stat-value amber">{activeCount}</div></div>
+        <div className="stat" title="Downloads waiting to start, plus the items left in the running playlist">
+          <div className="stat-label">QUEUED</div>
+          <div className="stat-value cyan">{jobs.filter(j => j.status === 'queued').length + queueCount}</div>
+        </div>
+        <div className="stat"><div className="stat-label">PAUSED</div><div className="stat-value" style={{ color: 'var(--amber)' }}>{isPaused ? activeCount : (pausedCount || 0)}</div></div>
         <div className="stat"><div className="stat-label">FAILED</div><div className="stat-value red">{failedCount || 0}</div></div>
       </div>
 
@@ -118,7 +141,19 @@ export function QueuePage({ dlState, showNotif, activeJobs, playlistItems, setPl
                   )}
                 </div>
                 {job.error && <span style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 8, color: 'var(--red)', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={job.error}>{job.error}</span>}
-                <span className={'q-st-badge ' + (JOB_BADGE[job.status] || 'queued')} style={{ color: JOB_COLOR[job.status] }}>{(job.status || '').toUpperCase()}</span>
+                {job.status === 'queued' && job.not_before && job.not_before * 1000 > Date.now() ? (
+                  <>
+                    <span className="q-st-badge queued" style={{ color: 'var(--purple)' }}
+                      title={'Starts ' + new Date(job.not_before * 1000).toLocaleString()}>
+                      ⏾ {new Date(job.not_before * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                    <button className="btn btn-secondary btn-sm" style={{ padding: '3px 8px', fontSize: 8 }}
+                      onClick={() => API.post('/api/queue/' + encodeURIComponent(job.id) + '/start-now', {})
+                        .then(loadJobs).catch(e => showNotif('Error', e.message, 'error'))}>▶ START NOW</button>
+                  </>
+                ) : (
+                  <span className={'q-st-badge ' + (JOB_BADGE[job.status] || 'queued')} style={{ color: JOB_COLOR[job.status] }}>{(job.status || '').toUpperCase()}</span>
+                )}
                 {job.status === 'queued' && queuedJobsCount > 1 && (
                   <span style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
                     <button className="rand-step-btn" title="Run earlier" style={{ padding: '0 5px', fontSize: 8 }}
@@ -131,6 +166,13 @@ export function QueuePage({ dlState, showNotif, activeJobs, playlistItems, setPl
                 )}
                 {(job.status === 'queued' || job.status === 'active') && (
                   <div className="q-del" title={job.status === 'active' ? 'Cancel this job' : 'Remove from queue'} onClick={() => handleCancelJob(job)}><Ico name="x" /></div>
+                )}
+                {(job.status === 'failed' || job.status === 'cancelled') && (
+                  <button className="btn btn-secondary btn-sm" style={{ padding: '3px 8px', fontSize: 8 }}
+                    title="Run this job again, with the same options"
+                    onClick={() => API.post('/api/queue/' + encodeURIComponent(job.id) + '/retry', {})
+                      .then(() => { showNotif('Re-queued', job.label || job.url); loadJobs(); })
+                      .catch(e => showNotif('Error', e.message, 'error'))}>↻ RETRY</button>
                 )}
               </div>
             );
@@ -197,8 +239,13 @@ export function QueuePage({ dlState, showNotif, activeJobs, playlistItems, setPl
             {qTab === 'completed' && completedItems && completedItems.length > 0 && onClearCompleted && (
               <span style={{ marginLeft: 'auto', cursor: 'pointer', fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: 'var(--red)', padding: '0 10px' }} onClick={onClearCompleted}>CLEAR ✕</span>
             )}
+            {qTab === 'failed' && failedItems && failedItems.filter(i => i.url).length > 1 && (
+              <span style={{ marginLeft: 'auto', cursor: 'pointer', fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: 'var(--cyan)', padding: '0 10px' }}
+                title="Download every failed item again, with the options of the job it failed in"
+                onClick={handleRetryAll}>↻ RETRY ALL</span>
+            )}
             {qTab === 'failed' && failedItems && failedItems.length > 0 && onClearFailed && (
-              <span style={{ marginLeft: 'auto', cursor: 'pointer', fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: 'var(--red)', padding: '0 10px' }} onClick={onClearFailed}>CLEAR ✕</span>
+              <span style={{ marginLeft: failedItems.filter(i => i.url).length > 1 ? 0 : 'auto', cursor: 'pointer', fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: 'var(--red)', padding: '0 10px' }} onClick={onClearFailed}>CLEAR ✕</span>
             )}
           </div>
           {qTab === 'failed' ? (
@@ -275,11 +322,11 @@ export function QueuePage({ dlState, showNotif, activeJobs, playlistItems, setPl
                     <div className="q-comp-meta">
                       <span className="q-st-badge completed">DONE</span>
                       {' '}
-                      {item.file_size ? fmtBytes(item.file_size) : ''}
-                      {' · '}
+                      {item.file_size ? fmtBytes(item.file_size) + ' · ' : ''}
                       {timeAgo(item.completedAt)}
                     </div>
                   </div>
+                  <FileActions path={item.file_path} />
                 </div>
               ))}
               {(!completedItems || completedItems.length === 0) && (

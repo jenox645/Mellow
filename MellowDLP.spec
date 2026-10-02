@@ -2,11 +2,12 @@ import importlib.util as _iu
 import os as _os
 import platform as _platform
 
+from PyInstaller.utils.hooks import copy_metadata
+
 _is_windows = _platform.system() == "Windows"
 _is_linux   = _platform.system() == "Linux"
 _has_tkinter = _iu.find_spec("tkinter") is not None
 
-_ytdlp_bin = "yt-dlp.exe" if _is_windows else "yt-dlp"
 _icon = _os.path.join("assets", "mellow.ico") if _is_windows else None
 
 block_cipher = None
@@ -14,14 +15,13 @@ block_cipher = None
 a = Analysis(
     ["main.py"],
     pathex=[],
-    binaries=[
-        (_ytdlp_bin, "."),
-    ] if _os.path.exists(_ytdlp_bin) else [],
+    binaries=[],
+    # The mellow package is found by following main.py's imports. yt-dlp's
+    # metadata tells ytdlp_update which version is bundled (a newer download
+    # in ~/.mellow_dlp_ytdlp.zip runs instead).
     datas=[
         ("static", "static"),
-        ("server.py", "."),
-        ("downloader.py", "."),
-        ("analytics.py", "."),
+        *copy_metadata("yt-dlp"),
     ],
     hiddenimports=[
         "yt_dlp",
@@ -36,7 +36,6 @@ a = Analysis(
         "itsdangerous",
         "duckdb",
         "mutagen",
-        "analytics",
     ] + (["tkinter", "tkinter.filedialog"] if _has_tkinter else []),
     hookspath=[],
     runtime_hooks=[],

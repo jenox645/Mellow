@@ -15,7 +15,7 @@ from pathlib import Path
 HERE = Path(__file__).parent
 
 sys.path.insert(0, str(HERE))
-from version import APP_VERSION as VERSION  # noqa: E402 — single version source
+from mellow.version import APP_VERSION as VERSION  # noqa: E402 — single version source
 
 APP_NAME = "mellowdlp"
 ARCH     = "amd64"

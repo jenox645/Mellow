@@ -4,7 +4,7 @@ from unittest.mock import patch
 
 import pytest
 
-import applog
+from mellow import applog
 
 
 @pytest.fixture
@@ -21,7 +21,7 @@ def isolated_root_logger():
 
 def test_setup_writes_app_logs_to_the_file(tmp_path, isolated_root_logger):
     log_file = tmp_path / 'mellow.log'
-    with patch('applog.LOG_PATH', log_file):
+    with patch('mellow.applog.LOG_PATH', log_file):
         applog.setup()
         logging.getLogger('downloader').warning('something went sideways')
         logging.getLogger('werkzeug').info('GET /api/system 200')  # request noise
@@ -33,7 +33,7 @@ def test_setup_writes_app_logs_to_the_file(tmp_path, isolated_root_logger):
 
 
 def test_open_log_without_a_file(client, tmp_path):
-    with patch('applog.LOG_PATH', tmp_path / 'missing.log'):
+    with patch('mellow.applog.LOG_PATH', tmp_path / 'missing.log'):
         r = client.post('/api/open-log', json={})
     assert r.status_code == 404
 

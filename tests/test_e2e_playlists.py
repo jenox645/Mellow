@@ -1,6 +1,6 @@
 import pytest
 
-import downloader
+from mellow import downloader
 
 PLAYLIST_3 = 'https://youtube.com/playlist?list=PL29g0AFkwZD9LG2WOIiPqzXNmXbcQdAoC'
 PLAYLIST_4 = 'https://youtube.com/playlist?list=PL29g0AFkwZD_MCTLrDMXu0NslJcCHgtNY'
@@ -61,7 +61,7 @@ def test_download_playlist_100_count(tmp_path):
 @pytest.mark.e2e
 def test_multi_url_single_complete(tmp_path):
     """Regression for flaw #2: a multi-URL job fires complete once."""
-    import jobs
+    from mellow import jobs
 
     events = []
     manager = jobs.JobManager()

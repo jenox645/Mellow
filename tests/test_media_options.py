@@ -12,10 +12,8 @@ import time
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import downloader
-import ffmpeg_locate
-import vault
-from constants import SPONSORBLOCK_REMOVE_CATEGORIES
+from mellow import downloader, ffmpeg_locate, vault
+from mellow.constants import SPONSORBLOCK_REMOVE_CATEGORIES
 
 FFMPEG = '/usr/bin/ffmpeg'
 
@@ -28,8 +26,8 @@ def _opts_for(tmp_dir, opts, ffmpeg=FFMPEG, info=None):
     cls = MagicMock()
     cls.return_value.__enter__.return_value = ydl
     events = []
-    with patch('downloader.yt_dlp.YoutubeDL', cls), \
-            patch('downloader.find_ffmpeg', return_value=ffmpeg):
+    with patch('mellow.downloader.yt_dlp.YoutubeDL', cls), \
+            patch('mellow.downloader.find_ffmpeg', return_value=ffmpeg):
         assert downloader.download_video('https://youtu.be/abc', tmp_dir, opts, events.append) \
             == 'success', events
     return cls.call_args[0][0], ydl, events
@@ -182,7 +180,7 @@ def test_ytdlp_accepts_the_sponsorblock_postprocessors():
 
 
 def test_history_records_the_length_of_the_cut_file(tmp_dir):
-    import analytics
+    from mellow import analytics
     saved = Path(tmp_dir) / 'T.mp4'
     saved.write_bytes(b'x')
     # ModifyChapters shortens the download's duration, not the video's
@@ -236,7 +234,7 @@ def test_hook_leaves_the_thumbnail_to_ytdlp_when_embedding():
     tracker = {'samples': [], 't0': now, 'item_t0': now, 'item_sample_start': 0, 'items': {}}
     finished = {'status': 'finished', 'filename': 'T.mp4',
                 'info_dict': {'id': 'abc', 'thumbnail': 'http://x/t.jpg'}}
-    with patch('downloader._save_thumbnail_sidecar') as save:
+    with patch('mellow.downloader._save_thumbnail_sidecar') as save:
         downloader._make_progress_hook(lambda e: None, None, dict(tracker, items={}),
                                        threading.Event(), threading.Event(),
                                        save_sidecar=False)(finished)
@@ -252,10 +250,121 @@ def test_ffmpeg_found_off_path_is_added_to_path(tmp_path):
     """yt-dlp's ffmpeg downloader (trims) only looks on PATH."""
     fake = tmp_path / ffmpeg_locate._EXE
     fake.write_bytes(b'')
-    with patch('ffmpeg_locate._search', return_value=str(fake)):
+    with patch('mellow.ffmpeg_locate._search', return_value=str(fake)):
         assert ffmpeg_locate.find_ffmpeg(refresh=True) == str(fake)
     parts = os.environ['PATH'].split(os.pathsep)
     assert parts[0] == str(tmp_path)
-    with patch('ffmpeg_locate._search', return_value=str(fake)):
+    with patch('mellow.ffmpeg_locate._search', return_value=str(fake)):
         ffmpeg_locate.find_ffmpeg(refresh=True)
     assert os.environ['PATH'].split(os.pathsep).count(str(tmp_path)) == 1
+
+
+def test_playlists_skip_shorts_and_live_streams_as_configured(tmp_dir):
+    ydl_opts, _, _ = _opts_for(tmp_dir, {'mode': 'library', 'skip_shorts': True, 'skip_live': True})
+    skip = ydl_opts['match_filter']
+    assert skip({'id': 's', 'media_type': 'short'}, incomplete=False)
+    assert skip({'id': 'l', 'live_status': 'is_live'}, incomplete=False)
+    assert skip({'id': 'u', 'live_status': 'is_upcoming'}, incomplete=False)
+    assert skip({'id': 'v', 'media_type': 'video', 'live_status': 'not_live'}, incomplete=False) is None
+    assert skip({'id': 'r', 'media_type': 'livestream', 'live_status': 'was_live'}, incomplete=False) is None
+    # a flat playlist entry carries neither field yet
+    assert skip({'id': 'f'}, incomplete=True) is None
+
+
+def test_a_single_link_is_never_filtered(tmp_dir):
+    """What the user pasted is what they asked for, Short or not."""
+    ydl_opts, _, _ = _opts_for(tmp_dir, {'mode': 'video', 'skip_shorts': True, 'skip_live': True})
+    assert 'match_filter' not in ydl_opts
+
+
+def test_skip_settings_reach_every_download(client, tmp_dir):
+    from unittest.mock import patch
+
+    from mellow import jobs
+    from mellow.config import download_settings, load_config
+    assert download_settings(load_config())['skip_live'] is True
+    assert download_settings(load_config())['skip_shorts'] is False
+    client.post('/api/config', json={'skip_shorts': True})
+    with patch('mellow.downloader.download_video') as dl:
+        client.post('/api/download', json={'url': 'https://youtube.com/playlist?list=X', 'output_dir': tmp_dir})
+        assert jobs.manager.wait_idle(10)
+    assert dl.call_args[0][2]['skip_shorts'] is True
+
+
+CHAPTERS = [{'index': 2, 'title': 'Verse', 'start': 30, 'end': 90}, {'index': 5, 'title': 'Outro', 'start': 200, 'end': 240}]
+
+
+def _outtmpl(ydl_opts):
+    tmpl = ydl_opts['outtmpl']
+    tmpl = tmpl['default'] if isinstance(tmpl, dict) else tmpl
+    return tmpl.replace('\\', '/')  # the template is joined with the OS separator
+
+
+def test_chosen_chapters_become_one_named_file_each(tmp_dir):
+    ydl_opts, _, _ = _opts_for(tmp_dir, {'mode': 'audio', 'chapters': CHAPTERS, 'start_time': '0:05'})
+    sections = list(ydl_opts['download_ranges']({}, None))
+    assert sections == [{'start_time': 30.0, 'end_time': 90.0, 'title': 'Verse', 'index': 2},
+                        {'start_time': 200.0, 'end_time': 240.0, 'title': 'Outro', 'index': 5}]
+    assert ydl_opts['force_keyframes_at_cuts'] is True
+    # a name per chapter, or each section would overwrite the last
+    assert _outtmpl(ydl_opts).endswith('%(title)s - %(section_number)02d %(section_title)s.%(ext)s')
+
+
+def test_chapters_keep_a_custom_template_and_skip_sponsorblock(tmp_dir):
+    ydl_opts, _, events = _opts_for(tmp_dir, {'chapters': CHAPTERS, 'sponsorblock': True,
+                                              'filename_template': '%(uploader)s/%(title)s.%(ext)s'})
+    assert _outtmpl(ydl_opts).endswith(
+        '%(uploader)s/%(title)s - %(section_number)02d %(section_title)s.%(ext)s')
+    assert not any(pp['key'] in ('SponsorBlock', 'ModifyChapters') for pp in ydl_opts['postprocessors'])
+    assert any(e.get('code') == 'sponsorblock_skipped' for e in events)
+
+
+def test_bad_chapters_are_refused(tmp_dir):
+    from unittest.mock import patch
+    for bad in ([{'start': 'x', 'end': 5}], [{'start': 50, 'end': 10}], [{'title': 'no times'}]):
+        events = []
+        with patch('mellow.downloader.find_ffmpeg', return_value=FFMPEG), \
+                patch('mellow.downloader.yt_dlp.YoutubeDL') as ydl:
+            assert downloader.download_video('https://youtu.be/abc', tmp_dir, {'chapters': bad},
+                                             events.append) == 'error'
+        assert not ydl.called and 'hapter' in events[-1]['message']
+
+
+def test_info_lists_the_videos_chapters():
+    info = {'chapters': [{'start_time': 0, 'end_time': 61.5, 'title': 'Intro'},
+                         {'start_time': 61.5, 'end_time': 300, 'title': ''}]}
+    assert downloader._chapter_list(info) == [
+        {'index': 1, 'title': 'Intro', 'start': 0.0, 'end': 61.5},
+        {'index': 2, 'title': 'Chapter 2', 'start': 61.5, 'end': 300.0}]
+    assert downloader._chapter_list({'chapters': None}) is None
+
+
+def test_subtitles_use_the_configured_languages_and_embed_only_by_default(tmp_dir):
+    ydl_opts, _, _ = _opts_for(tmp_dir, {'embed_subs': True, 'sub_langs': ' en , de ,', 'auto_subs': True})
+    assert ydl_opts['writesubtitles'] is True and ydl_opts['writeautomaticsub'] is True
+    assert ydl_opts['subtitleslangs'] == ['en', 'de']
+    embed = [pp for pp in ydl_opts['postprocessors'] if pp['key'] == 'FFmpegEmbedSubtitle']
+    assert embed == [{'key': 'FFmpegEmbedSubtitle', 'already_have_subtitle': False}]
+    assert not any(pp['key'] == 'FFmpegSubtitlesConvertor' for pp in ydl_opts['postprocessors'])
+
+
+def test_kept_subtitle_files_are_srt_except_for_webm(tmp_dir):
+    ydl_opts, _, _ = _opts_for(tmp_dir, {'embed_subs': True, 'keep_sub_files': True, 'sub_langs': ''})
+    keys = [pp['key'] for pp in ydl_opts['postprocessors']]
+    assert ydl_opts['subtitleslangs'] == ['en']
+    # converted before the embed step, which then leaves the files in place
+    assert keys.index('FFmpegSubtitlesConvertor') < keys.index('FFmpegEmbedSubtitle')
+    assert {'key': 'FFmpegEmbedSubtitle', 'already_have_subtitle': True} in ydl_opts['postprocessors']
+    webm, _, _ = _opts_for(tmp_dir, {'embed_subs': True, 'keep_sub_files': True, 'container': 'webm'})
+    assert not any(pp['key'] == 'FFmpegSubtitlesConvertor' for pp in webm['postprocessors'])
+
+
+def test_audio_downloads_never_fetch_subtitles(tmp_dir):
+    ydl_opts, _, _ = _opts_for(tmp_dir, {'mode': 'audio', 'embed_subs': True, 'keep_sub_files': True})
+    assert not ydl_opts.get('writesubtitles')
+    assert not any('Subtitle' in pp['key'] for pp in ydl_opts['postprocessors'])
+
+
+def test_every_download_reports_its_saved_files(tmp_dir):
+    ydl_opts, _, _ = _opts_for(tmp_dir, {'mode': 'audio'})
+    assert len(ydl_opts['post_hooks']) == 1

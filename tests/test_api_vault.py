@@ -45,7 +45,7 @@ def test_vault_playlists_crud(client, tmp_dir):
 def test_vault_play_files_opens(client, tmp_dir):
     fpath = os.path.join(tmp_dir, 'test.mp4')
     open(fpath, 'w').close()
-    with patch('desktop.open_file') as mock_open:
+    with patch('mellow.desktop.open_file') as mock_open:
         with patch('subprocess.Popen') as mock_popen:
             r = client.post('/api/vault/play-files', json={'paths': [fpath]})
             assert r.status_code == 200
@@ -87,13 +87,13 @@ def test_vault_sync_requires_playlist(client, tmp_dir):
 
 
 def _record_file(path):
-    import analytics
+    from mellow import analytics
     analytics.record_download({'url': 'https://youtu.be/dQw4w9WgXcQ', 'title': 'x',
                                'file_path': str(path), 'status': 'success'})
 
 
 def _history_paths():
-    import analytics
+    from mellow import analytics
     return [r['file_path'] for r in analytics.get_history(100)]
 
 
@@ -126,7 +126,7 @@ def test_vault_mirror_delete_also_forgets_history(client, tmp_dir):
 def test_vault_folders_report_their_linked_playlists(client, tmp_path):
     """The folder view offered SYNC NOW only after a first sync; a folder
     with linked playlists needs to say so from the start."""
-    from config import update_config
+    from mellow.config import update_config
     root = tmp_path / 'dl'
     (root / 'Mix').mkdir(parents=True)
     (root / 'Plain').mkdir()
@@ -135,3 +135,35 @@ def test_vault_folders_report_their_linked_playlists(client, tmp_path):
     folders = {f['name']: f for f in client.get('/api/vault').get_json()['folders']}
     assert folders['Mix']['playlist_count'] == 1
     assert folders['Plain']['playlist_count'] == 0
+
+
+def test_retry_item_downloads_into_the_folder_in_its_format(client, tmp_dir):
+    """A failed item retried from the sync report comes back as the folder's
+    format (here MP3), not with the Feed defaults."""
+    from unittest.mock import patch
+
+    from mellow import jobs
+    client.post('/api/vault/playlists', json={'path': tmp_dir, 'url': 'https://youtube.com/playlist?list=P',
+                                              'sync_format': {'sync_audio': True, 'audio_format': 'mp3'}})
+    with patch('mellow.downloader.download_video') as dl:
+        r = client.post('/api/vault/retry-item', json={'path': tmp_dir, 'url': 'https://youtu.be/aaaaaaaaaaa'})
+        assert r.status_code == 200
+        assert jobs.manager.wait_idle(10)
+    url, out, opts = dl.call_args[0][:3]
+    assert (url, out) == ('https://youtu.be/aaaaaaaaaaa', tmp_dir)
+    assert opts['mode'] == 'library' and opts['sync_audio'] is True and opts['audio_format'] == 'mp3'
+
+
+def test_deleting_a_video_takes_its_subtitle_files_but_no_one_elses(tmp_path):
+    from mellow import vault
+    tmp_path = tmp_path / 'folder'
+    tmp_path.mkdir()
+    names = ['Song.mp4', 'Song.jpg', 'Song.en.srt', 'Song.pt-BR.vtt', 'Song.srt',
+             'Song.part2.mp4', 'Song.part2.en.srt',     # another video's
+             'Song.live.mp4', 'Song.live.srt',          # "live" is that video, not a language
+             'Other.en.srt']
+    for n in names:
+        (tmp_path / n).write_bytes(b'x')
+    vault.delete_media_file(tmp_path / 'Song.mp4')
+    left = sorted(p.name for p in tmp_path.iterdir())
+    assert left == ['Other.en.srt', 'Song.live.mp4', 'Song.live.srt', 'Song.part2.en.srt', 'Song.part2.mp4']

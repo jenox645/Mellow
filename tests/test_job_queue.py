@@ -2,7 +2,7 @@ import tempfile
 import threading
 from unittest.mock import patch
 
-import jobs
+from mellow import jobs
 
 
 def _make_manager(events):
@@ -32,7 +32,7 @@ def test_single_complete_for_multi_url_job():
             'library_id': None,
             'status': 'active',
         }
-        with patch('downloader.download_video', side_effect=fake_dl):
+        with patch('mellow.downloader.download_video', side_effect=fake_dl):
             assert _make_manager(events).run_job(job) == 'complete'
 
     complete_events = [e for e in events if e.get('status') == 'complete']
@@ -42,7 +42,7 @@ def test_single_complete_for_multi_url_job():
 
 
 def test_sleep_interval_default_is_zero():
-    from config import load_config
+    from mellow.config import load_config
     cfg = load_config()
     assert cfg.get('sleep_interval', 0) == 0, "sleep_interval default must be 0 for speed"
 
@@ -72,7 +72,7 @@ def test_run_job_cancelled_mid_loop():
             'library_id': None,
             'status': 'active',
         }
-        with patch('downloader.download_video', side_effect=fake_dl_cancel):
+        with patch('mellow.downloader.download_video', side_effect=fake_dl_cancel):
             assert _make_manager(events).run_job(job) == 'cancelled'
 
     assert len(called) == 1, f"Should stop after cancel, but called: {called}"
@@ -106,11 +106,11 @@ def test_cancelled_before_start_never_runs():
 
 
 def test_configured_workers_clamped():
-    with patch('jobs.load_config', return_value={'download_workers': 99}):
+    with patch('mellow.jobs.load_config', return_value={'download_workers': 99}):
         assert jobs.configured_workers() == jobs.MAX_DOWNLOAD_WORKERS
-    with patch('jobs.load_config', return_value={'download_workers': 0}):
+    with patch('mellow.jobs.load_config', return_value={'download_workers': 0}):
         assert jobs.configured_workers() == 1
-    with patch('jobs.load_config', return_value={'download_workers': 'garbage'}):
+    with patch('mellow.jobs.load_config', return_value={'download_workers': 'garbage'}):
         assert jobs.configured_workers() == 1
 
 
@@ -133,8 +133,8 @@ def test_worker_pool_respects_limit():
 
     with tempfile.TemporaryDirectory() as tmp, \
             patch.object(jobs, 'QUEUE_STATE_PATH', jobs.Path(tmp) / 'queue.json'), \
-            patch('jobs.load_config', return_value={'download_workers': 2}), \
-            patch('downloader.download_video', side_effect=fake_dl):
+            patch('mellow.jobs.load_config', return_value={'download_workers': 2}), \
+            patch('mellow.downloader.download_video', side_effect=fake_dl):
         m = jobs.JobManager()
         m.start(lambda e: None)
         for i in range(3):
@@ -179,7 +179,7 @@ def test_multi_url_job_first_playlist_failing_ends_in_one_complete():
     events = []
     urls = ['https://youtube.com/playlist?list=A', 'https://youtube.com/playlist?list=B']
     with tempfile.TemporaryDirectory() as tmp, \
-            patch('downloader.download_video', side_effect=_fake_dl_failing({urls[0]})):
+            patch('mellow.downloader.download_video', side_effect=_fake_dl_failing({urls[0]})):
         assert _make_manager(events).run_job(_multi_job(tmp, urls)) == 'complete'
     terminal = _terminal(events)
     assert [e['status'] for e in terminal] == ['complete']
@@ -195,7 +195,7 @@ def test_multi_url_job_last_playlist_failing_is_not_reported_as_error():
     events = []
     urls = ['https://youtube.com/playlist?list=A', 'https://youtube.com/playlist?list=B']
     with tempfile.TemporaryDirectory() as tmp, \
-            patch('downloader.download_video', side_effect=_fake_dl_failing({urls[1]})):
+            patch('mellow.downloader.download_video', side_effect=_fake_dl_failing({urls[1]})):
         assert _make_manager(events).run_job(_multi_job(tmp, urls)) == 'complete'
     assert [e['status'] for e in _terminal(events)] == ['complete']
 
@@ -204,7 +204,7 @@ def test_multi_url_job_all_failing_ends_in_one_error():
     events = []
     urls = ['https://youtube.com/playlist?list=A', 'https://youtube.com/playlist?list=B']
     with tempfile.TemporaryDirectory() as tmp, \
-            patch('downloader.download_video', side_effect=_fake_dl_failing(set(urls))):
+            patch('mellow.downloader.download_video', side_effect=_fake_dl_failing(set(urls))):
         assert _make_manager(events).run_job(_multi_job(tmp, urls)) == 'failed'
     terminal = _terminal(events)
     assert [e['status'] for e in terminal] == ['error']
@@ -216,14 +216,14 @@ def test_job_whose_downloader_sent_no_terminal_event_still_gets_one():
     """The UI has no timeout: a job must always end in a terminal event."""
     events = []
     with tempfile.TemporaryDirectory() as tmp, \
-            patch('downloader.download_video', return_value='success'):
+            patch('mellow.downloader.download_video', return_value='success'):
         m = _make_manager(events)
         assert m.run_job(_multi_job(tmp, ['https://youtu.be/a'], job_type='feed')) == 'complete'
     assert [e['status'] for e in _terminal(events)] == ['complete']
 
 
 def test_library_last_synced_is_stamped_on_completion_only():
-    import analytics
+    from mellow import analytics
     analytics.upsert_library_entry({'id': 'lib1', 'name': 'L', 'url': 'https://x/pl'})
     m = _make_manager([])
 
@@ -251,7 +251,7 @@ def test_failed_link_that_reported_its_own_items_is_not_counted_twice():
         cb({'status': 'complete', 'title': url})
         return 'success'
 
-    with tempfile.TemporaryDirectory() as tmp, patch('downloader.download_video', side_effect=fake_dl):
+    with tempfile.TemporaryDirectory() as tmp, patch('mellow.downloader.download_video', side_effect=fake_dl):
         assert _make_manager(events).run_job(_multi_job(tmp, urls)) == 'complete'
     assert len([e for e in events if e['status'] == 'item_failed']) == 1
     assert '1 of 2' in _terminal(events)[0]['warning']
@@ -270,8 +270,8 @@ def test_download_running_at_exit_is_offered_again():
 
     with tempfile.TemporaryDirectory() as tmp, \
             patch.object(jobs, 'QUEUE_STATE_PATH', jobs.Path(tmp) / 'queue.json'), \
-            patch('jobs.load_config', return_value={'download_workers': 1}), \
-            patch('downloader.download_video', side_effect=fake_dl):
+            patch('mellow.jobs.load_config', return_value={'download_workers': 1}), \
+            patch('mellow.downloader.download_video', side_effect=fake_dl):
         m = jobs.JobManager()
         m.start(lambda e: None)
         running = m.enqueue('https://youtu.be/running', tmp, {})
@@ -283,3 +283,187 @@ def test_download_running_at_exit_is_offered_again():
         release.set()
         assert m.wait_idle(10)
         assert not jobs.QUEUE_STATE_PATH.exists()
+
+
+def test_retry_uses_the_failed_jobs_options_and_folder(client, tmp_path):
+    """Retrying an item of an MP3 playlist re-downloaded it with the Feed
+    defaults (video)."""
+    from mellow import jobs as jobs_mod
+    audio_opts = {'mode': 'library', 'sync_audio': True, 'audio_format': 'mp3'}
+    with patch('mellow.downloader.download_video', return_value='success') as dl:
+        job = jobs_mod.manager.enqueue('https://youtube.com/playlist?list=P', str(tmp_path), audio_opts,
+                                       'lib1', job_type='sync', label='Sync — Music', sync_path=str(tmp_path))
+        assert jobs_mod.manager.wait_idle(10)
+        r = client.post(f"/api/queue/{job['id']}/retry", json={'url': 'https://www.youtube.com/watch?v=aaaaaaaaaaa'})
+        assert r.status_code == 200
+        assert jobs_mod.manager.wait_idle(10)
+    url, out, opts = dl.call_args[0][:3]
+    assert url == 'https://www.youtube.com/watch?v=aaaaaaaaaaa' and out == str(tmp_path)
+    assert opts['sync_audio'] is True and opts['audio_format'] == 'mp3'
+    retried = next(j for j in jobs_mod.manager.status()['jobs'] if j['id'] == r.get_json()['job_id'])
+    assert retried['type'] == 'feed' and retried.get('sync_path') is None  # not a sync: no sync stamp
+
+
+def test_retry_of_an_unknown_job_is_a_404(client):
+    r = client.post('/api/queue/nope/retry', json={'url': 'https://youtu.be/x'})
+    assert r.status_code == 404
+
+
+def test_retrying_a_whole_job_reruns_it_as_it_was(client, tmp_path):
+    """A failed sync retried from the job list is a sync again, all its links."""
+    from mellow import jobs as jobs_mod
+    urls = ['https://youtube.com/playlist?list=A', 'https://youtube.com/playlist?list=B']
+    with patch('mellow.downloader.download_video', return_value='error') as dl:
+        job = jobs_mod.manager.enqueue(urls[0], str(tmp_path), {'mode': 'library'}, 'lib1',
+                                       job_type='sync', label='Sync — Mix', multi_urls=urls,
+                                       sync_path=str(tmp_path))
+        assert jobs_mod.manager.wait_idle(10)
+        r = client.post(f"/api/queue/{job['id']}/retry", json={})
+        assert jobs_mod.manager.wait_idle(10)
+    assert [c[0][0] for c in dl.call_args_list] == urls + urls
+    again = next(j for j in jobs_mod.manager.status()['jobs'] if j['id'] == r.get_json()['job_id'])
+    assert (again['type'], again['sync_path'], again['label']) == ('sync', str(tmp_path), 'Sync — Mix')
+
+
+def test_scheduled_job_waits_for_its_time_and_start_now_runs_it(tmp_path):
+    import time as _time
+    ran = threading.Event()
+
+    def fake_dl(url, out, opts, cb, lib_id=None, cancel_event=None, pause_event=None):
+        ran.set()
+        return 'success'
+
+    with patch.object(jobs, 'QUEUE_STATE_PATH', tmp_path / 'queue.json'), \
+            patch('mellow.downloader.download_video', side_effect=fake_dl):
+        m = jobs.JobManager()
+        m.start(lambda e: None)
+        later = m.enqueue('https://youtu.be/later', str(tmp_path), {}, not_before=_time.time() + 3600)
+        assert not ran.wait(1), 'a job scheduled for later ran right away'
+        assert later['status'] == 'queued'
+        now = m.enqueue('https://youtu.be/now', str(tmp_path), {})
+        assert ran.wait(10), 'a scheduled job held up the one queued after it'
+        assert m.wait_idle(10) and now['status'] == 'complete' and later['status'] == 'queued'
+        assert m.start_now(later['id'])
+        assert m.wait_idle(10) and later['status'] == 'complete'
+        assert not m.start_now(later['id'])
+
+
+def test_download_for_later_is_held_until_the_configured_time(client, tmp_dir):
+    from mellow import jobs as jobs_mod
+    client.post('/api/config', json={'schedule_start': '03:30'})
+    with patch('mellow.downloader.download_video') as dl:
+        data = client.post('/api/download', json={'url': 'https://youtu.be/x', 'output_dir': tmp_dir,
+                                                  'scheduled': True}).get_json()
+        assert data['status'] == 'scheduled'
+        job = next(j for j in jobs_mod.manager.status()['jobs'] if j['id'] == data['job_id'])
+        assert job['not_before'] == data['not_before'] == jobs_mod.next_time_of_day('03:30')
+        assert jobs_mod.manager.wait_idle(5)
+        dl.assert_not_called()
+        jobs_mod.manager.cancel(data['job_id'])
+
+
+def test_queue_finished_reports_the_jobs_that_downloaded_something(tmp_path):
+    finished = []
+    done_event = threading.Event()
+
+    def fake_dl(url, out, opts, cb, lib_id=None, cancel_event=None, pause_event=None):
+        if 'nothing' not in url:
+            cb({'status': 'item_done', 'title': url})
+        cb({'status': 'complete', 'title': url})
+        return 'success'
+
+    def on_idle(done):
+        finished.append([j['url'] for j in done])
+        done_event.set()
+
+    with patch.object(jobs, 'QUEUE_STATE_PATH', tmp_path / 'queue.json'), \
+            patch('mellow.downloader.download_video', side_effect=fake_dl):
+        m = jobs.JobManager()
+        for url in ('https://youtu.be/a', 'https://youtu.be/nothing', 'https://youtu.be/b'):
+            m.enqueue(url, str(tmp_path), {})
+        m.start(lambda e: None, on_idle=on_idle)
+        assert done_event.wait(10)
+    assert finished == [['https://youtu.be/a', 'https://youtu.be/b']]
+
+
+def test_queue_finished_opens_the_folder_when_configured(client, tmp_dir):
+    from mellow import server
+    client.post('/api/config', json={'on_queue_done': 'open_folder'})
+    events = []
+    with patch('mellow.desktop.show_in_folder') as show, \
+            patch('mellow.server._push_progress', side_effect=events.append):
+        server._queue_finished([{'output_dir': tmp_dir}])
+    show.assert_called_once_with(tmp_dir)
+    assert events == [{'status': 'queue_done', 'count': 1, 'folders': [tmp_dir]}]
+    client.post('/api/config', json={'on_queue_done': 'nothing'})
+    with patch('mellow.desktop.show_in_folder') as show, patch('mellow.server._push_progress'):
+        server._queue_finished([{'output_dir': tmp_dir}])
+    show.assert_not_called()
+
+
+def test_scheduled_job_starts_by_itself_when_due(tmp_path):
+    import time as _time
+    started_at = []
+
+    def fake_dl(url, out, opts, cb, lib_id=None, cancel_event=None, pause_event=None):
+        started_at.append(_time.time())
+        return 'success'
+
+    with patch.object(jobs, 'QUEUE_STATE_PATH', tmp_path / 'queue.json'), \
+            patch('mellow.downloader.download_video', side_effect=fake_dl):
+        m = jobs.JobManager()
+        m.start(lambda e: None)
+        due = _time.time() + 1.0
+        job = m.enqueue('https://youtu.be/x', str(tmp_path), {}, not_before=due)
+        for _ in range(60):
+            if job['status'] == 'complete':
+                break
+            _time.sleep(0.1)
+    assert job['status'] == 'complete'
+    assert due <= started_at[0] < due + 1.0, 'should start right when due, not a poll interval later'
+
+
+def test_sync_report_records_what_a_sync_did(client, tmp_path):
+    """Added titles, failures with their reason, items the archive already
+    had and items skipped as Shorts/live — per folder, whatever the outcome."""
+    from mellow import jobs as jobs_mod
+    pushed = []
+
+    def fake_dl(url, out, opts, cb, lib_id=None, cancel_event=None, pause_event=None):
+        cb({'status': 'item_skipped', 'reason': 'archive'})
+        cb({'status': 'item_skipped', 'reason': 'archive'})
+        cb({'status': 'item_skipped', 'reason': 'filtered', 'title': 'A Short'})
+        cb({'status': 'item_done', 'title': 'New Song'})
+        cb({'status': 'item_failed', 'reason': 'error', 'url': 'https://www.youtube.com/watch?v=aaaaaaaaaaa',
+            'message': 'ERROR: [youtube] aaaaaaaaaaa: Private video. Sign in if you have access'})
+        cb({'status': 'complete', 'title': 'Mix'})
+        return 'success'
+
+    with patch('mellow.downloader.download_video', side_effect=fake_dl), \
+            patch.object(jobs_mod.manager, '_push', side_effect=pushed.append):
+        jobs_mod.manager.enqueue('https://youtube.com/playlist?list=P', str(tmp_path), {'mode': 'library'},
+                                 job_type='sync', label='Sync — Mix', sync_path=str(tmp_path))
+        assert jobs_mod.manager.wait_idle(10)
+    assert not [e for e in pushed if e['status'] == 'item_skipped'], 'skips are report-only'
+    report = client.get('/api/vault/sync-report', query_string={'path': str(tmp_path)}).get_json()['report']
+    assert report['status'] == 'complete'
+    assert report['added'] == ['New Song']
+    assert report['archived'] == 2 and report['filtered'] == ['A Short']
+    assert report['failed'][0]['url'].endswith('aaaaaaaaaaa')
+    assert report['failed'][0]['hint']  # explained: private video
+
+
+def test_failed_sync_still_leaves_a_report(client, tmp_path):
+    from mellow import jobs as jobs_mod
+    with patch('mellow.downloader.download_video', side_effect=lambda url, out, opts, cb, *a, **k: (
+            cb({'status': 'error', 'message': 'ERROR: [youtube:tab] PLx: The playlist does not exist.'}),
+            'error')[1]):
+        jobs_mod.manager.enqueue('https://youtube.com/playlist?list=PLx', str(tmp_path), {'mode': 'library'},
+                                 job_type='sync', label='Sync', sync_path=str(tmp_path))
+        assert jobs_mod.manager.wait_idle(10)
+    report = client.get('/api/vault/sync-report', query_string={'path': str(tmp_path)}).get_json()['report']
+    assert report['status'] == 'failed' and 'does not exist' in report['error']
+
+
+def test_no_report_before_the_first_sync(client, tmp_path):
+    assert client.get('/api/vault/sync-report', query_string={'path': str(tmp_path)}).get_json() == {'report': None}

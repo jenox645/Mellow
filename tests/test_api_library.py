@@ -39,11 +39,11 @@ def test_library_sync_does_not_stamp_last_synced_before_it_runs(client, tmp_dir)
     still-queued sync "synced"."""
     from unittest.mock import patch
 
-    import jobs
+    from mellow import jobs
     r = client.post('/api/library', json={
         'name': 'Pl', 'url': 'https://youtube.com/playlist?list=X', 'folder': tmp_dir})
     entry_id = r.get_json()['id']
-    with patch('downloader.download_video', return_value='error'):
+    with patch('mellow.downloader.download_video', return_value='error'):
         assert client.post(f'/api/library/{entry_id}/sync', json={}).status_code == 200
         jobs.manager.wait_idle(timeout=10)
     entry = next(e for e in client.get('/api/library').get_json() if e['id'] == entry_id)
@@ -53,7 +53,7 @@ def test_library_sync_does_not_stamp_last_synced_before_it_runs(client, tmp_dir)
 def test_audio_entry_without_audio_format_is_mp3_not_mp4():
     """The legacy "audio format in container" fallback turned the default
     container into audio_format "mp4"."""
-    import library
+    from mellow import library
     entry = library.build_entry({'name': 'A', 'url': 'u', 'mode': 'AUDIO'}, 'id', 'now')
     assert (entry['audio_format'], entry['container']) == ('mp3', 'mp4')
     legacy = library.build_entry({'name': 'A', 'url': 'u', 'mode': 'AUDIO', 'container': 'FLAC'},
@@ -67,9 +67,8 @@ def test_audio_entry_without_audio_format_is_mp3_not_mp4():
 def test_entry_without_folder_syncs_where_the_vault_shows_it(client, tmp_path):
     """An entry with no folder of its own lives in the download folder; the
     vault never listed it."""
-    import analytics
-    import library
-    from config import load_config, update_config
+    from mellow import analytics, library
+    from mellow.config import load_config, update_config
     root = tmp_path / 'root'
     update_config(lambda c: c.__setitem__('output_dir', str(root)))
     analytics.upsert_library_entry({'id': 'e1', 'name': 'Lofi', 'url': 'https://x/pl',
@@ -84,9 +83,8 @@ def test_entry_without_folder_syncs_where_the_vault_shows_it(client, tmp_path):
 def test_library_entry_is_not_matched_to_its_parent_folder(client, tmp_path):
     """Syncing the download folder itself must not pick up the settings of a
     library entry that merely lives inside it."""
-    import analytics
-    import server
-    from config import load_config
+    from mellow import analytics, server
+    from mellow.config import load_config
     analytics.upsert_library_entry({'id': 'e2', 'name': 'Sub', 'url': 'https://x/pl',
                                     'folder': str(tmp_path), 'folder_name': 'Sub'})
     cfg = load_config()

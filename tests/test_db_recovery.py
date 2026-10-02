@@ -12,7 +12,7 @@ from pathlib import Path
 import duckdb
 import pytest
 
-import analytics
+from mellow import analytics
 
 REPO = Path(__file__).resolve().parent.parent
 
@@ -78,7 +78,7 @@ def test_migration_survives_being_killed_right_after_init(isolated_user_files):
         "con = duckdb.connect(DB)\n"
         f"con.execute({OLD_LIBRARY!r})\n"
         "con.close()\n"
-        "import analytics\n"
+        "from mellow import analytics\n"
         "from pathlib import Path\n"
         "analytics.DB_PATH = Path(DB)\n"
         "analytics.init_db()",

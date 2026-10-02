@@ -5,8 +5,7 @@ import time
 import zipfile
 from unittest.mock import patch
 
-import scheduler
-import vault
+from mellow import scheduler, vault
 
 # ── Scheduler ──────────────────────────────────────────────────────────────────
 
@@ -62,13 +61,12 @@ def test_interval_override_respected():
 # ── Backup ─────────────────────────────────────────────────────────────────────
 
 def test_backup_roundtrip(tmp_path):
-    import analytics
-    import backup
+    from mellow import analytics, backup
     cfg_path = tmp_path / "config.json"
     db_path = tmp_path / "data.duckdb"
     cfg_path.write_text(json.dumps({"output_dir": "X"}), encoding="utf-8")
-    with patch("config.CONFIG_PATH", cfg_path), patch("analytics.DB_PATH", db_path), \
-            patch("backup.CONFIG_PATH", cfg_path):
+    with patch("mellow.config.CONFIG_PATH", cfg_path), patch("mellow.analytics.DB_PATH", db_path), \
+            patch("mellow.backup.CONFIG_PATH", cfg_path):
         analytics.init_db()
         data = backup.create_backup()
         names = zipfile.ZipFile(io.BytesIO(data)).namelist()
@@ -85,12 +83,12 @@ def test_backup_roundtrip(tmp_path):
 
 
 def test_restore_rejects_garbage():
-    import backup
+    from mellow import backup
     assert backup.restore_backup(b"not a zip")["ok"] is False
 
 
 def test_restore_rejects_foreign_members(tmp_path):
-    import backup
+    from mellow import backup
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w") as zf:
         zf.writestr("../../evil.txt", "nope")
@@ -100,8 +98,8 @@ def test_restore_rejects_foreign_members(tmp_path):
 # ── Wrapped ────────────────────────────────────────────────────────────────────
 
 def test_wrapped_aggregates(tmp_path):
-    import analytics
-    with patch("analytics.DB_PATH", tmp_path / "w.duckdb"):
+    from mellow import analytics
+    with patch("mellow.analytics.DB_PATH", tmp_path / "w.duckdb"):
         analytics.init_db()
         analytics.record_download({
             "url": "https://youtu.be/x", "title": "T", "uploader": "Chan",

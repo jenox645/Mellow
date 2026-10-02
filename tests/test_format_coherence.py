@@ -4,15 +4,11 @@ import os
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import config
-import downloader
-import jobs
-import server
-import vault
+from mellow import config, downloader, jobs, server, vault
 
 
 def _post_download(client, tmp_dir, **payload):
-    with patch('downloader.download_video') as dl:
+    with patch('mellow.downloader.download_video') as dl:
         r = client.post('/api/download', json={'url': 'https://youtu.be/x', 'output_dir': tmp_dir, **payload})
         assert r.status_code == 200
         assert jobs.manager.wait_idle(10)
@@ -41,8 +37,8 @@ def _ydl_opts(tmp_dir, opts):
     ydl._download_retcode = 0
     cls = MagicMock()
     cls.return_value.__enter__.return_value = ydl
-    with patch('downloader.yt_dlp.YoutubeDL', cls), \
-            patch('downloader.find_ffmpeg', return_value='/usr/bin/ffmpeg'):
+    with patch('mellow.downloader.yt_dlp.YoutubeDL', cls), \
+            patch('mellow.downloader.find_ffmpeg', return_value='/usr/bin/ffmpeg'):
         assert downloader.download_video('https://youtu.be/abc', tmp_dir, opts, lambda e: None) == 'success'
     return cls.call_args[0][0]
 
@@ -100,7 +96,7 @@ def test_precedence_request_then_saved_then_library(tmp_dir):
 def test_dialog_choice_is_remembered_for_auto_sync(client, tmp_dir):
     url = 'https://youtube.com/playlist?list=PLx'
     client.post('/api/vault/playlists', json={'path': tmp_dir, 'url': url})
-    with patch('downloader.download_video') as dl:
+    with patch('mellow.downloader.download_video') as dl:
         client.post('/api/vault/sync', json={'path': tmp_dir, 'sync_audio': True, 'audio_format': 'm4a'})
         assert jobs.manager.wait_idle(10)
         # Later, auto-sync / sync-all: no options in the request
@@ -153,8 +149,8 @@ def test_missing_cover_is_not_retried_on_every_request(tmp_dir):
     _touch(tmp_dir, 'song.mp3')
     song = os.path.join(tmp_dir, 'song.mp3')
     failed = MagicMock(returncode=1)
-    with patch('vault.find_ffmpeg', return_value='/usr/bin/ffmpeg'), \
-            patch('vault.subprocess.run', return_value=failed) as run:
+    with patch('mellow.vault.find_ffmpeg', return_value='/usr/bin/ffmpeg'), \
+            patch('mellow.vault.subprocess.run', return_value=failed) as run:
         assert vault.get_thumb_bytes(song) is None
         assert vault.get_thumb_bytes(song) is None
     assert run.call_count == 1
@@ -166,7 +162,7 @@ def test_missing_cover_is_not_retried_on_every_request(tmp_dir):
 
 def test_analyze_uses_proxy_and_force_ipv4(client):
     config.update_config(lambda c: c.update(proxy='socks5://127.0.0.1:9', force_ipv4=True))
-    with patch('downloader.yt_dlp.YoutubeDL') as ydl_cls:
+    with patch('mellow.downloader.yt_dlp.YoutubeDL') as ydl_cls:
         ydl_cls.return_value.__enter__.return_value.extract_info.return_value = {'title': 'T'}
         client.post('/api/info', json={'url': 'https://youtu.be/x'})
         client.post('/api/playlist-items', json={'url': 'https://youtube.com/playlist?list=P'})
@@ -214,7 +210,7 @@ def test_mirror_deletes_nothing_when_a_playlist_failed_to_load(tmp_dir):
 
 def test_mirror_finds_files_named_without_an_id(tmp_dir):
     """Default names are just the title; the id comes from the history."""
-    import analytics
+    from mellow import analytics
     song = Path(tmp_dir) / 'Some Song.mp3'
     song.write_bytes(b'x')
     analytics.record_download({'url': 'https://www.youtube.com/watch?v=ccccccccccc',
