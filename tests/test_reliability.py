@@ -268,8 +268,23 @@ def test_partly_failed_playlist_completes_and_records_only_real_files(tmp_dir):
 
 # ── yt-dlp self-update reports what actually happened ──────────────────────────
 
-def _run_update(client, *, frozen, version_after):
+def _zipapp(path, version):
+    """A minimal stand-in for yt-dlp's release zipapp."""
+    import zipfile
+    with zipfile.ZipFile(path, 'w') as zf:
+        zf.writestr('__main__.py', 'import yt_dlp')
+        zf.writestr('yt_dlp/__init__.py', 'from . import version\nMARKER = "overlay"\n')
+        zf.writestr('yt_dlp/version.py', f"__version__ = '{version}'\n")
+    return path.read_bytes()
+
+
+def _run_update(client, tmp_path, *, running, release, checksum_ok=True):
+    import hashlib
+
     import yt_dlp
+    blob = _zipapp(tmp_path / 'release.zip', release)
+    digest = hashlib.sha256(blob).hexdigest() if checksum_ok else '0' * 64
+    assets = {'SHA2-256SUMS': f'{digest}  yt-dlp\n{"1" * 64}  yt-dlp.exe\n'.encode(), 'yt-dlp': blob}
     events = []
     done = threading.Event()
 
@@ -277,39 +292,58 @@ def _run_update(client, *, frozen, version_after):
         events.append(event)
         done.set()
 
-    def fake_reload(module):
-        if module is yt_dlp.version:
-            module.__version__ = version_after
-        return module
-
-    with patch.object(yt_dlp.version, '__version__', '2026.06.09'), \
+    with patch.object(yt_dlp.version, '__version__', running), \
             patch('mellow.server._push_progress', side_effect=push), \
-            patch('mellow.ytdlp_update.subprocess.run'), \
-            patch('importlib.reload', side_effect=fake_reload), \
-            patch.object(ytdlp_update.sys, 'frozen', frozen, create=True), \
-            patch('shutil.which', return_value='/usr/bin/yt-dlp'):
+            patch('mellow.ytdlp_update._fetch', side_effect=lambda url: assets[url.rsplit('/', 1)[1]]):
         assert client.post('/api/update-ytdlp', json={}).status_code == 200
         assert done.wait(10)
     return events[-1]
 
 
-def test_update_asks_for_restart_when_a_newer_ytdlp_was_installed(client):
-    event = _run_update(client, frozen=False, version_after='2026.09.27')
+def test_update_downloads_the_release_and_asks_for_a_restart(client, tmp_path):
+    event = _run_update(client, tmp_path, running='2026.06.09', release='2026.09.27')
     assert event['ok'] is True and event['restart_required'] is True
     assert '2026.09.27' in event['message'] and 'Restart' in event['message']
+    assert ytdlp_update.overlay_version() == '2026.09.27'
 
 
-def test_update_in_packaged_app_does_not_claim_success(client):
-    """The frozen app imports the yt-dlp inside the .exe; nothing replaces it."""
-    event = _run_update(client, frozen=True, version_after='2026.06.09')
-    assert event['ok'] is False
-    assert 'bundles yt-dlp 2026.06.09' in event['error']
+def test_update_refuses_a_file_that_fails_its_checksum(client, tmp_path):
+    event = _run_update(client, tmp_path, running='2026.06.09', release='2026.09.27', checksum_ok=False)
+    assert event['ok'] is False and 'checksum' in event['error']
+    assert ytdlp_update.overlay_version() is None
 
 
-def test_update_when_already_current(client):
-    event = _run_update(client, frozen=False, version_after='2026.06.09')
+def test_update_when_already_current(client, tmp_path):
+    event = _run_update(client, tmp_path, running='2026.09.27', release='2026.09.27')
     assert event['ok'] is True and 'restart_required' not in event
     assert 'up to date' in event['message']
+
+
+def test_a_newer_download_is_loaded_ahead_of_the_bundled_yt_dlp(tmp_path):
+    """In a fresh interpreter, as main.py does it (sys.modules can't be reset here)."""
+    import subprocess
+    import sys
+    from pathlib import Path
+    root = Path(__file__).resolve().parent.parent
+    code = """
+import sys, importlib.metadata
+from pathlib import Path
+from mellow import ytdlp_update
+ytdlp_update.OVERLAY_PATH = Path(sys.argv[1])
+ytdlp_update.bundled_version = lambda: sys.argv[2]
+print(ytdlp_update.activate_overlay())
+import yt_dlp, yt_dlp.version
+print(getattr(yt_dlp, 'MARKER', 'bundled'), yt_dlp.version.__version__)
+"""
+    def run(overlay_ver, bundled_ver):
+        _zipapp(tmp_path / 'o.zip', overlay_ver)
+        out = subprocess.run([sys.executable, '-c', code, str(tmp_path / 'o.zip'), bundled_ver],
+                             cwd=root, capture_output=True, text=True, timeout=60)
+        assert out.returncode == 0, out.stderr
+        return out.stdout.split()
+    assert run('2099.01.01', '2026.08.19') == ['2099.01.01', 'overlay', '2099.01.01']
+    # A newer app bundles a newer yt-dlp than the old download: the bundled one runs
+    assert run('2020.01.01', '2026.08.19')[:2] == ['None', 'bundled']
 
 
 def test_worker_pushes_error_when_job_crashes(tmp_dir):

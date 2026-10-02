@@ -414,26 +414,6 @@ spec_file = HERE / "MellowDLP.spec"
 if not spec_file.exists():
     fail(f"Missing {spec_file}")
 
-# Download yt-dlp binary for bundling if not already present
-if IS_WINDOWS:
-    ytdlp_local = HERE / "yt-dlp.exe"
-    ytdlp_url = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe"
-else:
-    ytdlp_local = HERE / "yt-dlp"
-    ytdlp_url = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp"
-
-if not ytdlp_local.exists():
-    print("  Downloading yt-dlp binary from GitHub…")
-    try:
-        urllib.request.urlretrieve(ytdlp_url, ytdlp_local)
-        if not IS_WINDOWS:
-            ytdlp_local.chmod(0o755)
-        print(f"  yt-dlp downloaded ({ytdlp_local.stat().st_size:,} bytes) — OK")
-    except Exception as exc:
-        print(f"  WARNING: could not download yt-dlp: {exc} — binary will not be bundled")
-else:
-    print(f"  yt-dlp already present ({ytdlp_local.stat().st_size:,} bytes) — OK")
-
 # --clean wipes PyInstaller's cache: keep it for installer builds (correctness),
 # skip it for "App only" dev builds (saves a minute or two per iteration)
 _pyi_args = [sys.executable, "-m", "PyInstaller", "--noconfirm"]

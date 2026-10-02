@@ -75,6 +75,7 @@ LOUDNORM_FILTER: str = "loudnorm=I=-14:TP=-1.5:LRA=11"
 WEBHOOK_TIMEOUT_SECS: int = 5
 SOCKET_TIMEOUT_SECS: int = 20        # yt-dlp per-connection timeout
 PYPI_CHECK_TIMEOUT_SECS: int = 30
+YTDLP_DOWNLOAD_TIMEOUT_SECS: int = 120   # the yt-dlp zipapp is ~3 MB
 UPDATE_CHECK_TIMEOUT_SECS: int = 15  # GitHub releases lookup for a newer MellowDLP
 APP_REPO: str = "jenox645/Mellow"
 APP_RELEASES_API: str = f"https://api.github.com/repos/{APP_REPO}/releases/latest"

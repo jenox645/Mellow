@@ -64,11 +64,6 @@ jobs:
       - name: Install Python deps
         run: pip install -r requirements.txt pyinstaller pillow
 
-      - name: Download yt-dlp
-        run: |
-          wget -q "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp" -O yt-dlp
-          chmod +x yt-dlp
-
       - name: Build
         run: python3 build_setup.py
 

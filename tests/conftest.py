@@ -37,6 +37,7 @@ def isolated_user_files(tmp_path):
             patch('mellow.backup.CONFIG_PATH', cfg_path), \
             patch('mellow.analytics.DB_PATH', tmp_path / 'analytics.duckdb'), \
             patch('mellow.jobs.QUEUE_STATE_PATH', tmp_path / 'queue.json'), \
+            patch('mellow.ytdlp_update.OVERLAY_PATH', tmp_path / 'ytdlp.zip'), \
             patch.dict('os.environ', {}), \
             patch.multiple(ffmpeg_locate, _cached=ffmpeg_locate._cached,
                            _last_miss=ffmpeg_locate._last_miss):

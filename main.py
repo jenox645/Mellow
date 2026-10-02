@@ -11,8 +11,7 @@ from urllib.request import urlopen
 
 from flaskwebgui import FlaskUI
 
-from mellow import applog
-from mellow.server import init_app
+from mellow import applog, ytdlp_update
 
 log = logging.getLogger(__name__)
 
@@ -92,6 +91,9 @@ def main() -> None:
                      "run build_setup.py first to generate static assets")
         sys.exit(1)
 
+    # Before anything imports yt_dlp: a newer downloaded one replaces the bundled one
+    ytdlp_update.activate_overlay()
+    from mellow.server import init_app
     flask_app = init_app()
     port = _find_free_port()
     _write_port_file(port)

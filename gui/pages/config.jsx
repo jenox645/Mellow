@@ -687,9 +687,11 @@ export function ConfigPage({ config, setConfig, showNotif, sysInfo, refreshStats
                 <div className="settings-label">
                   <div className="sl-name">yt-dlp Version</div>
                   <div className="sl-sub">
-                    {updateInfo && !updateInfo.error && updateInfo.update_available
-                      ? <span style={{ color: 'var(--amber)' }}>Update available: {updateInfo.latest}</span>
-                      : updateInfo && !updateInfo.error ? <span style={{ color: 'var(--green)' }}>Up to date</span>
+                    {updateInfo && updateInfo.pending_restart
+                      ? <span style={{ color: 'var(--amber)' }}>{updateInfo.pending_restart} downloaded — restart MellowDLP to use it</span>
+                      : updateInfo && !updateInfo.error && updateInfo.update_available
+                      ? <span style={{ color: 'var(--amber)' }}>Update available: {updateInfo.latest} (running {updateInfo.installed})</span>
+                      : updateInfo && !updateInfo.error ? <span style={{ color: 'var(--green)' }}>Up to date ({updateInfo.installed})</span>
                       : 'Check for updates below'
                     }
                   </div>
