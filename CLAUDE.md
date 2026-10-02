@@ -21,6 +21,7 @@ build_setup.py     the build (SETUP.bat / setup.sh call it); MellowDLP.spec, ins
   - `jobs.py` — download job queue: worker pool (`download_workers` config, max `MAX_DOWNLOAD_WORKERS`), per-job cancel events, reordering, restart persistence (`~/.mellow_dlp_queue.json`)
   - `downloader.py` — yt-dlp Python API wrapper (returns `success|cancelled|error`; never raises — setup failures become an `error` event)
   - `desktop.py` — OS integration: show in file manager, open with default app, clipboard, native Tk file/folder dialogs
+  - `app_update.py` — newer MellowDLP on GitHub releases, and installing it: `install_kind()` (`windows-installer` / `appimage` / `linux-binary`, else the release page), `install()` downloads the asset named in `constants.APP_ASSET_NAMES`, checks `SHA256SUMS.txt`, swaps the file or stages the installer, and hands over to a detached helper that waits for this PID to exit, runs the installer silently and relaunches
   - `ytdlp_update.py` — yt-dlp version check (PyPI) and in-app update: downloads the release zipapp to `~/.mellow_dlp_ytdlp.zip`; `activate_overlay()` (main.py, before any yt_dlp import) runs it instead of the bundled copy when it's newer
   - `applog.py` — rotating log file `~/.mellow_dlp.log` (the packaged app has no console); modules log via `logging.getLogger(__name__)`, never `print`
   - `ffmpeg_locate.py` — the one ffmpeg lookup (config override → PATH → next to the app → known install folders), shared by downloader, vault and `/api/system`
@@ -77,6 +78,7 @@ A new event = a case in `applyEvent` + a test in `tests/js/downloads.test.mjs`.
 - `error` and `item_failed` also carry `code`, `title`, `hint` and `action` (`update_ytdlp` | `open_config` | null) when `errors.explain()` recognises the message; the UI shows title + hint and a button for the action
 - `paused` / `resumed` — pause toggles
 - `ytdlp_updated` — after yt-dlp self-update
+- `app_update` — MellowDLP updating itself: `stage` `downloading` (`pct`) → `installing` → `restarting` (the app then exits; `AppUpdateOverlay` covers the page), or `error` with `message`
 
 ## Known Architectural Rules
 - Never reset download options on URL change — only reset `info` and `playlistItems`
@@ -139,6 +141,8 @@ python scripts/smoke_binary.py dist/MellowDLP
 - Dependencies are pinned: `requirements.txt` (runtime; yt-dlp has a floor only, on purpose), `requirements-dev.txt`, `requirements-build.txt` (PyInstaller, Pillow), and `package.json` + `package-lock.json` (esbuild, ESLint, React — the build copies React's UMD files from `node_modules`; React 19 has none, so stay on 18). The build runs `npm ci` when the lockfile changed. Dependabot proposes bumps weekly
 - flaskwebgui ≥ 1.1.9 (1.1.8 crashes at import without a browser installed); it needs Python 3.12
 - `main.py --no-window` serves on 127.0.0.1 without opening a window (use your own browser; the smoke test uses it)
+- Release asset names are an API: installed copies look them up (`constants.APP_ASSET_NAMES`, `APP_ASSET_SUMS`); `tests/test_app_update.py` checks release.yml publishes exactly those. `scripts/update_e2e.py <app> <kind>` lets a build older than the latest release update itself for real (release.yml's `update-windows` job does it with the installer on PRs)
+- Self-update restarts through a helper started with `PYINSTALLER_RESET_ENVIRONMENT=1` (a one-file build must not inherit the old copy's unpack folder); `/api/app-update/install` answers 409 while downloads run unless `force` (they're saved and offered again after the restart)
 - Releases: push a tag `vX.Y.Z` equal to `APP_VERSION` → `.github/workflows/release.yml` builds the Windows installer and the Linux binary + AppImage, smoke-tests each, and publishes the GitHub release with `SHA256SUMS.txt` (a `-suffix` tag is a pre-release). PRs touching packaging run the builds without publishing
 
 ## Tests

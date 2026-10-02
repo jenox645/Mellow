@@ -23,7 +23,7 @@ import {
 import { playCompletionChime } from './lib/sound.js';
 import { downloadsReducer, initialDownloads } from './lib/downloads.js';
 import { MASCOT_VICTORY_SAFE } from './lib/mascots.js';
-import { Modal, Notif, Mascot } from './components/common.jsx';
+import { Modal, Notif, Mascot, AppUpdateOverlay } from './components/common.jsx';
 import { LoadingScreen } from './components/loading.jsx';
 import { Sidebar, TopBar, StatusBar } from './components/chrome.jsx';
 import { FeedPage } from './pages/feed.jsx';
@@ -75,7 +75,7 @@ function App() {
   const {
     appState, dlState, activeJobs, speedHistory, playlistItems, completedItems, failedItems,
     playlistTotalCount, playlistCompletedCount, failedCount, isPaused, pausedCount, syncJobLabel,
-    fetchingPlaylistItems,
+    fetchingPlaylistItems, appUpdate,
   } = dl;
   // setState-style setters for the pages (stable: dispatch never changes)
   const setters = React.useMemo(() => {
@@ -123,8 +123,27 @@ function App() {
       onClick: () => API.post('/api/update-ytdlp', {}).catch(() => {}),
     }];
     if (action === 'open_config') return [{ label: 'OPEN CONFIG', primary: true, onClick: () => setPage('config') }];
+    if (action === 'open_release') return [{
+      label: 'RELEASE PAGE', primary: true,
+      onClick: () => API.post('/api/open-release', {}).catch(() => {}),
+    }];
     return null;
   }, []);
+
+  // Install the latest MellowDLP and restart (progress: app_update events).
+  // Running downloads are saved and offered again, but ask first.
+  const installAppUpdate = React.useCallback((force = false) => {
+    API.post('/api/app-update/install', { force }).catch(err => {
+      if (err.data && err.data.running) {
+        showNotif('Downloads Running', err.data.running + ' download(s) will stop for the update and be offered again after the restart.', 'warn', [
+          { label: 'UPDATE NOW', primary: true, onClick: () => installAppUpdate(true) },
+          { label: 'LATER', onClick: () => {} },
+        ]);
+      } else {
+        showNotif('Update Failed', err.message, 'error');
+      }
+    });
+  }, [showNotif]);
 
   // System notification when the window is in the background (opt-in in Config)
   const desktopNotify = React.useCallback((title, body) => {
@@ -209,10 +228,9 @@ function App() {
           try { localStorage.setItem(APP_UPDATE_CHECK_STORAGE_KEY, String(Date.now())); } catch {}
           API.get('/api/check-app-update').then(u => {
             if (u && u.update_available) {
-              showNotif('MellowDLP ' + u.latest + ' Available', 'You have ' + u.current + '.', 'info', [{
-                label: 'GET IT', primary: true,
-                onClick: () => API.post('/api/open-release', {}).catch(() => {}),
-              }]);
+              showNotif('MellowDLP ' + u.latest + ' Available', 'You have ' + u.current + '.', 'info', [u.can_install
+                ? { label: 'UPDATE & RESTART', primary: true, onClick: () => installAppUpdate() }
+                : { label: 'GET IT', primary: true, onClick: () => API.post('/api/open-release', {}).catch(() => {}) }]);
             }
           }).catch(() => {});
         }
@@ -437,6 +455,7 @@ function App() {
             config={config}
             setConfig={setConfig}
             showNotif={showNotif}
+            installAppUpdate={installAppUpdate}
             sysInfo={sysInfo}
             refreshStats={refreshStats}
           />
@@ -446,6 +465,8 @@ function App() {
       </div>
 
       <Notif notif={notif} dismiss={() => setNotif(null)} />
+
+      {appUpdate && <AppUpdateOverlay update={appUpdate} />}
 
       {showVictory && MASCOT_VICTORY_SAFE && (
         <div className={'victory-overlay' + (victoryDismissing ? ' dismissing' : '')} onClick={() => {

@@ -219,3 +219,41 @@ export function LineChart({ data, color = 'rgba(0,216,255,0.85)', height = 120, 
   }, [data, color, height, yFormat]);
   return <canvas ref={ref} className="chart" height={height} />;
 }
+
+// MellowDLP updating itself (app_update events): blocks the page until the
+// app closes; the new version opens its own window
+const APP_UPDATE_STAGES = {
+  downloading: 'DOWNLOADING',
+  installing: 'INSTALLING',
+  restarting: 'RESTARTING',
+};
+
+export function AppUpdateOverlay({ update }) {
+  const restarting = update.stage === 'restarting';
+  return (
+    <div className="modal-overlay app-update-overlay">
+      <div className="modal-box" style={{ minWidth: 380, maxWidth: 440 }}>
+        <div className="modal-hud" /><div className="modal-hud-br" />
+        <div className="modal-header">
+          <div className="modal-title">UPDATING TO v{update.version}</div>
+        </div>
+        <div className="modal-body">
+          <div className="prog-row">
+            <div className="prog-bar">
+              <div className="prog-bar-fill" style={{ width: (update.stage === 'downloading' ? update.pct : 100) + '%' }} />
+            </div>
+            <div className="prog-pct">{update.stage === 'downloading' ? update.pct + '%' : '✓'}</div>
+          </div>
+          <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 11, color: 'var(--t2)', letterSpacing: '0.08em' }}>
+            {APP_UPDATE_STAGES[update.stage] || update.stage.toUpperCase()}
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--t3)', marginTop: 10 }}>
+            {restarting
+              ? 'MellowDLP closes now and opens again on the new version. Unfinished downloads are offered again.'
+              : 'The download is checked against its published checksum before anything is replaced.'}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
