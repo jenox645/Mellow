@@ -610,68 +610,25 @@ def _build_ydl_opts(url: str, out_dir: Path, opts: dict, *, ffmpeg: str | None,
 
     warn(code, message) reports a limitation to the UI as it is decided.
     """
-    mode = _opt_str(opts, "mode", "video").lower()
-    quality = _opt_str(opts, "quality", "best")
-    container = _opt_str(opts, "container", "mp4").lower()
-    audio_fmt = _opt_str(opts, "audio_format", "mp3").lower()
-    custom_format = _opt_str(opts, "custom_format")
-    start_time = _opt_str(opts, "start_time")
-    end_time = _opt_str(opts, "end_time")
     chapters = _chosen_chapters(opts.get("chapters"))
-    if chapters:
-        start_time = end_time = ""  # the chapters are the clip
+    # Chosen chapters are the clip: start/end times don't apply then
+    start_time = "" if chapters else _opt_str(opts, "start_time")
+    end_time = "" if chapters else _opt_str(opts, "end_time")
     embed_subs = bool(opts.get("embed_subs")) and not want_audio
-    filename_template = _opt_str(opts, "filename_template") or _DEFAULT_TEMPLATE
-    if chapters:
-        # One file per chapter: "<name> - 03 Chapter title.ext" (the same
-        # name for every section would have each overwrite the last)
-        stem = filename_template[:-len(".%(ext)s")] if filename_template.endswith(".%(ext)s") \
-            else filename_template.replace("%(ext)s", "").rstrip(".")
-        filename_template = f"{stem} - %(section_number)02d %(section_title)s.%(ext)s"
-    outtmpl = str(out_dir / filename_template)
-    log.debug(f"yt-dlp outtmpl={outtmpl!r} mode={mode} audio_format={audio_fmt} "
-              f"quality={quality} container={container}")
-    warning: str | None = None
+    outtmpl = str(out_dir / _output_template(opts, chapters))
+    log.debug(f"yt-dlp outtmpl={outtmpl!r} mode={_opt_str(opts, 'mode', 'video').lower()} "
+              f"audio_format={_opt_str(opts, 'audio_format', 'mp3').lower()} "
+              f"quality={_opt_str(opts, 'quality', 'best')} container={_opt_str(opts, 'container', 'mp4').lower()}")
 
     ydl_opts: dict[str, Any] = {"outtmpl": outtmpl, "windows_filenames": True}
+    trimmed = bool(start_time or end_time or chapters)
     if ffmpeg:
         ydl_opts["ffmpeg_location"] = ffmpeg
-        cut_sponsors = bool(opts.get("sponsorblock"))
-        if cut_sponsors and (start_time or end_time or chapters):
-            # SponsorBlock times refer to the whole video; yt-dlp would apply
-            # them unshifted to the trimmed file and cut the wrong parts.
-            cut_sponsors = False
-            warning = ("SponsorBlock was skipped: it can't be combined with a clip "
-                       "start/end time or chosen chapters.")
-            warn("sponsorblock_skipped", warning)
-        pps = _build_postprocessors(opts, embed_subs=embed_subs, cut_sponsors=cut_sponsors)
-        if want_audio:
-            fmt = "bestaudio/best"
-            pps.insert(0, {
-                "key": "FFmpegExtractAudio",
-                "preferredcodec": AUDIO_FORMAT_MAP.get(audio_fmt, "mp3"),
-                "preferredquality": AUDIO_QUALITY_MAP.get(
-                    _opt_str(opts, "audio_quality", "best").lower(), "0"),
-            })
-        else:
-            fmt, ydl_opts["merge_output_format"] = _merged_format(quality, container)
-            fmt = custom_format or fmt
+        fmt, pps, merge, warning = _ffmpeg_format(opts, want_audio, embed_subs, trimmed, warn)
+        if merge:
+            ydl_opts["merge_output_format"] = merge
     else:
-        if start_time or end_time or chapters:
-            raise RuntimeError("Trimming (start/end time or chapters) needs ffmpeg, "
-                               "which isn't installed.")
-        pps = []
-        if want_audio:
-            fmt = NO_FFMPEG_AUDIO_FORMAT
-            warning = (f"ffmpeg isn't installed, so the audio is saved in its original format "
-                       f"instead of {audio_fmt.upper()}, without embedded artwork or tags.")
-        else:
-            fmt = custom_format or _single_file_format(quality)
-            warning = ("ffmpeg isn't installed, so only a ready-made single file can be "
-                       "downloaded. Sites that serve video and audio separately (YouTube) "
-                       "will fail until ffmpeg is installed.")
-        log.info(warning)
-        warn("ffmpeg_missing", warning)
+        fmt, pps, warning = _no_ffmpeg_format(opts, want_audio, trimmed, warn)
     ydl_opts["format"] = fmt
     ydl_opts["postprocessors"] = pps
     log.debug(f"ydl format={fmt} postprocessors={pps}")
@@ -681,29 +638,95 @@ def _build_ydl_opts(url: str, out_dir: Path, opts: dict, *, ffmpeg: str | None,
         # is also the vault's sidecar thumbnail.
         ydl_opts["writethumbnail"] = True
         ydl_opts["outtmpl"] = {"default": outtmpl, "pl_thumbnail": ""}
-
-    if mode == "library":
-        # Use public mellow_archive.txt; migrate old hidden files and backfill
-        # from existing media files so yt-dlp skips already-downloaded items.
-        from . import vault as _vault
-        _vault.generate_archive(str(out_dir))
-        ydl_opts["download_archive"] = str(out_dir / "mellow_archive.txt")
-        ydl_opts["ignoreerrors"] = True
-
+    if _opt_str(opts, "mode", "video").lower() == "library":
+        _apply_archive(ydl_opts, out_dir)
     if embed_subs:
         # With ffmpeg, _build_postprocessors added the FFmpegEmbedSubtitle step
         ydl_opts["writesubtitles"] = True
         ydl_opts["writeautomaticsub"] = bool(opts.get("auto_subs", False))
         ydl_opts["subtitleslangs"] = _sub_langs(opts)
-
     _apply_cookie_opts(ydl_opts, opts)
+    _apply_network_opts(ydl_opts, opts)
+    _apply_tuning_opts(ydl_opts, opts)
+    _apply_ranges(ydl_opts, chapters, start_time, end_time)
+    _apply_playlist_opts(ydl_opts, opts, url)
+    return ydl_opts, warning
+
+
+def _output_template(opts: dict, chapters: list[dict]) -> str:
+    """The file name template, relative to the output folder."""
+    template = _opt_str(opts, "filename_template") or _DEFAULT_TEMPLATE
+    if not chapters:
+        return template
+    # One file per chapter: "<name> - 03 Chapter title.ext" (the same name for
+    # every section would have each overwrite the last)
+    stem = template[:-len(".%(ext)s")] if template.endswith(".%(ext)s") \
+        else template.replace("%(ext)s", "").rstrip(".")
+    return f"{stem} - %(section_number)02d %(section_title)s.%(ext)s"
+
+
+def _ffmpeg_format(opts: dict, want_audio: bool, embed_subs: bool, trimmed: bool,
+                   warn: Callable[[str, str], None]) -> tuple[str, list[dict], str | None, str | None]:
+    """(format, postprocessors, merge_output_format, warning) with ffmpeg available."""
+    warning = None
+    cut_sponsors = bool(opts.get("sponsorblock"))
+    if cut_sponsors and trimmed:
+        # SponsorBlock times refer to the whole video; yt-dlp would apply
+        # them unshifted to the trimmed file and cut the wrong parts.
+        cut_sponsors = False
+        warning = ("SponsorBlock was skipped: it can't be combined with a clip "
+                   "start/end time or chosen chapters.")
+        warn("sponsorblock_skipped", warning)
+    pps = _build_postprocessors(opts, embed_subs=embed_subs, cut_sponsors=cut_sponsors)
+    if want_audio:
+        pps.insert(0, {
+            "key": "FFmpegExtractAudio",
+            "preferredcodec": AUDIO_FORMAT_MAP.get(_opt_str(opts, "audio_format", "mp3").lower(), "mp3"),
+            "preferredquality": AUDIO_QUALITY_MAP.get(_opt_str(opts, "audio_quality", "best").lower(), "0"),
+        })
+        return "bestaudio/best", pps, None, warning
+    fmt, merge = _merged_format(_opt_str(opts, "quality", "best"), _opt_str(opts, "container", "mp4").lower())
+    return _opt_str(opts, "custom_format") or fmt, pps, merge, warning
+
+
+def _no_ffmpeg_format(opts: dict, want_audio: bool, trimmed: bool,
+                      warn: Callable[[str, str], None]) -> tuple[str, list[dict], str]:
+    """(format, postprocessors, warning) without ffmpeg: single files, no conversion."""
+    if trimmed:
+        raise RuntimeError("Trimming (start/end time or chapters) needs ffmpeg, "
+                           "which isn't installed.")
+    if want_audio:
+        fmt = NO_FFMPEG_AUDIO_FORMAT
+        warning = (f"ffmpeg isn't installed, so the audio is saved in its original format "
+                   f"instead of {_opt_str(opts, 'audio_format', 'mp3').upper()}, "
+                   f"without embedded artwork or tags.")
+    else:
+        fmt = _opt_str(opts, "custom_format") or _single_file_format(_opt_str(opts, "quality", "best"))
+        warning = ("ffmpeg isn't installed, so only a ready-made single file can be "
+                   "downloaded. Sites that serve video and audio separately (YouTube) "
+                   "will fail until ffmpeg is installed.")
+    log.info(warning)
+    warn("ffmpeg_missing", warning)
+    return fmt, [], warning
+
+
+def _apply_archive(ydl_opts: dict, out_dir: Path) -> None:
+    """Library mode: mellow_archive.txt makes yt-dlp skip what the folder has."""
+    # Migrates old hidden archive files and backfills from the media files on disk
+    from . import vault as _vault
+    _vault.generate_archive(str(out_dir))
+    ydl_opts["download_archive"] = str(out_dir / "mellow_archive.txt")
+    ydl_opts["ignoreerrors"] = True
+
+
+def _apply_tuning_opts(ydl_opts: dict, opts: dict) -> None:
+    """Config tuning: rate limit, external downloader, fragments, sleep, retries."""
     if opts.get("rate_limit"):
         rate = _rate_limit(opts["rate_limit"])
         if rate:
             ydl_opts["ratelimit"] = rate
         else:
             log.warning(f"ignoring unparsable rate_limit {opts['rate_limit']!r}")
-    _apply_network_opts(ydl_opts, opts)
     if _opt_str(opts, "external_downloader"):
         ydl_opts["external_downloader"] = _opt_str(opts, "external_downloader")
     frags = _safe_int(opts.get("concurrent_fragments", 4))
@@ -716,14 +739,21 @@ def _build_ydl_opts(url: str, out_dir: Path, opts: dict, *, ffmpeg: str | None,
     if retries is not None:
         ydl_opts["retries"] = retries
 
+
+def _apply_ranges(ydl_opts: dict, chapters: list[dict], start_time: str, end_time: str) -> None:
+    """Download only the chosen chapters, or the clip between start and end."""
     if chapters:
         ydl_opts["download_ranges"] = _chapter_ranges(chapters)
-        ydl_opts["force_keyframes_at_cuts"] = True
     elif start_time or end_time:
         ydl_opts["download_ranges"] = yt_dlp.utils.download_range_func(
             None, [_clip_range(start_time, end_time)])
-        ydl_opts["force_keyframes_at_cuts"] = True
+    else:
+        return
+    ydl_opts["force_keyframes_at_cuts"] = True
 
+
+def _apply_playlist_opts(ydl_opts: dict, opts: dict, url: str) -> None:
+    """Which playlist entries to take, and how a playlist-like run treats failures."""
     playlist_items = _opt_str(opts, "playlist_items")
     playlist_start = _safe_int(opts.get("playlist_start"))
     playlist_end = _safe_int(opts.get("playlist_end"))
@@ -736,8 +766,7 @@ def _build_ydl_opts(url: str, out_dir: Path, opts: dict, *, ffmpeg: str | None,
     for key, ydl_key in (("date_before", "datebefore"), ("date_after", "dateafter")):
         if _opt_str(opts, key):
             ydl_opts[ydl_key] = _opt_str(opts, key).replace("-", "")
-
-    # For playlist-like downloads: skip geo-blocked/failed items instead of aborting
+    # Playlist-like downloads skip geo-blocked/failed items instead of aborting
     if playlist_items or "list=" in url or "/playlist" in url.lower():
         ydl_opts["ignoreerrors"] = True
     if ydl_opts.get("ignoreerrors"):
@@ -746,7 +775,6 @@ def _build_ydl_opts(url: str, out_dir: Path, opts: dict, *, ffmpeg: str | None,
         skip = _entry_filters(opts)
         if skip:
             ydl_opts["match_filter"] = yt_dlp.utils.match_filter_func(skip)
-    return ydl_opts, warning
 
 
 def _entry_filters(opts: dict) -> str:
@@ -835,6 +863,73 @@ def _playlist_records(info: dict, base: dict, item_stats: dict, wanted_ext: str,
     return rows
 
 
+def _run_ydl(url: str, ydl_opts: dict, *, normalize_audio: bool, embed_thumb: bool,
+             speed_tracker: dict, logger: _GeoBlockLogger | None) -> dict | None:
+    """Run yt-dlp for one download; raises DownloadError when nothing could be had."""
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        if normalize_audio and not _ExtractAudioNormalized.replacing(ydl):
+            log.warning("normalize_audio: no audio extraction step to attach to")
+        if embed_thumb:
+            # Added last so it runs after audio extraction and metadata
+            ydl.add_post_processor(
+                _EmbedThumbnailBestEffort(ydl, already_have_thumbnail=True),
+                when="post_process")
+        info = ydl.extract_info(url, download=True)
+        if (getattr(ydl, "_download_retcode", 0) and not speed_tracker.get("finished")
+                and not (logger and logger.skipped)):
+            # ignoreerrors swallowed every failure (dead or private playlist,
+            # or each item refused with e.g. HTTP 403). Surface it instead of
+            # reporting an empty download as "complete". Items the archive (or
+            # a skip filter) passed over prove the playlist is alive: an
+            # up-to-date sync with one item gone private is a success with a
+            # failed item, not a failure.
+            raise yt_dlp.utils.DownloadError(
+                (logger.last_error if logger else None)
+                or "Nothing could be downloaded from this URL")
+    return info
+
+
+def _history_rows(info: dict | None, base: dict, saved: dict, wanted_ext: str,
+                  speed_tracker: dict, elapsed: int) -> list[dict]:
+    """The download history rows for a finished download (files on disk only)."""
+    samples = speed_tracker["samples"]
+    avg_speed = int(sum(samples) / len(samples)) if samples else None
+    if info and ("entries" in info or info.get("_type") == "playlist"):
+        return _playlist_records(info, base, speed_tracker.get("items", {}), wanted_ext,
+                                 avg_speed, elapsed)
+    return _single_records(info, base, saved, wanted_ext, avg_speed, elapsed)
+
+
+def _single_records(info: dict | None, base: dict, saved: dict, wanted_ext: str,
+                    avg_speed: int | None, elapsed: int) -> list[dict]:
+    """History rows for a single video: one per file on disk (a video, or one
+    per chosen chapter).
+
+    Nothing on disk (the archive already had it — an up-to-date sync) is no
+    row: a "success" without a file inflated the stats and made "already
+    downloaded" report the file as moved.
+    """
+    rows = []
+    for part in (info or {}).get("requested_downloads") or []:
+        fp = part.get("filepath") or part.get("_filename") if isinstance(part, dict) else None
+        if not fp or not Path(fp).is_file():
+            continue
+        if saved["thumbnail"]:
+            _save_thumbnail_sidecar(fp, saved["thumbnail"])
+        section = part.get("section_title")
+        rows.append({
+            **base,
+            "title": f"{saved['title']} — {section}" if section else saved["title"],
+            "uploader": saved["uploader"],
+            "duration_seconds": part.get("duration") or saved["duration"],
+            "file_size_bytes": Path(fp).stat().st_size,
+            "container": _file_ext(fp, wanted_ext), "file_path": fp,
+            "thumbnail_url": saved["thumbnail"], "status": "success",
+            "download_speed_avg_bps": avg_speed, "elapsed_seconds": elapsed,
+        })
+    return rows
+
+
 def _download_video(
     url: str,
     output_dir: str,
@@ -896,39 +991,15 @@ def _download_video(
     base = {"url": url, "platform": _detect_platform(url), "format": media_kind, "quality": quality}
     saved = _saved_file(None)
     try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            if normalize_audio and not _ExtractAudioNormalized.replacing(ydl):
-                log.warning("normalize_audio: no audio extraction step to attach to")
-            if embed_thumb:
-                # Added last so it runs after audio extraction and metadata
-                ydl.add_post_processor(
-                    _EmbedThumbnailBestEffort(ydl, already_have_thumbnail=True),
-                    when="post_process")
-            info = ydl.extract_info(url, download=True)
-            if (getattr(ydl, "_download_retcode", 0) and not speed_tracker.get("finished")
-                    and not (logger and logger.skipped)):
-                # ignoreerrors swallowed every failure (dead or private
-                # playlist, or each item refused with e.g. HTTP 403). Surface
-                # it instead of reporting an empty download as "complete".
-                # Items the archive (or a skip filter) passed over prove the
-                # playlist is alive: an up-to-date sync with one item gone
-                # private is a success with a failed item, not a failure.
-                raise yt_dlp.utils.DownloadError(
-                    (logger.last_error if logger else None)
-                    or "Nothing could be downloaded from this URL")
-            saved = _saved_file(info)
-
-        elapsed = int(time.monotonic() - t_start)
-        samples = speed_tracker["samples"]
-        avg_speed = int(sum(samples) / len(samples)) if samples else None
-
+        info = _run_ydl(url, ydl_opts, normalize_audio=normalize_audio, embed_thumb=embed_thumb,
+                        speed_tracker=speed_tracker, logger=logger)
+        saved = _saved_file(info)
         if cancel_event.is_set():
             progress_cb({"status": "cancelled"})
             _record({**base, "title": saved["title"], "uploader": saved["uploader"],
                      "duration_seconds": saved["duration"], "status": "cancelled",
-                     "elapsed_seconds": elapsed})
+                     "elapsed_seconds": int(time.monotonic() - t_start)})
             return "cancelled"
-
         progress_cb({
             "status": "complete",
             "title": saved["title"] or url,
@@ -937,34 +1008,8 @@ def _download_video(
             "library_id": library_id,
             "warning": warning,
         })
-
-        if info and ("entries" in info or info.get("_type") == "playlist"):
-            rows = _playlist_records(info, base, speed_tracker.get("items", {}), wanted_ext,
-                                     avg_speed, elapsed)
-        else:
-            # One row per file on disk: a video, or one per chosen chapter.
-            # Nothing on disk (the archive already had it — an up-to-date
-            # sync) is no row: a "success" without a file inflated the stats
-            # and made "already downloaded" report the file as moved.
-            rows = []
-            for part in (info or {}).get("requested_downloads") or []:
-                fp = part.get("filepath") or part.get("_filename") if isinstance(part, dict) else None
-                if not fp or not Path(fp).is_file():
-                    continue
-                if saved["thumbnail"]:
-                    _save_thumbnail_sidecar(fp, saved["thumbnail"])
-                section = part.get("section_title")
-                rows.append({
-                    **base,
-                    "title": f"{saved['title']} — {section}" if section else saved["title"],
-                    "uploader": saved["uploader"],
-                    "duration_seconds": part.get("duration") or saved["duration"],
-                    "file_size_bytes": Path(fp).stat().st_size,
-                    "container": _file_ext(fp, wanted_ext), "file_path": fp,
-                    "thumbnail_url": saved["thumbnail"], "status": "success",
-                    "download_speed_avg_bps": avg_speed, "elapsed_seconds": elapsed,
-                })
-        for row in rows:
+        for row in _history_rows(info, base, saved, wanted_ext, speed_tracker,
+                                 int(time.monotonic() - t_start)):
             _record(row)
         return "success"
 

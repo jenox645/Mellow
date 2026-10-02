@@ -216,181 +216,133 @@ def record_download(meta: dict) -> None:
         ])
 
 
+_DAY = "strftime(timestamp,'%Y-%m-%d')"
+
+
+def _rows(con: duckdb.DuckDBPyConnection, sql: str, params: list, *keys: str) -> list[dict]:
+    """A query's rows as dicts with these keys, in column order."""
+    return [dict(zip(keys, r)) for r in con.execute(sql, params).fetchall()]
+
+
+def _iso(ts: Any) -> str | None:
+    return str(ts) if ts else None
+
+
 def get_stats(time_range: str = "30d") -> dict[str, Any]:
-    _days_map = {"7d": 7, "30d": 30}
-    _days = _days_map.get(time_range)
-    if _days:
-        cutoff = datetime.now() - timedelta(days=_days)
-        ts_filter = "AND timestamp >= ?"
-        ts_params: list = [cutoff]
-    else:
-        ts_filter = ""
-        ts_params = []
-
+    """Everything the Analytics page shows, for the last 7 or 30 days or "all"."""
+    days = {"7d": 7, "30d": 30}.get(time_range)
+    # `where` narrows a query to the range; it goes after a WHERE clause
+    where = "AND timestamp >= ?" if days else ""
+    params: list = [datetime.now() - timedelta(days=days)] if days else []
     with get_conn() as con:
-        r = con.execute(
-            f"SELECT COUNT(*), COALESCE(SUM(file_size_bytes),0) FROM downloads WHERE status='success' {ts_filter}",
-            ts_params,
-        ).fetchone()
-        total_downloads = r[0] if r else 0
-        total_size = r[1] if r else 0
+        return {
+            **_stats_totals(con, where, params),
+            **_stats_breakdowns(con, where, params),
+            **_stats_timelines(con, where, params),
+            **_stats_recent(con, where, params),
+        }
 
-        by_platform = con.execute(f"""
-            SELECT platform, COUNT(*) as cnt FROM downloads
-            WHERE status='success' AND platform IS NOT NULL {ts_filter}
-            GROUP BY platform ORDER BY cnt DESC
-        """, ts_params).fetchall()
 
-        by_format = con.execute(f"""
-            SELECT format, COUNT(*) as cnt FROM downloads
-            WHERE status='success' AND format IS NOT NULL {ts_filter}
-            GROUP BY format ORDER BY cnt DESC
-        """, ts_params).fetchall()
-
-        by_day = con.execute(f"""
-            SELECT strftime(timestamp,'%Y-%m-%d') as day, COUNT(*) as cnt
-            FROM downloads WHERE status='success' {ts_filter}
-            GROUP BY day ORDER BY day
-        """, ts_params).fetchall()
-
-        top_uploaders = con.execute(f"""
-            SELECT uploader, COUNT(*) as cnt FROM downloads
-            WHERE status='success' AND uploader IS NOT NULL {ts_filter}
-            GROUP BY uploader ORDER BY cnt DESC LIMIT 10
-        """, ts_params).fetchall()
-
-        storage_by_format = con.execute(f"""
-            SELECT format, COALESCE(SUM(file_size_bytes),0) as sz FROM downloads
-            WHERE status='success' AND format IS NOT NULL {ts_filter}
-            GROUP BY format ORDER BY sz DESC
-        """, ts_params).fetchall()
-
-        recent_errors = con.execute("""
-            SELECT title, url, error_message, timestamp FROM downloads
-            WHERE status='error' ORDER BY timestamp DESC LIMIT 10
-        """).fetchall()
-
-        by_hour = con.execute(f"""
-            SELECT EXTRACT(hour FROM timestamp)::INTEGER as hr, COUNT(*) as cnt
-            FROM downloads WHERE status='success' {ts_filter}
-            GROUP BY hr ORDER BY hr
-        """, ts_params).fetchall()
-
-        sp = con.execute(f"""
-            SELECT AVG(download_speed_avg_bps), MAX(download_speed_avg_bps)
-            FROM downloads WHERE status='success'
-            AND download_speed_avg_bps IS NOT NULL {ts_filter}
-        """, ts_params).fetchone()
-
-        lib_row = con.execute("SELECT COUNT(*) FROM library").fetchone()
-        lib_count = lib_row[0] if lib_row else 0
-
-        recent_records = con.execute(f"""
-            SELECT id, title, url, platform, format, quality,
-                   file_size_bytes, timestamp, status
-            FROM downloads WHERE status='success' {ts_filter}
-            ORDER BY timestamp DESC LIMIT 10
-        """, ts_params).fetchall()
-
-        status_counts = con.execute(f"""
-            SELECT status, COUNT(*) FROM downloads
-            WHERE status IS NOT NULL {ts_filter}
-            GROUP BY status
-        """, ts_params).fetchall()
-
-        failures_by_day = con.execute(f"""
-            SELECT strftime(timestamp,'%Y-%m-%d') as day, COUNT(*) as cnt
-            FROM downloads WHERE status='error' {ts_filter}
-            GROUP BY day ORDER BY day
-        """, ts_params).fetchall()
-
-        dur_row = con.execute(f"""
-            SELECT COALESCE(SUM(duration_seconds),0) FROM downloads
-            WHERE status='success' {ts_filter}
-        """, ts_params).fetchone()
-        total_duration = dur_row[0] if dur_row else 0
-
-        storage_growth = con.execute(f"""
-            SELECT day, SUM(sz) OVER (ORDER BY day) as cum FROM (
-                SELECT strftime(timestamp,'%Y-%m-%d') as day,
-                       COALESCE(SUM(file_size_bytes),0) as sz
-                FROM downloads WHERE status='success' {ts_filter}
-                GROUP BY day
-            ) ORDER BY day
-        """, ts_params).fetchall()
-
-        speed_by_day = con.execute(f"""
-            SELECT strftime(timestamp,'%Y-%m-%d') as day,
-                   AVG(download_speed_avg_bps) as avg_bps
-            FROM downloads
-            WHERE status='success' AND download_speed_avg_bps IS NOT NULL {ts_filter}
-            GROUP BY day ORDER BY day
-        """, ts_params).fetchall()
-
-        dow_hour = con.execute(f"""
-            SELECT EXTRACT(dow FROM timestamp)::INTEGER as dow,
-                   EXTRACT(hour FROM timestamp)::INTEGER as hr,
-                   COUNT(*) as cnt
-            FROM downloads WHERE status='success' {ts_filter}
-            GROUP BY dow, hr
-        """, ts_params).fetchall()
-
-        sync_runs = con.execute("""
-            SELECT sl.synced_at, COALESCE(l.name, sl.library_id) as name,
-                   sl.new_items, sl.skipped, sl.errors, sl.duration_seconds
-            FROM sync_log sl LEFT JOIN library l ON l.id = sl.library_id
-            ORDER BY sl.synced_at DESC LIMIT 10
-        """).fetchall()
-
-    hour_map = {row[0]: row[1] for row in by_hour}
-    hourly = [hour_map.get(h, 0) for h in range(24)]
-
-    dow_hour_map = {(r[0], r[1]): r[2] for r in dow_hour}
-    # 7 rows (Sun..Sat per DuckDB dow) × 24 cols
-    dow_hourly = [[dow_hour_map.get((d, h), 0) for h in range(24)] for d in range(7)]
-
-    st_map = {r[0]: r[1] for r in status_counts}
-    attempts = sum(st_map.values())
-
+def _stats_totals(con: duckdb.DuckDBPyConnection, where: str, params: list) -> dict[str, Any]:
+    """Counts, sizes, speeds and the success rate."""
+    count, size, duration = con.execute(f"""
+        SELECT COUNT(*), COALESCE(SUM(file_size_bytes),0), COALESCE(SUM(duration_seconds),0)
+        FROM downloads WHERE status='success' {where}
+    """, params).fetchone()
+    avg_speed, peak_speed = con.execute(f"""
+        SELECT AVG(download_speed_avg_bps), MAX(download_speed_avg_bps)
+        FROM downloads WHERE status='success' AND download_speed_avg_bps IS NOT NULL {where}
+    """, params).fetchone()
+    statuses = dict(con.execute(f"""
+        SELECT status, COUNT(*) FROM downloads WHERE status IS NOT NULL {where} GROUP BY status
+    """, params).fetchall())
+    attempts = sum(statuses.values())
     return {
-        "total_downloads": total_downloads,
-        "total_size_bytes": total_size,
-        "library_playlists": lib_count,
-        "by_platform": [{"platform": r[0], "count": r[1]} for r in by_platform],
-        "by_format": [{"format": r[0], "count": r[1]} for r in by_format],
-        "by_day_last_30": [{"day": r[0], "count": r[1]} for r in by_day],
-        "top_uploaders": [{"uploader": r[0], "count": r[1]} for r in top_uploaders],
-        "storage_by_format": [{"format": r[0], "bytes": r[1]} for r in storage_by_format],
-        "recent_errors": [
-            {"title": r[0], "url": r[1], "error_message": r[2],
-             "timestamp": str(r[3]) if r[3] else None}
-            for r in recent_errors
-        ],
-        "hourly_activity": hourly,
-        "avg_speed_bps": sp[0] if sp and sp[0] else 0,
-        "peak_speed_bps": sp[1] if sp and sp[1] else 0,
-        "recent_records": [
-            {
-                "id": r[0], "title": r[1], "url": r[2], "platform": r[3],
-                "format": r[4], "quality": r[5], "file_size_bytes": r[6],
-                "timestamp": str(r[7]) if r[7] else None, "status": r[8],
-            }
-            for r in recent_records
-        ],
-        "status_counts": st_map,
-        "success_rate": round(st_map.get("success", 0) / attempts * 100, 1) if attempts else None,
-        "failures_by_day": [{"day": r[0], "count": r[1]} for r in failures_by_day],
-        "total_duration_seconds": int(total_duration or 0),
-        "storage_growth": [{"day": r[0], "bytes": int(r[1] or 0)} for r in storage_growth],
-        "speed_by_day": [{"day": r[0], "avg_bps": int(r[1] or 0)} for r in speed_by_day],
-        "dow_hourly": dow_hourly,
-        "sync_runs": [
-            {"synced_at": str(r[0]) if r[0] else None, "name": r[1],
-             "new_items": r[2], "skipped": r[3], "errors": r[4],
-             "duration_seconds": r[5]}
-            for r in sync_runs
-        ],
+        "total_downloads": count,
+        "total_size_bytes": size,
+        "total_duration_seconds": int(duration or 0),
+        "library_playlists": con.execute("SELECT COUNT(*) FROM library").fetchone()[0],
+        "avg_speed_bps": avg_speed or 0,
+        "peak_speed_bps": peak_speed or 0,
+        "status_counts": statuses,
+        "success_rate": round(statuses.get("success", 0) / attempts * 100, 1) if attempts else None,
     }
+
+
+def _stats_breakdowns(con: duckdb.DuckDBPyConnection, where: str, params: list) -> dict[str, Any]:
+    """Successful downloads split by platform, format, uploader and time of day."""
+    def by(column: str, key: str, value: str = "COUNT(*)", value_key: str = "count",
+           limit: str = "") -> list[dict]:
+        return _rows(con, f"""
+            SELECT {column}, {value} AS v FROM downloads
+            WHERE status='success' AND {column} IS NOT NULL {where}
+            GROUP BY {column} ORDER BY v DESC {limit}
+        """, params, key, value_key)
+
+    by_hour = dict(con.execute(f"""
+        SELECT EXTRACT(hour FROM timestamp)::INTEGER, COUNT(*)
+        FROM downloads WHERE status='success' {where} GROUP BY 1
+    """, params).fetchall())
+    by_dow_hour = {(d, h): n for d, h, n in con.execute(f"""
+        SELECT EXTRACT(dow FROM timestamp)::INTEGER, EXTRACT(hour FROM timestamp)::INTEGER, COUNT(*)
+        FROM downloads WHERE status='success' {where} GROUP BY 1, 2
+    """, params).fetchall()}
+    return {
+        "by_platform": by("platform", "platform"),
+        "by_format": by("format", "format"),
+        "top_uploaders": by("uploader", "uploader", limit="LIMIT 10"),
+        "storage_by_format": by("format", "format", "COALESCE(SUM(file_size_bytes),0)", "bytes"),
+        "hourly_activity": [by_hour.get(h, 0) for h in range(24)],
+        # 7 rows (Sun..Sat, DuckDB's dow) × 24 hours
+        "dow_hourly": [[by_dow_hour.get((d, h), 0) for h in range(24)] for d in range(7)],
+    }
+
+
+def _stats_timelines(con: duckdb.DuckDBPyConnection, where: str, params: list) -> dict[str, Any]:
+    """Day-by-day series for the charts."""
+    def per_day(value: str, status: str = "success", extra: str = "") -> list[tuple]:
+        return con.execute(f"""
+            SELECT {_DAY} AS day, {value} FROM downloads
+            WHERE status='{status}' {extra} {where} GROUP BY day ORDER BY day
+        """, params).fetchall()
+
+    growth = con.execute(f"""
+        SELECT day, SUM(sz) OVER (ORDER BY day) FROM (
+            SELECT {_DAY} AS day, COALESCE(SUM(file_size_bytes),0) AS sz
+            FROM downloads WHERE status='success' {where} GROUP BY day
+        ) ORDER BY day
+    """, params).fetchall()
+    return {
+        "by_day_last_30": [{"day": d, "count": n} for d, n in per_day("COUNT(*)")],
+        "failures_by_day": [{"day": d, "count": n} for d, n in per_day("COUNT(*)", status="error")],
+        "storage_growth": [{"day": d, "bytes": int(b or 0)} for d, b in growth],
+        "speed_by_day": [{"day": d, "avg_bps": int(v or 0)} for d, v in per_day(
+            "AVG(download_speed_avg_bps)", extra="AND download_speed_avg_bps IS NOT NULL")],
+    }
+
+
+def _stats_recent(con: duckdb.DuckDBPyConnection, where: str, params: list) -> dict[str, Any]:
+    """The latest downloads, errors (any time) and sync runs."""
+    records = _rows(con, f"""
+        SELECT id, title, url, platform, format, quality, file_size_bytes, timestamp, status
+        FROM downloads WHERE status='success' {where} ORDER BY timestamp DESC LIMIT 10
+    """, params, "id", "title", "url", "platform", "format", "quality", "file_size_bytes",
+        "timestamp", "status")
+    errors = _rows(con, """
+        SELECT title, url, error_message, timestamp FROM downloads
+        WHERE status='error' ORDER BY timestamp DESC LIMIT 10
+    """, [], "title", "url", "error_message", "timestamp")
+    syncs = _rows(con, """
+        SELECT sl.synced_at, COALESCE(l.name, sl.library_id), sl.new_items, sl.skipped,
+               sl.errors, sl.duration_seconds
+        FROM sync_log sl LEFT JOIN library l ON l.id = sl.library_id
+        ORDER BY sl.synced_at DESC LIMIT 10
+    """, [], "synced_at", "name", "new_items", "skipped", "errors", "duration_seconds")
+    for row in records + errors:
+        row["timestamp"] = _iso(row["timestamp"])
+    for row in syncs:
+        row["synced_at"] = _iso(row["synced_at"])
+    return {"recent_records": records, "recent_errors": errors, "sync_runs": syncs}
 
 
 def get_wrapped(year: int) -> dict:
