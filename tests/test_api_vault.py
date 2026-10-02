@@ -152,3 +152,18 @@ def test_retry_item_downloads_into_the_folder_in_its_format(client, tmp_dir):
     url, out, opts = dl.call_args[0][:3]
     assert (url, out) == ('https://youtu.be/aaaaaaaaaaa', tmp_dir)
     assert opts['mode'] == 'library' and opts['sync_audio'] is True and opts['audio_format'] == 'mp3'
+
+
+def test_deleting_a_video_takes_its_subtitle_files_but_no_one_elses(tmp_path):
+    from mellow import vault
+    tmp_path = tmp_path / 'folder'
+    tmp_path.mkdir()
+    names = ['Song.mp4', 'Song.jpg', 'Song.en.srt', 'Song.pt-BR.vtt', 'Song.srt',
+             'Song.part2.mp4', 'Song.part2.en.srt',     # another video's
+             'Song.live.mp4', 'Song.live.srt',          # "live" is that video, not a language
+             'Other.en.srt']
+    for n in names:
+        (tmp_path / n).write_bytes(b'x')
+    vault.delete_media_file(tmp_path / 'Song.mp4')
+    left = sorted(p.name for p in tmp_path.iterdir())
+    assert left == ['Other.en.srt', 'Song.live.mp4', 'Song.live.srt', 'Song.part2.en.srt', 'Song.part2.mp4']

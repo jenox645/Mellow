@@ -32,7 +32,7 @@ export function ConfigPage({ config, setConfig, showNotif, sysInfo, refreshStats
     'cookies_browser', 'cookies_browser_profile', 'cookies_file',
     'rate_limit', 'proxy', 'force_ipv4', 'external_downloader',
     'concurrent_fragments', 'sleep_interval', 'retries',
-    'write_metadata', 'skip_shorts', 'skip_live',
+    'write_metadata', 'skip_shorts', 'skip_live', 'sub_langs', 'auto_subs', 'keep_sub_files',
     'ui_victory_animation', 'ui_victory_sync',
     'default_mode', 'default_quality', 'default_container', 'default_audio_format', 'default_audio_quality',
     'download_workers', 'schedule_start', 'on_queue_done', 'auto_sync_enabled', 'auto_sync_default_interval',
@@ -314,6 +314,34 @@ export function ConfigPage({ config, setConfig, showNotif, sysInfo, refreshStats
                   <select className="sel" value={local.default_audio_quality || 'best'} onChange={e => set('default_audio_quality', e.target.value)}>
                     {AUDIO_QUALITIES.map(([v, label]) => <option key={v} value={v}>{label}</option>)}
                   </select>
+                </div>
+              </div>
+              <div className="settings-row">
+                <div className="settings-label">
+                  <div className="sl-name">Subtitle Languages</div>
+                  <div className="sl-sub">For the Subtitles option — "en,de", "en.*" (every English variant) or "all"</div>
+                </div>
+                <div className="settings-ctrl">
+                  <input className="inp-sm" style={{ width: 160 }} value={local.sub_langs || ''} placeholder="en"
+                    onChange={e => set('sub_langs', e.target.value)} />
+                </div>
+              </div>
+              <div className="settings-row">
+                <div className="settings-label">
+                  <div className="sl-name">Auto-Generated Subtitles</div>
+                  <div className="sl-sub">Use YouTube's automatic captions when a video has none written for that language</div>
+                </div>
+                <div className="settings-ctrl">
+                  <Toggle checked={local.auto_subs === true} onChange={v => set('auto_subs', v)} />
+                </div>
+              </div>
+              <div className="settings-row">
+                <div className="settings-label">
+                  <div className="sl-name">Keep Subtitle Files</div>
+                  <div className="sl-sub">Also save them next to the video ("Title.en.srt"), for players and TVs that don't read embedded ones</div>
+                </div>
+                <div className="settings-ctrl">
+                  <Toggle checked={local.keep_sub_files === true} onChange={v => set('keep_sub_files', v)} />
                 </div>
               </div>
               <div className="settings-row">

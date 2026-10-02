@@ -523,7 +523,9 @@ export function FeedPage({ dlState, setDlState, setAppState, stats, sysInfo, ref
             <div className="opts-toggles">
               {[
                 { label: 'Embed Thumbnail', val: embedThumb, set: setEmbedThumb },
-                { label: 'Subtitles', val: embedSubs, set: setEmbedSubs },
+                { label: 'Subtitles', val: embedSubs, set: setEmbedSubs,
+                  hint: 'Embedded in the video (not for audio) — languages: ' + (config.sub_langs || 'en')
+                    + (config.keep_sub_files ? ', also kept as .srt files' : '') + ' (Config → Download Defaults)' },
                 { label: 'Chapters', val: embedChapters, set: setEmbedChapters },
                 { label: 'Metadata', val: embedMeta, set: setEmbedMeta },
                 { label: 'SponsorBlock', val: sponsorblock, set: setSponsorblock, hint: SPONSORBLOCK_HINT },

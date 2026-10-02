@@ -230,6 +230,12 @@ def _make_progress_hook(progress_cb: Callable, library_id: str | None, speed_tra
     return hook
 
 
+def _sub_langs(opts: dict) -> list[str]:
+    """Subtitle languages from config sub_langs ("en,de", "en.*", "all")."""
+    langs = [s.strip() for s in _opt_str(opts, "sub_langs", "en").split(",") if s.strip()]
+    return langs or ["en"]
+
+
 def _build_postprocessors(opts: dict, *, embed_subs: bool = False,
                           cut_sponsors: bool = False) -> list[dict]:
     """ffmpeg-backed postprocessors — only call this when ffmpeg is available.
@@ -238,6 +244,7 @@ def _build_postprocessors(opts: dict, *, embed_subs: bool = False,
     yt_dlp/__init__.py); several of these only work in that order.
     """
     pps: list[dict] = []
+    keep_subs = embed_subs and bool(opts.get("keep_sub_files"))
     if cut_sponsors:
         # This one only looks the segments up (YouTube only) and must do so
         # before the download; ModifyChapters below is what cuts them out.
@@ -246,6 +253,10 @@ def _build_postprocessors(opts: dict, *, embed_subs: bool = False,
             "categories": list(SPONSORBLOCK_REMOVE_CATEGORIES),
             "when": "after_filter",
         })
+    if keep_subs and _opt_str(opts, "container", "mp4").lower() != "webm":
+        # The kept files as .srt, which every player reads (webm can only
+        # embed WebVTT, so a webm download keeps its .vtt files)
+        pps.append({"key": "FFmpegSubtitlesConvertor", "format": "srt", "when": "before_dl"})
     if opts.get("embed_thumbnail"):
         # The embed step itself is attached in _download_video (it needs
         # writethumbnail and must never fail a download). Converting first
@@ -253,7 +264,8 @@ def _build_postprocessors(opts: dict, *, embed_subs: bool = False,
         pps.append({"key": "FFmpegThumbnailsConvertor", "format": "jpg", "when": "before_dl"})
     if embed_subs:
         # Before ModifyChapters, so the subtitles are cut along with the video
-        pps.append({"key": "FFmpegEmbedSubtitle", "already_have_subtitle": False})
+        # already_have_subtitle keeps the subtitle files after embedding them
+        pps.append({"key": "FFmpegEmbedSubtitle", "already_have_subtitle": keep_subs})
     if cut_sponsors:
         # Before FFmpegMetadata: it moves the chapters that follow a cut
         pps.append({
@@ -592,9 +604,8 @@ def _build_ydl_opts(url: str, out_dir: Path, opts: dict, *, ffmpeg: str | None,
     if embed_subs:
         # With ffmpeg, _build_postprocessors added the FFmpegEmbedSubtitle step
         ydl_opts["writesubtitles"] = True
-        ydl_opts["writeautomaticsub"] = opts.get("auto_subs", False)
-        ydl_opts["subtitleslangs"] = [
-            s.strip() for s in _opt_str(opts, "sub_langs", "en").split(",") if s.strip()]
+        ydl_opts["writeautomaticsub"] = bool(opts.get("auto_subs", False))
+        ydl_opts["subtitleslangs"] = _sub_langs(opts)
 
     _apply_cookie_opts(ydl_opts, opts)
     if opts.get("rate_limit"):

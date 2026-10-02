@@ -11,6 +11,7 @@ MEDIA_EXTS: frozenset[str] = frozenset({
 })
 VIDEO_EXTS: frozenset[str] = frozenset({'.mp4', '.mkv', '.webm', '.avi', '.mov'})
 IMAGE_EXTS: frozenset[str] = frozenset({'.jpg', '.jpeg', '.png', '.webp'})
+SUBTITLE_EXTS: frozenset[str] = frozenset({'.srt', '.vtt', '.ass', '.lrc'})  # "<stem>.<lang>.srt" sidecars
 
 # Formats an audio download can be converted to (FFmpegExtractAudio codecs)
 AUDIO_FORMATS: tuple[str, ...] = ("mp3", "m4a", "aac", "flac", "opus", "wav")

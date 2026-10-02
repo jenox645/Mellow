@@ -337,3 +337,29 @@ def test_info_lists_the_videos_chapters():
         {'index': 1, 'title': 'Intro', 'start': 0.0, 'end': 61.5},
         {'index': 2, 'title': 'Chapter 2', 'start': 61.5, 'end': 300.0}]
     assert downloader._chapter_list({'chapters': None}) is None
+
+
+def test_subtitles_use_the_configured_languages_and_embed_only_by_default(tmp_dir):
+    ydl_opts, _, _ = _opts_for(tmp_dir, {'embed_subs': True, 'sub_langs': ' en , de ,', 'auto_subs': True})
+    assert ydl_opts['writesubtitles'] is True and ydl_opts['writeautomaticsub'] is True
+    assert ydl_opts['subtitleslangs'] == ['en', 'de']
+    embed = [pp for pp in ydl_opts['postprocessors'] if pp['key'] == 'FFmpegEmbedSubtitle']
+    assert embed == [{'key': 'FFmpegEmbedSubtitle', 'already_have_subtitle': False}]
+    assert not any(pp['key'] == 'FFmpegSubtitlesConvertor' for pp in ydl_opts['postprocessors'])
+
+
+def test_kept_subtitle_files_are_srt_except_for_webm(tmp_dir):
+    ydl_opts, _, _ = _opts_for(tmp_dir, {'embed_subs': True, 'keep_sub_files': True, 'sub_langs': ''})
+    keys = [pp['key'] for pp in ydl_opts['postprocessors']]
+    assert ydl_opts['subtitleslangs'] == ['en']
+    # converted before the embed step, which then leaves the files in place
+    assert keys.index('FFmpegSubtitlesConvertor') < keys.index('FFmpegEmbedSubtitle')
+    assert {'key': 'FFmpegEmbedSubtitle', 'already_have_subtitle': True} in ydl_opts['postprocessors']
+    webm, _, _ = _opts_for(tmp_dir, {'embed_subs': True, 'keep_sub_files': True, 'container': 'webm'})
+    assert not any(pp['key'] == 'FFmpegSubtitlesConvertor' for pp in webm['postprocessors'])
+
+
+def test_audio_downloads_never_fetch_subtitles(tmp_dir):
+    ydl_opts, _, _ = _opts_for(tmp_dir, {'mode': 'audio', 'embed_subs': True, 'keep_sub_files': True})
+    assert not ydl_opts.get('writesubtitles')
+    assert not any('Subtitle' in pp['key'] for pp in ydl_opts['postprocessors'])

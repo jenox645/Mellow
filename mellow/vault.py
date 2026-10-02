@@ -23,6 +23,7 @@ from .constants import (
     IMAGE_EXTS,
     M3U8_TEMP_MAX_AGE_SECS,
     MEDIA_EXTS,
+    SUBTITLE_EXTS,
     THUMB_FFMPEG_SEEK_SECS,
     THUMB_FFMPEG_TIMEOUT_SECS,
     THUMB_FFMPEG_WIDTH,
@@ -487,8 +488,31 @@ def _history_ids_in(folder: Path) -> dict[str, str]:
     return ids
 
 
+def _subtitle_files(media: Path) -> list[Path]:
+    """The media file's subtitles: "<stem>.<lang>.srt" or "<stem>.srt".
+
+    "Song.mp4" must not claim "Song.part2.en.srt" (another file's), nor
+    "Song.live.srt" when a "Song.live.mp4" sits in the same folder.
+    """
+    try:
+        siblings = list(media.parent.iterdir())
+    except OSError:
+        return []
+    media_stems = {f.stem for f in siblings if f.suffix.lower() in MEDIA_EXTS}
+    prefix = media.stem + "."
+    found = []
+    for side in siblings:
+        if side.suffix.lower() not in SUBTITLE_EXTS:
+            continue
+        base = side.name[:-len(side.suffix)]
+        lang = base[len(prefix):] if base.startswith(prefix) else None
+        if base == media.stem or (lang and "." not in lang and base not in media_stems):
+            found.append(side)
+    return found
+
+
 def delete_media_file(path: Path) -> None:
-    """Delete a media file, its thumbnail sidecars and its history rows.
+    """Delete a media file, its thumbnail and subtitle sidecars and its history rows.
 
     Without the history rows going too, "you already have this" kept pointing
     at a deleted file. Raises OSError when the media file itself can't go.
@@ -497,6 +521,9 @@ def delete_media_file(path: Path) -> None:
     for ext in _SIDECAR_EXTS:
         with contextlib.suppress(OSError):
             path.with_suffix(ext).unlink(missing_ok=True)
+    for side in _subtitle_files(path):
+        with contextlib.suppress(OSError):
+            side.unlink()
     try:
         analytics.delete_history_by_path(str(path))
     except Exception as exc:

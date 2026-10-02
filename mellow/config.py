@@ -46,6 +46,10 @@ _DEFAULTS: dict = {
     "skip_live": True,
     "write_metadata": True,
     "filename_template": "",
+    # Subtitles (when a download asks for them)
+    "sub_langs": "en",                # yt-dlp language list: "en,de", "en.*", "all"
+    "auto_subs": False,               # fall back to auto-generated captions
+    "keep_sub_files": False,          # also keep them as files next to the video
     # Download defaults applied when the Feed has no session state yet
     "default_mode": "video",
     "default_quality": "1080p",
@@ -154,6 +158,9 @@ def download_settings(cfg: dict) -> dict:
         "retries": cfg.get("retries", 3),
         "skip_shorts": bool(cfg.get("skip_shorts", False)),
         "skip_live": bool(cfg.get("skip_live", True)),
+        "sub_langs": cfg.get("sub_langs", "en"),
+        "auto_subs": bool(cfg.get("auto_subs", False)),
+        "keep_sub_files": bool(cfg.get("keep_sub_files", False)),
     }
 
 
