@@ -98,6 +98,13 @@ def main() -> None:
     port = _find_free_port()
     _write_port_file(port)
 
+    if "--no-window" in sys.argv:
+        # Just the server, for your own browser (and the build's smoke test)
+        log.info(f"serving without a window at http://127.0.0.1:{port}")
+        print(f"MellowDLP: http://127.0.0.1:{port}", flush=True)
+        flask_app.run(host="127.0.0.1", port=port, threaded=True)
+        return
+
     ui = FlaskUI(
         app=flask_app,
         server="flask",
