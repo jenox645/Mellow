@@ -29,10 +29,11 @@ build_setup.py     the build (SETUP.bat / setup.sh call it); MellowDLP.spec, ins
   - `vault.py` / `library.py` — vault & library business logic
   - `backup.py` — config+DB zip export/restore (touches the DB file only inside `analytics.exclusive_file_access()`; DuckDB locks an open file on Windows)
   - `config.py` — atomic config persistence + `update_config()` for read-modify-write; `load_config()` layers the saved file over `_DEFAULTS`, so new keys need no per-caller fallback. `download_root(cfg)` is the download folder (never re-derive `~/Downloads/MellowDLP`); `request_settings()` / `download_settings()` are the cookie/network/tuning opts every yt-dlp call and job copies
+  - `formats.py` — the on/off download options (`TOGGLES`: embed_*, sponsorblock, normalize_audio) and `toggles(source, fallback)`; every download, sync format and library entry takes them from here
   - `constants.py` / `version.py` — all tuning knobs and the single APP_VERSION
 - Frontend (React UMD, bundled by esbuild from ES modules):
   - `gui/app.jsx` — App root: SSE hub, routing, clipboard watcher, shortcuts
-  - `gui/lib/` — `api.js`, `util.js`, `constants.js`, `mascots.js`, `sound.js`
+  - `gui/lib/` — `api.js`, `util.js`, `constants.js`, `formats.js` (FORMAT_TOGGLES as one `{key: bool}`), `hooks.js` (`useSessionState`), `mascots.js`, `sound.js`
   - `gui/components/` — `common.jsx`, `icons.jsx`, `chrome.jsx`, `loading.jsx`, `vault-modals.jsx`
   - `gui/pages/` — `feed.jsx`, `queue.jsx`, `vault.jsx`, `analytics.jsx`, `signal.jsx`, `config.jsx`
 - Communication: SSE (`EventSource('/api/progress')`) for download progress; HTTP for everything else
@@ -41,7 +42,7 @@ build_setup.py     the build (SETUP.bat / setup.sh call it); MellowDLP.spec, ins
 - Desktop wrapper: FlaskWebGUI (Tkinter-based, NOT Electron); `main.py` has a single-instance guard via `~/.mellow_dlp.port`
 
 ## Key State That Must Persist
-- Feed: url, analyzed info, format/quality/options (sessionStorage `feed_*` keys); defaults seeded from config `default_*` keys when no session state exists
+- Feed: url, analyzed info, format/quality/options (`useSessionState('feed_*')`, JSON in sessionStorage); defaults seeded from config `default_*` keys when no session state exists
 - Queue: `playlistItems` (pending) and `completedItems` (done) — both at App root
 - Options (format, quality, checkboxes): survive URL change AND section navigation via sessionStorage
 - Victory overlay: state at App root, triggered by `item_done` events accumulating then `complete`
@@ -82,6 +83,7 @@ All job-originated events carry `job_id`, `job_type`, `job_label` (multi-worker 
 - All magic numbers live in `constants.py` (backend) / `gui/lib/constants.js` (frontend)
 - Stats polling: 3s during active download, 30s idle (frontend constants)
 - Format lists (qualities, containers, audio formats, bitrates) live only in `gui/lib/constants.js`
+- A new on/off download option is one entry in `formats.TOGGLES` and one in `FORMAT_TOGGLES` (constants.js; a test compares them) plus its effect in `downloader`. Downloads, sync formats (`SYNC_FORMAT_KEYS`), library entries (one DB column per toggle, added by `init_db`) and the `<FormatToggles>` checkboxes in the Feed and both vault dialogs pick it up
 - A vault folder's sync format: request → `vault_sync_formats[path]` (last choice, saved by the sync dialog and the Feed's vault link) → its library entry → `infer_folder_format()` (what the files are). Auto-sync and "sync all" send no format, so this chain decides them
 - Every yt-dlp call (analyze, playlist items, mirror preview, cookie test, downloads) goes through `_apply_cookie_opts` + `_apply_network_opts` (proxy, `force_ipv4`, socket timeout); build them with `config.request_settings(cfg)`
 - Mirror preview proposes no deletions when any linked playlist failed to load; ids for "%(title)s"-named files come from the download history
@@ -106,7 +108,7 @@ All job-originated events carry `job_id`, `job_type`, `job_label` (multi-worker 
 - webm can't hold m4a/h264: `_merged_format()` asks for webm streams and lets an impossible merge fall back to mkv (`merge_output_format="webm/mkv"`)
 - SponsorBlock (`sponsorblock` option) *removes* `SPONSORBLOCK_REMOVE_CATEGORIES` from the file. The `SponsorBlock` postprocessor only looks segments up (`when: after_filter`, YouTube only); `ModifyChapters` does the cutting and must sit after `FFmpegEmbedSubtitle` and before `FFmpegMetadata` — `_build_postprocessors()` keeps the yt-dlp CLI order. Skipped with a `sponsorblock_skipped` warning on a trimmed download (segment times refer to the whole video)
 - `download_range_func` takes `(start, end)` tuples, not dicts
-- Normalize Volume (`normalize_audio`, audio only; Feed, presets, sync formats and library entries — DB column via `_add_missing_columns`): `_ExtractAudioNormalized.replacing(ydl)` swaps the FFmpegExtractAudio instance in `ydl._pps["post_process"]` (same slot, so later steps keep their order) for one that adds `LOUDNORM_FILTER` to the conversion. Where yt-dlp would only copy the stream it re-encodes with the file's own codec, at the source sample rate (opus: 48 kHz)
+- Normalize Volume (`normalize_audio`, an audio-only toggle): `_ExtractAudioNormalized.replacing(ydl)` swaps the FFmpegExtractAudio instance in `ydl._pps["post_process"]` (same slot, so later steps keep their order) for one that adds `LOUDNORM_FILTER` to the conversion. Where yt-dlp would only copy the stream it re-encodes with the file's own codec, at the source sample rate (opus: 48 kHz)
 - Subtitles (video only, the `embed_subs` option): languages, auto captions and "keep the files" are config (`sub_langs`, `auto_subs`, `keep_sub_files`, copied by `download_settings`). Kept files are converted to `.srt` before the embed step (`FFmpegSubtitlesConvertor`), except for webm, which only embeds WebVTT; `FFmpegEmbedSubtitle.already_have_subtitle` is what keeps them. `vault.delete_media_file` removes a file's `<stem>.<lang>.srt|vtt` sidecars too
 - Chapter picker: `/api/info` returns `chapters` ([{index, title, start, end}]); a download's `chapters` option (checked by `_chosen_chapters`) becomes `download_ranges=_chapter_ranges(...)` — one section per chapter, named `<template stem> - %(section_number)02d %(section_title)s.%(ext)s`, with clip start/end and SponsorBlock skipped. A single video records one history row per file on disk (`requested_downloads`)
 - yt-dlp's ffmpeg downloader ignores `ffmpeg_location`; `find_ffmpeg()` therefore also prepends the folder to `PATH`

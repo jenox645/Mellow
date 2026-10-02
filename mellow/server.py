@@ -22,6 +22,7 @@ from . import (
     desktop,
     downloader,
     errors,
+    formats,
     jobs,
     scheduler,
     ytdlp_update,
@@ -433,12 +434,7 @@ def api_download() -> Response:
         # A Feed download saved into a vault folder runs in library mode;
         # without this an AUDIO choice was downloaded as video
         "sync_audio": bool(data.get("sync_audio", False)),
-        "embed_thumbnail": data.get("embed_thumbnail", True),
-        "embed_chapters": data.get("embed_chapters", True),
-        "embed_metadata": data.get("embed_metadata", True),
-        "embed_subs": data.get("embed_subs", False),
-        "sponsorblock": data.get("sponsorblock", False),
-        "normalize_audio": bool(data.get("normalize_audio", False)),
+        **formats.toggles(data),
         "split_chapters": data.get("split_chapters", False),
         "custom_format": data.get("custom_format", ""),
         "start_time": data.get("start_time", ""),

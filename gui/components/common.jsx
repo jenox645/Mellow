@@ -2,6 +2,7 @@
 'use strict';
 
 import { API } from '../lib/api.js';
+import { togglesFor } from '../lib/formats.js';
 import { Ico } from './icons.jsx';
 
 export function Toggle({ checked, onChange }) {
@@ -10,6 +11,21 @@ export function Toggle({ checked, onChange }) {
       className={'toggle' + (checked ? ' on' : '')}
       onClick={() => onChange(!checked)}
     />
+  );
+}
+
+// The on/off download options for a video or audio download (FORMAT_TOGGLES).
+// `values` is {key: bool}; `hints` overrides a toggle's tooltip.
+export function FormatToggles({ values, onChange, media, hints }) {
+  return (
+    <div className="opts-toggles">
+      {togglesFor(media).map(t => (
+        <label key={t.key} className="opts-toggle-item" title={(hints && hints[t.key]) || t.hint}>
+          <input type="checkbox" checked={!!values[t.key]} onChange={e => onChange(t.key, e.target.checked)} />
+          {t.label}
+        </label>
+      ))}
+    </div>
   );
 }
 

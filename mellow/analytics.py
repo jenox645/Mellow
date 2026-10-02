@@ -14,6 +14,7 @@ from typing import Any
 
 import duckdb
 
+from . import formats
 from .constants import SYNC_REPORTS_KEEP
 
 log = logging.getLogger(__name__)
@@ -149,7 +150,9 @@ def init_db() -> None:
         _add_missing_columns(con, "library", [
             ("container", "TEXT DEFAULT 'mp4'"),
             ("audio_format", "TEXT DEFAULT 'mp3'"),
-            ("normalize_audio", "BOOLEAN DEFAULT false"),
+            # One column per download toggle: a new toggle needs no edit here
+            *((key, f"BOOLEAN DEFAULT {str(default).lower()}")
+              for key, default in formats.TOGGLES.items()),
         ])
 
         con.execute("""
@@ -684,32 +687,32 @@ def get_sync_report(folder: str) -> dict | None:
             "duration_seconds": duration, **json.loads(details or "{}")}
 
 
+# Library columns besides the toggles (formats.TOGGLES), in upsert order
+_LIBRARY_COLUMNS = (
+    "id", "name", "url", "folder", "folder_name", "use_subfolder", "quality", "mode",
+    "sub_langs", "filename_template", "sync_mode", "last_synced", "created_at",
+    "container", "audio_format",
+)
+_LIBRARY_DEFAULTS = {
+    "use_subfolder": True, "quality": "1080p", "mode": "VIDEO", "sub_langs": "en",
+    "filename_template": "", "sync_mode": "add", "container": "mp4", "audio_format": "mp3",
+}
+
+
 def get_library_entries() -> list[dict]:
     with get_conn() as con:
-        rows = con.execute("""
-            SELECT id, name, url, folder, folder_name, use_subfolder,
-                   quality, mode, embed_thumbnail, embed_chapters,
-                   embed_metadata, embed_subs, sub_langs, sponsorblock,
-                   filename_template, sync_mode, last_synced, created_at,
-                   container, audio_format, normalize_audio
-            FROM library ORDER BY created_at DESC
-        """).fetchall()
-    return [
-        {
-            "id": r[0], "name": r[1], "url": r[2], "folder": r[3],
-            "folder_name": r[4], "use_subfolder": r[5], "quality": r[6],
-            "mode": r[7], "embed_thumbnail": r[8], "embed_chapters": r[9],
-            "embed_metadata": r[10], "embed_subs": r[11], "sub_langs": r[12],
-            "sponsorblock": r[13], "filename_template": r[14],
-            "sync_mode": r[15],
-            "last_synced": str(r[16]) if r[16] else None,
-            "created_at": str(r[17]) if r[17] else None,
-            "container": r[18] or "mp4",
-            "audio_format": r[19] or "mp3",
-            "normalize_audio": bool(r[20]),
-        }
-        for r in rows
-    ]
+        cur = con.execute("SELECT * FROM library ORDER BY created_at DESC")
+        names = [d[0] for d in cur.description]
+        rows = [dict(zip(names, r)) for r in cur.fetchall()]
+    entries = []
+    for row in rows:
+        entry = {k: row.get(k) for k in _LIBRARY_COLUMNS}
+        entry["container"] = entry["container"] or "mp4"
+        entry["audio_format"] = entry["audio_format"] or "mp3"
+        for k in ("last_synced", "created_at"):
+            entry[k] = str(entry[k]) if entry[k] else None
+        entries.append({**entry, **formats.toggles(row)})
+    return entries
 
 
 def get_library_entry(entry_id: str) -> dict | None:
@@ -717,40 +720,15 @@ def get_library_entry(entry_id: str) -> dict | None:
 
 
 def upsert_library_entry(entry: dict) -> None:
+    columns = (*_LIBRARY_COLUMNS, *formats.TOGGLES)
+    values = {**{k: entry.get(k, _LIBRARY_DEFAULTS.get(k)) for k in _LIBRARY_COLUMNS},
+              **formats.toggles(entry)}
+    updates = ", ".join(f"{c}=excluded.{c}" for c in columns if c not in ("id", "created_at"))
     with get_conn() as con:
-        con.execute("""
-            INSERT INTO library
-                (id,name,url,folder,folder_name,use_subfolder,quality,mode,
-                 embed_thumbnail,embed_chapters,embed_metadata,embed_subs,sub_langs,
-                 sponsorblock,filename_template,sync_mode,last_synced,created_at,
-                 container,audio_format,normalize_audio)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-            ON CONFLICT (id) DO UPDATE SET
-                name=excluded.name, url=excluded.url, folder=excluded.folder,
-                folder_name=excluded.folder_name, use_subfolder=excluded.use_subfolder,
-                quality=excluded.quality, mode=excluded.mode,
-                embed_thumbnail=excluded.embed_thumbnail,
-                embed_chapters=excluded.embed_chapters,
-                embed_metadata=excluded.embed_metadata,
-                embed_subs=excluded.embed_subs, sub_langs=excluded.sub_langs,
-                sponsorblock=excluded.sponsorblock,
-                filename_template=excluded.filename_template,
-                sync_mode=excluded.sync_mode, last_synced=excluded.last_synced,
-                container=excluded.container, audio_format=excluded.audio_format,
-                normalize_audio=excluded.normalize_audio
-        """, [
-            entry["id"], entry["name"], entry["url"],
-            entry.get("folder"), entry.get("folder_name"),
-            entry.get("use_subfolder", True), entry.get("quality", "1080p"),
-            entry.get("mode", "VIDEO"), entry.get("embed_thumbnail", True),
-            entry.get("embed_chapters", True), entry.get("embed_metadata", True),
-            entry.get("embed_subs", False), entry.get("sub_langs", "en"),
-            entry.get("sponsorblock", False), entry.get("filename_template", ""),
-            entry.get("sync_mode", "add"), entry.get("last_synced"),
-            entry.get("created_at"),
-            entry.get("container", "mp4"), entry.get("audio_format", "mp3"),
-            bool(entry.get("normalize_audio", False)),
-        ])
+        con.execute(
+            f"INSERT INTO library ({', '.join(columns)}) VALUES ({', '.join('?' * len(columns))}) "
+            f"ON CONFLICT (id) DO UPDATE SET {updates}",
+            [values[c] for c in columns])
 
 
 def delete_library_entry(entry_id: str) -> None:

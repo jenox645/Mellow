@@ -6,19 +6,17 @@ import {
   estimateDownloadBytes, fmtBytes, fmtCount, fmtDuration, fmtEta, fmtSpeed, idxRanges, isLinkLike, timeAgo,
 } from '../lib/util.js';
 import { SVG, Ico } from '../components/icons.jsx';
-import { FileActions, Modal, Mascot, Pipeline } from '../components/common.jsx';
+import { FileActions, FormatToggles, Modal, Mascot, Pipeline } from '../components/common.jsx';
 import { MASCOT_CHILLING } from '../lib/mascots.js';
+import { defaultToggles, togglesFrom } from '../lib/formats.js';
+import { hasSession, useSessionState } from '../lib/hooks.js';
 import {
-  ANALYZE_SLOW_MS, AUDIO_FORMATS, AUDIO_QUALITIES, CONTAINERS, LOSSLESS_AUDIO, NORMALIZE_HINT,
-  QUALITIES, SPONSORBLOCK_HINT,
+  ANALYZE_SLOW_MS, AUDIO_FORMATS, AUDIO_QUALITIES, CONTAINERS, LOSSLESS_AUDIO, QUALITIES,
 } from '../lib/constants.js';
 
 export function FeedPage({ dlState, setDlState, setAppState, stats, sysInfo, refreshStats, showNotif, switchPage, config, setConfig, suggestedUrl, onSuggestedConsumed, onPlaylistDownload, playlistItems, setPlaylistItems, completedItems, failedItems, playlistTotalCount, playlistCompletedCount, isPaused, syncJobLabel, fetchingPlaylistItems, onPause, onResume, onClearCompleted }) {
-  const ss = (k, fb) => { try { const v = sessionStorage.getItem(k); return v !== null ? v : fb; } catch { return fb; } };
-  const ssJ = (k, fb) => { try { const v = sessionStorage.getItem(k); return v ? JSON.parse(v) : fb; } catch { return fb; } };
-  const hasSS = (k) => { try { return sessionStorage.getItem(k) !== null; } catch { return false; } };
-
-  const [url, setUrl] = React.useState(() => ss('feed_url', ''));
+  // Kept in sessionStorage: the Feed comes back as it was after switching pages
+  const [url, setUrl] = useSessionState('feed_url', '');
   const [analyzing, setAnalyzing] = React.useState(false);
   // Analyze normally takes a few seconds; past ANALYZE_SLOW_MS say why it may hang
   const [analyzeSlow, setAnalyzeSlow] = React.useState(false);
@@ -28,10 +26,10 @@ export function FeedPage({ dlState, setDlState, setAppState, stats, sysInfo, ref
     return () => clearTimeout(t);
   }, [analyzing]);
   const [fetchingItems, setFetchingItems] = React.useState(false);
-  const [info, setInfo] = React.useState(() => ssJ('feed_info', null));
+  const [info, setInfo] = useSessionState('feed_info', null);
   // Words instead of a link: a YouTube search ({query, items}); kept while
   // results are analyzed one by one
-  const [searchResults, setSearchResults] = React.useState(() => ssJ('feed_search', null));
+  const [searchResults, setSearchResults] = useSessionState('feed_search', null);
   const [optsOpen, setOptsOpen] = React.useState(false);
   const [advOpen, setAdvOpen] = React.useState(false);
   // Chapter picker: indexes of the chosen chapters of the analyzed video
@@ -39,40 +37,18 @@ export function FeedPage({ dlState, setDlState, setAppState, stats, sysInfo, ref
   const [chapterSel, setChapterSel] = React.useState(() => new Set());
   const videoChapters = (info && !info.is_playlist && info.chapters) || [];
   const chosenChapters = videoChapters.filter(c => chapterSel.has(c.index));
-  const [mode, setMode] = React.useState(() => ss('feed_mode', 'video'));
-  const [quality, setQuality] = React.useState(() => ss('feed_quality', '1080p'));
-  const [container, setContainer] = React.useState(() => ss('feed_container', 'mp4'));
-  const [audioFmt, setAudioFmt] = React.useState(() => ss('feed_audioFmt', 'mp3'));
-  const [audioQuality, setAudioQuality] = React.useState(() => ss('feed_audioQuality', 'best'));
-  const [embedThumb, setEmbedThumb] = React.useState(() => ssJ('feed_embedThumb', true));
-  const [embedSubs, setEmbedSubs] = React.useState(() => ssJ('feed_embedSubs', false));
-  const [embedChapters, setEmbedChapters] = React.useState(() => ssJ('feed_embedChapters', true));
-  const [embedMeta, setEmbedMeta] = React.useState(() => ssJ('feed_embedMeta', true));
-  const [sponsorblock, setSponsorblock] = React.useState(() => ssJ('feed_sponsorblock', false));
-  const [normalizeAudio, setNormalizeAudio] = React.useState(() => ssJ('feed_normalizeAudio', false));
-  const [startTime, setStartTime] = React.useState(() => ss('feed_startTime', ''));
-  const [endTime, setEndTime] = React.useState(() => ss('feed_endTime', ''));
-  const [customFmt, setCustomFmt] = React.useState(() => ss('feed_customFmt', ''));
-  const [downloadPath, setDownloadPath] = React.useState(() => ss('feed_downloadPath', ''));
-
-  React.useEffect(() => { try { sessionStorage.setItem('feed_url', url); } catch {} }, [url]);
-  React.useEffect(() => { try { sessionStorage.setItem('feed_mode', mode); } catch {} }, [mode]);
-  React.useEffect(() => { try { sessionStorage.setItem('feed_quality', quality); } catch {} }, [quality]);
-  React.useEffect(() => { try { sessionStorage.setItem('feed_container', container); } catch {} }, [container]);
-  React.useEffect(() => { try { sessionStorage.setItem('feed_audioFmt', audioFmt); } catch {} }, [audioFmt]);
-  React.useEffect(() => { try { sessionStorage.setItem('feed_audioQuality', audioQuality); } catch {} }, [audioQuality]);
-  React.useEffect(() => { try { sessionStorage.setItem('feed_embedThumb', JSON.stringify(embedThumb)); } catch {} }, [embedThumb]);
-  React.useEffect(() => { try { sessionStorage.setItem('feed_embedSubs', JSON.stringify(embedSubs)); } catch {} }, [embedSubs]);
-  React.useEffect(() => { try { sessionStorage.setItem('feed_embedChapters', JSON.stringify(embedChapters)); } catch {} }, [embedChapters]);
-  React.useEffect(() => { try { sessionStorage.setItem('feed_embedMeta', JSON.stringify(embedMeta)); } catch {} }, [embedMeta]);
-  React.useEffect(() => { try { sessionStorage.setItem('feed_sponsorblock', JSON.stringify(sponsorblock)); } catch {} }, [sponsorblock]);
-  React.useEffect(() => { try { sessionStorage.setItem('feed_normalizeAudio', JSON.stringify(normalizeAudio)); } catch {} }, [normalizeAudio]);
-  React.useEffect(() => { try { sessionStorage.setItem('feed_startTime', startTime); } catch {} }, [startTime]);
-  React.useEffect(() => { try { sessionStorage.setItem('feed_endTime', endTime); } catch {} }, [endTime]);
-  React.useEffect(() => { try { sessionStorage.setItem('feed_customFmt', customFmt); } catch {} }, [customFmt]);
-  React.useEffect(() => { try { sessionStorage.setItem('feed_downloadPath', downloadPath); } catch {} }, [downloadPath]);
-  React.useEffect(() => { try { sessionStorage.setItem('feed_info', info ? JSON.stringify(info) : ''); } catch {} }, [info]);
-  React.useEffect(() => { try { sessionStorage.setItem('feed_search', searchResults ? JSON.stringify(searchResults) : ''); } catch {} }, [searchResults]);
+  const [mode, setMode] = useSessionState('feed_mode', 'video');
+  const [quality, setQuality] = useSessionState('feed_quality', '1080p');
+  const [container, setContainer] = useSessionState('feed_container', 'mp4');
+  const [audioFmt, setAudioFmt] = useSessionState('feed_audioFmt', 'mp3');
+  const [audioQuality, setAudioQuality] = useSessionState('feed_audioQuality', 'best');
+  // The on/off options (FORMAT_TOGGLES) as one {key: bool}
+  const [toggles, setToggles] = useSessionState('feed_toggles', defaultToggles());
+  const setToggle = (key, value) => setToggles(t => ({ ...t, [key]: value }));
+  const [startTime, setStartTime] = useSessionState('feed_startTime', '');
+  const [endTime, setEndTime] = useSessionState('feed_endTime', '');
+  const [customFmt, setCustomFmt] = useSessionState('feed_customFmt', '');
+  const [downloadPath, setDownloadPath] = useSessionState('feed_downloadPath', '');
 
   const prevUrl = React.useRef(url);
   React.useEffect(() => {
@@ -172,9 +148,9 @@ export function FeedPage({ dlState, setDlState, setAppState, stats, sysInfo, ref
 
   // Apply Config-page download defaults when no session state exists yet
   const sessionHadRef = React.useRef({
-    mode: hasSS('feed_mode'), quality: hasSS('feed_quality'),
-    container: hasSS('feed_container'), audioFmt: hasSS('feed_audioFmt'),
-    audioQuality: hasSS('feed_audioQuality'),
+    mode: hasSession('feed_mode'), quality: hasSession('feed_quality'),
+    container: hasSession('feed_container'), audioFmt: hasSession('feed_audioFmt'),
+    audioQuality: hasSession('feed_audioQuality'),
   });
   React.useEffect(() => {
     const had = sessionHadRef.current;
@@ -190,10 +166,7 @@ export function FeedPage({ dlState, setDlState, setAppState, stats, sysInfo, ref
   const [presetName, setPresetName] = React.useState('');
 
   const currentOpts = () => ({
-    mode, quality, container, audio_format: audioFmt, audio_quality: audioQuality,
-    embed_thumbnail: embedThumb, embed_subs: embedSubs,
-    embed_chapters: embedChapters, embed_metadata: embedMeta,
-    sponsorblock, normalize_audio: normalizeAudio,
+    mode, quality, container, audio_format: audioFmt, audio_quality: audioQuality, ...toggles,
   });
 
   const applyPreset = (p) => {
@@ -203,12 +176,7 @@ export function FeedPage({ dlState, setDlState, setAppState, stats, sysInfo, ref
     if (o.container) setContainer(o.container);
     if (o.audio_format) setAudioFmt(o.audio_format);
     if (o.audio_quality) setAudioQuality(o.audio_quality);
-    setEmbedThumb(o.embed_thumbnail !== false);
-    setEmbedSubs(!!o.embed_subs);
-    setEmbedChapters(o.embed_chapters !== false);
-    setEmbedMeta(o.embed_metadata !== false);
-    setSponsorblock(!!o.sponsorblock);
-    setNormalizeAudio(!!o.normalize_audio);
+    setToggles(togglesFrom(o));
     showNotif('Preset Applied', p.name, 'success');
   };
 
@@ -285,16 +253,11 @@ export function FeedPage({ dlState, setDlState, setAppState, stats, sysInfo, ref
       container,
       audio_format: audioFmt,
       audio_quality: audioQuality,
-      embed_thumbnail: embedThumb,
-      embed_chapters: embedChapters,
-      embed_metadata: embedMeta,
-      embed_subs: embedSubs,
-      sponsorblock,
-      normalize_audio: normalizeAudio,
+      ...toggles,
       scheduled: scheduleLater,
       ...(downloadPath ? { output_dir: downloadPath } : {}),
     }).then(onQueued).catch(e => { showNotif('Error', e.message, 'error'); setSubmitting(false); });
-  }, [importedUrls, playlistItems, importedFileName, mode, quality, container, audioFmt, audioQuality, embedThumb, embedChapters, embedMeta, embedSubs, sponsorblock, normalizeAudio, downloadPath, onPlaylistDownload, showNotif, scheduleLater, onQueued]);
+  }, [importedUrls, playlistItems, importedFileName, mode, quality, container, audioFmt, audioQuality, toggles, downloadPath, onPlaylistDownload, showNotif, scheduleLater, onQueued]);
 
   // Ref so handleDownload/handleUrlKeyDown can call latest startImportDownload without stale closure
   const startImportDownloadRef = React.useRef(null);
@@ -340,12 +303,7 @@ export function FeedPage({ dlState, setDlState, setAppState, stats, sysInfo, ref
       container,
       audio_format: audioFmt,
       audio_quality: audioQuality,
-      embed_thumbnail: embedThumb,
-      embed_chapters: embedChapters,
-      embed_metadata: embedMeta,
-      embed_subs: embedSubs,
-      sponsorblock,
-      normalize_audio: normalizeAudio,
+      ...toggles,
       start_time: startTime,
       end_time: endTime,
       custom_format: customFmt,
@@ -355,7 +313,7 @@ export function FeedPage({ dlState, setDlState, setAppState, stats, sysInfo, ref
       scheduled: scheduleLater,
       ...extra,
     }).then(onQueued).catch(e => { showNotif('Error', e.message, 'error'); setSubmitting(false); });
-  }, [url, mode, quality, container, audioFmt, audioQuality, embedThumb, embedChapters, embedMeta, embedSubs, sponsorblock, normalizeAudio, startTime, endTime, customFmt, downloadPath, playlistItems, info, showNotif, scheduleLater, onQueued, chosenChapters]);
+  }, [url, mode, quality, container, audioFmt, audioQuality, toggles, startTime, endTime, customFmt, downloadPath, playlistItems, info, showNotif, scheduleLater, onQueued, chosenChapters]);
 
   // Keep ref in sync with latest startDownload (assigned during render, safe to read in callbacks)
   startDownloadRef.current = startDownload;
@@ -551,23 +509,10 @@ export function FeedPage({ dlState, setDlState, setAppState, stats, sysInfo, ref
               </>
             )}
 
-            <div className="opts-toggles">
-              {[
-                { label: 'Embed Thumbnail', val: embedThumb, set: setEmbedThumb },
-                mode === 'video' && { label: 'Subtitles', val: embedSubs, set: setEmbedSubs,
-                  hint: 'Embedded in the video — languages: ' + (config.sub_langs || 'en')
-                    + (config.keep_sub_files ? ', also kept as .srt files' : '') + ' (Config → Download Defaults)' },
-                mode === 'audio' && { label: 'Normalize Volume', val: normalizeAudio, set: setNormalizeAudio, hint: NORMALIZE_HINT },
-                { label: 'Chapters', val: embedChapters, set: setEmbedChapters },
-                { label: 'Metadata', val: embedMeta, set: setEmbedMeta },
-                { label: 'SponsorBlock', val: sponsorblock, set: setSponsorblock, hint: SPONSORBLOCK_HINT },
-              ].filter(Boolean).map(item => (
-                <label key={item.label} className="opts-toggle-item" title={item.hint}>
-                  <input type="checkbox" checked={item.val} onChange={e => item.set(e.target.checked)} />
-                  {item.label}
-                </label>
-              ))}
-            </div>
+            <FormatToggles values={toggles} onChange={setToggle} media={mode} hints={{
+              embed_subs: 'Embedded in the video — languages: ' + (config.sub_langs || 'en')
+                + (config.keep_sub_files ? ', also kept as .srt files' : '') + ' (Config → Download Defaults)',
+            }} />
 
             {videoChapters.length > 0 && (
               <div className="opts-advanced">
@@ -785,7 +730,7 @@ export function FeedPage({ dlState, setDlState, setAppState, stats, sysInfo, ref
                   <div className="dl-tags">
                     <span className="tag cyan">{mode === 'audio' ? audioFmt.toUpperCase() : container.toUpperCase()}</span>
                     {mode !== 'audio' && <span className="tag">{quality.toUpperCase()}</span>}
-                    {sponsorblock && <span className="tag green">SPONSORBLOCK</span>}
+                    {toggles.sponsorblock && <span className="tag green">SPONSORBLOCK</span>}
                   </div>
                   <div className="prog-row">
                     <div className="prog-bar">
@@ -980,9 +925,7 @@ function VaultLinkPromptModal({ info, url, config, opts, onClose, onJustDownload
   const syncFormat = {
     sync_audio: isAudio, audio_format: opts.audio_format, audio_quality: opts.audio_quality,
     quality: opts.quality, container: opts.container,
-    embed_thumbnail: opts.embed_thumbnail, embed_subs: opts.embed_subs,
-    embed_chapters: opts.embed_chapters, embed_metadata: opts.embed_metadata,
-    sponsorblock: opts.sponsorblock, normalize_audio: opts.normalize_audio,
+    ...togglesFrom(opts),
   };
   // Library mode keeps mellow_archive.txt, so items already in the folder are
   // skipped now and on every later sync
@@ -1027,9 +970,7 @@ function VaultLinkPromptModal({ info, url, config, opts, onClose, onJustDownload
       folder_name: name, use_subfolder: !newFolder,
       mode: isAudio ? 'AUDIO' : 'VIDEO', quality: opts.quality, container: opts.container,
       audio_format: opts.audio_format, sync_mode: 'add',
-      embed_thumbnail: opts.embed_thumbnail, embed_chapters: opts.embed_chapters,
-      embed_metadata: opts.embed_metadata, embed_subs: opts.embed_subs,
-      sponsorblock: opts.sponsorblock, normalize_audio: opts.normalize_audio,
+      ...togglesFrom(opts),
     }).then(entry => {
       // Also remember the full format (incl. bitrate, which library entries
       // don't store) for the folder's future syncs

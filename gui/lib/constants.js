@@ -48,6 +48,17 @@ export const NORMALIZE_HINT = 'Even out loudness across tracks (EBU R128, -14 LU
 
 export const SPONSORBLOCK_HINT = 'Cut sponsor, intro, outro and self-promo segments out of YouTube downloads';
 
+// The on/off download options — mirrors mellow/formats.py TOGGLES (a test
+// keeps the keys and defaults in step). `only`: shown for that media alone.
+export const FORMAT_TOGGLES = [
+  { key: 'embed_thumbnail', label: 'Embed Thumbnail', def: true },
+  { key: 'embed_subs', label: 'Subtitles', def: false, only: 'video' },
+  { key: 'normalize_audio', label: 'Normalize Volume', def: false, only: 'audio', hint: NORMALIZE_HINT },
+  { key: 'embed_chapters', label: 'Chapters', def: true },
+  { key: 'embed_metadata', label: 'Metadata', def: true },
+  { key: 'sponsorblock', label: 'SponsorBlock', def: false, hint: SPONSORBLOCK_HINT },
+];
+
 // Download choices — one list for the Feed, the vault dialogs and Config, so
 // they can't drift apart (the vault dialog used to lack 4K and 360P)
 export const QUALITIES = ['best', '4k', '1080p', '720p', '480p', '360p'];

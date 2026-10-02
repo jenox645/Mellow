@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Callable
 from urllib.parse import quote
 
-from . import analytics
+from . import analytics, formats
 from .config import download_root, download_settings
 from .constants import (
     AUDIO_FORMATS,
@@ -784,11 +784,7 @@ def launch_playlist(paths: list[str], open_file_fn: Callable[[str], None]) -> st
 # ── Sync opts builder ─────────────────────────────────────────────────────────
 
 # Format choices a folder remembers between syncs (vault_sync_formats in config)
-SYNC_FORMAT_KEYS = (
-    "sync_audio", "audio_format", "audio_quality", "quality", "container",
-    "embed_thumbnail", "embed_subs", "embed_chapters", "embed_metadata", "sponsorblock",
-    "normalize_audio",
-)
+SYNC_FORMAT_KEYS = (*formats.CHOICES, *formats.TOGGLES)
 
 
 def infer_folder_format(path: str) -> dict:
@@ -839,12 +835,7 @@ def default_sync_format(path: str, lib: dict | None, cfg: dict) -> dict:
             "audio_format": lib.get("audio_format") or "mp3",
             "quality": lib.get("quality") or cfg.get("default_quality", "1080p"),
             "container": lib.get("container") or "mp4",
-            "embed_thumbnail": lib.get("embed_thumbnail", True),
-            "embed_subs": lib.get("embed_subs", False),
-            "embed_chapters": lib.get("embed_chapters", True),
-            "embed_metadata": lib.get("embed_metadata", True),
-            "sponsorblock": lib.get("sponsorblock", False),
-            "normalize_audio": lib.get("normalize_audio", False),
+            **formats.toggles(lib),
         }
     return infer_folder_format(path) if path else {}
 
@@ -870,12 +861,7 @@ def build_sync_opts(data: dict, lib: dict | None, cfg: dict, path: str = "") -> 
         "sync_audio": bool(pick("sync_audio", False)),
         "audio_format": str(pick("audio_format", cfg.get("default_audio_format", "mp3"))).lower(),
         "audio_quality": pick("audio_quality", cfg.get("default_audio_quality", "best")),
-        "embed_thumbnail": pick("embed_thumbnail", True),
-        "embed_chapters": pick("embed_chapters", True),
-        "embed_metadata": pick("embed_metadata", True),
-        "embed_subs": pick("embed_subs", False),
-        "sponsorblock": pick("sponsorblock", False),
-        "normalize_audio": bool(pick("normalize_audio", False)),
+        **formats.toggles(data, base),
         "filename_template": (lib or {}).get("filename_template") or cfg.get("filename_template", ""),
         **download_settings(cfg),
     }

@@ -3,8 +3,9 @@
 
 import { API } from '../lib/api.js';
 import { fmtBytes } from '../lib/util.js';
-import { Modal } from './common.jsx';
-import { AUDIO_FORMATS, CONTAINERS, NORMALIZE_HINT, QUALITIES, SPONSORBLOCK_HINT } from '../lib/constants.js';
+import { FormatToggles, Modal } from './common.jsx';
+import { defaultToggles, togglesFrom } from '../lib/formats.js';
+import { AUDIO_FORMATS, CONTAINERS, QUALITIES } from '../lib/constants.js';
 
 export function AddVaultModal({ onClose, onSaved, showNotif }) {
   const [name, setName] = React.useState('');
@@ -15,12 +16,7 @@ export function AddVaultModal({ onClose, onSaved, showNotif }) {
   const [container, setContainer] = React.useState('mp4');
   const [audioFmt, setAudioFmt] = React.useState('mp3');
   const [mode, setMode] = React.useState('add');
-  const [embedThumb, setEmbedThumb] = React.useState(true);
-  const [embedChapters, setEmbedChapters] = React.useState(true);
-  const [embedMeta, setEmbedMeta] = React.useState(true);
-  const [embedSubs, setEmbedSubs] = React.useState(false);
-  const [sponsorblock, setSponsorblock] = React.useState(false);
-  const [normalizeAudio, setNormalizeAudio] = React.useState(false);
+  const [toggles, setToggles] = React.useState(defaultToggles);
   const [saving, setSaving] = React.useState(false);
 
   const browseFolder = () => {
@@ -47,12 +43,7 @@ export function AddVaultModal({ onClose, onSaved, showNotif }) {
       audio_format: audioFmt,
       mode: mediaType === 'audio' ? 'AUDIO' : 'VIDEO',
       sync_mode: mode,
-      embed_thumbnail: embedThumb,
-      embed_chapters: embedChapters,
-      embed_metadata: embedMeta,
-      embed_subs: embedSubs,
-      sponsorblock,
-      normalize_audio: mediaType === 'audio' && normalizeAudio,
+      ...toggles,
     }).then(() => onSaved())
       .catch(e => showNotif('Error', e.message, 'error'))
       .finally(() => setSaving(false));
@@ -145,21 +136,8 @@ export function AddVaultModal({ onClose, onSaved, showNotif }) {
       </div>
       <div className="form-row">
         <div className="form-label">OPTIONS</div>
-        <div className="opts-toggles">
-          {[
-            { label: 'Embed Thumbnail', val: embedThumb, set: setEmbedThumb },
-            mediaType !== 'audio' && { label: 'Subtitles', val: embedSubs, set: setEmbedSubs },
-            mediaType === 'audio' && { label: 'Normalize Volume', val: normalizeAudio, set: setNormalizeAudio, hint: NORMALIZE_HINT },
-            { label: 'Chapters', val: embedChapters, set: setEmbedChapters },
-            { label: 'Metadata', val: embedMeta, set: setEmbedMeta },
-            { label: 'SponsorBlock', val: sponsorblock, set: setSponsorblock, hint: SPONSORBLOCK_HINT },
-          ].filter(Boolean).map(item => (
-            <label key={item.label} className="opts-toggle-item" title={item.hint}>
-              <input type="checkbox" checked={item.val} onChange={e => item.set(e.target.checked)} />
-              {item.label}
-            </label>
-          ))}
-        </div>
+        <FormatToggles values={toggles} media={mediaType === 'audio' ? 'audio' : 'video'}
+          onChange={(key, value) => setToggles(t => ({ ...t, [key]: value }))} />
       </div>
     </Modal>
   );
@@ -255,12 +233,7 @@ export function SyncPlaylistModal({ folder, onClose, showNotif, onRefreshVault, 
   const [syncQuality, setSyncQuality] = React.useState('1080p');
   const [syncContainer, setSyncContainer] = React.useState('mp4');
   const [syncAudioFmt, setSyncAudioFmt] = React.useState('mp3');
-  const [syncEmbedThumb, setSyncEmbedThumb] = React.useState(true);
-  const [syncEmbedSubs, setSyncEmbedSubs] = React.useState(false);
-  const [syncEmbedChapters, setSyncEmbedChapters] = React.useState(true);
-  const [syncEmbedMeta, setSyncEmbedMeta] = React.useState(true);
-  const [syncSponsorblock, setSyncSponsorblock] = React.useState(false);
-  const [syncNormalize, setSyncNormalize] = React.useState(false);
+  const [syncToggles, setSyncToggles] = React.useState(defaultToggles);
   const [syncing, setSyncing] = React.useState(false);
   const [mirrorPreview, setMirrorPreview] = React.useState(null);
   const [previewing, setPreviewing] = React.useState(false);
@@ -283,12 +256,7 @@ export function SyncPlaylistModal({ folder, onClose, showNotif, onRefreshVault, 
         if (f.quality) setSyncQuality(f.quality);
         if (f.container) setSyncContainer(f.container);
         if (f.audio_format) setSyncAudioFmt(f.audio_format);
-        if (f.embed_thumbnail !== undefined) setSyncEmbedThumb(!!f.embed_thumbnail);
-        if (f.embed_subs !== undefined) setSyncEmbedSubs(!!f.embed_subs);
-        if (f.embed_chapters !== undefined) setSyncEmbedChapters(!!f.embed_chapters);
-        if (f.embed_metadata !== undefined) setSyncEmbedMeta(!!f.embed_metadata);
-        if (f.sponsorblock !== undefined) setSyncSponsorblock(!!f.sponsorblock);
-        if (f.normalize_audio !== undefined) setSyncNormalize(!!f.normalize_audio);
+        setSyncToggles(togglesFrom(f));
       })
       .catch(() => { setPlaylists([]); setSelectedPlaylists(new Set()); });
     API.get('/api/config').then(c => {
@@ -313,13 +281,9 @@ export function SyncPlaylistModal({ folder, onClose, showNotif, onRefreshVault, 
     // sync_audio sent explicitly both ways — the backend otherwise falls
     // back to the library entry's saved mode
     ...(syncMediaType === 'audio'
-      ? { sync_audio: true, audio_format: syncAudioFmt, normalize_audio: syncNormalize }
-      : { sync_audio: false, quality: syncQuality, container: syncContainer, normalize_audio: false }),
-    embed_thumbnail: syncEmbedThumb,
-    embed_subs: syncEmbedSubs,
-    embed_chapters: syncEmbedChapters,
-    embed_metadata: syncEmbedMeta,
-    sponsorblock: syncSponsorblock,
+      ? { sync_audio: true, audio_format: syncAudioFmt }
+      : { sync_audio: false, quality: syncQuality, container: syncContainer }),
+    ...syncToggles,
   });
 
   const doSync = (fmtOpts) => {
@@ -542,21 +506,8 @@ export function SyncPlaylistModal({ folder, onClose, showNotif, onRefreshVault, 
           </div>
           <div className="form-row">
             <div className="form-label">OPTIONS</div>
-            <div className="opts-toggles">
-              {[
-                { label: 'Embed Thumbnail', val: syncEmbedThumb, set: setSyncEmbedThumb },
-                syncMediaType !== 'audio' && { label: 'Subtitles', val: syncEmbedSubs, set: setSyncEmbedSubs },
-                syncMediaType === 'audio' && { label: 'Normalize Volume', val: syncNormalize, set: setSyncNormalize, hint: NORMALIZE_HINT },
-                { label: 'Chapters', val: syncEmbedChapters, set: setSyncEmbedChapters },
-                { label: 'Metadata', val: syncEmbedMeta, set: setSyncEmbedMeta },
-                { label: 'SponsorBlock', val: syncSponsorblock, set: setSyncSponsorblock, hint: SPONSORBLOCK_HINT },
-              ].filter(Boolean).map(item => (
-                <label key={item.label} className="opts-toggle-item" title={item.hint}>
-                  <input type="checkbox" checked={item.val} onChange={e => item.set(e.target.checked)} />
-                  {item.label}
-                </label>
-              ))}
-            </div>
+            <FormatToggles values={syncToggles} media={syncMediaType === 'audio' ? 'audio' : 'video'}
+              onChange={(key, value) => setSyncToggles(t => ({ ...t, [key]: value }))} />
           </div>
         </>
       )}

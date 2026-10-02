@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from . import formats
 from .config import download_root, download_settings
 from .constants import AUDIO_FORMATS
 
@@ -31,12 +32,7 @@ def build_entry(data: dict, entry_id: str, now: str) -> dict:
         "mode": mode,
         "container": container,
         "audio_format": audio_format,
-        "embed_thumbnail": data.get("embed_thumbnail", True),
-        "embed_chapters": data.get("embed_chapters", True),
-        "embed_metadata": data.get("embed_metadata", True),
-        "embed_subs": data.get("embed_subs", False),
-        "sponsorblock": data.get("sponsorblock", False),
-        "normalize_audio": bool(data.get("normalize_audio", False)),
+        **formats.toggles(data),
         "filename_template": data.get("filename_template", ""),
         "sync_mode": data.get("sync_mode", "add"),
         "last_synced": None,
@@ -69,12 +65,7 @@ def build_sync_opts(entry: dict, cfg: dict, sync_mode: str) -> tuple[dict, str]:
         "container": (entry.get("container") or "mp4").lower(),
         "sync_audio": is_audio,
         "audio_format": (entry.get("audio_format") or "mp3").lower(),
-        "embed_thumbnail": entry.get("embed_thumbnail", True),
-        "embed_chapters": entry.get("embed_chapters", True),
-        "embed_metadata": entry.get("embed_metadata", True),
-        "embed_subs": entry.get("embed_subs", False),
-        "sponsorblock": entry.get("sponsorblock", False),
-        "normalize_audio": entry.get("normalize_audio", False),
+        **formats.toggles(entry),
         "audio_quality": cfg.get("default_audio_quality", "best"),
         # Same naming as every other download unless the entry sets its own
         "filename_template": entry.get("filename_template") or cfg.get("filename_template", ""),
