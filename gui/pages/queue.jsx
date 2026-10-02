@@ -10,6 +10,8 @@ import { QUEUE_POLL_MS } from '../lib/constants.js';
 
 export function QueuePage({ dlState, showNotif, activeJobs, playlistItems, setPlaylistItems, completedItems, failedItems, playlistTotalCount, playlistCompletedCount, isPaused, pausedCount, failedCount, syncJobLabel, fetchingPlaylistItems, onPause, onResume, onClearCompleted, onClearFailed }) {
   const isDownloading = dlState && dlState.pct !== undefined;
+  // Every running job (Concurrent Downloads > 1), not just the one on the Feed
+  const activeCount = Math.max(Object.keys(activeJobs || {}).length, isDownloading ? 1 : 0);
   const queueCount = playlistItems ? playlistItems.length : 0;
   const [qTab, setQTab] = React.useState('pending');
   const [removingItems, setRemovingItems] = React.useState(new Set());
@@ -99,9 +101,12 @@ export function QueuePage({ dlState, showNotif, activeJobs, playlistItems, setPl
       </div>
 
       <div className="g4" style={{ marginBottom: 16 }}>
-        <div className="stat"><div className="stat-label">ACTIVE</div><div className="stat-value amber">{isDownloading ? 1 : 0}</div></div>
-        <div className="stat"><div className="stat-label">QUEUED</div><div className="stat-value cyan">{queueCount}</div></div>
-        <div className="stat"><div className="stat-label">PAUSED</div><div className="stat-value" style={{ color: 'var(--amber)' }}>{pausedCount || 0}</div></div>
+        <div className="stat"><div className="stat-label">ACTIVE</div><div className="stat-value amber">{activeCount}</div></div>
+        <div className="stat" title="Downloads waiting to start, plus the items left in the running playlist">
+          <div className="stat-label">QUEUED</div>
+          <div className="stat-value cyan">{jobs.filter(j => j.status === 'queued').length + queueCount}</div>
+        </div>
+        <div className="stat"><div className="stat-label">PAUSED</div><div className="stat-value" style={{ color: 'var(--amber)' }}>{isPaused ? activeCount : (pausedCount || 0)}</div></div>
         <div className="stat"><div className="stat-label">FAILED</div><div className="stat-value red">{failedCount || 0}</div></div>
       </div>
 
