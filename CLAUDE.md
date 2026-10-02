@@ -4,7 +4,7 @@
 ```
 main.py            desktop entry point (single-instance guard, FlaskWebGUI window)
 mellow/            backend package — modules import each other relatively (`from . import jobs`)
-gui/               frontend source (React ES modules + index.html/CSS)
+gui/               frontend source (React ES modules + index.html/CSS; fonts/ = bundled woff2 + OFL licenses)
 static/            build output only (gitignored): bundle, React, index.html, mascots.js
 assets/            icons, mascot art (*_vector used by the build), installer images;
                    originals/ holds unused source art
@@ -38,7 +38,7 @@ build_setup.py     the build (SETUP.bat / setup.sh call it); MellowDLP.spec, ins
   - `gui/components/` — `common.jsx`, `icons.jsx`, `chrome.jsx`, `loading.jsx`, `vault-modals.jsx`
   - `gui/pages/` — `feed.jsx`, `queue.jsx`, `vault.jsx`, `analytics.jsx`, `signal.jsx`, `config.jsx`
 - Communication: SSE (`EventSource('/api/progress')`) for download progress; HTTP for everything else
-- Build: `python build_setup.py` → esbuild **bundles** `gui/app.jsx` (+imports) → `static/app.bundle.js`; copies `gui/index.html` → `static/index.html`
+- Build: `python build_setup.py` → esbuild **bundles** `gui/app.jsx` (+imports) → `static/app.bundle.js`; copies `gui/index.html` → `static/index.html` and `gui/fonts/` → `static/fonts/` (fonts are bundled: the app makes no requests to Google Fonts or any other CDN)
 - Config: JSON at `~/.mellow_dlp.json`; analytics DB at `~/.mellow_dlp.duckdb`
 - Desktop wrapper: FlaskWebGUI (Tkinter-based, NOT Electron); `main.py` has a single-instance guard via `~/.mellow_dlp.port`
 

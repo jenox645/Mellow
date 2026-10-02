@@ -356,7 +356,9 @@ src_html = GUI / "index.html"
 if not src_html.exists():
     fail(f"Missing {src_html}")
 shutil.copy2(src_html, STATIC / "index.html")
-print("  static/index.html — OK")
+# Bundled web fonts: the app never fetches them from Google
+shutil.copytree(GUI / "fonts", STATIC / "fonts", dirs_exist_ok=True)
+print("  static/index.html, static/fonts/ — OK")
 
 
 # ── Step 9: Bundle app.jsx with esbuild ───────────────────────────────────────
