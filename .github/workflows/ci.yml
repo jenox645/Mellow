@@ -31,6 +31,8 @@ jobs:
           node-version: '20'
       - name: Lint
         run: npx --yes eslint@9 "gui/**/*.jsx" "gui/**/*.js"
+      - name: Unit tests
+        run: node --test tests/js/*.test.mjs
       - name: Bundle
         run: >
           npx --yes esbuild gui/app.jsx --bundle --outfile=app.bundle.js

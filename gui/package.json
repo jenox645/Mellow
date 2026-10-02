@@ -1,0 +1,5 @@
+{
+  "private": true,
+  "type": "module",
+  "description": "Frontend ES modules (bundled by esbuild); lets node --test import gui/lib directly"
+}

@@ -8,7 +8,8 @@ gui/               frontend source (React ES modules + index.html/CSS)
 static/            build output only (gitignored): bundle, React, index.html, mascots.js
 assets/            icons, mascot art (*_vector used by the build), installer images;
                    originals/ holds unused source art
-tests/             pytest suite (imports `from mellow import …`, patches `mellow.<module>.<name>`)
+tests/             pytest suite (imports `from mellow import …`, patches `mellow.<module>.<name>`);
+                   tests/js/ holds the frontend unit tests (node:test, no packages)
 scripts/canary.py  live-site extraction probe
 build_setup.py     the build (SETUP.bat / setup.sh call it); MellowDLP.spec, installer.iss,
                    build_linux_deb.py are its packaging inputs
@@ -32,8 +33,8 @@ build_setup.py     the build (SETUP.bat / setup.sh call it); MellowDLP.spec, ins
   - `formats.py` — the on/off download options (`TOGGLES`: embed_*, sponsorblock, normalize_audio) and `toggles(source, fallback)`; every download, sync format and library entry takes them from here
   - `constants.py` / `version.py` — all tuning knobs and the single APP_VERSION
 - Frontend (React UMD, bundled by esbuild from ES modules):
-  - `gui/app.jsx` — App root: SSE hub, routing, clipboard watcher, shortcuts
-  - `gui/lib/` — `api.js`, `util.js`, `constants.js`, `formats.js` (FORMAT_TOGGLES as one `{key: bool}`), `hooks.js` (`useSessionState`), `mascots.js`, `sound.js`
+  - `gui/app.jsx` — App root: routing, clipboard watcher, shortcuts; feeds SSE events to `downloadsReducer` and runs the effects it queues
+  - `gui/lib/` — `api.js`, `util.js`, `constants.js`, `formats.js` (FORMAT_TOGGLES as one `{key: bool}`), `hooks.js` (`useSessionState`), `downloads.js` (the progress-event reducer), `mascots.js`, `sound.js`. `gui/package.json` only marks these as ES modules so node can test them
   - `gui/components/` — `common.jsx`, `icons.jsx`, `chrome.jsx`, `loading.jsx`, `vault-modals.jsx`
   - `gui/pages/` — `feed.jsx`, `queue.jsx`, `vault.jsx`, `analytics.jsx`, `signal.jsx`, `config.jsx`
 - Communication: SSE (`EventSource('/api/progress')`) for download progress; HTTP for everything else
@@ -58,6 +59,12 @@ build_setup.py     the build (SETUP.bat / setup.sh call it); MellowDLP.spec, ins
 
 ## SSE Event Types (server → frontend)
 All job-originated events carry `job_id`, `job_type`, `job_label` (multi-worker attribution).
+The frontend handles them in one place: `gui/lib/downloads.js` `applyEvent(state, event)` is a pure
+reducer over the download state (dlState, activeJobs, playlist/completed/failed items, pause, counts).
+Side effects (toasts, chime, desktop notification, refreshes, the victory overlay) are queued in
+`state.effects`, and the App runs them in order and acknowledges them (`effects_done`). Pages change this
+state through setState-style setters (`{type:'set', key, value}`) or `playlist_started` / `playlist_items`.
+A new event = a case in `applyEvent` + a test in `tests/js/downloads.test.mjs`.
 - `starting` — download started
 - `downloading` — progress update with `pct`, `speed`, `eta`, `current_item_title`, `current_item_thumb`
 - `item_done` — one file finished: `title`, `thumbnail`, `video_id`, `playlist_index`
@@ -132,6 +139,7 @@ python build_setup.py --run-tests
 pip install -r requirements.txt -r requirements-dev.txt
 python -m pytest tests/ -m "not e2e and not slow"
 python scripts/canary.py        # live-site extraction probe (also the weekly CI canary)
+node --test tests/js/*.test.mjs # frontend unit tests (util, formats, the progress-event reducer)
 ```
 - `tests/conftest.py` redirects config, DB and queue files to a temp dir for every test (autouse) and drains `jobs.manager` on teardown — tests must never read or write `~/.mellow_dlp*`
 - When a test enqueues through the API with `downloader.download_video` mocked, call `jobs.manager.wait_idle()` inside the `patch` block so the worker can't run the real downloader afterwards
