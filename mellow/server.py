@@ -181,6 +181,24 @@ scheduler.start(
 # Endpoints that legitimately receive non-JSON bodies (file uploads). They
 # are still covered by the Origin check above.
 _MULTIPART_ALLOWED_PATHS = frozenset({"/api/backup/restore"})
+_LOCAL_HOSTS = ("localhost", "127.0.0.1", "::1")
+
+
+@app.before_request
+def _local_host_guard() -> Response | None:
+    """Answer only requests addressed to this machine.
+
+    DNS rebinding: a web page whose domain is switched to 127.0.0.1 can make
+    same-origin GETs to this server and read the answers (config, clipboard,
+    history). Its requests still carry its own name in the Host header.
+    """
+    try:
+        host = urlparse("//" + request.host).hostname
+    except ValueError:
+        host = None
+    if host not in _LOCAL_HOSTS:
+        return jsonify({"error": "Requests must be addressed to localhost"}), 403
+    return None
 
 
 @app.before_request
@@ -193,7 +211,7 @@ def _api_write_guard() -> Response | None:
             host = urlparse(origin).hostname
         except ValueError:
             host = None
-        if host not in ("localhost", "127.0.0.1", "::1"):
+        if host not in _LOCAL_HOSTS:
             return jsonify({"error": "Cross-origin requests are not allowed"}), 403
     if request.path in _MULTIPART_ALLOWED_PATHS:
         return None

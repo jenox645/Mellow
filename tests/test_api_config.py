@@ -42,3 +42,11 @@ def test_reset_defaults_resets_every_setting_but_keeps_user_data(client):
     assert cfg['vault_budgets'] == {'/m': 5}
     assert cfg['download_presets'] == [{'name': 'p'}]
     assert cfg['webhooks'] == {'complete': ['https://h']}
+
+
+def test_requests_for_another_host_name_are_refused(client):
+    # DNS rebinding: evil.example now points at 127.0.0.1, but says who it is
+    for path in ('/api/config', '/api/clipboard', '/'):
+        assert client.get(path, headers={'Host': 'evil.example:5000'}).status_code == 403
+    for host in ('localhost:5000', '127.0.0.1:61234', '[::1]:5000', 'localhost'):
+        assert client.get('/api/config', headers={'Host': host}).status_code == 200, host
