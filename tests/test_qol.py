@@ -187,3 +187,15 @@ def test_filename_template_preview(client, template, ok, shown):
     data = r.get_json()
     assert data['ok'] is ok and r.status_code == (200 if ok else 400)
     assert shown in (data.get('example') or data.get('error'))
+
+
+def test_search_endpoint(client):
+    item = {'idx': 1, 'id': 'a', 'title': 'Lofi', 'url': 'https://www.youtube.com/watch?v=a'}
+    with patch('mellow.downloader.search', return_value=[item]) as search:
+        r = client.post('/api/search', json={'query': 'lofi beats'})
+    assert r.status_code == 200 and r.get_json() == {'query': 'lofi beats', 'items': [item]}
+    assert search.call_args[0][0] == 'lofi beats'
+    assert client.post('/api/search', json={'query': '  '}).status_code == 400
+    with patch('mellow.downloader.search', side_effect=RuntimeError('<urlopen error [Errno 11001] getaddrinfo failed>')):
+        r = client.post('/api/search', json={'query': 'x'})
+    assert r.status_code == 500 and r.get_json()['code'] == 'network'

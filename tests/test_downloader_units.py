@@ -179,3 +179,21 @@ def test_a_single_video_has_no_items():
     from mellow import downloader
     with patch('yt_dlp.YoutubeDL.YoutubeDL.extract_info', return_value={'id': 'v', 'title': 'V', 'formats': []}):
         assert downloader.get_video_info('https://x/v')['items'] is None
+
+
+def test_search_lists_youtube_results_as_items():
+    from unittest.mock import patch
+
+    from mellow import downloader
+    found = {'_type': 'playlist', 'entries': [
+        {'id': 'aaaaaaaaaaa', 'title': 'Lofi One', 'url': 'https://www.youtube.com/watch?v=aaaaaaaaaaa',
+         'channel': 'Chill', 'duration': 3600, 'view_count': 1200000},
+        {'id': 'bbbbbbbbbbb', 'title': 'Lofi Two', 'url': 'bbbbbbbbbbb'},   # id only
+    ]}
+    with patch('yt_dlp.YoutubeDL.YoutubeDL.extract_info', return_value=found) as extract:
+        items = downloader.search('  lofi \n  beats ')
+    assert extract.call_args[0][0] == f'ytsearch{downloader.SEARCH_RESULTS}:lofi beats'
+    assert [(i['title'], i['url'], i['uploader'], i['view_count']) for i in items] == [
+        ('Lofi One', 'https://www.youtube.com/watch?v=aaaaaaaaaaa', 'Chill', 1200000),
+        ('Lofi Two', 'https://www.youtube.com/watch?v=bbbbbbbbbbb', '', None)]
+    assert downloader.search('   ') == []

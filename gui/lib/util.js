@@ -112,3 +112,18 @@ export function idxRanges(indexes) {
   }
   return parts.join(',');
 }
+
+// A link (or a yt-dlp "ytsearch5:..." style input) rather than words to search for
+export function isLinkLike(text) {
+  const t = (text || '').trim();
+  return /^[a-z][a-z0-9+.-]*:\S/i.test(t) || /^(www\.)?[\w-]+(\.[\w-]+)+(\/\S*)?$/i.test(t);
+}
+
+// 1234567 → "1.2M"
+export function fmtCount(n) {
+  if (n == null) return '';
+  if (n >= 1e9) return (n / 1e9).toFixed(1).replace(/\.0$/, '') + 'B';
+  if (n >= 1e6) return (n / 1e6).toFixed(1).replace(/\.0$/, '') + 'M';
+  if (n >= 1e3) return (n / 1e3).toFixed(1).replace(/\.0$/, '') + 'K';
+  return String(n);
+}

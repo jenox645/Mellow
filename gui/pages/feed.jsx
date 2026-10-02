@@ -2,7 +2,9 @@
 'use strict';
 
 import { API, cancelShownDownload } from '../lib/api.js';
-import { estimateDownloadBytes, fmtBytes, fmtSpeed, fmtEta, fmtDuration, idxRanges, timeAgo } from '../lib/util.js';
+import {
+  estimateDownloadBytes, fmtBytes, fmtCount, fmtDuration, fmtEta, fmtSpeed, idxRanges, isLinkLike, timeAgo,
+} from '../lib/util.js';
 import { SVG, Ico } from '../components/icons.jsx';
 import { Modal, Mascot, Pipeline } from '../components/common.jsx';
 import { MASCOT_CHILLING } from '../lib/mascots.js';
@@ -27,6 +29,9 @@ export function FeedPage({ dlState, setDlState, setAppState, stats, sysInfo, ref
   }, [analyzing]);
   const [fetchingItems, setFetchingItems] = React.useState(false);
   const [info, setInfo] = React.useState(() => ssJ('feed_info', null));
+  // Words instead of a link: a YouTube search ({query, items}); kept while
+  // results are analyzed one by one
+  const [searchResults, setSearchResults] = React.useState(() => ssJ('feed_search', null));
   const [optsOpen, setOptsOpen] = React.useState(false);
   const [advOpen, setAdvOpen] = React.useState(false);
   // Chapter picker: indexes of the chosen chapters of the analyzed video
@@ -67,6 +72,7 @@ export function FeedPage({ dlState, setDlState, setAppState, stats, sysInfo, ref
   React.useEffect(() => { try { sessionStorage.setItem('feed_customFmt', customFmt); } catch {} }, [customFmt]);
   React.useEffect(() => { try { sessionStorage.setItem('feed_downloadPath', downloadPath); } catch {} }, [downloadPath]);
   React.useEffect(() => { try { sessionStorage.setItem('feed_info', info ? JSON.stringify(info) : ''); } catch {} }, [info]);
+  React.useEffect(() => { try { sessionStorage.setItem('feed_search', searchResults ? JSON.stringify(searchResults) : ''); } catch {} }, [searchResults]);
 
   const prevUrl = React.useRef(url);
   React.useEffect(() => {
@@ -111,6 +117,22 @@ export function FeedPage({ dlState, setDlState, setAppState, stats, sysInfo, ref
   const handleAnalyze = React.useCallback((explicitUrl) => {
     const target = (typeof explicitUrl === 'string' ? explicitUrl : url).trim();
     if (!target) return;
+    if (!isLinkLike(target)) {
+      setAnalyzing(true);
+      setInfo(null);
+      setPlaylistItems && setPlaylistItems(null);
+      API.post('/api/search', { query: target })
+        .then(d => {
+          setSearchResults({ query: d.query, items: d.items || [] });
+          if (!(d.items || []).length) showNotif('No Results', 'Nothing found for "' + d.query + '"', 'warn');
+        })
+        .catch(e => {
+          const d = e.data || {};
+          showNotif(d.title || 'Search Failed', d.hint || e.message, 'error');
+        })
+        .finally(() => setAnalyzing(false));
+      return;
+    }
     setAnalyzing(true);
     setInfo(null);
     setPlaylistItems && setPlaylistItems(null);
@@ -406,7 +428,7 @@ export function FeedPage({ dlState, setDlState, setAppState, stats, sysInfo, ref
               value={url}
               onChange={e => setUrl(e.target.value)}
               onKeyDown={handleUrlKeyDown}
-              placeholder="https://www.youtube.com/watch?v=... or any supported platform URL"
+              placeholder="Paste a link (YouTube or any supported site) — or type words to search YouTube"
             />
           </div>
           <button
@@ -417,14 +439,16 @@ export function FeedPage({ dlState, setDlState, setAppState, stats, sysInfo, ref
           </button>
           {!info && (
             <button className="btn btn-primary" onClick={handleAnalyze} disabled={analyzing}>
-              {analyzing ? 'ANALYZING...' : 'ANALYZE →'}
+              {isLinkLike(url) || !url.trim()
+                ? (analyzing ? 'ANALYZING...' : 'ANALYZE →')
+                : (analyzing ? 'SEARCHING...' : 'SEARCH →')}
             </button>
           )}
           <button className="btn btn-secondary btn-sm" onClick={handlePaste}>PASTE</button>
           <button className="btn btn-secondary btn-sm" onClick={handleImportFile} title="Import URLs from .txt file">IMPORT FILE</button>
         </div>
         <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: 'var(--t4)', paddingTop: 3 }}>
-          ENTER: {!url.trim() ? 'paste' : !info && !analyzing ? 'analyze' : 'download'}
+          ENTER: {!url.trim() ? 'paste' : !info && !analyzing ? (isLinkLike(url) ? 'analyze' : 'search') : 'download'}
           {importedFileName && <span style={{ color: 'var(--cyan)', marginLeft: 10 }}>↑ {importedFileName} ({importedUrls ? importedUrls.length : 0} URLs)</span>}
           {analyzeSlow && (
             <span style={{ color: 'var(--amber)', marginLeft: 10 }}>
@@ -676,6 +700,47 @@ export function FeedPage({ dlState, setDlState, setAppState, stats, sysInfo, ref
           )}
         </div>
       </div>
+
+      {/* SEARCH RESULTS — pick one to analyze; the list stays for the next pick */}
+      {searchResults && (
+        <div className="panel" style={{ marginBottom: 16 }}>
+          <div className="panel-hud" /><div className="panel-hud-br" />
+          <div className="ph">
+            <span className="ptag">SEARCH</span>
+            <span className="ptitle" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              "{searchResults.query}"
+            </span>
+            <span className="psub">{searchResults.items.length} RESULTS</span>
+            <span style={{ cursor: 'pointer', fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: 'var(--t3)', paddingLeft: 10 }}
+              title="Close the results" onClick={() => setSearchResults(null)}>CLEAR ✕</span>
+          </div>
+          <div className="pl-queue-list" style={{ maxHeight: 360 }}>
+            {searchResults.items.map(item => {
+              const picked = info && (info.webpage_url === item.url || info.id === item.id);
+              return (
+                <div key={item.url || item.idx} className={'pl-queue-item search-result' + (picked ? ' picked' : '')}
+                  title="Analyze this one" style={{ cursor: 'pointer' }}
+                  onClick={() => { setUrl(item.url); handleAnalyze(item.url); }}>
+                  <span className="pl-queue-idx">{item.idx}</span>
+                  {item.thumbnail
+                    ? <img src={item.thumbnail} className="pl-queue-thumb" alt="" onError={e => { e.target.style.display = 'none'; }} />
+                    : <div className="pl-queue-thumb-ph">▶</div>}
+                  <div className="pl-queue-info">
+                    <div className="pl-queue-title">{item.title || item.url}</div>
+                    <div className="pl-queue-sub">
+                      {[item.uploader, item.view_count != null ? fmtCount(item.view_count) + ' views' : null].filter(Boolean).join(' · ')}
+                    </div>
+                  </div>
+                  <span className="pl-queue-dur">{item.duration ? fmtDuration(item.duration) : '—'}</span>
+                  <div className="pl-queue-st">
+                    <span className={'q-st-badge ' + (picked ? 'completed' : 'queued')}>{picked ? 'PICKED' : 'ANALYZE'}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* SYNC IN PROGRESS BANNER */}
       {isDownloading && dlState && dlState.library_id && info && (

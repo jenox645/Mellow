@@ -402,6 +402,19 @@ def api_info() -> Response:
     return jsonify(info)
 
 
+@app.route("/api/search", methods=["POST"])
+def api_search() -> Response:
+    """Words typed into the Feed instead of a link: a YouTube search."""
+    query = str((request.get_json(force=True) or {}).get("query", "")).strip()
+    if not query:
+        return jsonify({"error": "Nothing to search for"}), 400
+    try:
+        items = downloader.search(query, cookie_opts=request_settings(load_config()))
+    except Exception as exc:
+        return jsonify({"error": str(exc), **(errors.explain(str(exc)) or {})}), 500
+    return jsonify({"query": query, "items": items})
+
+
 @app.route("/api/download", methods=["POST"])
 def api_download() -> Response:
     data = request.get_json(force=True) or {}

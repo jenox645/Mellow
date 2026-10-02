@@ -15,6 +15,8 @@ from .constants import (
     LOUDNORM_FILTER,
     MAX_CHOSEN_CHAPTERS,
     PAUSE_POLL_SECS,
+    SEARCH_QUERY_MAX_LEN,
+    SEARCH_RESULTS,
     SOCKET_TIMEOUT_SECS,
     SPONSORBLOCK_REMOVE_CATEGORIES,
     THUMB_FETCH_TIMEOUT_SECS,
@@ -1190,6 +1192,25 @@ def get_playlist_items(url: str, cookie_opts: dict | None = None) -> list[dict]:
     return _flat_items(info.get("entries") or [])
 
 
+def search(query: str, cookie_opts: dict | None = None) -> list[dict]:
+    """YouTube search: the top SEARCH_RESULTS videos for `query`, as playlist items."""
+    query = " ".join(query.split())[:SEARCH_QUERY_MAX_LEN]
+    if not query:
+        return []
+    ydl_opts = {"quiet": True, "no_warnings": True, "extract_flat": "in_playlist", "skip_download": True}
+    if cookie_opts:
+        _apply_cookie_opts(ydl_opts, cookie_opts)
+        _apply_network_opts(ydl_opts, cookie_opts)
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        info = ydl.extract_info(f"ytsearch{SEARCH_RESULTS}:{query}", download=False)
+    items = _flat_items((info or {}).get("entries") or [])
+    for item in items:
+        # Flat search results may carry only the id
+        if "://" not in item["url"] and item["id"]:
+            item["url"] = f"https://www.youtube.com/watch?v={item['id']}"
+    return items
+
+
 def _flat_items(entries: list) -> list[dict]:
     """A flat playlist's entries for the UI. `idx` is the 1-based playlist position
     (unavailable entries keep their slot), as yt-dlp's playlist_items counts."""
@@ -1207,6 +1228,7 @@ def _flat_items(entries: list) -> list[dict]:
             "thumbnail": thumb_url,
             "duration": e.get("duration"),
             "uploader": e.get("uploader") or e.get("channel", ""),
+            "view_count": e.get("view_count"),
         })
     return items
 

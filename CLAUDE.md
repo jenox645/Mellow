@@ -48,7 +48,7 @@ build_setup.py     the build (SETUP.bat / setup.sh call it); MellowDLP.spec, ins
 - Unfinished jobs (running or queued) survive restarts (resume prompt on launch)
 
 ## Download Flow
-1. User pastes URL → ANALYZE → POST `/api/info` → yt-dlp `--dump-json`
+1. User pastes URL → ANALYZE → POST `/api/info` → yt-dlp `--dump-json` (a playlist's items come back in the same answer). Words instead of a link (`util.isLinkLike`) → SEARCH → POST `/api/search` (`downloader.search`, `ytsearchN:`), and a picked result is analyzed
 2. User clicks DOWNLOAD → POST `/api/download` with `{url, format, quality, options}`
 3. `server.py` enqueues via `jobs.manager`; worker pool calls `downloader.download_video()` with a per-job cancel event
 4. Progress emitted per-item via SSE: `downloading` → `item_done` (on each file finish) → `processing` → repeat → `complete`
