@@ -1,5 +1,8 @@
-yt-dlp
-mutagen
-flask
-flaskwebgui
-duckdb
+# Runtime dependencies, pinned so every build and CI run gets the same ones
+# (Dependabot proposes the bumps). yt-dlp is the exception: it has to keep up
+# with the sites, so a build takes the newest one and the app can update it.
+yt-dlp>=2026.8.19
+mutagen==1.48.1
+flask==3.1.3
+flaskwebgui==1.1.9   # 1.1.8 crashes at import when no browser is installed
+duckdb==1.5.6

@@ -1,0 +1,34 @@
+# Weekly version bumps as PRs; CI runs the full suite on each.
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      python:
+        patterns: ["*"]
+        update-types: [minor, patch]
+    ignore:
+      # Floor only on purpose: builds take the newest, the app updates itself
+      - dependency-name: yt-dlp
+
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      frontend-tooling:
+        patterns: ["*"]
+        update-types: [minor, patch]
+    ignore:
+      # React 19 dropped the UMD builds the app loads
+      - dependency-name: react
+        update-types: [version-update:semver-major]
+      - dependency-name: react-dom
+        update-types: [version-update:semver-major]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly

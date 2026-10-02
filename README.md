@@ -45,7 +45,7 @@ Video: MP4, MKV, WebM at best, 4K, 1080p, 720p, 480p or 360p. Audio: MP3, M4A, A
 | Layer | Tech |
 |---|---|
 | Backend | Python 3.12+, Flask, yt-dlp |
-| Frontend | React (UMD, no npm), esbuild |
+| Frontend | React (UMD build, no framework tooling), esbuild |
 | Desktop window | FlaskWebGUI (Tkinter) |
 
 Project layout: `main.py` starts the app, the backend lives in `mellow/`, the frontend source in `gui/`, and `build_setup.py` builds `static/` and the packages.
@@ -56,7 +56,7 @@ Project layout: `main.py` starts the app, the backend lives in `mellow/`, the fr
 
 - Python 3.12+ (flaskwebgui uses 3.12-only syntax)
 - [ffmpeg](https://ffmpeg.org/) — see below, it is not optional in practice
-- Node.js + esbuild (build step only)
+- Node.js 20+ (build step only; the build runs `npm ci` for esbuild and React)
 - **Linux:** `python3-tk` (`sudo apt install python3-tk`)
 
 ### ffmpeg
@@ -98,9 +98,16 @@ sudo dpkg -i dist/mellowdlp_*.deb
 ## Build from source
 
 ```bash
-pip install -r requirements.txt pyinstaller pillow
-npm install -g esbuild
 python3 build_setup.py
+```
+
+It creates `.venv`, installs `requirements.txt` + `requirements-build.txt` into it, runs `npm ci` (versions pinned in `package-lock.json`), and builds the binary/installer.
+
+Frontend tooling on its own:
+```bash
+npm ci
+npm run lint      # ESLint
+npm test          # node:test unit tests (tests/js)
 ```
 
 Rebuild frontend only (after editing anything under `gui/`):
@@ -135,4 +142,4 @@ Tests never touch your real config, database or queue — every test runs agains
 - ffmpeg must be installed separately (see Requirements).
 - No auto-update for MellowDLP itself — pull and rebuild manually.
 - Desktop window uses Tkinter via FlaskWebGUI, not a real browser engine.
-- yt-dlp breaks whenever platforms change their APIs (a copy a few months old gets `HTTP Error 403` on most YouTube downloads). From source, update it on the Config page or with `pip install -U yt-dlp` and restart. The packaged `.exe` freezes yt-dlp at build time, so it needs a rebuild to get a newer one.
+- yt-dlp breaks whenever platforms change their APIs (a copy a few months old gets `HTTP Error 403` on most YouTube downloads). Update it on the Config page and restart: the app downloads yt-dlp's official release (checksum-verified) to `~/.mellow_dlp_ytdlp.zip` and runs it instead of the bundled copy while it is the newer one — in the installed app too.

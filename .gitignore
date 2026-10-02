@@ -7,7 +7,7 @@ __pycache__/
 # index.html, mascots.js, favicon) and the installer/package images
 /static/
 assets/mellow_256.png
-# yt-dlp binary the build downloads for bundling (latest at build time)
+# yt-dlp binaries older builds downloaded for bundling
 /yt-dlp
 /yt-dlp.exe
 /appimagetool
@@ -20,6 +20,7 @@ assets/wizard_small.bmp
 *.duckdb.wal
 *.json
 !package.json
+!package-lock.json
 
 # Datalake — actual data files (keep folder structure via .gitkeep)
 datalake/data/raw/**/*.json

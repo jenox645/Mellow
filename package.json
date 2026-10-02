@@ -1,0 +1,17 @@
+{
+  "name": "mellowdlp-frontend",
+  "private": true,
+  "type": "module",
+  "description": "Frontend toolchain: React UMD builds copied into static/, esbuild, ESLint. build_setup.py runs `npm ci` and uses these.",
+  "scripts": {
+    "lint": "eslint \"gui/**/*.jsx\" \"gui/**/*.js\"",
+    "test": "node --test tests/js/*.test.mjs",
+    "bundle": "esbuild gui/app.jsx --bundle --outfile=static/app.bundle.js --loader:.jsx=jsx --target=es2020 --platform=browser --format=iife --global-name=MellowApp --jsx=transform --jsx-factory=React.createElement --jsx-fragment=React.Fragment"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2",
+    "eslint": "10.11.0",
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  }
+}

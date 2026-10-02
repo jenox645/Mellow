@@ -132,14 +132,21 @@ python build_setup.py
 
 # Run tests via the build venv (SETUP.bat option [4]):
 python build_setup.py --run-tests
+
+# Start a built binary headless and check it serves the app (CI + release do this):
+python scripts/smoke_binary.py dist/MellowDLP
 ```
+- Dependencies are pinned: `requirements.txt` (runtime; yt-dlp has a floor only, on purpose), `requirements-dev.txt`, `requirements-build.txt` (PyInstaller, Pillow), and `package.json` + `package-lock.json` (esbuild, ESLint, React — the build copies React's UMD files from `node_modules`; React 19 has none, so stay on 18). The build runs `npm ci` when the lockfile changed. Dependabot proposes bumps weekly
+- flaskwebgui ≥ 1.1.9 (1.1.8 crashes at import without a browser installed); it needs Python 3.12
+- `main.py --no-window` serves on 127.0.0.1 without opening a window (use your own browser; the smoke test uses it)
+- Releases: push a tag `vX.Y.Z` equal to `APP_VERSION` → `.github/workflows/release.yml` builds the Windows installer and the Linux binary + AppImage, smoke-tests each, and publishes the GitHub release with `SHA256SUMS.txt` (a `-suffix` tag is a pre-release). PRs touching packaging run the builds without publishing
 
 ## Tests
 ```bash
 pip install -r requirements.txt -r requirements-dev.txt
 python -m pytest tests/ -m "not e2e and not slow"
 python scripts/canary.py        # live-site extraction probe (also the weekly CI canary)
-node --test tests/js/*.test.mjs # frontend unit tests (util, formats, the progress-event reducer)
+npm test                        # frontend unit tests via node:test (util, formats, the progress-event reducer)
 ```
 - `tests/conftest.py` redirects config, DB and queue files to a temp dir for every test (autouse) and drains `jobs.manager` on teardown — tests must never read or write `~/.mellow_dlp*`
 - When a test enqueues through the API with `downloader.download_video` mocked, call `jobs.manager.wait_idle()` inside the `patch` block so the worker can't run the real downloader afterwards
@@ -147,5 +154,5 @@ node --test tests/js/*.test.mjs # frontend unit tests (util, formats, the progre
 ## Lint
 ```bash
 ruff check .                       # backend
-npx eslint "gui/**/*.jsx" "gui/**/*.js"   # frontend (jsx-uses-vars shim in eslint.config.js)
+npm ci && npm run lint             # frontend (jsx-uses-vars shim in eslint.config.js)
 ```

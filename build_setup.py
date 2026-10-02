@@ -35,10 +35,6 @@ IS_LINUX   = SYSTEM == "Linux"
 
 from mellow.version import APP_VERSION as VERSION  # noqa: E402 — single version source
 
-REACT_VERSION = "18.3.1"
-REACT_URL = f"https://unpkg.com/react@{REACT_VERSION}/umd/react.production.min.js"
-REACT_DOM_URL = f"https://unpkg.com/react-dom@{REACT_VERSION}/umd/react-dom.production.min.js"
-
 # Syntax-checked before packaging: the entry points plus the whole backend
 PYTHON_FILES = ["main.py", "build_setup.py", *sorted(
     str(p.relative_to(HERE)) for p in (HERE / "mellow").glob("*.py"))]
@@ -150,7 +146,7 @@ if FRONTEND_ONLY:
 else:
     run([
         sys.executable, "-m", "pip", "install", "--upgrade",
-        "-r", str(HERE / "requirements.txt"), "pyinstaller", "pillow",
+        "-r", str(HERE / "requirements.txt"), "-r", str(HERE / "requirements-build.txt"),
     ])
 
 
@@ -166,50 +162,25 @@ result = subprocess.run([node, "--version"], capture_output=True, text=True)
 print(f"  Node {result.stdout.strip()} — OK")
 
 
-def _npm_global_esbuild() -> str | None:
-    """Find esbuild inside npm's global prefix.
+npm = shutil.which("npm")
+if not npm:
+    fail("npm not found — it comes with Node.js; reinstall Node.js from https://nodejs.org/")
 
-    A fresh `npm install -g` lands there, but shutil.which() only searches
-    this process's PATH — which was captured when the terminal opened and
-    may predate the Node installation. Asking npm directly is reliable.
-    """
-    npm = shutil.which("npm")
-    if not npm:
-        return None
-    try:
-        cmd = [npm, "prefix", "-g"]
-        r = subprocess.run(
-            subprocess.list2cmdline(cmd) if IS_WINDOWS else cmd,
-            shell=IS_WINDOWS, capture_output=True, text=True, timeout=30,
-        )
-        prefix = Path(r.stdout.strip())
-    except Exception:
-        return None
-    if IS_WINDOWS:
-        candidates = [prefix / "esbuild.cmd", prefix / "esbuild"]
-    else:
-        candidates = [prefix / "bin" / "esbuild"]
-    for c in candidates:
-        if c.exists():
-            return str(c)
-    return None
-
-
-esbuild = shutil.which("esbuild") or _npm_global_esbuild()
-if not esbuild:
-    print("  esbuild not found — installing globally via npm...")
-    run(["npm", "install", "-g", "esbuild"])
-    esbuild = shutil.which("esbuild") or _npm_global_esbuild()
-if not esbuild:
-    fail(
-        "esbuild was installed but can't be located.\n"
-        "  Your terminal's PATH probably predates the Node.js install —\n"
-        "  open a NEW terminal and run SETUP.bat again,\n"
-        "  or run `npm prefix -g` and add that folder to PATH."
-    )
+# esbuild, ESLint and the React builds are pinned in package-lock.json.
+# `npm ci` installs exactly those; it only runs when the lockfile changed.
+NODE_MODULES = HERE / "node_modules"
+_lock = HERE / "package-lock.json"
+_installed = NODE_MODULES / ".package-lock.json"
+if not _installed.exists() or _installed.stat().st_mtime < _lock.stat().st_mtime:
+    run([npm, "ci", "--no-audit", "--no-fund"], cwd=str(HERE))
+else:
+    print("  node_modules matches package-lock.json — OK")
+esbuild = str(NODE_MODULES / ".bin" / ("esbuild.cmd" if IS_WINDOWS else "esbuild"))
+if not Path(esbuild).exists():
+    fail(f"{esbuild} is missing — delete node_modules and run the build again")
 _eb_cmd = subprocess.list2cmdline([esbuild, "--version"]) if IS_WINDOWS else [esbuild, "--version"]
 result2 = subprocess.run(_eb_cmd, shell=IS_WINDOWS, capture_output=True, text=True)
-print(f"  esbuild {result2.stdout.strip()} ({esbuild}) — OK")
+print(f"  esbuild {result2.stdout.strip()} — OK")
 
 
 # ── Step 5: Encode mascot images → static/mascots.js ─────────────────────────
@@ -317,37 +288,18 @@ elif IS_LINUX:
         print("  mellow_256.png already present — OK")
 
 
-# ── Step 7: Download React UMD bundles ────────────────────────────────────────
-step("7/12 · Downloading React UMD bundles")
-_REACT_SOURCES = [
-    ("react.min.js", [
-        REACT_URL,
-        f"https://cdn.jsdelivr.net/npm/react@{REACT_VERSION}/umd/react.production.min.js",
-    ]),
-    ("react-dom.min.js", [
-        REACT_DOM_URL,
-        f"https://cdn.jsdelivr.net/npm/react-dom@{REACT_VERSION}/umd/react-dom.production.min.js",
-    ]),
-]
-for dest_name, urls in _REACT_SOURCES:
-    dest = STATIC / dest_name
-    if dest.exists():
-        print(f"  {dest_name} already cached ({dest.stat().st_size} bytes)")
-        continue
-    last_err: Exception | None = None
-    for url in urls:
-        host = url.split("/")[2]
-        print(f"  Downloading {dest_name} from {host}...")
-        try:
-            urllib.request.urlretrieve(url, dest)
-            print(f"  {dest_name} ({dest.stat().st_size} bytes) — OK")
-            last_err = None
-            break
-        except Exception as exc:
-            last_err = exc
-            print(f"  {host} failed: {exc}")
-    if last_err is not None:
-        fail(f"Failed to download {dest_name} from all CDNs: {last_err}")
+# ── Step 7: Copy the React UMD builds ─────────────────────────────────────────
+step("7/12 · Copying React UMD builds from node_modules")
+for pkg, src_name, dest_name in [
+    ("react", "react.production.min.js", "react.min.js"),
+    ("react-dom", "react-dom.production.min.js", "react-dom.min.js"),
+]:
+    src = NODE_MODULES / pkg / "umd" / src_name
+    if not src.exists():
+        fail(f"Missing {src} — run `npm ci`")
+    shutil.copy2(src, STATIC / dest_name)
+    print(f"  {dest_name} ({src.stat().st_size:,} bytes, {pkg} "
+          f"{json.loads((NODE_MODULES / pkg / 'package.json').read_text())['version']}) — OK")
 
 
 # ── Step 8: Copy index.html ────────────────────────────────────────────────────
@@ -371,7 +323,7 @@ bundle_out = STATIC / "app.bundle.js"
 # --bundle resolves the gui/lib + gui/components + gui/pages module imports
 # into the single static/app.bundle.js (React stays a UMD global).
 run([
-    esbuild or "esbuild",
+    esbuild,
     str(app_jsx),
     f"--outfile={bundle_out}",
     "--bundle",
