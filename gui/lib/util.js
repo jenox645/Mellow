@@ -100,3 +100,15 @@ export function estimateDownloadBytes(info, { mode, quality, audioFmt, audioQual
   }
   return bytes;
 }
+
+// Playlist positions as yt-dlp's playlist_items wants them: [1,2,3,5,8,9] → "1-3,5,8-9"
+export function idxRanges(indexes) {
+  const sorted = [...new Set(indexes)].sort((a, b) => a - b);
+  const parts = [];
+  for (let i = 0; i < sorted.length; i++) {
+    const start = sorted[i];
+    while (i + 1 < sorted.length && sorted[i + 1] === sorted[i] + 1) i++;
+    parts.push(start === sorted[i] ? String(start) : start + '-' + sorted[i]);
+  }
+  return parts.join(',');
+}

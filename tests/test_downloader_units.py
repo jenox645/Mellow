@@ -152,3 +152,30 @@ def test_logger_reports_archive_and_filter_skips():
     logger.debug('[youtube] Extracting URL: https://youtu.be/x')
     assert [(e['status'], e['reason'], e.get('title')) for e in events] == [
         ('item_skipped', 'archive', None), ('item_skipped', 'filtered', 'A Short')]
+
+
+def test_analyzing_a_playlist_returns_its_items_in_one_extraction():
+    from unittest.mock import patch
+
+    from mellow import downloader
+    flat = {'_type': 'playlist', 'title': 'Mix', 'entries': [
+        {'id': 'a', 'title': 'One', 'url': 'https://x/a', 'duration': 60},
+        None,  # unavailable: keeps its slot, so the next item is position 3
+        {'id': 'c', 'title': 'Three', 'url': 'https://x/c', 'thumbnails': [{'url': 't.jpg'}]},
+    ]}
+    with patch('yt_dlp.YoutubeDL.YoutubeDL.extract_info', return_value=flat) as extract:
+        info = downloader.get_video_info('https://x/list')
+    assert extract.call_count == 1
+    assert info['is_playlist'] and info['playlist_count'] == 3
+    assert [(i['idx'], i['title']) for i in info['items']] == [(1, 'One'), (3, 'Three')]
+    assert info['items'][1]['thumbnail'] == 't.jpg'
+    with patch('yt_dlp.YoutubeDL.YoutubeDL.extract_info', return_value=flat):
+        assert downloader.get_playlist_items('https://x/list') == info['items']
+
+
+def test_a_single_video_has_no_items():
+    from unittest.mock import patch
+
+    from mellow import downloader
+    with patch('yt_dlp.YoutubeDL.YoutubeDL.extract_info', return_value={'id': 'v', 'title': 'V', 'formats': []}):
+        assert downloader.get_video_info('https://x/v')['items'] is None

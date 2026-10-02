@@ -1042,6 +1042,8 @@ def get_video_info(url: str, cookie_opts: dict | None = None) -> dict:
         "webpage_url": info.get("webpage_url") or url,
         "size_estimates": estimates,
         "chapters": None if is_playlist else _chapter_list(info),
+        # The same flat extraction /api/playlist-items does: spares the Feed a second one
+        "items": _flat_items(info.get("entries") or []) if is_playlist else None,
     }
 
 
@@ -1101,7 +1103,12 @@ def get_playlist_items(url: str, cookie_opts: dict | None = None) -> list[dict]:
         info = ydl.extract_info(url, download=False)
     if not info:
         return []
-    entries = info.get("entries") or []
+    return _flat_items(info.get("entries") or [])
+
+
+def _flat_items(entries: list) -> list[dict]:
+    """A flat playlist's entries for the UI. `idx` is the 1-based playlist position
+    (unavailable entries keep their slot), as yt-dlp's playlist_items counts."""
     items = []
     for i, e in enumerate(entries):
         if not e:

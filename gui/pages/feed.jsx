@@ -2,7 +2,7 @@
 'use strict';
 
 import { API, cancelShownDownload } from '../lib/api.js';
-import { estimateDownloadBytes, fmtBytes, fmtSpeed, fmtEta, fmtDuration, timeAgo } from '../lib/util.js';
+import { estimateDownloadBytes, fmtBytes, fmtSpeed, fmtEta, fmtDuration, idxRanges, timeAgo } from '../lib/util.js';
 import { SVG, Ico } from '../components/icons.jsx';
 import { Modal, Mascot, Pipeline } from '../components/common.jsx';
 import { MASCOT_CHILLING } from '../lib/mascots.js';
@@ -115,7 +115,9 @@ export function FeedPage({ dlState, setDlState, setAppState, stats, sysInfo, ref
     API.post('/api/info', { url: target })
       .then(data => {
         setInfo(data);
-        if (data.is_playlist) {
+        if (data.is_playlist && data.items && setPlaylistItems) {
+          setPlaylistItems(data.items.map(item => ({ ...item, selected: true })));
+        } else if (data.is_playlist) {
           setFetchingItems(true);
           API.post('/api/playlist-items', { url: target })
             .then(r => {
@@ -240,11 +242,19 @@ export function FeedPage({ dlState, setDlState, setAppState, stats, sysInfo, ref
 
   const startImportDownload = React.useCallback(() => {
     if (!importedUrls || !importedUrls.length) return;
-    if (onPlaylistDownload) onPlaylistDownload(importedUrls.length, importedFileName || 'Imported URLs');
+    // Links removed from the pending list with ✕ stay out
+    const urls = playlistItems
+      ? importedUrls.filter(u => playlistItems.some(i => i.url === u && i.selected !== false))
+      : importedUrls;
+    if (!urls.length) {
+      showNotif('Nothing To Download', 'Every imported link was removed', 'warn');
+      return;
+    }
+    if (onPlaylistDownload) onPlaylistDownload(urls.length, importedFileName || 'Imported URLs');
     setSubmitting(true);
     API.post('/api/download', {
-      url: importedUrls[0],
-      multi_urls: importedUrls,
+      url: urls[0],
+      multi_urls: urls,
       mode,
       quality,
       container,
@@ -258,7 +268,7 @@ export function FeedPage({ dlState, setDlState, setAppState, stats, sysInfo, ref
       scheduled: scheduleLater,
       ...(downloadPath ? { output_dir: downloadPath } : {}),
     }).then(onQueued).catch(e => { showNotif('Error', e.message, 'error'); setSubmitting(false); });
-  }, [importedUrls, importedFileName, mode, quality, container, audioFmt, audioQuality, embedThumb, embedChapters, embedMeta, embedSubs, sponsorblock, downloadPath, onPlaylistDownload, showNotif, scheduleLater, onQueued]);
+  }, [importedUrls, playlistItems, importedFileName, mode, quality, container, audioFmt, audioQuality, embedThumb, embedChapters, embedMeta, embedSubs, sponsorblock, downloadPath, onPlaylistDownload, showNotif, scheduleLater, onQueued]);
 
   // Ref so handleDownload/handleUrlKeyDown can call latest startImportDownload without stale closure
   const startImportDownloadRef = React.useRef(null);
@@ -287,10 +297,15 @@ export function FeedPage({ dlState, setDlState, setAppState, stats, sysInfo, ref
     setSubmitting(true);
     let playlistItemsParam = undefined;
     if (playlistItems && info && info.is_playlist) {
+      // Items removed with ✕ are gone from the list: compare with the whole playlist
       const selected = playlistItems.filter(i => i.selected !== false);
-      if (selected.length > 0 && selected.length < playlistItems.length) {
-        playlistItemsParam = selected.map(i => i.idx).join(',');
+      const whole = Math.max(info.playlist_count || 0, ...playlistItems.map(i => i.idx));
+      if (selected.length === 0) {
+        showNotif('Nothing To Download', 'Every item of the playlist was removed', 'warn');
+        setSubmitting(false);
+        return;
       }
+      if (selected.length < whole) playlistItemsParam = idxRanges(selected.map(i => i.idx));
     }
     API.post('/api/download', {
       url: url.trim(),
