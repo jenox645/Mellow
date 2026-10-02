@@ -9,8 +9,8 @@ static/            build output only (gitignored): bundle, React, index.html, ma
 assets/            icons, mascot art (*_vector used by the build), installer images;
                    originals/ holds unused source art
 tests/             pytest suite (imports `from mellow import …`, patches `mellow.<module>.<name>`);
-                   tests/js/ holds the frontend unit tests (node:test, no packages)
-scripts/canary.py  live-site extraction probe
+                   tests/js/ = frontend unit tests (node:test); tests/browser/ = Chromium smoke tests (marker `browser`)
+scripts/canary.py  live-site extraction probe; scripts/smoke_binary.py starts a build headless and checks it
 build_setup.py     the build (SETUP.bat / setup.sh call it); MellowDLP.spec, installer.iss,
                    build_linux_deb.py are its packaging inputs
 ```
@@ -34,7 +34,7 @@ build_setup.py     the build (SETUP.bat / setup.sh call it); MellowDLP.spec, ins
   - `constants.py` / `version.py` — all tuning knobs and the single APP_VERSION
 - Frontend (React UMD, bundled by esbuild from ES modules):
   - `gui/app.jsx` — App root: routing, clipboard watcher, shortcuts; feeds SSE events to `downloadsReducer` and runs the effects it queues
-  - `gui/lib/` — `api.js`, `util.js`, `constants.js`, `formats.js` (FORMAT_TOGGLES as one `{key: bool}`), `hooks.js` (`useSessionState`), `downloads.js` (the progress-event reducer), `mascots.js`, `sound.js`. `gui/package.json` only marks these as ES modules so node can test them
+  - `gui/lib/` — `api.js`, `util.js`, `constants.js`, `formats.js` (FORMAT_TOGGLES as one `{key: bool}`), `hooks.js` (`useSessionState`), `downloads.js` (the progress-event reducer), `mascots.js`, `sound.js`. The root `package.json` (`"type": "module"`) lets node test them directly
   - `gui/components/` — `common.jsx`, `icons.jsx`, `chrome.jsx`, `loading.jsx`, `vault-modals.jsx`
   - `gui/pages/` — `feed.jsx`, `queue.jsx`, `vault.jsx`, `analytics.jsx`, `signal.jsx`, `config.jsx`
 - Communication: SSE (`EventSource('/api/progress')`) for download progress; HTTP for everything else
