@@ -367,6 +367,8 @@ export function FeedPage({ dlState, setDlState, setAppState, stats, sysInfo, ref
   const estimatedBytes = info && !info.is_playlist
     ? estimateDownloadBytes(info, { mode, quality, audioFmt, audioQuality, startTime, endTime, chapters: chosenChapters })
     : null;
+  const playlistTotalSecs = info && info.is_playlist && playlistItems
+    ? playlistItems.reduce((s, i) => s + (i.duration || 0), 0) : 0;
   const diskFree = sysInfo && sysInfo.disk_free_bytes;
   const wontFit = !!(estimatedBytes && diskFree && estimatedBytes > diskFree);
 
@@ -669,7 +671,12 @@ export function FeedPage({ dlState, setDlState, setAppState, stats, sysInfo, ref
                 )}
                 <div className="info-tags">
                   <span className="tag cyan">{info.platform || 'URL'}</span>
-                  {info.is_playlist && <span className="tag amber">PLAYLIST · {info.playlist_count}</span>}
+                  {info.is_playlist && (
+                    <span className="tag amber" title="Items left to download, and their total length (where the site says)">
+                      PLAYLIST · {playlistItems ? playlistItems.length : info.playlist_count}
+                      {playlistTotalSecs > 0 && ' · ' + fmtDuration(playlistTotalSecs)}
+                    </span>
+                  )}
                   {mode === 'video' ? <span className="tag">{quality.toUpperCase()}</span> : <span className="tag amber">{audioFmt.toUpperCase()}</span>}
                   {estimatedBytes && (
                     <span className={'tag' + (wontFit ? ' red' : '')}
