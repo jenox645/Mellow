@@ -24,6 +24,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -40,6 +41,7 @@ from .constants import (
     APP_ASSET_SUMS,
     APP_DOWNLOADS_PREFIX,
     APP_RELEASES_API,
+    APP_RELEASES_PAGE,
     APP_UPDATE_CHUNK_BYTES,
     APP_UPDATE_EXIT_DELAY_SECS,
     APP_UPDATE_READ_TIMEOUT_SECS,
@@ -90,8 +92,34 @@ def _target() -> Path:
 
 def _latest_release() -> dict:
     req = Request(APP_RELEASES_API, headers={**_HEADERS, "Accept": "application/vnd.github+json"})
-    with urlopen(req, timeout=UPDATE_CHECK_TIMEOUT_SECS) as resp:
-        return json.loads(resp.read().decode())
+    try:
+        with urlopen(req, timeout=UPDATE_CHECK_TIMEOUT_SECS) as resp:
+            return json.loads(resp.read().decode())
+    except HTTPError as exc:
+        # The API allows 60 anonymous calls an hour per IP: an office or a
+        # carrier-grade NAT runs out. The release page itself isn't limited.
+        if exc.code not in (403, 429):
+            raise
+        log.info(f"GitHub API answered {exc.code}; reading the release page instead")
+        return _latest_release_from_page()
+
+
+def _latest_release_from_page() -> dict:
+    """The latest release from where /releases/latest redirects (…/tag/vX.Y.Z).
+
+    The asset URLs follow from the tag; their sizes come with the download,
+    and the checksum check is the same.
+    """
+    with urlopen(Request(APP_RELEASES_PAGE, headers=_HEADERS), timeout=UPDATE_CHECK_TIMEOUT_SECS) as resp:
+        final_url = resp.geturl()
+    m = re.search(r"/releases/tag/([^/?#]+)$", final_url)
+    if not m:
+        raise HTTPError(final_url, 404, "No release", {}, None)
+    tag = m.group(1)
+    names = [n.format(version=tag.lstrip("vV")) for n in APP_ASSET_NAMES.values()] + [APP_ASSET_SUMS]
+    return {"tag_name": tag, "html_url": final_url, "body": "",
+            "assets": [{"name": n, "size": 0, "browser_download_url": f"{APP_DOWNLOADS_PREFIX}{tag}/{n}"}
+                       for n in names]}
 
 
 def _version_of(release: dict) -> str:
@@ -138,7 +166,7 @@ def check() -> dict:
     if newer and kind:
         asset, sums = _release_assets(release, kind)
         if asset and sums:
-            result.update(can_install=True, download_size=asset["size"])
+            result.update(can_install=True, download_size=asset["size"] or None)
         else:
             result["install_note"] = "This release has no download for this system."
     log.info(f"app update check: current={APP_VERSION} latest={latest} update={newer} "

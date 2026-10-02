@@ -32,13 +32,18 @@ def _asset_entry(name, size, prefix=APP_DOWNLOADS_PREFIX):
 
 
 class _Resp(io.BytesIO):
-    def __init__(self, data):
+    def __init__(self, data, url=''):
         super().__init__(data)
         self.headers = {'Content-Length': str(len(data))}
+        self.url = url
+
+    def geturl(self):
+        return self.url
 
 
-def _github(kind, payload=PAYLOAD, sums_hash=None, prefix=APP_DOWNLOADS_PREFIX):
-    """A fake GitHub serving release NEW with the asset for `kind`."""
+def _github(kind, payload=PAYLOAD, sums_hash=None, prefix=APP_DOWNLOADS_PREFIX, api_limited=False):
+    """A fake GitHub serving release NEW with the asset for `kind` (its API
+    answering 403 when `api_limited`, like an anonymous caller over its quota)."""
     name = APP_ASSET_NAMES[kind].format(version=NEW)
     sums = f'{sums_hash or hashlib.sha256(payload).hexdigest()}  {name}\nabc  other-file\n'
     assets = [_asset_entry(name, len(payload), prefix), _asset_entry(APP_ASSET_SUMS, len(sums), prefix)]
@@ -46,7 +51,11 @@ def _github(kind, payload=PAYLOAD, sums_hash=None, prefix=APP_DOWNLOADS_PREFIX):
     def urlopen(req, timeout=None):
         url = req.full_url
         if 'api.github.com' in url:
+            if api_limited:
+                raise HTTPError(url, 403, 'rate limit exceeded', {}, None)
             return _Resp(_release('v' + NEW, assets=assets).getvalue())
+        if url.endswith('/releases/latest'):
+            return _Resp(b'<html>', url=f'https://github.com/jenox645/Mellow/releases/tag/v{NEW}')
         if url.endswith(APP_ASSET_SUMS):
             return _Resp(sums.encode())
         if url.endswith(name):
@@ -99,6 +108,23 @@ def test_check_offers_the_install_when_the_release_has_this_systems_file(kind):
         data = app_update.check()
     assert data['can_install'] is True and data['install_kind'] == kind
     assert data['download_size'] == len(PAYLOAD)
+
+
+def test_a_rate_limited_api_falls_back_to_the_release_page(tmp_path, monkeypatch):
+    fake = _github('linux-binary', api_limited=True)
+    with patch('mellow.app_update.install_kind', return_value=('linux-binary', None)), \
+            patch('mellow.app_update.urlopen', side_effect=fake):
+        data = app_update.check()
+    assert data['latest'] == NEW and data['can_install'] is True
+    assert data['download_size'] is None        # the page doesn't say; the download does
+    target = tmp_path / 'app' / 'MellowDLP'
+    target.parent.mkdir()
+    target.write_bytes(b'old build')
+    monkeypatch.delenv('APPIMAGE', raising=False)
+    events, handed = _install('linux-binary', target, fake, monkeypatch)
+    assert target.read_bytes() == PAYLOAD and handed
+    pcts = [e['pct'] for e in events if e['stage'] == 'downloading']
+    assert pcts[-1] == 100
 
 
 def test_check_ignores_files_hosted_anywhere_else():
