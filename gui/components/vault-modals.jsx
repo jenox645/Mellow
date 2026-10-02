@@ -625,3 +625,121 @@ export function RenameVaultModal({ folder, initialName, onClose, onSave }) {
     </Modal>
   );
 }
+
+// The Feed's "save this playlist to the vault?" step before a playlist download
+export function VaultLinkPromptModal({ info, url, config, opts, onClose, onJustDownload, onLinkAndDownload, showNotif }) {
+  const isAudio = opts.mode === 'audio';
+  // What future syncs of the folder should download: the options chosen now
+  const syncFormat = {
+    sync_audio: isAudio, audio_format: opts.audio_format, audio_quality: opts.audio_quality,
+    quality: opts.quality, container: opts.container,
+    ...togglesFrom(opts),
+  };
+  // Library mode keeps mellow_archive.txt, so items already in the folder are
+  // skipped now and on every later sync
+  const downloadInto = (folderPath) => onLinkAndDownload({ output_dir: folderPath, mode: 'library', sync_audio: isAudio });
+  const [step, setStep] = React.useState('choose'); // 'choose' | 'link-existing' | 'create-new'
+  const [vaultFolders, setVaultFolders] = React.useState([]);
+  const [selectedFolder, setSelectedFolder] = React.useState('');
+  const [newName, setNewName] = React.useState((info && info.title) ? info.title.slice(0, 40) : '');
+  const [newFolder, setNewFolder] = React.useState('');
+  const [saving, setSaving] = React.useState(false);
+
+  React.useEffect(() => {
+    if (step === 'link-existing') {
+      API.get('/api/vault').then(d => setVaultFolders(d.folders || [])).catch(() => {});
+    }
+  }, [step]);
+
+  const browseNewFolder = () => {
+    API.post('/api/browse-folder', {}).then(d => { if (d.path) setNewFolder(d.path); }).catch(() => {});
+  };
+
+  const handleLinkExisting = () => {
+    if (!selectedFolder) return;
+    setSaving(true);
+    // Actually link the playlist, so the folder's Sync picks it up later
+    API.post('/api/vault/playlists', { path: selectedFolder, url: url.trim(), sync_format: syncFormat })
+      .then(() => {
+        showNotif('Linked', 'Playlist linked to ' + selectedFolder.split(/[\\/]/).pop(), 'success');
+        downloadInto(selectedFolder);
+      })
+      .catch(e => { showNotif('Error', e.message, 'error'); setSaving(false); });
+  };
+
+  const handleCreateNew = () => {
+    const name = newName.trim();
+    if (!name) { showNotif('Error', 'Name required', 'error'); return; }
+    setSaving(true);
+    API.post('/api/library', {
+      name, url: url.trim(),
+      // A picked folder is used as-is; otherwise a subfolder of the download folder
+      folder: newFolder || config.output_dir || '',
+      folder_name: name, use_subfolder: !newFolder,
+      mode: isAudio ? 'AUDIO' : 'VIDEO', quality: opts.quality, container: opts.container,
+      audio_format: opts.audio_format, sync_mode: 'add',
+      ...togglesFrom(opts),
+    }).then(entry => {
+      // Also remember the full format (incl. bitrate, which library entries
+      // don't store) for the folder's future syncs
+      return API.post('/api/vault/playlists', { path: entry.folder_path, url: url.trim(), sync_format: syncFormat })
+        .then(() => entry);
+    }).then(entry => {
+      showNotif('Added to VAULT', name + ' saved to library', 'success');
+      downloadInto(entry.folder_path);
+    }).catch(e => { showNotif('Error', e.message, 'error'); setSaving(false); });
+  };
+
+  return (
+    <Modal title="SAVE TO VAULT?" onClose={onClose} footer={null}>
+      {step === 'choose' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 10, color: 'var(--t3)', textAlign: 'center', marginBottom: 6 }}>
+            This is a playlist. Would you like to save it to the Vault?
+          </div>
+          <button className="btn btn-secondary btn-sm" style={{ width: '100%' }} onClick={() => setStep('link-existing')}>LINK TO EXISTING VAULT FOLDER</button>
+          <button className="btn btn-secondary btn-sm" style={{ width: '100%' }} onClick={() => setStep('create-new')}>CREATE NEW VAULT ENTRY</button>
+          <button className="btn btn-primary btn-sm" style={{ width: '100%' }} onClick={onJustDownload}>JUST DOWNLOAD</button>
+        </div>
+      )}
+      {step === 'link-existing' && (
+        <div>
+          <div className="form-row">
+            <div className="form-label">SELECT VAULT FOLDER</div>
+            <select className="sel" style={{ width: '100%' }} value={selectedFolder} onChange={e => setSelectedFolder(e.target.value)}>
+              <option value="">— Select folder —</option>
+              {vaultFolders.map(f => <option key={f.path} value={f.path}>{f.name}</option>)}
+            </select>
+          </div>
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 8 }}>
+            <button className="btn btn-secondary btn-sm" onClick={() => setStep('choose')}>BACK</button>
+            <button className="btn btn-primary btn-sm" onClick={handleLinkExisting} disabled={!selectedFolder || saving}>
+              {saving ? 'LINKING...' : 'LINK AND DOWNLOAD'}
+            </button>
+          </div>
+        </div>
+      )}
+      {step === 'create-new' && (
+        <div>
+          <div className="form-row">
+            <div className="form-label">VAULT ENTRY NAME</div>
+            <input className="form-input" value={newName} onChange={e => setNewName(e.target.value)} placeholder="My Playlist" />
+          </div>
+          <div className="form-row">
+            <div className="form-label">SAVE FOLDER (OPTIONAL)</div>
+            <div className="input-row">
+              <input className="form-input" value={newFolder} onChange={e => setNewFolder(e.target.value)} placeholder="Uses Config default if empty" />
+              <button className="btn btn-secondary btn-sm" onClick={browseNewFolder}>BROWSE</button>
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 8 }}>
+            <button className="btn btn-secondary btn-sm" onClick={() => setStep('choose')}>BACK</button>
+            <button className="btn btn-primary btn-sm" onClick={handleCreateNew} disabled={saving || !newName.trim()}>
+              {saving ? 'SAVING...' : 'CREATE AND DOWNLOAD'}
+            </button>
+          </div>
+        </div>
+      )}
+    </Modal>
+  );
+}
