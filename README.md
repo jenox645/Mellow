@@ -127,11 +127,13 @@ python3 main.py
 
 ```bash
 pip install -r requirements.txt -r requirements-dev.txt
-python -m pytest tests/ -m "not e2e and not slow"
+python -m pytest tests/ -m "not e2e and not slow and not browser"
 ruff check .
 ```
 
 Tests never touch your real config, database or queue — every test runs against a temp folder. The `e2e` and `slow` markers download from real sites and are run by hand.
+
+`python -m pytest tests/browser -m browser` clicks the main flows (download, playlist, search, cancel, vault) through the real UI in Chromium, downloading from a local media site. It needs the frontend built (`python build_setup.py --frontend-only`), ffmpeg, and `python -m playwright install chromium`; CI runs it on every pull request.
 
 `python scripts/canary.py` checks that extraction still works against live sites; CI runs it weekly on the yt-dlp pre-release.
 

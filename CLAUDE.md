@@ -144,7 +144,8 @@ python scripts/smoke_binary.py dist/MellowDLP
 ## Tests
 ```bash
 pip install -r requirements.txt -r requirements-dev.txt
-python -m pytest tests/ -m "not e2e and not slow"
+python -m pytest tests/ -m "not e2e and not slow and not browser"
+python -m pytest tests/browser -m browser   # UI smoke tests in Chromium (needs static/ built, ffmpeg, `python -m playwright install chromium`)
 python scripts/canary.py        # live-site extraction probe (also the weekly CI canary)
 npm test                        # frontend unit tests via node:test (util, formats, the progress-event reducer)
 ```

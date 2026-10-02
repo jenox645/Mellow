@@ -121,7 +121,7 @@ if RUN_TESTS:
     ])
     result = subprocess.run([
         sys.executable, "-m", "pytest", "tests/", "-q",
-        "-m", "not e2e and not slow",
+        "-m", "not e2e and not slow and not browser",
     ], cwd=str(HERE))
     sys.exit(result.returncode)
 
