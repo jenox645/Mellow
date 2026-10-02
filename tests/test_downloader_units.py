@@ -197,3 +197,14 @@ def test_search_lists_youtube_results_as_items():
         ('Lofi One', 'https://www.youtube.com/watch?v=aaaaaaaaaaa', 'Chill', 1200000),
         ('Lofi Two', 'https://www.youtube.com/watch?v=bbbbbbbbbbb', '', None)]
     assert downloader.search('   ') == []
+
+
+def test_saved_hook_reports_the_final_file(tmp_path):
+    from mellow import downloader
+    events = []
+    hook = downloader._make_saved_hook(events.append, 'lib1')
+    f = tmp_path / 'Song.mp3'
+    f.write_bytes(b'x' * 1234)
+    hook(str(f))
+    hook(str(tmp_path / 'gone.mp3'))   # nothing kept: no event
+    assert events == [{'status': 'item_saved', 'file_path': str(f), 'file_size': 1234, 'library_id': 'lib1'}]

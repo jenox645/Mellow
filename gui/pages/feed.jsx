@@ -6,7 +6,7 @@ import {
   estimateDownloadBytes, fmtBytes, fmtCount, fmtDuration, fmtEta, fmtSpeed, idxRanges, isLinkLike, timeAgo,
 } from '../lib/util.js';
 import { SVG, Ico } from '../components/icons.jsx';
-import { Modal, Mascot, Pipeline } from '../components/common.jsx';
+import { FileActions, Modal, Mascot, Pipeline } from '../components/common.jsx';
 import { MASCOT_CHILLING } from '../lib/mascots.js';
 import {
   ANALYZE_SLOW_MS, AUDIO_FORMATS, AUDIO_QUALITIES, CONTAINERS, LOSSLESS_AUDIO, NORMALIZE_HINT,
@@ -909,10 +909,11 @@ export function FeedPage({ dlState, setDlState, setAppState, stats, sysInfo, ref
                     <div className="q-comp-title">{item.title || 'Unknown'}</div>
                     <div className="q-comp-meta">
                       <span className="q-st-badge completed">DONE</span>
-                      {' '}{item.file_size ? fmtBytes(item.file_size) : ''}
-                      {' · '}{timeAgo(item.completedAt)}
+                      {' '}{item.file_size ? fmtBytes(item.file_size) + ' · ' : ''}
+                      {timeAgo(item.completedAt)}
                     </div>
                   </div>
+                  <FileActions path={item.file_path} />
                 </div>
               ))}
               {(!completedItems || completedItems.length === 0) && (

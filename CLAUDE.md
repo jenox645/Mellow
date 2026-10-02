@@ -61,6 +61,7 @@ All job-originated events carry `job_id`, `job_type`, `job_label` (multi-worker 
 - `downloading` — progress update with `pct`, `speed`, `eta`, `current_item_title`, `current_item_thumb`
 - `item_done` — one file finished: `title`, `thumbnail`, `video_id`, `playlist_index`
 - `item_failed` — one item failed: `reason` (`geo_blocked`/`error`), `message`
+- `item_saved` — an item's final file after every postprocessor (yt-dlp `post_hooks`): `file_path`, `file_size`; the UI attaches it to the job's newest finished item (OPEN / FOLDER)
 - `processing` — postprocessing (ffmpeg)
 - `warning` — non-fatal notice with `code` + `message` (today: `ffmpeg_missing`, `sponsorblock_skipped`)
 - `complete` — entire download finished: `title`, `file_path`, `file_size`, `warning` (set when it was saved with limits)

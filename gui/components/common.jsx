@@ -1,6 +1,7 @@
 // Small shared components: toggles, mascot renderer, modals, toasts, charts.
 'use strict';
 
+import { API } from '../lib/api.js';
 import { Ico } from './icons.jsx';
 
 export function Toggle({ checked, onChange }) {
@@ -9,6 +10,19 @@ export function Toggle({ checked, onChange }) {
       className={'toggle' + (checked ? ' on' : '')}
       onClick={() => onChange(!checked)}
     />
+  );
+}
+
+// OPEN / FOLDER links for a downloaded file (finished-item rows)
+export function FileActions({ path }) {
+  if (!path) return null;
+  const open = (e) => { e.stopPropagation(); API.post('/api/vault/open-file', { path }).catch(() => {}); };
+  const folder = (e) => { e.stopPropagation(); API.post('/api/open-folder', { path }).catch(() => {}); };
+  return (
+    <span className="file-actions" title={path}>
+      <span className="info-prev-link" onClick={open}>OPEN</span>
+      <span className="info-prev-link" onClick={folder}>FOLDER</span>
+    </span>
   );
 }
 

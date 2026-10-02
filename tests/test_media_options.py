@@ -363,3 +363,8 @@ def test_audio_downloads_never_fetch_subtitles(tmp_dir):
     ydl_opts, _, _ = _opts_for(tmp_dir, {'mode': 'audio', 'embed_subs': True, 'keep_sub_files': True})
     assert not ydl_opts.get('writesubtitles')
     assert not any('Subtitle' in pp['key'] for pp in ydl_opts['postprocessors'])
+
+
+def test_every_download_reports_its_saved_files(tmp_dir):
+    ydl_opts, _, _ = _opts_for(tmp_dir, {'mode': 'audio'})
+    assert len(ydl_opts['post_hooks']) == 1

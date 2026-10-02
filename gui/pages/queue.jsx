@@ -4,7 +4,7 @@
 import { API, cancelShownDownload } from '../lib/api.js';
 import { fmtBytes, fmtSpeed, fmtEta, fmtDuration, timeAgo } from '../lib/util.js';
 import { Ico } from '../components/icons.jsx';
-import { Mascot } from '../components/common.jsx';
+import { FileActions, Mascot } from '../components/common.jsx';
 import { MASCOT_TIRED } from '../lib/mascots.js';
 import { QUEUE_POLL_MS } from '../lib/constants.js';
 
@@ -317,11 +317,11 @@ export function QueuePage({ dlState, showNotif, activeJobs, playlistItems, setPl
                     <div className="q-comp-meta">
                       <span className="q-st-badge completed">DONE</span>
                       {' '}
-                      {item.file_size ? fmtBytes(item.file_size) : ''}
-                      {' · '}
+                      {item.file_size ? fmtBytes(item.file_size) + ' · ' : ''}
                       {timeAgo(item.completedAt)}
                     </div>
                   </div>
+                  <FileActions path={item.file_path} />
                 </div>
               ))}
               {(!completedItems || completedItems.length === 0) && (

@@ -368,10 +368,21 @@ function App() {
             video_id: data.video_id,
             title: data.title,
             thumbnail: data.thumbnail,
+            jobId,
             completedAt: Date.now(),
           }, ...prev].slice(0, COMPLETED_ITEMS_KEEP);
         });
         setPlaylistCompletedCount(c => c + 1);
+      } else if (data.status === 'item_saved') {
+        // The file an item ended up as (after conversion): attach it to the
+        // job's newest finished item that doesn't have one yet
+        setCompletedItems(prev => {
+          const i = prev.findIndex(x => x.jobId === jobId && !x.file_path);
+          if (i < 0) return prev;
+          const next = prev.slice();
+          next[i] = { ...next[i], file_path: data.file_path, file_size: data.file_size };
+          return next;
+        });
       } else if (data.status === 'paused') {
         setIsPaused(true);
         setPausedCount(1);

@@ -233,6 +233,23 @@ def _make_progress_hook(progress_cb: Callable, library_id: str | None, speed_tra
     return hook
 
 
+def _make_saved_hook(progress_cb: Callable, library_id: str | None) -> Callable:
+    """yt-dlp post_hook: each item's final file, once every postprocessor ran.
+
+    item_done fires when the download itself finishes, before conversion
+    (its file may be a .webm about to become an .mp3); item_saved names the
+    file that stays.
+    """
+    def hook(filepath: str) -> None:
+        try:
+            size = Path(filepath).stat().st_size
+        except OSError:
+            return  # nothing kept (a failed or skipped item)
+        progress_cb({"status": "item_saved", "file_path": filepath, "file_size": size,
+                     "library_id": library_id})
+    return hook
+
+
 def _sub_langs(opts: dict) -> list[str]:
     """Subtitle languages from config sub_langs ("en,de", "en.*", "all")."""
     langs = [s.strip() for s in _opt_str(opts, "sub_langs", "en").split(",") if s.strip()]
@@ -868,6 +885,7 @@ def _download_video(
     ydl_opts["progress_hooks"] = [_make_progress_hook(
         progress_cb, library_id, speed_tracker, cancel_event, pause_event,
         save_sidecar=not embed_thumb)]
+    ydl_opts["post_hooks"] = [_make_saved_hook(progress_cb, library_id)]
     logger: _GeoBlockLogger | None = None
     if ydl_opts.get("ignoreerrors"):
         # With ignoreerrors yt-dlp only logs failures; the logger turns them
