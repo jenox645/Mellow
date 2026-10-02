@@ -23,6 +23,11 @@ from urllib.request import urlopen
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from mellow.version import APP_VERSION  # noqa: E402
 
+# The app log holds non-ASCII; a Windows console would choke on it (cp1252)
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+
 START_TIMEOUT_SECS = 90     # a one-file build unpacks itself first
 REQUEST_TIMEOUT_SECS = 15
 
@@ -113,7 +118,7 @@ def main(binary: str) -> int:
             _stop(proc)
             log = Path(home) / ".mellow_dlp.log"
             if log.exists():
-                print("── app log ──")
+                print("-- app log --")
                 print(log.read_text(encoding="utf-8", errors="replace")[-4000:])
     print("smoke test passed")
     return 0
