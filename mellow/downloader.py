@@ -12,6 +12,7 @@ import yt_dlp
 from . import analytics
 from .constants import (
     AUDIO_FORMATS,
+    LOUDNORM_FILTER,
     MAX_CHOSEN_CHAPTERS,
     PAUSE_POLL_SECS,
     SOCKET_TIMEOUT_SECS,
@@ -299,6 +300,75 @@ class _EmbedThumbnailBestEffort(yt_dlp.postprocessor.EmbedThumbnailPP):
             except OSError:
                 pass
             return [], info
+
+
+# Encoder for an audio file of each extension, when normalizing means re-encoding
+_AUDIO_ENCODERS = {
+    "mp3": "libmp3lame", "m4a": "aac", "aac": "aac", "opus": "libopus",
+    "ogg": "libvorbis", "flac": "flac", "wav": "pcm_s16le",
+}
+
+
+class _ExtractAudioNormalized(yt_dlp.postprocessor.FFmpegExtractAudioPP):
+    """FFmpegExtractAudio that also evens out loudness (EBU R128, LOUDNORM_FILTER).
+
+    The filter rides on the conversion itself, so a converted file is encoded
+    once. Where yt-dlp would only copy the stream (already in the target
+    format) it is re-encoded with its own codec instead.
+    """
+
+    @classmethod
+    def replacing(cls, ydl: yt_dlp.YoutubeDL) -> bool:
+        """Swap the FFmpegExtractAudio that `postprocessors` set up for this one."""
+        pps = ydl._pps["post_process"]
+        for i, pp in enumerate(pps):
+            if type(pp) is yt_dlp.postprocessor.FFmpegExtractAudioPP:
+                new = cls(ydl, preferredcodec=pp.mapping, preferredquality=pp._preferredquality)
+                pps[i] = new
+                return True
+        return False
+
+    def _encoder_args(self, ext: str) -> tuple[str | None, list[str]]:
+        codec = _AUDIO_ENCODERS.get(ext)
+        args = self._quality_args(codec) if codec else []
+        if codec == "libopus" and not args:
+            args = ["-b:a", "160k"]
+        return codec, args
+
+    def _sample_rate(self, path: str, codec: str | None) -> str:
+        """loudnorm resamples to 192 kHz: go back to the source's rate (opus only takes 48 kHz)."""
+        if codec == "libopus":
+            return "48000"
+        try:
+            streams = self.get_metadata_object(path).get("streams") or []
+            rate = next((int(s.get("sample_rate") or 0) for s in streams
+                         if s.get("codec_type") == "audio"), 0)
+        except Exception:
+            rate = 0
+        return str(rate) if 8000 <= rate <= 48000 else "48000"
+
+    def run_ffmpeg(self, path, out_path, codec, more_opts):
+        if codec == "copy":
+            codec, more_opts = self._encoder_args(Path(out_path).suffix.lstrip(".").lower())
+        super().run_ffmpeg(path, out_path, codec, [
+            *more_opts, "-af", LOUDNORM_FILTER, "-ar", self._sample_rate(path, codec)])
+        self._normalized = True
+
+    def run(self, info: dict) -> tuple[list, dict]:
+        self._normalized = False
+        files, info = super().run(info)
+        if not self._normalized:
+            # Already in the target format: yt-dlp left it as it was
+            path = info["filepath"]
+            codec, args = self._encoder_args(info.get("ext") or Path(path).suffix.lstrip("."))
+            if not codec:
+                self.report_warning(f"Volume not normalized: no encoder for {Path(path).suffix}")
+                return files, info
+            temp = yt_dlp.utils.prepend_extension(path, "temp")
+            self.to_screen(f"Normalizing volume of {path}")
+            self.run_ffmpeg(path, temp, codec, args)
+            Path(temp).replace(path)
+        return files, info
 
 
 def _save_thumbnail_sidecar(filepath: str, thumb_url: str | None) -> None:
@@ -788,6 +858,7 @@ def _download_video(
     wanted_ext = (_opt_str(opts, "audio_format", "mp3") if want_audio
                   else _opt_str(opts, "container", "mp4")).lower()
     embed_thumb = bool(ffmpeg and opts.get("embed_thumbnail"))
+    normalize_audio = bool(ffmpeg and want_audio and opts.get("normalize_audio"))
     ydl_opts, warning = _build_ydl_opts(
         url, out_dir, opts, ffmpeg=ffmpeg, want_audio=want_audio, embed_thumb=embed_thumb,
         warn=lambda code, message: progress_cb({"status": "warning", "code": code,
@@ -806,6 +877,8 @@ def _download_video(
     saved = _saved_file(None)
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            if normalize_audio and not _ExtractAudioNormalized.replacing(ydl):
+                log.warning("normalize_audio: no audio extraction step to attach to")
             if embed_thumb:
                 # Added last so it runs after audio extraction and metadata
                 ydl.add_post_processor(

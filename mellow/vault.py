@@ -787,6 +787,7 @@ def launch_playlist(paths: list[str], open_file_fn: Callable[[str], None]) -> st
 SYNC_FORMAT_KEYS = (
     "sync_audio", "audio_format", "audio_quality", "quality", "container",
     "embed_thumbnail", "embed_subs", "embed_chapters", "embed_metadata", "sponsorblock",
+    "normalize_audio",
 )
 
 
@@ -843,6 +844,7 @@ def default_sync_format(path: str, lib: dict | None, cfg: dict) -> dict:
             "embed_chapters": lib.get("embed_chapters", True),
             "embed_metadata": lib.get("embed_metadata", True),
             "sponsorblock": lib.get("sponsorblock", False),
+            "normalize_audio": lib.get("normalize_audio", False),
         }
     return infer_folder_format(path) if path else {}
 
@@ -873,6 +875,7 @@ def build_sync_opts(data: dict, lib: dict | None, cfg: dict, path: str = "") -> 
         "embed_metadata": pick("embed_metadata", True),
         "embed_subs": pick("embed_subs", False),
         "sponsorblock": pick("sponsorblock", False),
+        "normalize_audio": bool(pick("normalize_audio", False)),
         "filename_template": (lib or {}).get("filename_template") or cfg.get("filename_template", ""),
         **download_settings(cfg),
     }

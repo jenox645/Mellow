@@ -4,7 +4,7 @@
 import { API } from '../lib/api.js';
 import { fmtBytes } from '../lib/util.js';
 import { Modal } from './common.jsx';
-import { AUDIO_FORMATS, CONTAINERS, QUALITIES, SPONSORBLOCK_HINT } from '../lib/constants.js';
+import { AUDIO_FORMATS, CONTAINERS, NORMALIZE_HINT, QUALITIES, SPONSORBLOCK_HINT } from '../lib/constants.js';
 
 export function AddVaultModal({ onClose, onSaved, showNotif }) {
   const [name, setName] = React.useState('');
@@ -20,6 +20,7 @@ export function AddVaultModal({ onClose, onSaved, showNotif }) {
   const [embedMeta, setEmbedMeta] = React.useState(true);
   const [embedSubs, setEmbedSubs] = React.useState(false);
   const [sponsorblock, setSponsorblock] = React.useState(false);
+  const [normalizeAudio, setNormalizeAudio] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
 
   const browseFolder = () => {
@@ -51,6 +52,7 @@ export function AddVaultModal({ onClose, onSaved, showNotif }) {
       embed_metadata: embedMeta,
       embed_subs: embedSubs,
       sponsorblock,
+      normalize_audio: mediaType === 'audio' && normalizeAudio,
     }).then(() => onSaved())
       .catch(e => showNotif('Error', e.message, 'error'))
       .finally(() => setSaving(false));
@@ -146,11 +148,12 @@ export function AddVaultModal({ onClose, onSaved, showNotif }) {
         <div className="opts-toggles">
           {[
             { label: 'Embed Thumbnail', val: embedThumb, set: setEmbedThumb },
-            { label: 'Subtitles', val: embedSubs, set: setEmbedSubs },
+            mediaType !== 'audio' && { label: 'Subtitles', val: embedSubs, set: setEmbedSubs },
+            mediaType === 'audio' && { label: 'Normalize Volume', val: normalizeAudio, set: setNormalizeAudio, hint: NORMALIZE_HINT },
             { label: 'Chapters', val: embedChapters, set: setEmbedChapters },
             { label: 'Metadata', val: embedMeta, set: setEmbedMeta },
             { label: 'SponsorBlock', val: sponsorblock, set: setSponsorblock, hint: SPONSORBLOCK_HINT },
-          ].map(item => (
+          ].filter(Boolean).map(item => (
             <label key={item.label} className="opts-toggle-item" title={item.hint}>
               <input type="checkbox" checked={item.val} onChange={e => item.set(e.target.checked)} />
               {item.label}
@@ -257,6 +260,7 @@ export function SyncPlaylistModal({ folder, onClose, showNotif, onRefreshVault, 
   const [syncEmbedChapters, setSyncEmbedChapters] = React.useState(true);
   const [syncEmbedMeta, setSyncEmbedMeta] = React.useState(true);
   const [syncSponsorblock, setSyncSponsorblock] = React.useState(false);
+  const [syncNormalize, setSyncNormalize] = React.useState(false);
   const [syncing, setSyncing] = React.useState(false);
   const [mirrorPreview, setMirrorPreview] = React.useState(null);
   const [previewing, setPreviewing] = React.useState(false);
@@ -284,6 +288,7 @@ export function SyncPlaylistModal({ folder, onClose, showNotif, onRefreshVault, 
         if (f.embed_chapters !== undefined) setSyncEmbedChapters(!!f.embed_chapters);
         if (f.embed_metadata !== undefined) setSyncEmbedMeta(!!f.embed_metadata);
         if (f.sponsorblock !== undefined) setSyncSponsorblock(!!f.sponsorblock);
+        if (f.normalize_audio !== undefined) setSyncNormalize(!!f.normalize_audio);
       })
       .catch(() => { setPlaylists([]); setSelectedPlaylists(new Set()); });
     API.get('/api/config').then(c => {
@@ -308,8 +313,8 @@ export function SyncPlaylistModal({ folder, onClose, showNotif, onRefreshVault, 
     // sync_audio sent explicitly both ways — the backend otherwise falls
     // back to the library entry's saved mode
     ...(syncMediaType === 'audio'
-      ? { sync_audio: true, audio_format: syncAudioFmt }
-      : { sync_audio: false, quality: syncQuality, container: syncContainer }),
+      ? { sync_audio: true, audio_format: syncAudioFmt, normalize_audio: syncNormalize }
+      : { sync_audio: false, quality: syncQuality, container: syncContainer, normalize_audio: false }),
     embed_thumbnail: syncEmbedThumb,
     embed_subs: syncEmbedSubs,
     embed_chapters: syncEmbedChapters,
@@ -540,11 +545,12 @@ export function SyncPlaylistModal({ folder, onClose, showNotif, onRefreshVault, 
             <div className="opts-toggles">
               {[
                 { label: 'Embed Thumbnail', val: syncEmbedThumb, set: setSyncEmbedThumb },
-                { label: 'Subtitles', val: syncEmbedSubs, set: setSyncEmbedSubs },
+                syncMediaType !== 'audio' && { label: 'Subtitles', val: syncEmbedSubs, set: setSyncEmbedSubs },
+                syncMediaType === 'audio' && { label: 'Normalize Volume', val: syncNormalize, set: setSyncNormalize, hint: NORMALIZE_HINT },
                 { label: 'Chapters', val: syncEmbedChapters, set: setSyncEmbedChapters },
                 { label: 'Metadata', val: syncEmbedMeta, set: setSyncEmbedMeta },
                 { label: 'SponsorBlock', val: syncSponsorblock, set: setSyncSponsorblock, hint: SPONSORBLOCK_HINT },
-              ].map(item => (
+              ].filter(Boolean).map(item => (
                 <label key={item.label} className="opts-toggle-item" title={item.hint}>
                   <input type="checkbox" checked={item.val} onChange={e => item.set(e.target.checked)} />
                   {item.label}

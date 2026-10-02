@@ -43,6 +43,9 @@ export const CLIPBOARD_URL_RE = /^https?:\/\/\S+$/;
 export const PAGE_ORDER = ['feed', 'queue', 'vault', 'analytics', 'signal', 'config'];
 
 // Tooltip of the SponsorBlock option (feed and library entries)
+// Tooltip of the Normalize Volume option (audio downloads)
+export const NORMALIZE_HINT = 'Even out loudness across tracks (EBU R128, -14 LUFS, as streaming services play them). Re-encodes the audio';
+
 export const SPONSORBLOCK_HINT = 'Cut sponsor, intro, outro and self-promo segments out of YouTube downloads';
 
 // Download choices — one list for the Feed, the vault dialogs and Config, so

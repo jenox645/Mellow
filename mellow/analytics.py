@@ -149,6 +149,7 @@ def init_db() -> None:
         _add_missing_columns(con, "library", [
             ("container", "TEXT DEFAULT 'mp4'"),
             ("audio_format", "TEXT DEFAULT 'mp3'"),
+            ("normalize_audio", "BOOLEAN DEFAULT false"),
         ])
 
         con.execute("""
@@ -690,7 +691,7 @@ def get_library_entries() -> list[dict]:
                    quality, mode, embed_thumbnail, embed_chapters,
                    embed_metadata, embed_subs, sub_langs, sponsorblock,
                    filename_template, sync_mode, last_synced, created_at,
-                   container, audio_format
+                   container, audio_format, normalize_audio
             FROM library ORDER BY created_at DESC
         """).fetchall()
     return [
@@ -705,6 +706,7 @@ def get_library_entries() -> list[dict]:
             "created_at": str(r[17]) if r[17] else None,
             "container": r[18] or "mp4",
             "audio_format": r[19] or "mp3",
+            "normalize_audio": bool(r[20]),
         }
         for r in rows
     ]
@@ -721,8 +723,8 @@ def upsert_library_entry(entry: dict) -> None:
                 (id,name,url,folder,folder_name,use_subfolder,quality,mode,
                  embed_thumbnail,embed_chapters,embed_metadata,embed_subs,sub_langs,
                  sponsorblock,filename_template,sync_mode,last_synced,created_at,
-                 container,audio_format)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                 container,audio_format,normalize_audio)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             ON CONFLICT (id) DO UPDATE SET
                 name=excluded.name, url=excluded.url, folder=excluded.folder,
                 folder_name=excluded.folder_name, use_subfolder=excluded.use_subfolder,
@@ -734,7 +736,8 @@ def upsert_library_entry(entry: dict) -> None:
                 sponsorblock=excluded.sponsorblock,
                 filename_template=excluded.filename_template,
                 sync_mode=excluded.sync_mode, last_synced=excluded.last_synced,
-                container=excluded.container, audio_format=excluded.audio_format
+                container=excluded.container, audio_format=excluded.audio_format,
+                normalize_audio=excluded.normalize_audio
         """, [
             entry["id"], entry["name"], entry["url"],
             entry.get("folder"), entry.get("folder_name"),
@@ -746,6 +749,7 @@ def upsert_library_entry(entry: dict) -> None:
             entry.get("sync_mode", "add"), entry.get("last_synced"),
             entry.get("created_at"),
             entry.get("container", "mp4"), entry.get("audio_format", "mp3"),
+            bool(entry.get("normalize_audio", False)),
         ])
 
 

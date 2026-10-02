@@ -62,10 +62,12 @@ HISTORY_DEFAULT_LIMIT: int = 50
 PAUSE_POLL_SECS: float = 0.2         # progress-hook pause loop cadence
 
 # ── SponsorBlock ──────────────────────────────────────────────────────────────
+MAX_CHOSEN_CHAPTERS: int = 200       # chapters one download may pick
 # Segment types the "SponsorBlock" option cuts out of a download
 # (https://wiki.sponsor.ajay.app/w/Types)
-MAX_CHOSEN_CHAPTERS: int = 200       # chapters one download may pick
 SPONSORBLOCK_REMOVE_CATEGORIES: tuple[str, ...] = ("sponsor", "intro", "outro", "selfpromo")
+# "Normalize volume" (audio): EBU R128 to -14 LUFS, the level streaming services play at
+LOUDNORM_FILTER: str = "loudnorm=I=-14:TP=-1.5:LRA=11"
 
 # ── Misc ──────────────────────────────────────────────────────────────────────
 WEBHOOK_TIMEOUT_SECS: int = 5

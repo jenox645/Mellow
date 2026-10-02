@@ -7,8 +7,8 @@ import { SVG, Ico } from '../components/icons.jsx';
 import { Modal, Mascot, Pipeline } from '../components/common.jsx';
 import { MASCOT_CHILLING } from '../lib/mascots.js';
 import {
-  ANALYZE_SLOW_MS, AUDIO_FORMATS, AUDIO_QUALITIES, CONTAINERS, LOSSLESS_AUDIO, QUALITIES,
-  SPONSORBLOCK_HINT,
+  ANALYZE_SLOW_MS, AUDIO_FORMATS, AUDIO_QUALITIES, CONTAINERS, LOSSLESS_AUDIO, NORMALIZE_HINT,
+  QUALITIES, SPONSORBLOCK_HINT,
 } from '../lib/constants.js';
 
 export function FeedPage({ dlState, setDlState, setAppState, stats, sysInfo, refreshStats, showNotif, switchPage, config, setConfig, suggestedUrl, onSuggestedConsumed, onPlaylistDownload, playlistItems, setPlaylistItems, completedItems, failedItems, playlistTotalCount, playlistCompletedCount, isPaused, syncJobLabel, fetchingPlaylistItems, onPause, onResume, onClearCompleted }) {
@@ -44,6 +44,7 @@ export function FeedPage({ dlState, setDlState, setAppState, stats, sysInfo, ref
   const [embedChapters, setEmbedChapters] = React.useState(() => ssJ('feed_embedChapters', true));
   const [embedMeta, setEmbedMeta] = React.useState(() => ssJ('feed_embedMeta', true));
   const [sponsorblock, setSponsorblock] = React.useState(() => ssJ('feed_sponsorblock', false));
+  const [normalizeAudio, setNormalizeAudio] = React.useState(() => ssJ('feed_normalizeAudio', false));
   const [startTime, setStartTime] = React.useState(() => ss('feed_startTime', ''));
   const [endTime, setEndTime] = React.useState(() => ss('feed_endTime', ''));
   const [customFmt, setCustomFmt] = React.useState(() => ss('feed_customFmt', ''));
@@ -60,6 +61,7 @@ export function FeedPage({ dlState, setDlState, setAppState, stats, sysInfo, ref
   React.useEffect(() => { try { sessionStorage.setItem('feed_embedChapters', JSON.stringify(embedChapters)); } catch {} }, [embedChapters]);
   React.useEffect(() => { try { sessionStorage.setItem('feed_embedMeta', JSON.stringify(embedMeta)); } catch {} }, [embedMeta]);
   React.useEffect(() => { try { sessionStorage.setItem('feed_sponsorblock', JSON.stringify(sponsorblock)); } catch {} }, [sponsorblock]);
+  React.useEffect(() => { try { sessionStorage.setItem('feed_normalizeAudio', JSON.stringify(normalizeAudio)); } catch {} }, [normalizeAudio]);
   React.useEffect(() => { try { sessionStorage.setItem('feed_startTime', startTime); } catch {} }, [startTime]);
   React.useEffect(() => { try { sessionStorage.setItem('feed_endTime', endTime); } catch {} }, [endTime]);
   React.useEffect(() => { try { sessionStorage.setItem('feed_customFmt', customFmt); } catch {} }, [customFmt]);
@@ -169,7 +171,7 @@ export function FeedPage({ dlState, setDlState, setAppState, stats, sysInfo, ref
     mode, quality, container, audio_format: audioFmt, audio_quality: audioQuality,
     embed_thumbnail: embedThumb, embed_subs: embedSubs,
     embed_chapters: embedChapters, embed_metadata: embedMeta,
-    sponsorblock,
+    sponsorblock, normalize_audio: normalizeAudio,
   });
 
   const applyPreset = (p) => {
@@ -184,6 +186,7 @@ export function FeedPage({ dlState, setDlState, setAppState, stats, sysInfo, ref
     setEmbedChapters(o.embed_chapters !== false);
     setEmbedMeta(o.embed_metadata !== false);
     setSponsorblock(!!o.sponsorblock);
+    setNormalizeAudio(!!o.normalize_audio);
     showNotif('Preset Applied', p.name, 'success');
   };
 
@@ -265,10 +268,11 @@ export function FeedPage({ dlState, setDlState, setAppState, stats, sysInfo, ref
       embed_metadata: embedMeta,
       embed_subs: embedSubs,
       sponsorblock,
+      normalize_audio: normalizeAudio,
       scheduled: scheduleLater,
       ...(downloadPath ? { output_dir: downloadPath } : {}),
     }).then(onQueued).catch(e => { showNotif('Error', e.message, 'error'); setSubmitting(false); });
-  }, [importedUrls, playlistItems, importedFileName, mode, quality, container, audioFmt, audioQuality, embedThumb, embedChapters, embedMeta, embedSubs, sponsorblock, downloadPath, onPlaylistDownload, showNotif, scheduleLater, onQueued]);
+  }, [importedUrls, playlistItems, importedFileName, mode, quality, container, audioFmt, audioQuality, embedThumb, embedChapters, embedMeta, embedSubs, sponsorblock, normalizeAudio, downloadPath, onPlaylistDownload, showNotif, scheduleLater, onQueued]);
 
   // Ref so handleDownload/handleUrlKeyDown can call latest startImportDownload without stale closure
   const startImportDownloadRef = React.useRef(null);
@@ -319,6 +323,7 @@ export function FeedPage({ dlState, setDlState, setAppState, stats, sysInfo, ref
       embed_metadata: embedMeta,
       embed_subs: embedSubs,
       sponsorblock,
+      normalize_audio: normalizeAudio,
       start_time: startTime,
       end_time: endTime,
       custom_format: customFmt,
@@ -328,7 +333,7 @@ export function FeedPage({ dlState, setDlState, setAppState, stats, sysInfo, ref
       scheduled: scheduleLater,
       ...extra,
     }).then(onQueued).catch(e => { showNotif('Error', e.message, 'error'); setSubmitting(false); });
-  }, [url, mode, quality, container, audioFmt, audioQuality, embedThumb, embedChapters, embedMeta, embedSubs, sponsorblock, startTime, endTime, customFmt, downloadPath, playlistItems, info, showNotif, scheduleLater, onQueued, chosenChapters]);
+  }, [url, mode, quality, container, audioFmt, audioQuality, embedThumb, embedChapters, embedMeta, embedSubs, sponsorblock, normalizeAudio, startTime, endTime, customFmt, downloadPath, playlistItems, info, showNotif, scheduleLater, onQueued, chosenChapters]);
 
   // Keep ref in sync with latest startDownload (assigned during render, safe to read in callbacks)
   startDownloadRef.current = startDownload;
@@ -523,13 +528,14 @@ export function FeedPage({ dlState, setDlState, setAppState, stats, sysInfo, ref
             <div className="opts-toggles">
               {[
                 { label: 'Embed Thumbnail', val: embedThumb, set: setEmbedThumb },
-                { label: 'Subtitles', val: embedSubs, set: setEmbedSubs,
-                  hint: 'Embedded in the video (not for audio) — languages: ' + (config.sub_langs || 'en')
+                mode === 'video' && { label: 'Subtitles', val: embedSubs, set: setEmbedSubs,
+                  hint: 'Embedded in the video — languages: ' + (config.sub_langs || 'en')
                     + (config.keep_sub_files ? ', also kept as .srt files' : '') + ' (Config → Download Defaults)' },
+                mode === 'audio' && { label: 'Normalize Volume', val: normalizeAudio, set: setNormalizeAudio, hint: NORMALIZE_HINT },
                 { label: 'Chapters', val: embedChapters, set: setEmbedChapters },
                 { label: 'Metadata', val: embedMeta, set: setEmbedMeta },
                 { label: 'SponsorBlock', val: sponsorblock, set: setSponsorblock, hint: SPONSORBLOCK_HINT },
-              ].map(item => (
+              ].filter(Boolean).map(item => (
                 <label key={item.label} className="opts-toggle-item" title={item.hint}>
                   <input type="checkbox" checked={item.val} onChange={e => item.set(e.target.checked)} />
                   {item.label}
@@ -903,7 +909,7 @@ function VaultLinkPromptModal({ info, url, config, opts, onClose, onJustDownload
     quality: opts.quality, container: opts.container,
     embed_thumbnail: opts.embed_thumbnail, embed_subs: opts.embed_subs,
     embed_chapters: opts.embed_chapters, embed_metadata: opts.embed_metadata,
-    sponsorblock: opts.sponsorblock,
+    sponsorblock: opts.sponsorblock, normalize_audio: opts.normalize_audio,
   };
   // Library mode keeps mellow_archive.txt, so items already in the folder are
   // skipped now and on every later sync
@@ -950,7 +956,7 @@ function VaultLinkPromptModal({ info, url, config, opts, onClose, onJustDownload
       audio_format: opts.audio_format, sync_mode: 'add',
       embed_thumbnail: opts.embed_thumbnail, embed_chapters: opts.embed_chapters,
       embed_metadata: opts.embed_metadata, embed_subs: opts.embed_subs,
-      sponsorblock: opts.sponsorblock,
+      sponsorblock: opts.sponsorblock, normalize_audio: opts.normalize_audio,
     }).then(entry => {
       // Also remember the full format (incl. bitrate, which library entries
       // don't store) for the folder's future syncs
