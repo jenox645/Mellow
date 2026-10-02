@@ -28,6 +28,7 @@ export function initialDownloads() {
     currentPlaylist: { name: '', count: 0 },
     syncJobLabel: null,
     fetchingPlaylistItems: false,
+    appUpdate: null,           // MellowDLP updating itself: {stage, pct, version}
     effects: [],               // side effects waiting for the App (see applyEvent)
   };
 }
@@ -242,6 +243,16 @@ export function applyEvent(state, data, now = Date.now()) {
 
     case 'warning':
       fx.push({ type: 'notify', title: 'Heads Up', body: data.message || '', kind: 'warn' });
+      break;
+
+    case 'app_update':
+      // downloading (pct) → installing → restarting; the app then closes
+      if (data.stage === 'error') {
+        s = { ...s, appUpdate: null };
+        fx.push({ type: 'notify', title: 'Update Failed', body: data.message || '', kind: 'error', action: 'open_release' });
+      } else {
+        s = { ...s, appUpdate: { stage: data.stage, pct: data.pct || 0, version: data.version || '' } };
+      }
       break;
 
     case 'ytdlp_updated':

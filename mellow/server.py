@@ -328,6 +328,22 @@ def api_check_app_update() -> Response:
     return jsonify(app_update.check())
 
 
+@app.route("/api/app-update/install", methods=["POST"])
+def api_app_update_install() -> Response:
+    """Download and install the latest release, then restart (app_update events).
+
+    Running downloads are saved and offered again after the restart, but the
+    UI asks first: without `force` a busy queue answers 409.
+    """
+    if app_update.installing():
+        return jsonify({"error": "An update is already running."}), 409
+    running = jobs.manager.status()["active"]
+    if running and not (request.get_json(force=True) or {}).get("force"):
+        return jsonify({"error": f"{running} download(s) running", "running": running}), 409
+    threading.Thread(target=app_update.install, args=(_push_progress,), daemon=True).start()
+    return jsonify({"status": "updating"})
+
+
 @app.route("/api/open-release", methods=["POST"])
 def api_open_release() -> Response:
     """Open the latest release page (a fixed URL: this can't open arbitrary pages)."""

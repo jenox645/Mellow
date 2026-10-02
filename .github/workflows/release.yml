@@ -8,7 +8,9 @@ name: Release
 # pre-release. The in-app "update available" check reads this release.
 #
 # A pull request that touches the packaging runs the builds too, so a broken
-# installer shows up before the tag; it never publishes.
+# installer shows up before the tag; it never publishes. It also checks the
+# in-app update for real: a copy built as 0.0.1, installed by its installer,
+# updates itself to the latest published release (update-windows).
 on:
   push:
     tags: ['v*']
@@ -21,7 +23,9 @@ on:
       - requirements*.txt
       - package-lock.json
       - main.py
+      - mellow/app_update.py
       - scripts/smoke_binary.py
+      - scripts/update_e2e.py
   workflow_dispatch:
 
 concurrency:
@@ -116,6 +120,40 @@ jobs:
             dist/MellowDLP-*-x86_64.AppImage
           if-no-files-found: error
           retention-days: 14
+
+  # Install a 0.0.1 build with its installer, then let it update itself to
+  # the latest published release through the API, the way a user's copy would
+  update-windows:
+    if: github.event_name != 'push'
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: requirements*.txt
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Inno Setup
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) {
+            choco install innosetup -y --no-progress
+          }
+      - name: Build as version 0.0.1
+        shell: pwsh
+        run: |
+          (Get-Content mellow/version.py) -replace 'APP_VERSION = ".*"', 'APP_VERSION = "0.0.1"' | Set-Content mellow/version.py
+          python build_setup.py
+      - name: Install it
+        shell: pwsh
+        run: Start-Process dist\MellowDLP_Setup.exe -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-' -Wait
+      - name: Update it from the latest release
+        run: .venv\Scripts\python scripts/update_e2e.py "$env:LOCALAPPDATA\Programs\MellowDLP\MellowDLP.exe" windows-installer
 
   publish:
     if: startsWith(github.ref, 'refs/tags/v')

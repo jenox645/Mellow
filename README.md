@@ -34,7 +34,8 @@ Personal desktop GUI for [yt-dlp](https://github.com/yt-dlp/yt-dlp). Download au
 - **Cookies**: pull cookies from your browser for age-restricted content.
 - **Network**: proxy, rate limit, and a Force IPv4 switch for connections where IPv6 hangs.
 - **Notifications**: optional desktop notification when a download finishes or fails in the background.
-- **yt-dlp self-update**: update yt-dlp from the Config page when running from source (takes effect after a restart). The packaged `.exe` can't replace its bundled copy — see Limitations.
+- **yt-dlp self-update**: update yt-dlp from the Config page (checksum-verified, takes effect after a restart), in the installed app too.
+- **MellowDLP updates itself**: when a new release is out, UPDATE downloads it, checks it against the release's checksums, installs it and restarts (Windows installer, AppImage, Linux binary). Running downloads are offered again after the restart.
 
 Video: MP4, MKV, WebM at best, 4K, 1080p, 720p, 480p or 360p. Audio: MP3, M4A, AAC, Opus (best, 320, 256, 192 or 128 kbps), FLAC, WAV.
 
@@ -142,6 +143,5 @@ Tests never touch your real config, database or queue — every test runs agains
 ## Limitations
 
 - ffmpeg must be installed separately (see Requirements).
-- No auto-update for MellowDLP itself — pull and rebuild manually.
 - Desktop window uses Tkinter via FlaskWebGUI, not a real browser engine.
 - yt-dlp breaks whenever platforms change their APIs (a copy a few months old gets `HTTP Error 403` on most YouTube downloads). Update it on the Config page and restart: the app downloads yt-dlp's official release (checksum-verified) to `~/.mellow_dlp_ytdlp.zip` and runs it instead of the bundled copy while it is the newer one — in the installed app too.

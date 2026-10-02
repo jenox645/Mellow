@@ -117,3 +117,16 @@ test('queue finished and yt-dlp update toasts', () => {
   assert.equal(run([{ status: 'ytdlp_updated', ok: true, restart_required: true }]).effects[0].title, 'Restart To Finish');
   assert.equal(run([{ status: 'ytdlp_updated', ok: false, error: 'x' }]).effects[0].kind, 'error');
 });
+
+test('MellowDLP updating itself: progress, then the restart or a failure', () => {
+  let s = run([{ status: 'app_update', stage: 'downloading', pct: 0, version: '2.1.0' },
+    { status: 'app_update', stage: 'downloading', pct: 42, version: '2.1.0' }]);
+  assert.deepEqual(s.appUpdate, { stage: 'downloading', pct: 42, version: '2.1.0' });
+  assert.equal(s.effects.length, 0);
+  s = run([{ status: 'app_update', stage: 'restarting', version: '2.1.0' }], s);
+  assert.equal(s.appUpdate.stage, 'restarting');
+  s = run([{ status: 'app_update', stage: 'error', message: "doesn't match its published checksum" }], s);
+  assert.equal(s.appUpdate, null);
+  assert.deepEqual(s.effects.at(-1), { type: 'notify', title: 'Update Failed',
+    body: "doesn't match its published checksum", kind: 'error', action: 'open_release' });
+});

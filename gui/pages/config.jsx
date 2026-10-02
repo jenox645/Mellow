@@ -9,7 +9,7 @@ import {
   AUDIO_FORMATS, AUDIO_QUALITIES, CONTAINERS, QUALITIES, TEMPLATE_PREVIEW_DEBOUNCE_MS,
 } from '../lib/constants.js';
 
-export function ConfigPage({ config, setConfig, showNotif, sysInfo, refreshStats }) {
+export function ConfigPage({ config, setConfig, showNotif, installAppUpdate, sysInfo, refreshStats }) {
   const [local, setLocal] = React.useState({ ...config });
   const [updateInfo, setUpdateInfo] = React.useState(null);
   const [appUpdate, setAppUpdate] = React.useState(null);
@@ -670,7 +670,9 @@ export function ConfigPage({ config, setConfig, showNotif, sysInfo, refreshStats
                   <div className="sl-sub">
                     {'v' + (sysInfo.app_version || '?') + ' — '}
                     {appUpdate && appUpdate.error ? <span style={{ color: 'var(--red)' }}>Check failed: {appUpdate.error}</span>
-                      : appUpdate && appUpdate.update_available ? <span style={{ color: 'var(--amber)' }}>v{appUpdate.latest} is available</span>
+                      : appUpdate && appUpdate.update_available ? <span style={{ color: 'var(--amber)' }}>
+                          v{appUpdate.latest} is available{!appUpdate.can_install && appUpdate.install_note ? ' — ' + appUpdate.install_note : ''}
+                        </span>
                       : appUpdate && appUpdate.message ? appUpdate.message
                       : appUpdate ? <span style={{ color: 'var(--green)' }}>Up to date</span>
                       : 'new versions are published on GitHub'}
@@ -678,8 +680,12 @@ export function ConfigPage({ config, setConfig, showNotif, sysInfo, refreshStats
                 </div>
                 <div className="settings-ctrl" style={{ display: 'flex', gap: 6 }}>
                   <button className="btn btn-secondary btn-sm" onClick={checkAppUpdate} disabled={checkingApp}>{checkingApp ? '...' : 'CHECK'}</button>
-                  {appUpdate && appUpdate.update_available && (
-                    <button className="btn btn-amber btn-sm" onClick={() => API.post('/api/open-release', {}).catch(() => {})}>GET v{appUpdate.latest}</button>
+                  {appUpdate && appUpdate.update_available && (appUpdate.can_install
+                    ? <button className="btn btn-amber btn-sm" onClick={() => installAppUpdate()}
+                        title={appUpdate.download_size ? fmtBytes(appUpdate.download_size) + ', checked against its published checksum' : undefined}>
+                        UPDATE TO v{appUpdate.latest}
+                      </button>
+                    : <button className="btn btn-amber btn-sm" onClick={() => API.post('/api/open-release', {}).catch(() => {})}>GET v{appUpdate.latest}</button>
                   )}
                 </div>
               </div>

@@ -80,6 +80,17 @@ UPDATE_CHECK_TIMEOUT_SECS: int = 15  # GitHub releases lookup for a newer Mellow
 APP_REPO: str = "jenox645/Mellow"
 APP_RELEASES_API: str = f"https://api.github.com/repos/{APP_REPO}/releases/latest"
 APP_RELEASES_PAGE: str = f"https://github.com/{APP_REPO}/releases/latest"
+APP_DOWNLOADS_PREFIX: str = f"https://github.com/{APP_REPO}/releases/download/"
+# Release asset names — written by .github/workflows/release.yml (a test keeps them in step)
+APP_ASSET_NAMES: dict = {
+    "windows-installer": "MellowDLP-{version}-windows-setup.exe",
+    "linux-binary": "MellowDLP-{version}-linux-x86_64",
+    "appimage": "MellowDLP-{version}-x86_64.AppImage",
+}
+APP_ASSET_SUMS: str = "SHA256SUMS.txt"
+APP_UPDATE_READ_TIMEOUT_SECS: int = 60   # per read while downloading a ~40 MB update
+APP_UPDATE_CHUNK_BYTES: int = 256 * 1024
+APP_UPDATE_EXIT_DELAY_SECS: float = 1.0  # lets the "restarting" event reach the page
 DIALOG_TIMEOUT_SECS: int = 120       # how long a native file/folder dialog may stay open
 M3U8_TEMP_MAX_AGE_SECS: int = 86400  # playlist temp files older than this are swept
 FFMPEG_RECHECK_SECS: int = 30        # how often a missing ffmpeg is looked for again
