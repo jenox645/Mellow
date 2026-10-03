@@ -14,7 +14,7 @@ import {
   PAGE_ORDER,
   STATS_POLL_ACTIVE_MS,
   STATS_POLL_IDLE_MS,
-  APP_UPDATE_CHECK_STORAGE_KEY,
+  APP_UPDATE_POLL_MS,
   UPDATE_CHECK_EVERY_MS,
   UPDATE_CHECK_STORAGE_KEY,
   VICTORY_AUTO_DISMISS_MS,
@@ -98,6 +98,8 @@ function App() {
   const [victoryDismissing, setVictoryDismissing] = React.useState(false);
   const [victoryData, setVictoryData] = React.useState(null);
   const [restorableJobs, setRestorableJobs] = React.useState(null);
+  const [appUpdateOffer, setAppUpdateOffer] = React.useState(null);   // a newer MellowDLP (check-app-update)
+  const toastedVersion = React.useRef(null);
   const [clipboardSuggestion, setClipboardSuggestion] = React.useState(null);
   const [shortcutHelp, setShortcutHelp] = React.useState(false);
   const configRef = React.useRef(config);
@@ -144,6 +146,28 @@ function App() {
       }
     });
   }, [showNotif]);
+
+  // UPDATE (status bar, toast): install it here, or open the release page
+  // when this copy can't replace itself
+  const takeAppUpdate = React.useCallback((offer) => {
+    if (offer && offer.can_install) installAppUpdate();
+    else API.post('/api/open-release', {}).catch(() => {});
+  }, [installAppUpdate]);
+
+  // Is there a newer MellowDLP? The status bar keeps the answer; the toast
+  // comes once per version
+  const checkAppUpdate = React.useCallback(() => {
+    API.get('/api/check-app-update').then(u => {
+      if (!u || u.error) return;
+      setAppUpdateOffer(u.update_available ? u : null);
+      if (u.update_available && toastedVersion.current !== u.latest) {
+        toastedVersion.current = u.latest;
+        showNotif('MellowDLP ' + u.latest + ' Available', 'You have ' + u.current + '.', 'info', [
+          { label: u.can_install ? 'UPDATE & RESTART' : 'GET IT', primary: true, onClick: () => takeAppUpdate(u) },
+        ]);
+      }
+    }).catch(() => {});
+  }, [showNotif, takeAppUpdate]);
 
   // System notification when the window is in the background (opt-in in Config)
   const desktopNotify = React.useCallback((title, body) => {
@@ -221,19 +245,7 @@ function App() {
           .catch(() => {});
       }
       if (c.update_check_on_launch !== false) {
-        // Once a day: is there a newer MellowDLP?
-        let lastApp = 0;
-        try { lastApp = parseInt(localStorage.getItem(APP_UPDATE_CHECK_STORAGE_KEY) || '0', 10) || 0; } catch {}
-        if (Date.now() - lastApp > UPDATE_CHECK_EVERY_MS) {
-          try { localStorage.setItem(APP_UPDATE_CHECK_STORAGE_KEY, String(Date.now())); } catch {}
-          API.get('/api/check-app-update').then(u => {
-            if (u && u.update_available) {
-              showNotif('MellowDLP ' + u.latest + ' Available', 'You have ' + u.current + '.', 'info', [u.can_install
-                ? { label: 'UPDATE & RESTART', primary: true, onClick: () => installAppUpdate() }
-                : { label: 'GET IT', primary: true, onClick: () => API.post('/api/open-release', {}).catch(() => {}) }]);
-            }
-          }).catch(() => {});
-        }
+        checkAppUpdate();
         let last = 0;
         try { last = parseInt(localStorage.getItem(UPDATE_CHECK_STORAGE_KEY) || '0', 10) || 0; } catch {}
         if (Date.now() - last > UPDATE_CHECK_EVERY_MS) {
@@ -249,7 +261,15 @@ function App() {
         }
       }
     }).catch(() => {});
-  }, [refreshStats, showNotif]);
+  }, [refreshStats, showNotif, checkAppUpdate]);
+
+  // A release published while the app is open shows up without a restart
+  React.useEffect(() => {
+    const timer = setInterval(() => {
+      if (configRef.current.update_check_on_launch !== false) checkAppUpdate();
+    }, APP_UPDATE_POLL_MS);
+    return () => clearInterval(timer);
+  }, [checkAppUpdate]);
 
   React.useEffect(() => {
     const iv = setInterval(
@@ -456,12 +476,14 @@ function App() {
             setConfig={setConfig}
             showNotif={showNotif}
             installAppUpdate={installAppUpdate}
+            onAppUpdateChecked={u => { if (u && !u.error) setAppUpdateOffer(u.update_available ? u : null); }}
             sysInfo={sysInfo}
             refreshStats={refreshStats}
           />
         )}
 
-        <StatusBar sysInfo={sysInfo} speedHistory={speedHistory} config={config} />
+        <StatusBar sysInfo={sysInfo} speedHistory={speedHistory} config={config}
+          appUpdate={appUpdateOffer} onAppUpdate={() => takeAppUpdate(appUpdateOffer)} />
       </div>
 
       <Notif notif={notif} dismiss={() => setNotif(null)} />

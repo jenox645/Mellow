@@ -9,7 +9,7 @@ import {
   AUDIO_FORMATS, AUDIO_QUALITIES, CONTAINERS, QUALITIES, TEMPLATE_PREVIEW_DEBOUNCE_MS,
 } from '../lib/constants.js';
 
-export function ConfigPage({ config, setConfig, showNotif, installAppUpdate, sysInfo, refreshStats }) {
+export function ConfigPage({ config, setConfig, showNotif, installAppUpdate, onAppUpdateChecked, sysInfo, refreshStats }) {
   const [local, setLocal] = React.useState({ ...config });
   const [updateInfo, setUpdateInfo] = React.useState(null);
   const [appUpdate, setAppUpdate] = React.useState(null);
@@ -124,7 +124,7 @@ export function ConfigPage({ config, setConfig, showNotif, installAppUpdate, sys
   const checkAppUpdate = () => {
     setCheckingApp(true);
     API.get('/api/check-app-update')
-      .then(setAppUpdate)
+      .then(u => { setAppUpdate(u); if (onAppUpdateChecked) onAppUpdateChecked(u); })
       .catch(e => setAppUpdate({ error: e.message }))
       .finally(() => setCheckingApp(false));
   };
