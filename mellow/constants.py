@@ -64,6 +64,7 @@ PAUSE_POLL_SECS: float = 0.2         # progress-hook pause loop cadence
 # ── SponsorBlock ──────────────────────────────────────────────────────────────
 MAX_CHOSEN_CHAPTERS: int = 200       # chapters one download may pick
 SEARCH_RESULTS: int = 15             # videos a Feed search lists
+RECENT_OUTPUT_DIRS_KEEP: int = 10    # folders the Feed's SAVE TO remembers (↑/↓)
 SEARCH_QUERY_MAX_LEN: int = 200
 # Segment types the "SponsorBlock" option cuts out of a download
 # (https://wiki.sponsor.ajay.app/w/Types)

@@ -20,6 +20,8 @@ import threading
 from pathlib import Path
 from typing import Callable
 
+from .constants import RECENT_OUTPUT_DIRS_KEEP
+
 log = logging.getLogger(__name__)
 
 CONFIG_PATH = Path.home() / ".mellow_dlp.json"
@@ -71,11 +73,13 @@ _DEFAULTS: dict = {
     "ui_victory_animation": True,     # celebration after a playlist download
     "ui_victory_sync": True,          # ... and after a vault sync
     "download_presets": [],           # saved option bundles for the Feed
+    "recent_output_dirs": [],         # the Feed's SAVE TO history, newest first
 }
 
 # Defaults that hold the user's own data rather than a setting: RESET
 # DEFAULTS leaves them alone
-_USER_DATA_KEYS = frozenset({"vault_sync_schedule", "vault_budgets", "download_presets"})
+_USER_DATA_KEYS = frozenset({"vault_sync_schedule", "vault_budgets", "download_presets",
+                             "recent_output_dirs"})
 
 
 def load_config() -> dict:
@@ -171,6 +175,24 @@ def reset_settings() -> dict:
             if key not in _USER_DATA_KEYS:
                 cfg[key] = copy.deepcopy(value)
     return update_config(_reset)
+
+
+def remember_output_dir(path: str) -> list[str]:
+    """Put a folder a download went to first in the SAVE TO history.
+
+    The same folder written differently (case on Windows, a trailing slash)
+    counts once. Returns the new history, newest first.
+    """
+    path = str(path or "").strip()
+    if not path:
+        return load_config().get("recent_output_dirs") or []
+    key = os.path.normcase(os.path.normpath(path))
+
+    def _remember(cfg: dict) -> None:
+        old = [p for p in cfg.get("recent_output_dirs") or [] if isinstance(p, str)]
+        rest = [p for p in old if os.path.normcase(os.path.normpath(p)) != key]
+        cfg["recent_output_dirs"] = [path, *rest][:RECENT_OUTPUT_DIRS_KEEP]
+    return update_config(_remember)["recent_output_dirs"]
 
 
 def update_config(mutator: Callable[[dict], None]) -> dict:

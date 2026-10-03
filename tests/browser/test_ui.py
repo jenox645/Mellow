@@ -5,6 +5,7 @@ search itself is faked. See conftest.py for what they need.
 """
 import json
 import re
+import time
 from unittest.mock import patch
 from urllib.request import urlopen
 
@@ -30,6 +31,15 @@ def _notification(page, pattern):
 
 def _files(folder):
     return sorted(p.name for p in folder.rglob("*") if p.is_file() and p.suffix != ".jpg")
+
+
+def _wait_for_file(folder, prefix, timeout=DOWNLOAD_TIMEOUT_MS / 1000):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if folder.exists() and any(n.startswith(prefix) and n.endswith(".mp4") for n in _files(folder)):
+            return
+        time.sleep(0.3)
+    raise AssertionError(f"no {prefix}*.mp4 in {folder}")
 
 
 def _get(app_url, path):
@@ -99,3 +109,48 @@ def test_add_a_playlist_to_the_vault(page, app_url, media_site, downloads):
     page.get_by_text("Test Mix").first.wait_for()
     entry = next(e for e in _get(app_url, "/api/library") if e["name"] == "Test Mix")
     assert entry["url"] == f"{media_site}/playlist"
+
+
+def test_save_to_a_folder_then_recall_it_with_the_arrows(page, media_site, downloads):
+    music, videos = downloads / "Music", downloads / "Videos"
+    save_to = page.locator(".save-to-row input")
+    for folder, clip in ((music, "clip"), (videos, "third")):
+        save_to.fill(str(folder))
+        save_to.press("Enter")
+        _analyze(page, f"{media_site}/{clip}.mp4")
+        page.locator(".info-actions .btn-primary").click()
+        _wait_for_file(folder, clip)
+    assert not any(p.suffix == ".mp4" for p in downloads.glob("*"))    # nothing in the default folder
+
+    # Like a terminal prompt: ↑ older, ↓ newer, Esc back to what was typed
+    save_to.fill("")
+    menu = page.locator(".folder-menu .folder-opt")
+    expect(menu).to_have_count(2)
+    save_to.press("ArrowUp")
+    expect(save_to).to_have_value(str(videos))
+    expect(page.locator(".folder-opt.active")).to_contain_text("Videos")
+    save_to.press("ArrowUp")
+    expect(save_to).to_have_value(str(music))
+    save_to.press("ArrowUp")                         # the oldest: stays
+    expect(save_to).to_have_value(str(music))
+    save_to.press("ArrowDown")
+    expect(save_to).to_have_value(str(videos))
+    save_to.press("Escape")
+    expect(save_to).to_have_value("")
+    expect(page.locator(".folder-menu")).to_have_count(0)
+
+    # Typing narrows the list; Enter keeps the pick
+    save_to.fill("mus")
+    expect(menu).to_have_count(1)
+    save_to.press("ArrowUp")
+    save_to.press("Enter")
+    expect(save_to).to_have_value(str(music))
+    expect(page.locator(".folder-menu")).to_have_count(0)
+
+    # The history is the server's: it survives a reload (and a restart)
+    page.reload()
+    save_to.fill("")
+    save_to.press("ArrowUp")
+    expect(save_to).to_have_value(str(videos))
+    page.locator(".folder-opt", has_text="Music").click()
+    expect(save_to).to_have_value(str(music))

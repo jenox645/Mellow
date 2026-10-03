@@ -35,6 +35,7 @@ Personal desktop GUI for [yt-dlp](https://github.com/yt-dlp/yt-dlp). Download au
 - **Network**: proxy, rate limit, and a Force IPv4 switch for connections where IPv6 hangs.
 - **Notifications**: optional desktop notification when a download finishes or fails in the background.
 - **yt-dlp self-update**: update yt-dlp from the Config page (checksum-verified, takes effect after a restart), in the installed app too.
+- **SAVE TO on the Feed**: pick this download's folder right under the URL bar (BROWSE or type it); ↑/↓ step through the folders you used before, like a terminal prompt. Empty uses the default folder from Config.
 - **MellowDLP updates itself**: when a new release is out, UPDATE downloads it, checks it against the release's checksums, installs it and restarts (Windows installer, AppImage, Linux binary). Running downloads are offered again after the restart.
 
 Video: MP4, MKV, WebM at best, 4K, 1080p, 720p, 480p or 360p. Audio: MP3, M4A, AAC, Opus (best, 320, 256, 192 or 128 kbps), FLAC, WAV.

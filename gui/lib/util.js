@@ -127,3 +127,23 @@ export function fmtCount(n) {
   if (n >= 1e3) return (n / 1e3).toFixed(1).replace(/\.0$/, '') + 'K';
   return String(n);
 }
+
+// ── SAVE TO history (the Feed's folder field) ────────────────────────────────
+
+// Remembered folders (newest first) that contain what was typed
+export function matchFolders(folders, typed) {
+  const q = (typed || '').trim().toLowerCase();
+  return q ? folders.filter(f => f.toLowerCase().includes(q)) : folders.slice();
+}
+
+// ↑ (+1, older) / ↓ (-1, newer) through `count` entries; -1 is what was typed
+export function stepHistory(idx, dir, count) {
+  return count ? Math.max(-1, Math.min(count - 1, idx + dir)) : -1;
+}
+
+// "C:\Music\Lofi" → { name: 'Lofi', parent: 'C:\Music\' } (either separator)
+export function splitFolder(path) {
+  const p = String(path || '').replace(/[\\/]+$/, '');
+  const i = Math.max(p.lastIndexOf('/'), p.lastIndexOf('\\'));
+  return i < 0 ? { name: p, parent: '' } : { name: p.slice(i + 1) || p, parent: p.slice(0, i + 1) };
+}

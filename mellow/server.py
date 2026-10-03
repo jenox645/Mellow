@@ -34,6 +34,7 @@ from .config import (
     download_root,
     download_settings,
     load_config,
+    remember_output_dir,
     request_settings,
     reset_settings,
     update_config,
@@ -474,6 +475,9 @@ def api_download() -> Response:
         job = _enqueue_job(url, output_dir, opts, job_type="feed", label=url, not_before=not_before)
     resp = {"status": "scheduled" if not_before else "started", "job_id": job["id"],
             "not_before": not_before}
+    if data.get("output_dir"):
+        # A folder picked in the Feed's SAVE TO: offered again with ↑/↓
+        resp["recent_output_dirs"] = remember_output_dir(data["output_dir"])
     free = _free_bytes_near(output_dir)
     if free is not None and free < LOW_DISK_WARN_BYTES:
         # Queued anyway; the user decides whether it will fit
