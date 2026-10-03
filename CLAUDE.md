@@ -45,6 +45,7 @@ build_setup.py     the build (SETUP.bat / setup.sh call it); MellowDLP.spec, ins
 
 ## Key State That Must Persist
 - Feed: url, analyzed info, format/quality/options (`useSessionState('feed_*')`, JSON in sessionStorage); defaults seeded from config `default_*` keys when no session state exists
+- Feed SAVE TO (`feed_downloadPath`, empty = `download_root`): `<FolderInput>` (common.jsx) recalls config `recent_output_dirs` with ↑/↓ like a terminal prompt (narrowed by what's typed; helpers `matchFolders`/`stepHistory` in util.js). `/api/download` with an `output_dir` records it (`config.remember_output_dir`, newest first, `RECENT_OUTPUT_DIRS_KEEP`) and returns the new list; RESET DEFAULTS keeps it. Its menu is `position: fixed` because `.panel` clips its content
 - Queue: `playlistItems` (pending) and `completedItems` (done) — both at App root
 - Options (format, quality, checkboxes): survive URL change AND section navigation via sessionStorage
 - Victory overlay: state at App root, triggered by `item_done` events accumulating then `complete`

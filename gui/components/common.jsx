@@ -3,6 +3,7 @@
 
 import { API } from '../lib/api.js';
 import { togglesFor } from '../lib/formats.js';
+import { matchFolders, splitFolder, stepHistory } from '../lib/util.js';
 import { Ico } from './icons.jsx';
 
 export function Toggle({ checked, onChange }) {
@@ -254,6 +255,101 @@ export function AppUpdateOverlay({ update }) {
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+// A folder field with history, like a terminal prompt: ↑/↓ step through the
+// remembered folders (newest first, narrowed to what was typed), Enter or a
+// click keeps one, Esc goes back to what was there. Empty = the default.
+export function FolderInput({ value, onChange, recent, placeholder, onBrowse }) {
+  const [open, setOpen] = React.useState(false);
+  const [idx, setIdx] = React.useState(-1);       // -1: not in the history
+  const [typed, setTyped] = React.useState('');   // narrows the list
+  const base = React.useRef(value);               // what ↓ / Esc come back to
+  const field = React.useRef(null);
+  const list = React.useMemo(() => matchFolders(recent || [], typed), [recent, typed]);
+  const showMenu = open && list.length > 0;
+
+  // Panels clip their content (overflow: hidden): the list is fixed to the
+  // window, under the field, and follows it while the page scrolls
+  const [at, setAt] = React.useState(null);
+  React.useLayoutEffect(() => {
+    if (!showMenu) return undefined;
+    const place = () => {
+      const r = field.current.getBoundingClientRect();
+      setAt({ top: r.bottom + 2, left: r.left, width: r.width });
+    };
+    place();
+    window.addEventListener('scroll', place, true);
+    window.addEventListener('resize', place);
+    return () => {
+      window.removeEventListener('scroll', place, true);
+      window.removeEventListener('resize', place);
+    };
+  }, [showMenu]);
+
+  const show = i => {
+    setIdx(i);
+    onChange(i < 0 ? base.current : list[i]);
+  };
+  const keep = path => {
+    if (path !== undefined) onChange(path);
+    setIdx(-1);
+    setTyped('');
+    setOpen(false);
+  };
+  const onKeyDown = e => {
+    if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+      if (!list.length) return;
+      e.preventDefault();
+      if (idx < 0) base.current = value;
+      setOpen(true);
+      const next = stepHistory(idx, e.key === 'ArrowUp' ? 1 : -1, list.length);
+      if (next !== idx) show(next);
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      keep();
+    } else if (e.key === 'Escape' && open) {
+      e.preventDefault();
+      if (idx >= 0) onChange(base.current);
+      keep();
+    }
+  };
+
+  return (
+    <div className="folder-input">
+      <div className="folder-field" ref={field}>
+        <input
+          className="inp-sm"
+          value={value}
+          placeholder={placeholder}
+          spellCheck={false}
+          onChange={e => { base.current = e.target.value; setTyped(e.target.value); setIdx(-1); setOpen(true); onChange(e.target.value); }}
+          onFocus={() => setOpen(true)}
+          onBlur={() => keep()}
+          onKeyDown={onKeyDown}
+        />
+        {value && (
+          <span className="folder-clear" title="Use the default folder" onMouseDown={e => { e.preventDefault(); keep(''); }}>✕</span>
+        )}
+        {showMenu && at && (
+          <div className="folder-menu" style={at}>
+            <div className="folder-menu-head">RECENT FOLDERS · ↑↓ PICK · ENTER KEEP · ESC BACK</div>
+            {list.map((path, i) => {
+              const { name, parent } = splitFolder(path);
+              return (
+                <div key={path} className={'folder-opt' + (i === idx ? ' active' : '')} title={path}
+                  onMouseDown={e => { e.preventDefault(); keep(path); }}>
+                  <span className="fo-name">{name}</span>
+                  <span className="fo-parent">{parent.replace(/[\\/]$/, '')}</span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+      {onBrowse && <button className="btn btn-secondary btn-sm" onClick={onBrowse}>BROWSE</button>}
     </div>
   );
 }

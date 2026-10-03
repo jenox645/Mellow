@@ -6,7 +6,7 @@ import {
   estimateDownloadBytes, fmtBytes, fmtCount, fmtDuration, fmtEta, fmtSpeed, idxRanges, isLinkLike, timeAgo,
 } from '../lib/util.js';
 import { SVG, Ico } from '../components/icons.jsx';
-import { FileActions, FormatToggles, Mascot, Pipeline } from '../components/common.jsx';
+import { FileActions, FolderInput, FormatToggles, Mascot, Pipeline } from '../components/common.jsx';
 import { VaultLinkPromptModal } from '../components/vault-modals.jsx';
 import { MASCOT_CHILLING } from '../lib/mascots.js';
 import { defaultToggles, togglesFrom } from '../lib/formats.js';
@@ -86,7 +86,8 @@ export function FeedPage({ dlState, stats, sysInfo, refreshStats, showNotif, swi
       showNotif('Scheduled', 'Starts at ' + scheduleStart + ' — see the Queue page to start it sooner', 'success');
     }
     if (d.disk_warning) showNotif('Low Disk Space', d.disk_warning, 'warn');
-  }, [scheduleStart, showNotif]);
+    if (d.recent_output_dirs) setConfig(c => ({ ...c, recent_output_dirs: d.recent_output_dirs }));
+  }, [scheduleStart, showNotif, setConfig]);
   React.useEffect(() => { setSubmitting(false); }, [dlState]);
 
   // explicitUrl lets callers analyze a URL the `url` state hasn't caught up
@@ -408,7 +409,7 @@ export function FeedPage({ dlState, stats, sysInfo, refreshStats, showNotif, swi
           <button className="btn btn-secondary btn-sm" onClick={handlePaste}>PASTE</button>
           <button className="btn btn-secondary btn-sm" onClick={handleImportFile} title="Import URLs from .txt file">IMPORT FILE</button>
         </div>
-        <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: 'var(--t4)', paddingTop: 3 }}>
+        <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: 'var(--t4)', padding: '0 18px 8px', marginTop: -10 }}>
           ENTER: {!url.trim() ? 'paste' : !info && !analyzing ? (isLinkLike(url) ? 'analyze' : 'search') : 'download'}
           {importedFileName && <span style={{ color: 'var(--cyan)', marginLeft: 10 }}>↑ {importedFileName} ({importedUrls ? importedUrls.length : 0} URLs)</span>}
           {analyzeSlow && (
@@ -416,6 +417,18 @@ export function FeedPage({ dlState, stats, sysInfo, refreshStats, showNotif, swi
               STILL ANALYZING — big playlists take a while. If it never finishes, try Config → Network → Force IPv4.
             </span>
           )}
+        </div>
+
+        {/* SAVE TO — this download's folder; ↑/↓ recall the ones used before */}
+        <div className="save-to-row">
+          <span className="opts-label">SAVE TO</span>
+          <FolderInput
+            value={downloadPath}
+            onChange={setDownloadPath}
+            recent={config.recent_output_dirs}
+            placeholder={'Default — ' + (config.output_dir || 'set in Config') + ((config.recent_output_dirs || []).length ? '   (↑ recent folders)' : '')}
+            onBrowse={browseDownloadPath}
+          />
         </div>
 
         {/* OPTIONS PANEL */}
@@ -565,13 +578,6 @@ export function FeedPage({ dlState, stats, sysInfo, refreshStats, showNotif, swi
                   <div style={{ gridColumn: '1 / -1' }}>
                     <div className="inp-label">CUSTOM FORMAT STRING</div>
                     <input className="inp-sm" value={customFmt} onChange={e => setCustomFmt(e.target.value)} placeholder="bv[height<=1080]+ba/best" />
-                  </div>
-                  <div style={{ gridColumn: '1 / -1' }}>
-                    <div className="inp-label">TARGET FOLDER <span style={{ color: 'var(--t4)', fontSize: 7 }}>(OVERRIDE — empty uses Config default)</span></div>
-                    <div style={{ display: 'flex', gap: 6 }}>
-                      <input className="inp-sm" style={{ flex: 1 }} value={downloadPath} onChange={e => setDownloadPath(e.target.value)} placeholder={config.output_dir || 'Default from Config'} />
-                      <button className="btn btn-secondary btn-sm" onClick={browseDownloadPath}>BROWSE</button>
-                    </div>
                   </div>
                 </div>
               </div>

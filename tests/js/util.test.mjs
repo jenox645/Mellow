@@ -3,7 +3,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  estimateDownloadBytes, fmtBytes, fmtCount, fmtDuration, idxRanges, isLinkLike, parseClock,
+  estimateDownloadBytes, fmtBytes, fmtCount, fmtDuration, idxRanges, isLinkLike, matchFolders, parseClock,
+  splitFolder, stepHistory,
 } from '../../gui/lib/util.js';
 import { defaultToggles, togglesFor, togglesFrom } from '../../gui/lib/formats.js';
 
@@ -65,4 +66,20 @@ test('toggles: defaults, values from a preset, per media', () => {
   const audio = togglesFor('audio').map(t => t.key);
   assert.ok(video.includes('embed_subs') && !video.includes('normalize_audio'));
   assert.ok(audio.includes('normalize_audio') && !audio.includes('embed_subs'));
+});
+
+test('SAVE TO history: filter by what was typed, step with the arrows, split for display', () => {
+  const recent = ['D:\\Music\\Lofi', '/home/me/Videos', 'D:\\Music\\Jazz'];
+  assert.deepEqual(matchFolders(recent, ''), recent);
+  assert.deepEqual(matchFolders(recent, '  music '), ['D:\\Music\\Lofi', 'D:\\Music\\Jazz']);
+  assert.deepEqual(matchFolders(recent, 'nope'), []);
+  // -1 is the typed text; ↑ walks back to the oldest and stops, ↓ comes back
+  assert.equal(stepHistory(-1, 1, 3), 0);
+  assert.equal(stepHistory(2, 1, 3), 2);
+  assert.equal(stepHistory(0, -1, 3), -1);
+  assert.equal(stepHistory(-1, -1, 3), -1);
+  assert.equal(stepHistory(-1, 1, 0), -1);
+  assert.deepEqual(splitFolder('D:\\Music\\Lofi\\'), { name: 'Lofi', parent: 'D:\\Music\\' });
+  assert.deepEqual(splitFolder('/home/me/Videos'), { name: 'Videos', parent: '/home/me/' });
+  assert.deepEqual(splitFolder('Downloads'), { name: 'Downloads', parent: '' });
 });

@@ -373,6 +373,20 @@
     .sel{background:var(--bg2);border:1px solid var(--border);color:var(--t1);padding:7px 10px;font-family:'Share Tech Mono',monospace;font-size:10.5px;outline:none;cursor:pointer;min-width:130px}
     .sel:focus{border-color:var(--cyan)}
     .cfg-danger{border-color:rgba(255,59,97,0.3)}
+    /* FOLDER FIELD WITH HISTORY (Feed SAVE TO) */
+    .folder-input{flex:1;display:flex;gap:6px;align-items:center;min-width:0}
+    .folder-field{position:relative;flex:1;min-width:0}
+    .folder-field .inp-sm{width:100%;box-sizing:border-box;padding-right:24px}
+    .folder-clear{position:absolute;right:6px;top:50%;transform:translateY(-50%);color:var(--t3);cursor:pointer;font-size:11px;padding:2px 4px}
+    .folder-clear:hover{color:var(--red)}
+    .folder-menu{position:fixed;z-index:900;background:var(--bg1);border:1px solid var(--border2);max-height:260px;overflow-y:auto;box-shadow:0 8px 24px rgba(0,0,0,0.45)}
+    .folder-menu-head{font-family:'Share Tech Mono',monospace;font-size:8px;letter-spacing:0.12em;color:var(--t4);padding:6px 10px;border-bottom:1px solid var(--border)}
+    .folder-opt{display:flex;align-items:baseline;gap:10px;padding:6px 10px;cursor:pointer;border-left:2px solid transparent}
+    .folder-opt:hover,.folder-opt.active{background:var(--bg3);border-left-color:var(--cyan)}
+    .folder-opt .fo-name{color:var(--t1);font-size:12px;white-space:nowrap}
+    .folder-opt .fo-parent{color:var(--t4);font-family:'Share Tech Mono',monospace;font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .save-to-row{display:flex;align-items:center;gap:10px;padding:2px 18px 16px}
+    .save-to-row .opts-label{min-width:auto}
     /* MODAL */
     .modal-overlay{position:fixed;inset:0;background:rgba(7,9,15,0.85);z-index:1000;display:flex;align-items:center;justify-content:center;animation:fadein 0.15s}
     .modal-box{background:var(--bg1);border:1px solid var(--border2);min-width:420px;max-width:580px;width:90vw;max-height:80vh;overflow-y:auto;position:relative}
