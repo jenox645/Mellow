@@ -154,3 +154,23 @@ def test_save_to_a_folder_then_recall_it_with_the_arrows(page, media_site, downl
     expect(save_to).to_have_value(str(videos))
     page.locator(".folder-opt", has_text="Music").click()
     expect(save_to).to_have_value(str(music))
+
+
+def test_a_new_release_shows_in_the_status_bar_and_updates_from_there(page, app_url):
+    offer = {"current": "2.3.0", "latest": "9.9.9", "update_available": True, "can_install": True,
+             "install_kind": "windows-installer", "install_note": None, "download_size": 40_000_000}
+    installs = []
+    page.route("**/api/check-app-update", lambda r: r.fulfill(
+        status=200, content_type="application/json", body=json.dumps(offer)))
+    page.route("**/api/app-update/install", lambda r: (installs.append(r.request.post_data_json),
+               r.fulfill(status=200, content_type="application/json", body='{"status": "updating"}')))
+    page.reload()                                  # the launch check
+    chip = page.locator(".sb-update")
+    expect(chip).to_contain_text("9.9.9")
+    expect(page.locator(".notif", has_text="9.9.9 Available")).to_be_visible()
+    chip.click()
+    for _ in range(50):
+        if installs:
+            break
+        page.wait_for_timeout(100)
+    assert installs == [{"force": False}]
