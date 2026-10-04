@@ -36,7 +36,7 @@ Personal desktop GUI for [yt-dlp](https://github.com/yt-dlp/yt-dlp). Download au
 - **Notifications**: optional desktop notification when a download finishes or fails in the background.
 - **yt-dlp self-update**: update yt-dlp from the Config page (checksum-verified, takes effect after a restart), in the installed app too.
 - **SAVE TO on the Feed**: pick this download's folder right under the URL bar (BROWSE or type it); ↑/↓ step through the folders you used before, like a terminal prompt. Empty uses the default folder from Config.
-- **MellowDLP updates itself**: when a new release is out, UPDATE downloads it, checks it against the release's checksums, installs it and restarts (Windows installer, AppImage, Linux binary). Running downloads are offered again after the restart.
+- **MellowDLP updates itself**: the app looks for a new release at launch and every few hours, and shows it in the status bar. UPDATE downloads it, checks it against the release's checksums, installs it and restarts (Windows installer, AppImage, Linux binary). Running downloads are offered again after the restart.
 
 Video: MP4, MKV, WebM at best, 4K, 1080p, 720p, 480p or 360p. Audio: MP3, M4A, AAC, Opus (best, 320, 256, 192 or 128 kbps), FLAC, WAV.
 
@@ -124,6 +124,10 @@ python3 main.py
 ```
 
 ---
+
+## Releasing
+
+Merge a pull request that raises `APP_VERSION` in `mellow/version.py`: GitHub Actions builds the Windows installer, the Linux binary and the AppImage, tests them, and publishes the release `vX.Y.Z`. Installed copies then offer UPDATE in their status bar. (Pushing the tag `vX.Y.Z` by hand does the same.)
 
 ## Tests
 

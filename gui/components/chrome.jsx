@@ -160,7 +160,7 @@ export function TopBar({ page }) {
   );
 }
 
-export function StatusBar({ sysInfo, speedHistory, config }) {
+export function StatusBar({ sysInfo, speedHistory, config, appUpdate, onAppUpdate }) {
   const canvasRef = React.useRef(null);
 
   React.useEffect(() => {
@@ -210,6 +210,14 @@ export function StatusBar({ sysInfo, speedHistory, config }) {
           style={sysInfo.disk_low ? { color: 'var(--red)' } : undefined}>
           <div className={'sb-dot' + (sysInfo.disk_low ? ' err' : ' ok')} />
           {sysInfo.disk_low ? 'DISK LOW ' : 'DISK '}{fmtBytes(sysInfo.disk_free_bytes)} FREE
+        </div>
+      )}
+      {appUpdate && (
+        <div className="sb-seg sb-update" onClick={onAppUpdate}
+          title={appUpdate.can_install
+            ? 'Download, check and install MellowDLP ' + appUpdate.latest + ', then restart'
+            : (appUpdate.install_note || 'Open the release page')}>
+          ⬆ MELLOWDLP {appUpdate.latest} — {appUpdate.can_install ? 'UPDATE' : 'GET IT'}
         </div>
       )}
       <div className="sb-graph">

@@ -143,8 +143,9 @@ python scripts/smoke_binary.py dist/MellowDLP
 - flaskwebgui ≥ 1.1.9 (1.1.8 crashes at import without a browser installed); it needs Python 3.12
 - `main.py --no-window` serves on 127.0.0.1 without opening a window (use your own browser; the smoke test uses it)
 - Release asset names are an API: installed copies look them up (`constants.APP_ASSET_NAMES`, `APP_ASSET_SUMS`); `tests/test_app_update.py` checks release.yml publishes exactly those. `scripts/update_e2e.py <app> <kind>` lets a build older than the latest release update itself for real (release.yml's `update-windows` job does it with the installer on PRs)
+- The App looks for a newer MellowDLP at every launch and every `APP_UPDATE_POLL_MS` (6 h) while open (config `update_check_on_launch`); the offer stays in the status bar (`appUpdateOffer`, UPDATE → `takeAppUpdate`), the toast comes once per version
 - Self-update restarts through a helper started with `PYINSTALLER_RESET_ENVIRONMENT=1` (a one-file build must not inherit the old copy's unpack folder); `/api/app-update/install` answers 409 while downloads run unless `force` (they're saved and offered again after the restart)
-- Releases: push a tag `vX.Y.Z` equal to `APP_VERSION` → `.github/workflows/release.yml` builds the Windows installer and the Linux binary + AppImage, smoke-tests each, and publishes the GitHub release with `SHA256SUMS.txt` (a `-suffix` tag is a pre-release). PRs touching packaging run the builds without publishing
+- Releases: merging a change of `APP_VERSION` into main publishes `vX.Y.Z` by itself (release.yml runs on main when `mellow/version.py` changes, skips a version whose tag exists, and `gh release create --target` makes the tag); pushing a tag `vX.Y.Z` equal to `APP_VERSION` does the same by hand. A feature PR that should reach installed copies bumps `APP_VERSION` (and installer.iss's fallback). Either way `.github/workflows/release.yml` builds the Windows installer and the Linux binary + AppImage, smoke-tests each, and publishes the GitHub release with `SHA256SUMS.txt` (a `-suffix` tag is a pre-release). PRs touching packaging run the builds without publishing
 
 ## Tests
 ```bash

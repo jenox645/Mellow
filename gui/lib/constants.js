@@ -34,7 +34,8 @@ export const TEMPLATE_PREVIEW_DEBOUNCE_MS = 300;  // Config filename template â†
 // yt-dlp update check on launch
 export const UPDATE_CHECK_EVERY_MS = 24 * 60 * 60 * 1000;
 export const UPDATE_CHECK_STORAGE_KEY = 'mellow_ytdlp_check_ts';
-export const APP_UPDATE_CHECK_STORAGE_KEY = 'mellow_app_check_ts';
+// A new MellowDLP is looked for at every launch, then this often while it runs
+export const APP_UPDATE_POLL_MS = 6 * 60 * 60 * 1000;
 
 // Clipboard watcher
 export const CLIPBOARD_URL_RE = /^https?:\/\/\S+$/;
