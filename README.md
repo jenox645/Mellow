@@ -63,7 +63,9 @@ Project layout: `main.py` starts the app, the backend lives in `mellow/`, the fr
 
 ### ffmpeg
 
-ffmpeg does the merging, converting, trimming and embedding. It is **not bundled**; install it once:
+ffmpeg does the merging, converting, trimming and embedding. It is **not bundled**, but on Windows and Linux MellowDLP gets it for you: when it's missing, click **GET FFMPEG** (the prompt at launch, the status bar, or Config → FFmpeg). It downloads a static build from [BtbN/FFmpeg-Builds](https://github.com/BtbN/FFmpeg-Builds) (~150–200 MB), checks it against the published checksums, and keeps `ffmpeg` and `ffprobe` in `~/.mellow_dlp_ffmpeg` — no PATH changes, no restart.
+
+Or install it yourself:
 
 | OS | Command |
 |---|---|
@@ -71,7 +73,7 @@ ffmpeg does the merging, converting, trimming and embedding. It is **not bundled
 | macOS | `brew install ffmpeg` |
 | Linux | `sudo apt install ffmpeg` |
 
-MellowDLP looks on `PATH`, next to the app (`ffmpeg/`), and in the usual winget / Chocolatey / Scoop / Homebrew folders, so a fresh install is picked up without restarting. For any other location set `"ffmpeg_location"` in `~/.mellow_dlp.json` to the binary or its folder. The status bar shows whether it was found.
+MellowDLP looks on `PATH`, next to the app (`ffmpeg/`), in `~/.mellow_dlp_ffmpeg` (GET FFMPEG), and in the usual winget / Chocolatey / Scoop / Homebrew folders, so a fresh install is picked up without restarting. For any other location set `"ffmpeg_location"` in `~/.mellow_dlp.json` to the binary or its folder. The status bar shows whether it was found.
 
 Without ffmpeg the app still runs, with limits it tells you about: audio is saved in its original format (usually `.m4a`) instead of being converted, and sites that serve video and audio as separate streams (YouTube) cannot be saved as video at all.
 

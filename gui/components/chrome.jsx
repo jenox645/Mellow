@@ -160,7 +160,7 @@ export function TopBar({ page }) {
   );
 }
 
-export function StatusBar({ sysInfo, speedHistory, config, appUpdate, onAppUpdate }) {
+export function StatusBar({ sysInfo, speedHistory, config, appUpdate, onAppUpdate, ffmpegInstall, onGetFfmpeg }) {
   const canvasRef = React.useRef(null);
 
   React.useEffect(() => {
@@ -199,12 +199,25 @@ export function StatusBar({ sysInfo, speedHistory, config, appUpdate, onAppUpdat
       <div className="sb-seg">
         yt-dlp {sysInfo.ytdlp_version || '—'}
       </div>
-      <div className="sb-seg" title={sysInfo.ffmpeg
-        ? (sysInfo.ffmpeg_path || 'ffmpeg found')
-        : 'ffmpeg is needed to merge, convert and trim. Windows: winget install Gyan.FFmpeg'}>
-        <div className={'sb-dot' + (sysInfo.ffmpeg ? ' ok' : ' err')} />
-        FFmpeg {sysInfo.ffmpeg ? 'OK' : 'MISSING'}
-      </div>
+      {ffmpegInstall ? (
+        <div className="sb-seg sb-update" title="Downloading and checking ffmpeg">
+          <div className="sb-dot warn" />
+          FFMPEG {ffmpegInstall.stage === 'downloading' ? ffmpegInstall.pct + '%' : 'INSTALLING…'}
+        </div>
+      ) : !sysInfo.ffmpeg && sysInfo.ffmpeg_installable ? (
+        <div className="sb-seg sb-update sb-ffmpeg-get" onClick={onGetFfmpeg}
+          title="ffmpeg merges, converts and trims. Click to download it into MellowDLP (checked against its published checksum)">
+          <div className="sb-dot err" />
+          FFMPEG MISSING — GET IT
+        </div>
+      ) : (
+        <div className="sb-seg" title={sysInfo.ffmpeg
+          ? (sysInfo.ffmpeg_path || 'ffmpeg found')
+          : (sysInfo.ffmpeg_install_note || 'ffmpeg is needed to merge, convert and trim.')}>
+          <div className={'sb-dot' + (sysInfo.ffmpeg ? ' ok' : ' err')} />
+          FFmpeg {sysInfo.ffmpeg ? 'OK' : 'MISSING'}
+        </div>
+      )}
       {sysInfo.disk_free_bytes != null && (
         <div className="sb-seg" title="Free space on the download drive"
           style={sysInfo.disk_low ? { color: 'var(--red)' } : undefined}>

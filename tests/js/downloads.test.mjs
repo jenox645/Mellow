@@ -79,7 +79,7 @@ test('errors: explained ones carry their fix, unexplained extraction errors offe
   const breakage = run([{ status: 'error', message: 'Unable to extract player response' }]);
   assert.equal(breakage.effects[0].action, 'update_ytdlp');
   const ffmpeg = run([{ status: 'error', message: 'Unable to extract x', code: 'ffmpeg_missing' }]);
-  assert.equal(ffmpeg.effects[0].action, null);
+  assert.equal(ffmpeg.effects[0].action, 'get_ffmpeg');
   assert.equal(ffmpeg.failedCount, 1);
 });
 
@@ -129,4 +129,21 @@ test('MellowDLP updating itself: progress, then the restart or a failure', () =>
   assert.equal(s.appUpdate, null);
   assert.deepEqual(s.effects.at(-1), { type: 'notify', title: 'Update Failed',
     body: "doesn't match its published checksum", kind: 'error', action: 'open_release' });
+});
+
+test('GET FFMPEG: progress, then done (refresh) or a failure with retry; warnings offer it', () => {
+  let s = run([{ status: 'ffmpeg_install', stage: 'downloading', pct: 0, version: '9.0' },
+    { status: 'ffmpeg_install', stage: 'downloading', pct: 63, version: '9.0' }]);
+  assert.deepEqual(s.ffmpegInstall, { stage: 'downloading', pct: 63, version: '9.0' });
+  s = run([{ status: 'ffmpeg_install', stage: 'installing', version: '9.0' }], s);
+  assert.equal(s.ffmpegInstall.stage, 'installing');
+  const done = run([{ status: 'ffmpeg_install', stage: 'done', version: '9.0', detail: 'ffmpeg version n9.0.2' }], s);
+  assert.equal(done.ffmpegInstall, null);
+  assert.deepEqual(types(done), ['notify', 'refreshStats']);
+  assert.equal(done.effects[0].body, 'ffmpeg version n9.0.2');
+  const failed = run([{ status: 'ffmpeg_install', stage: 'error', message: 'checksum' }], s);
+  assert.equal(failed.ffmpegInstall, null);
+  assert.equal(failed.effects[0].action, 'get_ffmpeg');
+  assert.equal(run([{ status: 'warning', code: 'ffmpeg_missing', message: 'm' }]).effects[0].action, 'get_ffmpeg');
+  assert.equal(run([{ status: 'warning', code: 'sponsorblock_skipped', message: 'm' }]).effects[0].action, null);
 });

@@ -20,7 +20,6 @@ Unfinished downloads are saved by the queue and offered again on restart.
 """
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
 import os
@@ -35,16 +34,14 @@ from typing import Callable
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
-from . import analytics
+from . import analytics, fetch
 from .constants import (
     APP_ASSET_NAMES,
     APP_ASSET_SUMS,
     APP_DOWNLOADS_PREFIX,
     APP_RELEASES_API,
     APP_RELEASES_PAGE,
-    APP_UPDATE_CHUNK_BYTES,
     APP_UPDATE_EXIT_DELAY_SECS,
-    APP_UPDATE_READ_TIMEOUT_SECS,
     UPDATE_CHECK_TIMEOUT_SECS,
 )
 from .version import APP_VERSION
@@ -177,33 +174,10 @@ def check() -> dict:
 # ── Download and verify ──────────────────────────────────────────────────────
 
 def _expected_sha256(sums_url: str, name: str) -> str:
-    with urlopen(Request(sums_url, headers=_HEADERS), timeout=UPDATE_CHECK_TIMEOUT_SECS) as resp:
-        text = resp.read().decode("utf-8", "replace")
-    for line in text.splitlines():
-        parts = line.split()
-        if len(parts) == 2 and parts[1].lstrip("*") == name:
-            return parts[0].lower()
-    raise UpdateError(f"{APP_ASSET_SUMS} lists no checksum for {name}")
-
-
-def _download(url: str, dest: Path, size: int, on_pct: Callable[[int], None]) -> str:
-    """Stream `url` to `dest`; returns its sha256. Reports whole percents."""
-    sha = hashlib.sha256()
-    done, last_pct = 0, -1
-    with urlopen(Request(url, headers=_HEADERS), timeout=APP_UPDATE_READ_TIMEOUT_SECS) as resp, \
-            open(dest, "wb") as out:
-        total = size or int(resp.headers.get("Content-Length") or 0)
-        while chunk := resp.read(APP_UPDATE_CHUNK_BYTES):
-            out.write(chunk)
-            sha.update(chunk)
-            done += len(chunk)
-            pct = min(100, done * 100 // total) if total else 0
-            if pct != last_pct:
-                last_pct = pct
-                on_pct(pct)
-    if size and done != size:
-        raise UpdateError(f"The download stopped early ({done:,} of {size:,} bytes)")
-    return sha.hexdigest()
+    expected = fetch.checksum_for(fetch.text(sums_url, UPDATE_CHECK_TIMEOUT_SECS), name)
+    if not expected:
+        raise UpdateError(f"{APP_ASSET_SUMS} lists no checksum for {name}")
+    return expected
 
 
 # ── Hand-over ────────────────────────────────────────────────────────────────
@@ -317,7 +291,7 @@ def install(push: Callable[[dict], None]) -> None:
             final = _target()   # same folder: the swap is a rename
         staged = final.with_name(final.name + ".download")
         log.info(f"app update: downloading {asset['url']} ({asset['size']:,} bytes)")
-        if _download(asset["url"], staged, asset["size"], progress) != expected:
+        if fetch.download(asset["url"], staged, asset["size"], progress) != expected:
             raise UpdateError("The download doesn't match its published checksum.")
 
         push({"status": "app_update", "stage": "installing", "version": version})
@@ -332,7 +306,7 @@ def install(push: Callable[[dict], None]) -> None:
         log.info(f"app update: {APP_VERSION} → {version} ({kind}), restarting")
         _hand_over(cmd, env)
     except Exception as exc:
-        message = str(exc) if isinstance(exc, UpdateError) else f"Update failed: {exc}"
+        message = str(exc) if isinstance(exc, (UpdateError, fetch.DownloadError)) else f"Update failed: {exc}"
         log.warning(f"app update failed: {exc}")
         if staged is not None:
             staged.unlink(missing_ok=True)

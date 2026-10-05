@@ -174,3 +174,30 @@ def test_a_new_release_shows_in_the_status_bar_and_updates_from_there(page, app_
             break
         page.wait_for_timeout(100)
     assert installs == [{"force": False}]
+
+
+def test_get_ffmpeg_from_the_prompt_with_progress_in_the_status_bar(page, app_url):
+    from mellow import server
+    system = dict(_get(app_url, "/api/system"), ffmpeg=False, ffmpeg_path=None, ffmpeg_installable=True)
+    installs = []
+    page.route("**/api/system", lambda r: r.fulfill(status=200, content_type="application/json",
+                                                    body=json.dumps(system)))
+    page.route("**/api/ffmpeg/install", lambda r: (installs.append(1), r.fulfill(
+        status=200, content_type="application/json", body='{"status": "installing"}')))
+    page.reload()
+    prompt = page.locator(".notif", has_text="FFmpeg Missing")
+    expect(prompt).to_be_visible()
+    prompt.get_by_text("GET FFMPEG").click()
+    assert installs == [1]
+
+    # The server's progress events drive the status bar
+    segment = page.locator(".statusbar .sb-seg:not(.sb-path)", has_text="FFMPEG")
+    for event in ({"stage": "downloading", "pct": 42, "version": "9.0"},
+                  {"stage": "installing", "version": "9.0"}):
+        server._push_progress({"status": "ffmpeg_install", **event})
+        expect(segment).to_contain_text("42%" if event["stage"] == "downloading" else "INSTALLING")
+    system.update(ffmpeg=True, ffmpeg_path="/home/me/.mellow_dlp_ffmpeg/ffmpeg", ffmpeg_installed_by_app=True)
+    server._push_progress({"status": "ffmpeg_install", "stage": "done", "version": "9.0",
+                           "detail": "ffmpeg version n9.0.2"})
+    expect(page.locator(".notif", has_text="FFmpeg Installed")).to_be_visible()
+    expect(segment).to_contain_text("FFmpeg OK")

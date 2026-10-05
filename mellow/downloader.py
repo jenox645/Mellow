@@ -117,8 +117,8 @@ QUALITY_MAP: dict[str, str] = {
 _QUALITY_MAX_HEIGHT: dict[str, int] = {"4k": 2160, "1080p": 1080, "720p": 720, "480p": 480, "360p": 360}
 NO_FFMPEG_AUDIO_FORMAT = "bestaudio[ext=m4a]/bestaudio/best"
 NO_FFMPEG_ERROR_HINT = ("Note: ffmpeg isn't installed. Sites that serve video and audio "
-                        "separately (YouTube) can't be saved as video without it. Install "
-                        "ffmpeg (Windows: winget install Gyan.FFmpeg) and try again.")
+                        "separately (YouTube) can't be saved as video without it. Click GET "
+                        "FFMPEG (or install it: Windows winget install Gyan.FFmpeg) and try again.")
 
 
 # Output name when no filename template is set

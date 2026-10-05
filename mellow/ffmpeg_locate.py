@@ -1,7 +1,8 @@
 """Locate ffmpeg — every merge, conversion and embed step depends on it.
 
 Search order: `ffmpeg_location` config override → PATH → a copy shipped next
-to the app → well-known install folders. The folders matter because a process
+to the app → the one GET FFMPEG installed (MANAGED_DIR, ffmpeg_install.py) →
+well-known install folders. The folders matter because a process
 keeps the PATH it was launched with: an ffmpeg installed while MellowDLP is
 running (winget, chocolatey, scoop, Homebrew) would otherwise stay invisible
 until a restart, and macOS GUI apps never see the shell's PATH at all.
@@ -20,6 +21,8 @@ from .config import load_config
 from .constants import FFMPEG_RECHECK_SECS
 
 _EXE = "ffmpeg.exe" if os.name == "nt" else "ffmpeg"
+# Where GET FFMPEG puts ffmpeg and ffprobe (ffmpeg_install.py)
+MANAGED_DIR = Path.home() / ".mellow_dlp_ffmpeg"
 
 _lock = threading.Lock()
 _cached: str | None = None
@@ -32,6 +35,7 @@ def _candidate_dirs() -> list[Path]:
     if getattr(sys, "frozen", False):
         exe_dir = Path(sys.executable).parent
         dirs += [exe_dir, exe_dir / "ffmpeg", exe_dir / "ffmpeg" / "bin"]
+    dirs.append(MANAGED_DIR)
     if os.name == "nt":
         local = os.environ.get("LOCALAPPDATA", "")
         if local:

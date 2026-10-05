@@ -89,12 +89,15 @@ APP_ASSET_NAMES: dict = {
     "appimage": "MellowDLP-{version}-x86_64.AppImage",
 }
 APP_ASSET_SUMS: str = "SHA256SUMS.txt"
-APP_UPDATE_READ_TIMEOUT_SECS: int = 60   # per read while downloading a ~40 MB update
-APP_UPDATE_CHUNK_BYTES: int = 256 * 1024
+DOWNLOAD_READ_TIMEOUT_SECS: int = 60    # per read while downloading an update or ffmpeg
+DOWNLOAD_CHUNK_BYTES: int = 256 * 1024
 APP_UPDATE_EXIT_DELAY_SECS: float = 1.0  # lets the "restarting" event reach the page
 DIALOG_TIMEOUT_SECS: int = 120       # how long a native file/folder dialog may stay open
 M3U8_TEMP_MAX_AGE_SECS: int = 86400  # playlist temp files older than this are swept
 FFMPEG_RECHECK_SECS: int = 30        # how often a missing ffmpeg is looked for again
+# GET FFMPEG: static builds with a published checksums.sha256 (Windows, Linux)
+FFMPEG_BUILDS_URL: str = "https://github.com/BtbN/FFmpeg-Builds/releases/latest/download/"
+FFMPEG_PROBE_TIMEOUT_SECS: int = 30   # `ffmpeg -version` after installing it
 LOG_MAX_BYTES: int = 1024 * 1024     # ~/.mellow_dlp.log rotates at this size
 LOG_BACKUPS: int = 3                 # rotated log files kept
 LOW_DISK_WARN_BYTES: int = 2 * 1024 ** 3  # warn when output drive has < 2 GB free

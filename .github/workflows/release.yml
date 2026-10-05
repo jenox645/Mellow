@@ -31,6 +31,9 @@ on:
       - package-lock.json
       - main.py
       - mellow/app_update.py
+      - mellow/fetch.py
+      - mellow/ffmpeg_install.py
+      - scripts/ffmpeg_e2e.py
       - scripts/smoke_binary.py
       - scripts/update_e2e.py
   workflow_dispatch:
@@ -177,6 +180,26 @@ jobs:
         run: Start-Process dist\MellowDLP_Setup.exe -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-' -Wait
       - name: Update it from the latest release
         run: .venv\Scripts\python scripts/update_e2e.py "$env:LOCALAPPDATA\Programs\MellowDLP\MellowDLP.exe" windows-installer
+
+  # GET FFMPEG for real: download the current build for each system, check
+  # it, install it into a temp folder and convert audio with it
+  ffmpeg-install:
+    if: github.event_name != 'push'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: requirements*.txt
+      - run: pip install -r requirements.txt
+      - run: python scripts/ffmpeg_e2e.py
 
   publish:
     if: needs.version.outputs.publish == 'true'

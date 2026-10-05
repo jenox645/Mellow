@@ -75,7 +75,7 @@ function App() {
   const {
     appState, dlState, activeJobs, speedHistory, playlistItems, completedItems, failedItems,
     playlistTotalCount, playlistCompletedCount, failedCount, isPaused, pausedCount, syncJobLabel,
-    fetchingPlaylistItems, appUpdate,
+    fetchingPlaylistItems, appUpdate, ffmpegInstall,
   } = dl;
   // setState-style setters for the pages (stable: dispatch never changes)
   const setters = React.useMemo(() => {
@@ -118,8 +118,14 @@ function App() {
     );
   }, []);
 
+  // GET FFMPEG: download, check and install it (progress: ffmpeg_install events)
+  const installFfmpeg = React.useCallback(() => {
+    API.post('/api/ffmpeg/install', {}).catch(err => showNotif('FFmpeg Install Failed', err.message, 'error'));
+  }, [showNotif]);
+
   // Buttons for the fixes the backend can name (errors.py actions)
   const errorActions = React.useCallback((action) => {
+    if (action === 'get_ffmpeg') return [{ label: 'GET FFMPEG', primary: true, onClick: installFfmpeg }];
     if (action === 'update_ytdlp') return [{
       label: 'UPDATE YT-DLP', primary: true,
       onClick: () => API.post('/api/update-ytdlp', {}).catch(() => {}),
@@ -130,7 +136,19 @@ function App() {
       onClick: () => API.post('/api/open-release', {}).catch(() => {}),
     }];
     return null;
-  }, []);
+  }, [installFfmpeg]);
+
+  // No ffmpeg: offer it once per session (the status bar keeps the button)
+  const ffmpegOffered = React.useRef(false);
+  React.useEffect(() => {
+    if (sysInfo.ffmpeg !== false || !sysInfo.ffmpeg_installable || ffmpegOffered.current) return;
+    ffmpegOffered.current = true;
+    showNotif('FFmpeg Missing', 'Needed to save YouTube videos and convert audio. MellowDLP can download it for you '
+      + '(about 150–200 MB, checked against its published checksum).', 'warn', [
+      { label: 'GET FFMPEG', primary: true, onClick: installFfmpeg },
+      { label: 'LATER', onClick: () => {} },
+    ]);
+  }, [sysInfo, showNotif, installFfmpeg]);
 
   // Install the latest MellowDLP and restart (progress: app_update events).
   // Running downloads are saved and offered again, but ask first.
@@ -476,6 +494,8 @@ function App() {
             setConfig={setConfig}
             showNotif={showNotif}
             installAppUpdate={installAppUpdate}
+            installFfmpeg={installFfmpeg}
+            ffmpegInstall={ffmpegInstall}
             onAppUpdateChecked={u => { if (u && !u.error) setAppUpdateOffer(u.update_available ? u : null); }}
             sysInfo={sysInfo}
             refreshStats={refreshStats}
@@ -483,7 +503,8 @@ function App() {
         )}
 
         <StatusBar sysInfo={sysInfo} speedHistory={speedHistory} config={config}
-          appUpdate={appUpdateOffer} onAppUpdate={() => takeAppUpdate(appUpdateOffer)} />
+          appUpdate={appUpdateOffer} onAppUpdate={() => takeAppUpdate(appUpdateOffer)}
+          ffmpegInstall={ffmpegInstall} onGetFfmpeg={installFfmpeg} />
       </div>
 
       <Notif notif={notif} dismiss={() => setNotif(null)} />

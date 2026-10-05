@@ -24,7 +24,9 @@ build_setup.py     the build (SETUP.bat / setup.sh call it); MellowDLP.spec, ins
   - `app_update.py` — newer MellowDLP on GitHub releases, and installing it: `install_kind()` (`windows-installer` / `appimage` / `linux-binary`, else the release page), `install()` downloads the asset named in `constants.APP_ASSET_NAMES`, checks `SHA256SUMS.txt`, swaps the file or stages the installer, and hands over to a detached helper that waits for this PID to exit, runs the installer silently and relaunches
   - `ytdlp_update.py` — yt-dlp version check (PyPI) and in-app update: downloads the release zipapp to `~/.mellow_dlp_ytdlp.zip`; `activate_overlay()` (main.py, before any yt_dlp import) runs it instead of the bundled copy when it's newer
   - `applog.py` — rotating log file `~/.mellow_dlp.log` (the packaged app has no console); modules log via `logging.getLogger(__name__)`, never `print`
-  - `ffmpeg_locate.py` — the one ffmpeg lookup (config override → PATH → next to the app → known install folders), shared by downloader, vault and `/api/system`
+  - `ffmpeg_locate.py` — the one ffmpeg lookup (config override → PATH → next to the app → `MANAGED_DIR` `~/.mellow_dlp_ffmpeg` → known install folders), shared by downloader, vault and `/api/system`
+  - `ffmpeg_install.py` — GET FFMPEG: picks the newest release-branch build for this system from BtbN's `checksums.sha256` (`pick_build`, never master/shared), downloads it via `fetch.py`, verifies it, copies only `bin/ffmpeg` + `bin/ffprobe` into a staging folder, runs `-version`, then swaps the folder into `MANAGED_DIR`. `/api/system` reports `ffmpeg_installable` / `ffmpeg_install_note` / `ffmpeg_installed_by_app`
+  - `fetch.py` — the shared download loop (progress, SHA-256, short-download check) and `checksum_for()`, used by app_update and ffmpeg_install
   - `errors.py` — `explain()` maps raw yt-dlp errors to `{code, title, hint, action}`; `jobs._make_cb` annotates every `error`/`item_failed` event, `/api/info` errors too
   - `analytics.py` — DuckDB only (shared per-path connection handed out as cursors); filesystem scans live in `vault.py`
   - `scheduler.py` — vault auto-sync loop (config: `auto_sync_enabled`, `vault_sync_schedule`)
@@ -79,6 +81,7 @@ A new event = a case in `applyEvent` + a test in `tests/js/downloads.test.mjs`.
 - `error` and `item_failed` also carry `code`, `title`, `hint` and `action` (`update_ytdlp` | `open_config` | null) when `errors.explain()` recognises the message; the UI shows title + hint and a button for the action
 - `paused` / `resumed` — pause toggles
 - `ytdlp_updated` — after yt-dlp self-update
+- `ffmpeg_install` — GET FFMPEG: `stage` `downloading` (`pct`) → `installing` → `done` (`path`, `detail`) or `error` (`message`); the status bar and Config's FFmpeg row show it
 - `app_update` — MellowDLP updating itself: `stage` `downloading` (`pct`) → `installing` → `restarting` (the app then exits; `AppUpdateOverlay` covers the page), or `error` with `message`
 
 ## Known Architectural Rules
@@ -106,7 +109,7 @@ A new event = a case in `applyEvent` + a test in `tests/js/downloads.test.mjs`.
 - Every job must end in exactly one terminal event (`complete`/`error`/`cancelled`) — the UI has no timeout; `jobs._worker` pushes `error` if a job crashes
 - `jobs.run_job` holds back each downloader run's terminal event and emits the job's one terminal itself: with several URLs, a failed one becomes `item_failed` + a `warning` on `complete` (all failed → one `error`)
 - Sync timestamps (`vault_sync_times`, library `last_synced`) are written by `JobManager._on_finished` when a sync completes, never on enqueue
-- No ffmpeg → `downloader` requests single-file formats and no ffmpeg postprocessors, and says so via `warning`; never build a `a+b` format or an `FFmpeg*` postprocessor without checking `find_ffmpeg()`
+- No ffmpeg → the UI offers GET FFMPEG (launch prompt once per session, status bar, Config; `warning`/`error` with `code: ffmpeg_missing` carry action `get_ffmpeg`). `downloader` requests single-file formats and no ffmpeg postprocessors, and says so via `warning`; never build a `a+b` format or an `FFmpeg*` postprocessor without checking `find_ffmpeg()`
 - Cancel is per job (`job["cancel_event"]`); pause is one flag for all running downloads, owned by `JobManager` (cleared when the queue goes idle)
 - A job can carry `not_before` (epoch seconds; `/api/download` with `scheduled: true` sets it from config `schedule_start` via `jobs.next_time_of_day`). Workers take the first *due* job in queue order and sleep until the next one is due; `/api/queue/<job>/start-now` clears it; it survives restarts. `wait_idle()` ignores jobs that aren't due
 - Sync reports: the downloader's logger turns yt-dlp's "already recorded in the archive" / "does not pass filter" lines into `item_skipped` events, which `jobs._make_cb` collects (with `item_done` titles and `item_failed` details) into `job["report"]` without pushing them to the UI; `_on_finished` stores every sync's report (`analytics.record_sync_report`, table `sync_reports`, last `SYNC_REPORTS_KEEP` per folder), shown by the vault folder view via `/api/vault/sync-report`. `/api/vault/retry-item` re-downloads one item into a folder in the folder's sync format

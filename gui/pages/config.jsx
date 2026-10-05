@@ -9,7 +9,7 @@ import {
   AUDIO_FORMATS, AUDIO_QUALITIES, CONTAINERS, QUALITIES, TEMPLATE_PREVIEW_DEBOUNCE_MS,
 } from '../lib/constants.js';
 
-export function ConfigPage({ config, setConfig, showNotif, installAppUpdate, onAppUpdateChecked, sysInfo, refreshStats }) {
+export function ConfigPage({ config, setConfig, showNotif, installAppUpdate, onAppUpdateChecked, installFfmpeg, ffmpegInstall, sysInfo, refreshStats }) {
   const [local, setLocal] = React.useState({ ...config });
   const [updateInfo, setUpdateInfo] = React.useState(null);
   const [appUpdate, setAppUpdate] = React.useState(null);
@@ -662,6 +662,31 @@ export function ConfigPage({ config, setConfig, showNotif, installAppUpdate, onA
                     {restoring ? 'RESTORING...' : '⬆ RESTORE'}
                   </button>
                   <input ref={restoreInputRef} type="file" accept=".zip" style={{ display: 'none' }} onChange={handleRestoreFile} />
+                </div>
+              </div>
+              <div className="settings-row">
+                <div className="settings-label">
+                  <div className="sl-name">FFmpeg</div>
+                  <div className="sl-sub" title={sysInfo.ffmpeg_path || ''}>
+                    {ffmpegInstall
+                      ? <span style={{ color: 'var(--amber)' }}>
+                          {ffmpegInstall.stage === 'downloading' ? 'Downloading ' + ffmpegInstall.pct + '%' : 'Installing…'}
+                        </span>
+                      : sysInfo.ffmpeg
+                      ? <span style={{ color: 'var(--green)' }}>
+                          {sysInfo.ffmpeg_installed_by_app ? 'Installed by MellowDLP' : 'Found'} — {sysInfo.ffmpeg_path}
+                        </span>
+                      : <span style={{ color: 'var(--red)' }}>
+                          Missing — needed to merge, convert and trim{sysInfo.ffmpeg_installable ? '' : '. ' + (sysInfo.ffmpeg_install_note || '')}
+                        </span>}
+                  </div>
+                </div>
+                <div className="settings-ctrl">
+                  {!sysInfo.ffmpeg && sysInfo.ffmpeg_installable && (
+                    <button className="btn btn-amber btn-sm" onClick={installFfmpeg} disabled={!!ffmpegInstall}>
+                      {ffmpegInstall ? '...' : 'GET FFMPEG'}
+                    </button>
+                  )}
                 </div>
               </div>
               <div className="settings-row">
