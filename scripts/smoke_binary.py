@@ -44,6 +44,9 @@ def _check(base: str) -> None:
     print(f"  /api/system: app {system.get('app_version')}, yt-dlp {system.get('ytdlp_version')}")
     assert system.get("app_version") == APP_VERSION, f"app_version {system.get('app_version')} != {APP_VERSION}"
     assert system.get("ytdlp_version") not in (None, "", "unknown"), "yt-dlp isn't importable in the build"
+    notes = json.loads(_get(base + "/api/whats-new?all=1")).get("entries") or []
+    assert notes and notes[0]["version"] == APP_VERSION, "CHANGELOG.md isn't in the build (What's new)"
+    print(f"  What's new: {len(notes)} releases, newest {notes[0]['version']}")
 
     page = _get(base + "/").decode("utf-8", "replace")
     for ref in ("fonts/fonts.css", "react.min.js", "app.bundle.js"):

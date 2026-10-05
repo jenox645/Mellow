@@ -29,6 +29,7 @@ export function initialDownloads() {
     syncJobLabel: null,
     fetchingPlaylistItems: false,
     appUpdate: null,           // MellowDLP updating itself: {stage, pct, version}
+    ffmpegInstall: null,       // GET FFMPEG running: {stage, pct, version}
     effects: [],               // side effects waiting for the App (see applyEvent)
   };
 }
@@ -218,10 +219,11 @@ export function applyEvent(state, data, now = Date.now()) {
       } else {
         // Extraction failures usually mean yt-dlp is outdated — offer the fix
         // (unless the backend already pinned it on the missing ffmpeg)
-        const breakage = data.code !== 'ffmpeg_missing' && BREAKAGE_RE.test(item.title);
+        const noFfmpeg = data.code === 'ffmpeg_missing';
+        const breakage = !noFfmpeg && BREAKAGE_RE.test(item.title);
         fx.push({ type: 'notify', title: 'Error', kind: 'error',
           body: breakage ? item.title + ' — this often means yt-dlp is outdated.' : item.title,
-          action: breakage ? 'update_ytdlp' : null });
+          action: breakage ? 'update_ytdlp' : noFfmpeg ? 'get_ffmpeg' : null });
       }
       fx.push({ type: 'desktop', title: data.title || 'Download failed', body: data.hint || item.title });
       fx.push({ type: 'refreshStats' });
@@ -242,7 +244,22 @@ export function applyEvent(state, data, now = Date.now()) {
       break;
 
     case 'warning':
-      fx.push({ type: 'notify', title: 'Heads Up', body: data.message || '', kind: 'warn' });
+      fx.push({ type: 'notify', title: 'Heads Up', body: data.message || '', kind: 'warn',
+        action: data.code === 'ffmpeg_missing' ? 'get_ffmpeg' : null });
+      break;
+
+    case 'ffmpeg_install':
+      // downloading (pct) → installing → done | error; the status bar shows it
+      if (data.stage === 'done') {
+        s = { ...s, ffmpegInstall: null };
+        fx.push({ type: 'notify', title: 'FFmpeg Installed', body: data.detail || ('ffmpeg ' + (data.version || '')), kind: 'success' });
+        fx.push({ type: 'refreshStats' });
+      } else if (data.stage === 'error') {
+        s = { ...s, ffmpegInstall: null };
+        fx.push({ type: 'notify', title: 'FFmpeg Install Failed', body: data.message || '', kind: 'error', action: 'get_ffmpeg' });
+      } else {
+        s = { ...s, ffmpegInstall: { stage: data.stage, pct: data.pct || 0, version: data.version || '' } };
+      }
       break;
 
     case 'app_update':

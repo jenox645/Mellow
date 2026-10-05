@@ -67,6 +67,7 @@ _DEFAULTS: dict = {
     "vault_sync_schedule": {},        # per-folder interval overrides
     "vault_budgets": {},              # per-folder storage caps (bytes)
     "update_check_on_launch": True,   # yt-dlp staleness toast on startup
+    "last_seen_version": "",          # What's new: the notes since this version show once
     "clipboard_watch": True,          # Feed banner when a media URL is copied
     "completion_sound": False,        # chime when a download finishes
     "desktop_notifications": False,   # system notification when unfocused
@@ -79,7 +80,7 @@ _DEFAULTS: dict = {
 # Defaults that hold the user's own data rather than a setting: RESET
 # DEFAULTS leaves them alone
 _USER_DATA_KEYS = frozenset({"vault_sync_schedule", "vault_budgets", "download_presets",
-                             "recent_output_dirs"})
+                             "recent_output_dirs", "last_seen_version"})
 
 
 def load_config() -> dict:

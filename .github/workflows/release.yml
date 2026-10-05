@@ -31,6 +31,10 @@ on:
       - package-lock.json
       - main.py
       - mellow/app_update.py
+      - CHANGELOG.md
+      - mellow/fetch.py
+      - mellow/ffmpeg_install.py
+      - scripts/ffmpeg_e2e.py
       - scripts/smoke_binary.py
       - scripts/update_e2e.py
   workflow_dispatch:
@@ -74,6 +78,10 @@ jobs:
             else
               publish=true
             fi
+          fi
+          if [[ "$publish" == true ]] && ! python3 -c "from mellow import changelog; import sys; sys.exit(0 if changelog.section('$version') else 1)"; then
+            echo "::error::CHANGELOG.md has no '## $version' section: add the release notes"
+            exit 1
           fi
           { echo "version=$version"; echo "tag=$tag"; echo "publish=$publish"; echo "build=$build"; } >> "$GITHUB_OUTPUT"
           echo "APP_VERSION $version, tag '$tag', publish=$publish"
@@ -178,6 +186,26 @@ jobs:
       - name: Update it from the latest release
         run: .venv\Scripts\python scripts/update_e2e.py "$env:LOCALAPPDATA\Programs\MellowDLP\MellowDLP.exe" windows-installer
 
+  # GET FFMPEG for real: download the current build for each system, check
+  # it, install it into a temp folder and convert audio with it
+  ffmpeg-install:
+    if: github.event_name != 'push'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: requirements*.txt
+      - run: pip install -r requirements.txt
+      - run: python scripts/ffmpeg_e2e.py
+
   publish:
     if: needs.version.outputs.publish == 'true'
     needs: [version, windows, linux]
@@ -185,6 +213,7 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v7
       - uses: actions/download-artifact@v8
         with:
           path: artifacts
@@ -207,5 +236,7 @@ jobs:
           prerelease=""
           [[ "$TAG" == *-* ]] && prerelease="--prerelease"
           # --target: a release from main creates its tag on the commit that was built
+          # The CHANGELOG.md section first; GitHub's list of merged PRs follows
+          python3 -c "from mellow import changelog; print(changelog.section('$VERSION'))" > notes.md
           gh release create "$TAG" release/* --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
-            --title "MellowDLP $VERSION" --generate-notes $prerelease
+            --title "MellowDLP $VERSION" --notes-file notes.md --generate-notes $prerelease

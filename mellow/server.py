@@ -19,9 +19,11 @@ from . import (
     analytics,
     app_update,
     applog,
+    changelog,
     desktop,
     downloader,
     errors,
+    ffmpeg_install,
     formats,
     jobs,
     scheduler,
@@ -305,6 +307,10 @@ def api_system() -> Response:
     return jsonify({
         "ffmpeg": ffmpeg_path is not None,
         "ffmpeg_path": ffmpeg_path,
+        # GET FFMPEG: offered where a build exists (reason says why not)
+        "ffmpeg_installable": ffmpeg_install.unavailable_reason() is None,
+        "ffmpeg_install_note": ffmpeg_install.unavailable_reason(),
+        "ffmpeg_installed_by_app": ffmpeg_install.installed_here(ffmpeg_path),
         "ytdlp_version": ytdlp_version,
         "python_version": sys.version.split()[0],
         "app_version": APP_VERSION,
@@ -313,6 +319,32 @@ def api_system() -> Response:
         "disk_low": disk_free is not None and disk_free < LOW_DISK_WARN_BYTES,
         "log_path": str(applog.LOG_PATH),
     })
+
+
+@app.route("/api/whats-new")
+def api_whats_new() -> Response:
+    """After an update: the notes since the version last seen (?all=1: every release)."""
+    if request.args.get("all"):
+        return jsonify({"current": APP_VERSION, "show": True, "entries": changelog.load()})
+    return jsonify(changelog.whats_new())
+
+
+@app.route("/api/whats-new/seen", methods=["POST"])
+def api_whats_new_seen() -> Response:
+    changelog.mark_seen()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/ffmpeg/install", methods=["POST"])
+def api_ffmpeg_install() -> Response:
+    """GET FFMPEG: download, verify and install it (ffmpeg_install events)."""
+    if ffmpeg_install.installing():
+        return jsonify({"error": "ffmpeg is already being installed."}), 409
+    reason = ffmpeg_install.unavailable_reason()
+    if reason:
+        return jsonify({"error": reason}), 400
+    threading.Thread(target=ffmpeg_install.install, args=(_push_progress,), daemon=True).start()
+    return jsonify({"status": "installing"})
 
 
 @app.route("/api/open-log", methods=["POST"])

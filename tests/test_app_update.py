@@ -190,6 +190,7 @@ def _install(kind, target, fake, monkeypatch):
     monkeypatch.setattr(sys, 'executable', str(target))
     with patch('mellow.app_update.install_kind', return_value=(kind, None)), \
             patch('mellow.app_update.urlopen', side_effect=fake), \
+            patch('mellow.fetch.urlopen', side_effect=fake), \
             patch('mellow.app_update._hand_over', side_effect=lambda cmd, env: handed.append((cmd, env))):
         app_update.install(events.append)
     return events, handed

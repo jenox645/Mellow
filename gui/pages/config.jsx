@@ -9,7 +9,7 @@ import {
   AUDIO_FORMATS, AUDIO_QUALITIES, CONTAINERS, QUALITIES, TEMPLATE_PREVIEW_DEBOUNCE_MS,
 } from '../lib/constants.js';
 
-export function ConfigPage({ config, setConfig, showNotif, installAppUpdate, onAppUpdateChecked, sysInfo, refreshStats }) {
+export function ConfigPage({ config, setConfig, showNotif, installAppUpdate, onAppUpdateChecked, installFfmpeg, ffmpegInstall, showWhatsNew, sysInfo, refreshStats }) {
   const [local, setLocal] = React.useState({ ...config });
   const [updateInfo, setUpdateInfo] = React.useState(null);
   const [appUpdate, setAppUpdate] = React.useState(null);
@@ -666,6 +666,31 @@ export function ConfigPage({ config, setConfig, showNotif, installAppUpdate, onA
               </div>
               <div className="settings-row">
                 <div className="settings-label">
+                  <div className="sl-name">FFmpeg</div>
+                  <div className="sl-sub" title={sysInfo.ffmpeg_path || ''}>
+                    {ffmpegInstall
+                      ? <span style={{ color: 'var(--amber)' }}>
+                          {ffmpegInstall.stage === 'downloading' ? 'Downloading ' + ffmpegInstall.pct + '%' : 'Installing…'}
+                        </span>
+                      : sysInfo.ffmpeg
+                      ? <span style={{ color: 'var(--green)' }}>
+                          {sysInfo.ffmpeg_installed_by_app ? 'Installed by MellowDLP' : 'Found'} — {sysInfo.ffmpeg_path}
+                        </span>
+                      : <span style={{ color: 'var(--red)' }}>
+                          Missing — needed to merge, convert and trim{sysInfo.ffmpeg_installable ? '' : '. ' + (sysInfo.ffmpeg_install_note || '')}
+                        </span>}
+                  </div>
+                </div>
+                <div className="settings-ctrl">
+                  {!sysInfo.ffmpeg && sysInfo.ffmpeg_installable && (
+                    <button className="btn btn-amber btn-sm" onClick={installFfmpeg} disabled={!!ffmpegInstall}>
+                      {ffmpegInstall ? '...' : 'GET FFMPEG'}
+                    </button>
+                  )}
+                </div>
+              </div>
+              <div className="settings-row">
+                <div className="settings-label">
                   <div className="sl-name">MellowDLP Version</div>
                   <div className="sl-sub">
                     {'v' + (sysInfo.app_version || '?') + ' — '}
@@ -679,6 +704,7 @@ export function ConfigPage({ config, setConfig, showNotif, installAppUpdate, onA
                   </div>
                 </div>
                 <div className="settings-ctrl" style={{ display: 'flex', gap: 6 }}>
+                  <button className="btn btn-secondary btn-sm" onClick={showWhatsNew}>WHAT'S NEW</button>
                   <button className="btn btn-secondary btn-sm" onClick={checkAppUpdate} disabled={checkingApp}>{checkingApp ? '...' : 'CHECK'}</button>
                   {appUpdate && appUpdate.update_available && (appUpdate.can_install
                     ? <button className="btn btn-amber btn-sm" onClick={() => installAppUpdate()}
