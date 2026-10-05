@@ -196,3 +196,46 @@ def test_api(client):
                 break
             time.sleep(0.02)
     install.assert_called_once()
+
+
+def _windows_build():
+    root = 'ffmpeg-n9.0-latest-win64-gpl-9.0/'
+    return _zip({root + 'bin/ffmpeg.exe': b'MZ ffmpeg', root + 'bin/ffprobe.exe': b'MZ ffprobe'})
+
+
+def test_waits_for_an_antivirus_scan_to_let_go(tmp_path):
+    # Windows: Defender scanning the new ffmpeg.exe holds its folder for a moment
+    real_replace = type(tmp_path).replace
+    calls = []
+
+    def replace(self, target):
+        calls.append(target)
+        if len(calls) < 3:
+            raise PermissionError(5, 'Access is denied')
+        return real_replace(self, target)
+
+    with patch('mellow.ffmpeg_install._EXE', '.exe'), \
+            patch('mellow.ffmpeg_install._probe', return_value='ffmpeg version 9.0'), \
+            patch('mellow.ffmpeg_install.time.sleep'), \
+            patch.object(type(tmp_path), 'replace', replace):
+        events, _ = _install(_site({WIN: _windows_build()}), plat='win64')
+    assert events[-1]['stage'] == 'done', events[-1]
+    assert len(calls) == 3
+    assert (ffmpeg_locate.MANAGED_DIR / 'ffmpeg.exe').read_bytes() == b'MZ ffmpeg'
+    assert _leftovers(tmp_path) == []
+
+
+def test_gives_up_with_a_plain_message_when_it_stays_locked(tmp_path):
+    def locked(self, target):
+        raise PermissionError(5, 'Access is denied')
+
+    with patch('mellow.ffmpeg_install._EXE', '.exe'), \
+            patch('mellow.ffmpeg_install._probe', return_value='ffmpeg version 9.0'), \
+            patch('mellow.ffmpeg_install.time.sleep') as sleep, \
+            patch.object(type(tmp_path), 'replace', locked):
+        events, _ = _install(_site({WIN: _windows_build()}), plat='win64')
+    assert events[-1]['stage'] == 'error'
+    assert events[-1]['message'].startswith("Windows wouldn't let MellowDLP move ffmpeg into place")
+    assert sleep.call_count == ffmpeg_install.FFMPEG_SWAP_ATTEMPTS
+    assert not ffmpeg_locate.MANAGED_DIR.exists()
+    assert _leftovers(tmp_path) == []

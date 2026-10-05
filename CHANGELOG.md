@@ -10,6 +10,7 @@ fails without one.
 
 ## 2.5.1
 - **Opens without Chrome or Edge**: on a Linux system with no Chromium-based browser, MellowDLP opens in your default browser instead of starting with no window.
+- **GET FFMPEG and antivirus**: when an antivirus scan briefly locks the new ffmpeg on Windows, GET FFMPEG waits for it instead of failing with "Access is denied".
 
 ## 2.5.0
 - **One-click updates for the portable exe**: the MellowDLP.exe you build with SETUP.bat ("App only") or keep anywhere updates itself too — UPDATE downloads the new exe, checks it, swaps it in when MellowDLP closes and reopens it. No installer, no release page.
