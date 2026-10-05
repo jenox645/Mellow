@@ -14,7 +14,8 @@ name: Release
 # A pull request that touches the packaging runs the builds too, so a broken
 # installer shows up before the tag; it never publishes. It also checks the
 # in-app update for real: a copy built as 0.0.1, installed by its installer,
-# updates itself to the latest published release (update-windows).
+# updates itself to the latest published release (update-windows), and a
+# portable exe swaps itself for a served build (update-windows-portable).
 on:
   push:
     tags: ['v*']
@@ -115,7 +116,9 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: windows
-          path: dist/MellowDLP_Setup.exe
+          path: |
+            dist/MellowDLP_Setup.exe
+            dist/MellowDLP.exe
           if-no-files-found: error
           retention-days: 14
 
@@ -186,6 +189,42 @@ jobs:
       - name: Update it from the latest release
         run: .venv\Scripts\python scripts/update_e2e.py "$env:LOCALAPPDATA\Programs\MellowDLP\MellowDLP.exe" windows-installer
 
+  # A portable exe (SETUP.bat's "App only" build) updating itself: the
+  # same build as 9.9.9 is served as the release, a 0.0.1 copy takes it
+  update-windows-portable:
+    if: github.event_name != 'push'
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: requirements*.txt
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Build 9.9.9 as the release to update to
+        shell: pwsh
+        run: |
+          (Get-Content mellow/version.py) -replace 'APP_VERSION = ".*"', 'APP_VERSION = "9.9.9"' | Set-Content mellow/version.py
+          python build_setup.py --desktop-shortcut
+          New-Item -ItemType Directory feed | Out-Null
+          Copy-Item dist\MellowDLP.exe feed\MellowDLP-9.9.9-windows-portable.exe
+          $hash = (Get-FileHash feed\MellowDLP-9.9.9-windows-portable.exe -Algorithm SHA256).Hash.ToLower()
+          Set-Content -Path feed\SHA256SUMS.txt -Value "$hash  MellowDLP-9.9.9-windows-portable.exe" -NoNewline
+      - name: Build 0.0.1 as the portable copy
+        shell: pwsh
+        run: |
+          (Get-Content mellow/version.py) -replace 'APP_VERSION = ".*"', 'APP_VERSION = "0.0.1"' | Set-Content mellow/version.py
+          python build_setup.py --desktop-shortcut
+          New-Item -ItemType Directory app | Out-Null
+          Copy-Item dist\MellowDLP.exe app\MellowDLP.exe
+      - name: Update it from the served release
+        run: .venv\Scripts\python scripts/update_e2e.py app\MellowDLP.exe windows-portable --feed feed 9.9.9
+
   # GET FFMPEG for real: download the current build for each system, check
   # it, install it into a temp folder and convert audio with it
   ffmpeg-install:
@@ -223,6 +262,7 @@ jobs:
         run: |
           mkdir release
           cp artifacts/windows/MellowDLP_Setup.exe "release/MellowDLP-$VERSION-windows-setup.exe"
+          cp artifacts/windows/MellowDLP.exe "release/MellowDLP-$VERSION-windows-portable.exe"
           cp artifacts/linux/MellowDLP "release/MellowDLP-$VERSION-linux-x86_64"
           cp artifacts/linux/MellowDLP-*-x86_64.AppImage "release/MellowDLP-$VERSION-x86_64.AppImage"
           chmod +x release/MellowDLP-*-linux-x86_64 release/*.AppImage

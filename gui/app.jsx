@@ -181,7 +181,9 @@ function App() {
       setAppUpdateOffer(u.update_available ? u : null);
       if (u.update_available && toastedVersion.current !== u.latest) {
         toastedVersion.current = u.latest;
-        showNotif('MellowDLP ' + u.latest + ' Available', 'You have ' + u.current + '.', 'info', [
+        // When this copy can't replace itself, say why (GET IT opens the release page)
+        const why = !u.can_install && u.install_note ? ' ' + u.install_note : '';
+        showNotif('MellowDLP ' + u.latest + ' Available', 'You have ' + u.current + '.' + why, 'info', [
           { label: u.can_install ? 'UPDATE & RESTART' : 'GET IT', primary: true, onClick: () => takeAppUpdate(u) },
         ]);
       }
