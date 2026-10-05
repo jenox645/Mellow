@@ -163,7 +163,10 @@ def test_install_kind(tmp_path, monkeypatch):
     exe = tmp_path / 'MellowDLP.exe'
     exe.write_bytes(b'x')
     _frozen(monkeypatch, exe, 'win32')
-    assert app_update.install_kind() == (None, app_update.install_kind()[1])
+    assert app_update.install_kind() == ('windows-portable', None)    # e.g. SETUP.bat's dist\MellowDLP.exe
+    with patch('mellow.app_update.os.access', return_value=False):
+        kind, note = app_update.install_kind()
+    assert kind is None and "can't be replaced" in note
     (tmp_path / 'unins000.exe').write_bytes(b'x')
     assert app_update.install_kind() == ('windows-installer', None)
 
@@ -255,6 +258,58 @@ def test_windows_runs_the_installer_after_exiting(tmp_path, monkeypatch):
     assert cmd[0] == 'powershell' and '$env:MELLOW_SETUP' in cmd[-1]
     assert '/VERYSILENT' in env['MELLOW_SETUP_ARGS'] and env['MELLOW_EXE'] == str(exe)
     assert env['MELLOW_ARGS'] == ''
+
+
+def test_a_portable_exe_is_swapped_by_the_helper_after_exiting(tmp_path, monkeypatch):
+    app = tmp_path / 'dist'
+    app.mkdir()
+    exe = app / 'MellowDLP.exe'
+    exe.write_bytes(b'old')
+    monkeypatch.setattr(sys, 'argv', ['MellowDLP.exe', '--no-window'])
+    events, handed = _install('windows-portable', exe, _github('windows-portable'), monkeypatch)
+    assert events[-1]['stage'] == 'restarting', events[-1]
+    [(cmd, env)] = handed
+    staged = app / 'MellowDLP.exe.new'
+    assert env['MELLOW_NEW'] == str(staged) and staged.read_bytes() == PAYLOAD
+    assert exe.read_bytes() == b'old'       # a running exe can't be replaced: the helper does it
+    assert sorted(p.name for p in app.iterdir()) == ['MellowDLP.exe', 'MellowDLP.exe.new']
+    assert cmd[0] == 'powershell' and 'Copy-Item -LiteralPath $env:MELLOW_NEW' in cmd[-1]
+    assert env['MELLOW_EXE'] == str(exe) and env['MELLOW_ARGS'] == '--no-window'
+    assert env['PYINSTALLER_RESET_ENVIRONMENT'] == '1'
+
+
+def test_a_failed_portable_download_leaves_nothing_next_to_the_exe(tmp_path, monkeypatch):
+    app = tmp_path / 'dist'
+    app.mkdir()
+    exe = app / 'MellowDLP.exe'
+    exe.write_bytes(b'old')
+    events, handed = _install('windows-portable', exe, _github('windows-portable', sums_hash='0' * 64), monkeypatch)
+    assert events[-1]['stage'] == 'error' and not handed
+    assert [p.name for p in app.iterdir()] == ['MellowDLP.exe']
+
+
+def test_a_feed_replaces_github_for_testing(monkeypatch):
+    feed = 'http://127.0.0.1:9999/release.json'
+    files = {
+        'release.json': json.dumps({'tag_name': 'v' + NEW, 'assets': [
+            {'name': f'MellowDLP-{NEW}-windows-portable.exe', 'size': 3,
+             'browser_download_url': f'http://127.0.0.1:9999/MellowDLP-{NEW}-windows-portable.exe'},
+            {'name': APP_ASSET_SUMS, 'size': 3,
+             'browser_download_url': 'https://elsewhere.example/SHA256SUMS.txt'},   # not from the feed
+        ]}).encode(),
+    }
+    monkeypatch.setenv('MELLOW_UPDATE_FEED', feed)
+    seen = []
+
+    def urlopen(req, timeout=None):
+        seen.append(req.full_url)
+        return _Resp(files[req.full_url.rsplit('/', 1)[1]])
+    with patch('mellow.app_update.install_kind', return_value=('windows-portable', None)), \
+            patch('mellow.app_update.urlopen', side_effect=urlopen):
+        data = app_update.check()
+    assert seen == [feed]                       # GitHub isn't asked
+    assert data['latest'] == NEW and data['update_available'] is True
+    assert data['can_install'] is False         # a file from outside the feed is refused
 
 
 def test_nothing_to_install_when_already_latest(monkeypatch):

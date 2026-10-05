@@ -6,11 +6,14 @@ whether this copy can replace itself (`install_kind`):
 - "windows-installer": a copy installed by the Windows installer (Inno
   Setup's uninstaller sits next to the exe). The release's setup runs
   silently over it; Inno keeps the folder and the shortcuts.
+- "windows-portable": any other exe (e.g. SETUP.bat's "App only" build in
+  dist/). The release's portable exe is put next to it and swapped in
+  once this process has exited.
 - "appimage": the AppImage file ($APPIMAGE) is replaced by the new one.
 - "linux-binary": the frozen binary itself is replaced.
 
-Anything else (running from source, a package under /usr, a portable exe,
-macOS) gets the release page, and `install_note` says why.
+Anything else (running from source, a package under /usr, macOS) gets the
+release page, and `install_note` says why.
 
 install() downloads the release asset for this kind, checks it against the
 release's SHA256SUMS.txt, puts it in place, and hands over to a detached
@@ -70,7 +73,9 @@ def install_kind() -> tuple[str | None, str | None]:
     if sys.platform == "win32":
         if any(exe.parent.glob("unins*.exe")):
             return "windows-installer", None
-        return None, "This copy wasn't set up by the installer: download the new installer."
+        if not (os.access(exe, os.W_OK) and os.access(exe.parent, os.W_OK)):
+            return None, f"{exe} can't be replaced by this user: download the new version."
+        return "windows-portable", None
     if sys.platform.startswith("linux"):
         appimage = os.environ.get("APPIMAGE")
         target = Path(appimage) if appimage else exe
@@ -87,7 +92,24 @@ def _target() -> Path:
 
 # ── The release ──────────────────────────────────────────────────────────────
 
+def _sources() -> tuple[str, str]:
+    """(release JSON URL, prefix every download must start with).
+
+    MELLOW_UPDATE_FEED points the updater at another release JSON (GitHub's
+    shape) and its folder; scripts/update_e2e.py uses it to update a test
+    build from a locally served one.
+    """
+    feed = os.environ.get("MELLOW_UPDATE_FEED")
+    if feed:
+        return feed, feed.rsplit("/", 1)[0] + "/"
+    return APP_RELEASES_API, APP_DOWNLOADS_PREFIX
+
+
 def _latest_release() -> dict:
+    api, _ = _sources()
+    if api != APP_RELEASES_API:
+        with urlopen(Request(api, headers=_HEADERS), timeout=UPDATE_CHECK_TIMEOUT_SECS) as resp:
+            return json.loads(resp.read().decode())
     req = Request(APP_RELEASES_API, headers={**_HEADERS, "Accept": "application/vnd.github+json"})
     try:
         with urlopen(req, timeout=UPDATE_CHECK_TIMEOUT_SECS) as resp:
@@ -125,9 +147,10 @@ def _version_of(release: dict) -> str:
 
 def _asset(release: dict, name: str) -> dict | None:
     """The named asset, only if it is downloaded from this app's own releases."""
+    _, prefix = _sources()
     for a in release.get("assets") or []:
         url = str(a.get("browser_download_url") or "")
-        if a.get("name") == name and url.startswith(APP_DOWNLOADS_PREFIX):
+        if a.get("name") == name and url.startswith(prefix):
             return {"name": name, "url": url, "size": int(a.get("size") or 0)}
     return None
 
@@ -206,6 +229,16 @@ _WINDOWS_HELPER = (
     "if ($env:MELLOW_ARGS) { Start-Process -FilePath $env:MELLOW_EXE -ArgumentList $env:MELLOW_ARGS } "
     "else { Start-Process -FilePath $env:MELLOW_EXE }"
 )
+# A one-file exe stays locked until its bootloader has exited too: retry the copy
+_PORTABLE_HELPER = (
+    "$p = Get-Process -Id $env:MELLOW_PID -ErrorAction SilentlyContinue; if ($p) { $p.WaitForExit() }; "
+    "for ($i = 0; $i -lt 60; $i++) { try { "
+    "Copy-Item -LiteralPath $env:MELLOW_NEW -Destination $env:MELLOW_EXE -Force -ErrorAction Stop; "
+    "Remove-Item -LiteralPath $env:MELLOW_NEW -ErrorAction SilentlyContinue; break "
+    "} catch { Start-Sleep -Milliseconds 250 } }; "
+    "if ($env:MELLOW_ARGS) { Start-Process -FilePath $env:MELLOW_EXE -ArgumentList $env:MELLOW_ARGS } "
+    "else { Start-Process -FilePath $env:MELLOW_EXE }"
+)
 _POSIX_HELPER = 'while kill -0 "$MELLOW_PID" 2>/dev/null; do sleep 0.2; done; exec "$@"'
 
 
@@ -220,6 +253,11 @@ def helper_command(kind: str, staged: Path) -> tuple[list[str], dict]:
                    MELLOW_EXE=sys.executable, MELLOW_ARGS=subprocess.list2cmdline(args))
         return ["powershell", "-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden",
                 "-Command", _WINDOWS_HELPER], env
+    if kind == "windows-portable":
+        env.update(MELLOW_NEW=str(staged), MELLOW_EXE=sys.executable,
+                   MELLOW_ARGS=subprocess.list2cmdline(args))
+        return ["powershell", "-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden",
+                "-Command", _PORTABLE_HELPER], env
     return ["/bin/sh", "-c", _POSIX_HELPER, "mellow-relaunch", str(_target()), *args], env
 
 
@@ -287,6 +325,8 @@ def install(push: Callable[[dict], None]) -> None:
             folder = Path(tempfile.gettempdir()) / "MellowDLP-update"
             folder.mkdir(exist_ok=True)
             final = folder / asset["name"]
+        elif kind == "windows-portable":
+            final = Path(sys.executable)   # a running exe can't be replaced: the helper swaps it
         else:
             final = _target()   # same folder: the swap is a rename
         staged = final.with_name(final.name + ".download")
@@ -297,6 +337,8 @@ def install(push: Callable[[dict], None]) -> None:
         push({"status": "app_update", "stage": "installing", "version": version})
         if kind == "windows-installer":
             staged = staged.replace(final)
+        elif kind == "windows-portable":
+            final = staged = staged.replace(final.with_name(final.name + ".new"))
         else:
             staged.chmod(0o755)
             os.replace(staged, final)   # the running copy keeps its open file

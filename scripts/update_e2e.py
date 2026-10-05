@@ -1,6 +1,6 @@
 """Let a built MellowDLP update itself from the real GitHub release.
 
-    python scripts/update_e2e.py <app> <expected install kind>
+    python scripts/update_e2e.py <app> <expected install kind> [--feed <folder> <version>]
 
 <app> must be a build whose APP_VERSION is older than the latest release
 (CI builds one as 0.0.1): an installed MellowDLP.exe (windows-installer),
@@ -9,14 +9,24 @@ it headless with a throwaway home folder, checks that it offers the update,
 starts the install through the API, and waits for the app to come back as
 the released version. Needs psutil (a flaskwebgui dependency) to stop the
 new copy, which the update helper starts, not this script.
+
+--feed serves <folder> (the new build under its release name, plus
+SHA256SUMS.txt) as release <version> over local HTTP and points the app at
+it (MELLOW_UPDATE_FEED): an update path can be tested for real before any
+published release carries its file. The updated file must then be the one
+from the folder.
 """
 from __future__ import annotations
 
+import functools
+import hashlib
+import http.server
 import json
 import os
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from pathlib import Path
 from urllib.request import Request, urlopen
@@ -62,10 +72,28 @@ def _stop_port_owner(port: int) -> None:
             pass
 
 
-def main(app: str, expected_kind: str) -> int:
+def _serve_feed(folder: Path, version: str) -> str:
+    """Serve `folder` as release `version` (GitHub's JSON shape); returns its URL."""
+    handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(folder))
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    base = f"http://127.0.0.1:{server.server_port}/"
+    files = [p for p in folder.iterdir() if p.is_file() and p.name != "release.json"]
+    (folder / "release.json").write_text(json.dumps({
+        "tag_name": f"v{version}", "html_url": base, "body": "",
+        "assets": [{"name": p.name, "size": p.stat().st_size, "browser_download_url": base + p.name}
+                   for p in files],
+    }), encoding="utf-8")
+    return base + "release.json"
+
+
+def main(app: str, expected_kind: str, feed: tuple[Path, str] | None = None) -> int:
     exe = Path(app).resolve()
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as home:
         env = {**os.environ, "HOME": home, "USERPROFILE": home}
+        if feed:
+            env["MELLOW_UPDATE_FEED"] = _serve_feed(*feed)
+            print("  release feed:", env["MELLOW_UPDATE_FEED"])
         port_file = Path(home) / ".mellow_dlp.port"
         proc = subprocess.Popen([str(exe), "--no-window"], env=env, **_NEW_GROUP)
         try:
@@ -92,6 +120,14 @@ def main(app: str, expected_kind: str) -> int:
             if after != offer["latest"]:
                 print(f"FAILED: expected {offer['latest']}")
                 return 1
+            if feed:
+                served = [p for p in feed[0].iterdir() if p.name.startswith("MellowDLP-")]
+                swapped = os.environ.get("APPIMAGE") if expected_kind == "appimage" else str(exe)
+                digest = hashlib.sha256(Path(swapped).read_bytes()).hexdigest()
+                if digest not in {hashlib.sha256(p.read_bytes()).hexdigest() for p in served}:
+                    print(f"FAILED: {swapped} isn't the new build")
+                    return 1
+                print(f"  {Path(swapped).name} is now the served build")
         finally:
             if proc.poll() is None:
                 _stop(proc)
@@ -105,6 +141,8 @@ def main(app: str, expected_kind: str) -> int:
 
 
 if __name__ == "__main__":
+    if len(sys.argv) == 6 and sys.argv[3] == "--feed":
+        sys.exit(main(sys.argv[1], sys.argv[2], (Path(sys.argv[4]).resolve(), sys.argv[5])))
     if len(sys.argv) != 3:
         print(__doc__)
         sys.exit(2)

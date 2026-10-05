@@ -8,6 +8,10 @@ Each release is a `## X.Y.Z` heading followed by `- **Title**: what it does`
 lines. A pull request that raises `APP_VERSION` adds its section here: CI
 fails without one.
 
+## 2.5.0
+- **One-click updates for the portable exe**: the MellowDLP.exe you build with SETUP.bat ("App only") or keep anywhere updates itself too — UPDATE downloads the new exe, checks it, swaps it in when MellowDLP closes and reopens it. No installer, no release page.
+- **Why not?**: when a copy can't update itself, the "new version" message says why.
+
 ## 2.4.0
 - **GET FFMPEG**: no ffmpeg? MellowDLP downloads it for you (Windows and Linux), checks it against its published checksum and uses it right away — no PATH changes, no restart. Offered at launch, in the status bar, in Config → FFmpeg, and on every "ffmpeg missing" message.
 - **What's new**: after an update, this list shows up once. Read it again any time from Config → WHAT'S NEW.

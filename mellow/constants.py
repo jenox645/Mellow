@@ -85,6 +85,7 @@ APP_DOWNLOADS_PREFIX: str = f"https://github.com/{APP_REPO}/releases/download/"
 # Release asset names — written by .github/workflows/release.yml (a test keeps them in step)
 APP_ASSET_NAMES: dict = {
     "windows-installer": "MellowDLP-{version}-windows-setup.exe",
+    "windows-portable": "MellowDLP-{version}-windows-portable.exe",
     "linux-binary": "MellowDLP-{version}-linux-x86_64",
     "appimage": "MellowDLP-{version}-x86_64.AppImage",
 }
