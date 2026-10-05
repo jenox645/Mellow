@@ -92,6 +92,20 @@ def test_picks_the_newest_release_branch_not_master_or_shared():
     assert ffmpeg_install.pick_build(sums, 'linuxarm64') is None
 
 
+def test_daily_build_names_work_too():
+    # The files of BtbN's dated daily releases carry the full version
+    sums = '\n'.join([
+        f'{"a" * 64}  ffmpeg-N-127203-ga35c879992-linux64-gpl.tar.xz',
+        f'{"b" * 64}  ffmpeg-n8.1.3-14-g330caae0c1-linux64-gpl-8.1.tar.xz',
+        f'{"c" * 64}  ffmpeg-n9.0.2-22-g46d8f462ee-linux64-gpl-9.0.tar.xz',
+        f'{"d" * 64}  ffmpeg-n9.0.2-22-g46d8f462ee-linux64-gpl-shared-9.0.tar.xz',
+        f'{"e" * 64}  ffmpeg-n9.0.2-22-g46d8f462ee-win64-gpl-9.0.zip',
+    ])
+    assert ffmpeg_install.pick_build(sums, 'linux64') == (
+        'ffmpeg-n9.0.2-22-g46d8f462ee-linux64-gpl-9.0.tar.xz', '9.0.2', 'c' * 64)
+    assert ffmpeg_install.pick_build(sums, 'win64')[1] == '9.0.2'
+
+
 @pytest.mark.parametrize('platform_name, machine, expected', [
     ('win32', 'AMD64', 'win64'), ('linux', 'x86_64', 'linux64'), ('linux', 'aarch64', 'linuxarm64'),
     ('darwin', 'arm64', None), ('win32', 'ARM64', None),

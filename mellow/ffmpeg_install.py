@@ -62,7 +62,10 @@ def unavailable_reason() -> str | None:
 def pick_build(sums: str, plat: str) -> tuple[str, str, str] | None:
     """(file name, version, sha256) of the newest release-branch build for `plat`."""
     ext = r"zip" if plat.startswith("win") else r"tar\.xz"
-    pattern = re.compile(rf"^ffmpeg-n(\d+(?:\.\d+)*)-latest-{plat}-gpl-\1\.{ext}$")
+    # ffmpeg-n9.0-latest-linux64-gpl-9.0.tar.xz, or a daily build's
+    # ffmpeg-n9.0.2-22-g46d8f462ee-linux64-gpl-9.0.tar.xz; never master (ffmpeg-N-…)
+    pattern = re.compile(
+        rf"^ffmpeg-n(\d+(?:\.\d+)*)(?:-\d+-g[0-9a-f]+)?-(?:latest-)?{plat}-gpl-\d+(?:\.\d+)*\.{ext}$")
     best = None
     for line in sums.splitlines():
         parts = line.split()

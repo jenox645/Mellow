@@ -95,8 +95,10 @@ APP_UPDATE_EXIT_DELAY_SECS: float = 1.0  # lets the "restarting" event reach the
 DIALOG_TIMEOUT_SECS: int = 120       # how long a native file/folder dialog may stay open
 M3U8_TEMP_MAX_AGE_SECS: int = 86400  # playlist temp files older than this are swept
 FFMPEG_RECHECK_SECS: int = 30        # how often a missing ffmpeg is looked for again
-# GET FFMPEG: static builds with a published checksums.sha256 (Windows, Linux)
-FFMPEG_BUILDS_URL: str = "https://github.com/BtbN/FFmpeg-Builds/releases/latest/download/"
+# GET FFMPEG: static builds with a published checksums.sha256 (Windows, Linux).
+# The release tagged "latest", not GitHub's latest release (a dated daily build
+# whose files are named differently)
+FFMPEG_BUILDS_URL: str = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/"
 FFMPEG_PROBE_TIMEOUT_SECS: int = 30   # `ffmpeg -version` after installing it
 LOG_MAX_BYTES: int = 1024 * 1024     # ~/.mellow_dlp.log rotates at this size
 LOG_BACKUPS: int = 3                 # rotated log files kept
