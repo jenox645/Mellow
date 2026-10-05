@@ -353,3 +353,31 @@ export function FolderInput({ value, onChange, recent, placeholder, onBrowse }) 
     </div>
   );
 }
+
+// What's new: the CHANGELOG.md sections since the version last seen (or all
+// of them from Config). `entries`: [{version, items: [{title, text}]}]
+export function WhatsNewModal({ entries, current, onClose }) {
+  return (
+    <Modal title="WHAT'S NEW" onClose={onClose}
+      footer={<button className="btn btn-primary btn-sm" onClick={onClose}>NICE</button>}>
+      <div className="whats-new">
+        {entries.map(entry => (
+          <div key={entry.version} className="wn-release">
+            <div className="wn-version">
+              v{entry.version}{entry.version === current && <span className="wn-current">THIS VERSION</span>}
+            </div>
+            <ul>
+              {entry.items.map((item, i) => (
+                <li key={i}>
+                  {item.title && <span className="wn-title">{item.title}</span>}
+                  {item.title && ' — '}
+                  {item.text}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </div>
+    </Modal>
+  );
+}

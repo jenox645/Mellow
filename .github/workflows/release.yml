@@ -31,6 +31,7 @@ on:
       - package-lock.json
       - main.py
       - mellow/app_update.py
+      - CHANGELOG.md
       - mellow/fetch.py
       - mellow/ffmpeg_install.py
       - scripts/ffmpeg_e2e.py
@@ -77,6 +78,10 @@ jobs:
             else
               publish=true
             fi
+          fi
+          if [[ "$publish" == true ]] && ! python3 -c "from mellow import changelog; import sys; sys.exit(0 if changelog.section('$version') else 1)"; then
+            echo "::error::CHANGELOG.md has no '## $version' section: add the release notes"
+            exit 1
           fi
           { echo "version=$version"; echo "tag=$tag"; echo "publish=$publish"; echo "build=$build"; } >> "$GITHUB_OUTPUT"
           echo "APP_VERSION $version, tag '$tag', publish=$publish"
@@ -208,6 +213,7 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v7
       - uses: actions/download-artifact@v8
         with:
           path: artifacts
@@ -230,5 +236,7 @@ jobs:
           prerelease=""
           [[ "$TAG" == *-* ]] && prerelease="--prerelease"
           # --target: a release from main creates its tag on the commit that was built
+          # The CHANGELOG.md section first; GitHub's list of merged PRs follows
+          python3 -c "from mellow import changelog; print(changelog.section('$VERSION'))" > notes.md
           gh release create "$TAG" release/* --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
-            --title "MellowDLP $VERSION" --generate-notes $prerelease
+            --title "MellowDLP $VERSION" --notes-file notes.md --generate-notes $prerelease

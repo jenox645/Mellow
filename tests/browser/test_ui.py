@@ -201,3 +201,25 @@ def test_get_ffmpeg_from_the_prompt_with_progress_in_the_status_bar(page, app_ur
                            "detail": "ffmpeg version n9.0.2"})
     expect(page.locator(".notif", has_text="FFmpeg Installed")).to_be_visible()
     expect(segment).to_contain_text("FFmpeg OK")
+
+
+def test_whats_new_shows_once_after_an_update_and_from_config(page, app_url):
+    from mellow import config
+    from mellow.version import APP_VERSION
+    config.update_config(lambda c: c.update(last_seen_version="0.0.1"))   # as if just updated
+    page.reload()
+    modal = page.locator(".modal-box", has_text="WHAT'S NEW")
+    expect(modal).to_be_visible()
+    expect(modal.locator(".wn-version").first).to_contain_text(APP_VERSION)
+    expect(modal.locator(".wn-current")).to_have_count(1)
+    modal.get_by_text("NICE").click()
+    expect(modal).to_have_count(0)
+
+    page.reload()                                                          # once only
+    page.locator(".nav-item").first.wait_for()
+    page.wait_for_timeout(1000)
+    expect(modal).to_have_count(0)
+
+    page.locator(".nav-item", has_text=re.compile("config", re.I)).first.click()
+    page.get_by_text("WHAT'S NEW", exact=True).click()                     # every release
+    expect(modal.locator(".wn-release")).to_have_count(len(__import__("mellow.changelog").changelog.load()))

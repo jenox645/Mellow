@@ -37,6 +37,7 @@ Personal desktop GUI for [yt-dlp](https://github.com/yt-dlp/yt-dlp). Download au
 - **yt-dlp self-update**: update yt-dlp from the Config page (checksum-verified, takes effect after a restart), in the installed app too.
 - **SAVE TO on the Feed**: pick this download's folder right under the URL bar (BROWSE or type it); ↑/↓ step through the folders you used before, like a terminal prompt. Empty uses the default folder from Config.
 - **MellowDLP updates itself**: the app looks for a new release at launch and every few hours, and shows it in the status bar. UPDATE downloads it, checks it against the release's checksums, installs it and restarts (Windows installer, AppImage, Linux binary). Running downloads are offered again after the restart.
+- **What's new**: after an update the app shows that release's notes once (from [CHANGELOG.md](CHANGELOG.md), shipped inside the app); Config → WHAT'S NEW shows every release.
 
 Video: MP4, MKV, WebM at best, 4K, 1080p, 720p, 480p or 360p. Audio: MP3, M4A, AAC, Opus (best, 320, 256, 192 or 128 kbps), FLAC, WAV.
 
@@ -129,7 +130,7 @@ python3 main.py
 
 ## Releasing
 
-Merge a pull request that raises `APP_VERSION` in `mellow/version.py`: GitHub Actions builds the Windows installer, the Linux binary and the AppImage, tests them, and publishes the release `vX.Y.Z`. Installed copies then offer UPDATE in their status bar. (Pushing the tag `vX.Y.Z` by hand does the same.)
+Add the release notes as a `## X.Y.Z` section at the top of [CHANGELOG.md](CHANGELOG.md) — the app shows them after it updates, and the GitHub release starts with them (CI fails without them). Then merge the pull request that raises `APP_VERSION` in `mellow/version.py`: GitHub Actions builds the Windows installer, the Linux binary and the AppImage, tests them, and publishes the release `vX.Y.Z`. Installed copies then offer UPDATE in their status bar. (Pushing the tag `vX.Y.Z` by hand does the same.)
 
 ## Tests
 

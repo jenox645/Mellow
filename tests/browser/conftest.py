@@ -123,7 +123,9 @@ def downloads(isolated_user_files):
     from mellow import config
     folder = isolated_user_files / "Downloads"
     folder.mkdir()
-    config.update_config(lambda c: c.update(output_dir=str(folder)))
+    # A settled install: What's new was already seen (its own test says otherwise)
+    from mellow.version import APP_VERSION
+    config.update_config(lambda c: c.update(output_dir=str(folder), last_seen_version=APP_VERSION))
     return folder
 
 

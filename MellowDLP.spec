@@ -21,6 +21,7 @@ a = Analysis(
     # in ~/.mellow_dlp_ytdlp.zip runs instead).
     datas=[
         ("static", "static"),
+        ("CHANGELOG.md", "."),        # What's new (mellow/changelog.py)
         *copy_metadata("yt-dlp"),
     ],
     hiddenimports=[

@@ -23,7 +23,7 @@ import {
 import { playCompletionChime } from './lib/sound.js';
 import { downloadsReducer, initialDownloads } from './lib/downloads.js';
 import { MASCOT_VICTORY_SAFE } from './lib/mascots.js';
-import { Modal, Notif, Mascot, AppUpdateOverlay } from './components/common.jsx';
+import { Modal, Notif, Mascot, AppUpdateOverlay, WhatsNewModal } from './components/common.jsx';
 import { LoadingScreen } from './components/loading.jsx';
 import { Sidebar, TopBar, StatusBar } from './components/chrome.jsx';
 import { FeedPage } from './pages/feed.jsx';
@@ -99,6 +99,7 @@ function App() {
   const [victoryData, setVictoryData] = React.useState(null);
   const [restorableJobs, setRestorableJobs] = React.useState(null);
   const [appUpdateOffer, setAppUpdateOffer] = React.useState(null);   // a newer MellowDLP (check-app-update)
+  const [whatsNew, setWhatsNew] = React.useState(null);               // {current, entries} to show
   const toastedVersion = React.useRef(null);
   const [clipboardSuggestion, setClipboardSuggestion] = React.useState(null);
   const [shortcutHelp, setShortcutHelp] = React.useState(false);
@@ -262,6 +263,8 @@ function App() {
           .then(d => setVaultFolders(d.folders || []))
           .catch(() => {});
       }
+      // Just updated? The notes since the version last seen, once
+      API.get('/api/whats-new').then(w => { if (w.show) setWhatsNew(w); }).catch(() => {});
       if (c.update_check_on_launch !== false) {
         checkAppUpdate();
         let last = 0;
@@ -494,6 +497,7 @@ function App() {
             setConfig={setConfig}
             showNotif={showNotif}
             installAppUpdate={installAppUpdate}
+            showWhatsNew={() => API.get('/api/whats-new?all=1').then(setWhatsNew).catch(() => {})}
             installFfmpeg={installFfmpeg}
             ffmpegInstall={ffmpegInstall}
             onAppUpdateChecked={u => { if (u && !u.error) setAppUpdateOffer(u.update_available ? u : null); }}
@@ -510,6 +514,13 @@ function App() {
       <Notif notif={notif} dismiss={() => setNotif(null)} />
 
       {appUpdate && <AppUpdateOverlay update={appUpdate} />}
+
+      {whatsNew && (
+        <WhatsNewModal entries={whatsNew.entries} current={whatsNew.current} onClose={() => {
+          setWhatsNew(null);
+          API.post('/api/whats-new/seen', {}).catch(() => {});
+        }} />
+      )}
 
       {showVictory && MASCOT_VICTORY_SAFE && (
         <div className={'victory-overlay' + (victoryDismissing ? ' dismissing' : '')} onClick={() => {

@@ -19,6 +19,7 @@ from . import (
     analytics,
     app_update,
     applog,
+    changelog,
     desktop,
     downloader,
     errors,
@@ -318,6 +319,20 @@ def api_system() -> Response:
         "disk_low": disk_free is not None and disk_free < LOW_DISK_WARN_BYTES,
         "log_path": str(applog.LOG_PATH),
     })
+
+
+@app.route("/api/whats-new")
+def api_whats_new() -> Response:
+    """After an update: the notes since the version last seen (?all=1: every release)."""
+    if request.args.get("all"):
+        return jsonify({"current": APP_VERSION, "show": True, "entries": changelog.load()})
+    return jsonify(changelog.whats_new())
+
+
+@app.route("/api/whats-new/seen", methods=["POST"])
+def api_whats_new_seen() -> Response:
+    changelog.mark_seen()
+    return jsonify({"ok": True})
 
 
 @app.route("/api/ffmpeg/install", methods=["POST"])

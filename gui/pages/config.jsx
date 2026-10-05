@@ -9,7 +9,7 @@ import {
   AUDIO_FORMATS, AUDIO_QUALITIES, CONTAINERS, QUALITIES, TEMPLATE_PREVIEW_DEBOUNCE_MS,
 } from '../lib/constants.js';
 
-export function ConfigPage({ config, setConfig, showNotif, installAppUpdate, onAppUpdateChecked, installFfmpeg, ffmpegInstall, sysInfo, refreshStats }) {
+export function ConfigPage({ config, setConfig, showNotif, installAppUpdate, onAppUpdateChecked, installFfmpeg, ffmpegInstall, showWhatsNew, sysInfo, refreshStats }) {
   const [local, setLocal] = React.useState({ ...config });
   const [updateInfo, setUpdateInfo] = React.useState(null);
   const [appUpdate, setAppUpdate] = React.useState(null);
@@ -704,6 +704,7 @@ export function ConfigPage({ config, setConfig, showNotif, installAppUpdate, onA
                   </div>
                 </div>
                 <div className="settings-ctrl" style={{ display: 'flex', gap: 6 }}>
+                  <button className="btn btn-secondary btn-sm" onClick={showWhatsNew}>WHAT'S NEW</button>
                   <button className="btn btn-secondary btn-sm" onClick={checkAppUpdate} disabled={checkingApp}>{checkingApp ? '...' : 'CHECK'}</button>
                   {appUpdate && appUpdate.update_available && (appUpdate.can_install
                     ? <button className="btn btn-amber btn-sm" onClick={() => installAppUpdate()}
