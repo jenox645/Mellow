@@ -5,6 +5,7 @@ import json
 import logging
 import socket
 import sys
+import threading
 import webbrowser
 from pathlib import Path
 from urllib.request import urlopen
@@ -18,6 +19,7 @@ log = logging.getLogger(__name__)
 WINDOW_WIDTH = 1100
 WINDOW_HEIGHT = 780
 INSTANCE_PROBE_TIMEOUT_SECS = 2
+BROWSER_OPEN_DELAY_SECS = 1      # let the server start listening first
 
 # Written on startup with the live port; lets a second launch find us
 PORT_FILE = Path.home() / ".mellow_dlp.port"
@@ -104,7 +106,11 @@ def main() -> None:
         print(f"MellowDLP: http://127.0.0.1:{port}", flush=True)
         flask_app.run(host="127.0.0.1", port=port, threaded=True)
         return
+    _run_window(flask_app, port)
 
+
+def _run_window(flask_app, port: int) -> None:
+    """Serve the app in a Chrome/Edge/Brave/Chromium app window until it closes."""
     ui = FlaskUI(
         app=flask_app,
         server="flask",
@@ -112,6 +118,14 @@ def main() -> None:
         width=WINDOW_WIDTH,
         height=WINDOW_HEIGHT,
     )
+    if not ui.browser_path:
+        # Without one (a Firefox-only Linux) flaskwebgui would leave a server
+        # with no window: open the default browser instead
+        url = f"http://127.0.0.1:{port}"
+        log.warning(f"no Chromium-based browser found: opening {url} in the default browser")
+        threading.Timer(BROWSER_OPEN_DELAY_SECS, webbrowser.open, (url,)).start()
+        flask_app.run(host="127.0.0.1", port=port, threaded=True)
+        return
     ui.run()
 
 

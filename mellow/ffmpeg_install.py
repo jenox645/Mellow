@@ -18,12 +18,19 @@ import subprocess
 import sys
 import tarfile
 import threading
+import time
 import zipfile
 from pathlib import Path
 from typing import Callable
 
 from . import fetch, ffmpeg_locate
-from .constants import FFMPEG_BUILDS_URL, FFMPEG_PROBE_TIMEOUT_SECS, UPDATE_CHECK_TIMEOUT_SECS
+from .constants import (
+    FFMPEG_BUILDS_URL,
+    FFMPEG_PROBE_TIMEOUT_SECS,
+    FFMPEG_SWAP_ATTEMPTS,
+    FFMPEG_SWAP_RETRY_SECS,
+    UPDATE_CHECK_TIMEOUT_SECS,
+)
 
 log = logging.getLogger(__name__)
 
@@ -129,6 +136,24 @@ def _probe(ffmpeg: Path) -> str:
     return (out.stdout.splitlines() or [""])[0].strip()
 
 
+def _swap_in(staging: Path, target: Path) -> None:
+    """Replace `target` with the `staging` folder in one rename.
+
+    On Windows an antivirus scanning the ffmpeg.exe that was just written and
+    run can hold its folder for a moment ("Access is denied"): retry a while.
+    """
+    for attempt in range(FFMPEG_SWAP_ATTEMPTS):
+        try:
+            shutil.rmtree(target, ignore_errors=True)
+            staging.replace(target)
+            return
+        except PermissionError as exc:
+            log.info(f"ffmpeg install: can't move it into place yet ({exc})")
+            time.sleep(FFMPEG_SWAP_RETRY_SECS)
+    raise InstallError("Windows wouldn't let MellowDLP move ffmpeg into place "
+                       "(an antivirus scan?). Try GET FFMPEG again in a minute.")
+
+
 def installing() -> bool:
     return _installing.locked()
 
@@ -165,8 +190,7 @@ def install(push: Callable[[dict], None]) -> None:
         _extract(download, name, staging)
         first_line = _probe(staging / f"ffmpeg{_EXE}")
         # Swap the folder in whole: a half-written ffmpeg is never the one found
-        shutil.rmtree(target, ignore_errors=True)
-        staging.replace(target)
+        _swap_in(staging, target)
         found = ffmpeg_locate.find_ffmpeg(refresh=True)
         log.info(f"ffmpeg install: {first_line} → {found}")
         push({"status": "ffmpeg_install", "stage": "done", "version": version,

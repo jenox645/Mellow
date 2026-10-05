@@ -276,7 +276,12 @@ jobs:
           prerelease=""
           [[ "$TAG" == *-* ]] && prerelease="--prerelease"
           # --target: a release from main creates its tag on the commit that was built
-          # The CHANGELOG.md section first; GitHub's list of merged PRs follows
-          python3 -c "from mellow import changelog; print(changelog.section('$VERSION'))" > notes.md
+          # The CHANGELOG.md section, which file to download, then GitHub's list of merged PRs
+          {
+            python3 -c "from mellow import changelog; print(changelog.section('$VERSION'))"
+            echo
+            sed -e "s|{version}|$VERSION|g" -e "s|{tag}|$TAG|g" -e "s|{repo}|$GITHUB_REPOSITORY|g" \
+              .github/release-download.md
+          } > notes.md
           gh release create "$TAG" release/* --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
             --title "MellowDLP $VERSION" --notes-file notes.md --generate-notes $prerelease

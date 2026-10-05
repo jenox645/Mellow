@@ -101,6 +101,8 @@ FFMPEG_RECHECK_SECS: int = 30        # how often a missing ffmpeg is looked for 
 # whose files are named differently)
 FFMPEG_BUILDS_URL: str = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/"
 FFMPEG_PROBE_TIMEOUT_SECS: int = 30   # `ffmpeg -version` after installing it
+FFMPEG_SWAP_ATTEMPTS: int = 20       # moving the new ffmpeg into place: an antivirus scan
+FFMPEG_SWAP_RETRY_SECS: float = 0.5  # can hold its folder for a few seconds on Windows
 LOG_MAX_BYTES: int = 1024 * 1024     # ~/.mellow_dlp.log rotates at this size
 LOG_BACKUPS: int = 3                 # rotated log files kept
 LOW_DISK_WARN_BYTES: int = 2 * 1024 ** 3  # warn when output drive has < 2 GB free

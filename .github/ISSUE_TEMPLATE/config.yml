@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: A site stopped working in the newest yt-dlp
+    url: https://github.com/yt-dlp/yt-dlp/issues
+    about: Extraction itself is yt-dlp's. Update yt-dlp from Config first; if the newest one fails too, report it there.
+  - name: Security problem
+    url: https://github.com/jenox645/Mellow/blob/main/SECURITY.md
+    about: Please don't post it as an issue; see how to report it privately.
