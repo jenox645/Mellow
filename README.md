@@ -4,11 +4,16 @@
 
 # MellowDLP
 
+[![Latest release](https://img.shields.io/github/v/release/jenox645/Mellow?label=release)](https://github.com/jenox645/Mellow/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/jenox645/Mellow/total)](https://github.com/jenox645/Mellow/releases)
+[![CI](https://github.com/jenox645/Mellow/actions/workflows/ci.yml/badge.svg)](https://github.com/jenox645/Mellow/actions/workflows/ci.yml)
+![Windows | Linux](https://img.shields.io/badge/platform-Windows%20%7C%20Linux-informational)
+
 A desktop app for [yt-dlp](https://github.com/yt-dlp/yt-dlp): paste a link, pick a format, download.
 YouTube, SoundCloud and the [thousands of sites](https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md) yt-dlp supports.
 Windows and Linux.
 
-[**Download**](https://github.com/jenox645/Mellow/releases/latest) · [What's new](CHANGELOG.md) · [Build from source](#build-from-source)
+[**Download**](https://github.com/jenox645/Mellow/releases/latest) · [What's new](CHANGELOG.md) · [Report a bug](https://github.com/jenox645/Mellow/issues/new/choose) · [Build from source](#build-from-source)
 
 > A personal project, shared as is.
 
@@ -122,7 +127,7 @@ Without ffmpeg the app still works, with limits it tells you about: audio stays 
 | Age-restricted or members-only videos fail | Config → Browser Cookies: pick the browser you're signed in with, then TEST |
 | Downloads hang on some networks | Config → Force IPv4 |
 | SmartScreen blocks the exe | [More info → Run anyway](#download) |
-| Something else | The log is `~/.mellow_dlp.log` (`%USERPROFILE%\.mellow_dlp.log` on Windows). Updates log to `~/.mellow_dlp_update.log` |
+| Something else | [Open an issue](https://github.com/jenox645/Mellow/issues/new/choose) with the end of the log: it's `~/.mellow_dlp.log` (`%USERPROFILE%\.mellow_dlp.log` on Windows). Updates log to `~/.mellow_dlp_update.log` |
 
 ---
 

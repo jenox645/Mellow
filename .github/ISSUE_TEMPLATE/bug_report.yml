@@ -1,0 +1,60 @@
+name: Bug report
+description: Something in MellowDLP doesn't work
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **A download fails with `HTTP Error 403`, "Sign in to confirm" or "Unable to extract"?** That is almost always an outdated yt-dlp: Config → yt-dlp Version → UPDATE, restart MellowDLP and try again. If it still fails in the newest yt-dlp, the site changed and the fix belongs to [yt-dlp](https://github.com/yt-dlp/yt-dlp/issues).
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, what you got instead. Screenshots help.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: MellowDLP version
+      description: Under the logo, top left (SYSTEM // v…)
+      placeholder: "2.5.1"
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: How you run it
+      options:
+        - Windows installer
+        - Windows portable exe (from Releases)
+        - Windows exe built with SETUP.bat
+        - Linux AppImage
+        - Linux binary
+        - Linux .deb
+        - From source (python main.py)
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: Windows 11, Ubuntu 24.04…
+  - type: input
+    id: ytdlp
+    attributes:
+      label: yt-dlp version
+      description: Config → yt-dlp Version (for download problems)
+  - type: input
+    id: link
+    attributes:
+      label: Link that fails
+      description: For download problems, if it's public
+  - type: textarea
+    id: log
+    attributes:
+      label: Log
+      description: |
+        The end of `~/.mellow_dlp.log` (Windows: `%USERPROFILE%\.mellow_dlp.log`); for a failed update, `~/.mellow_dlp_update.log`.
+        It may contain folder paths and links: remove anything you'd rather not post.
+      render: text

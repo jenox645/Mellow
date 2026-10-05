@@ -150,6 +150,13 @@ def test_release_workflow_publishes_the_names_the_app_looks_for():
     assert APP_ASSET_SUMS in workflow
 
 
+def test_release_notes_list_every_download():
+    guide = (ROOT / '.github' / 'release-download.md').read_text(encoding='utf-8')
+    linked = set(re.findall(r'/releases/download/\{tag\}/([^)]+)\)', guide))
+    assert linked == {name for name in APP_ASSET_NAMES.values()}
+    assert '.github/release-download.md' in (ROOT / '.github' / 'workflows' / 'release.yml').read_text(encoding='utf-8')
+
+
 # ── What this copy is ─────────────────────────────────────────────────────────
 
 def _frozen(monkeypatch, exe, platform):
