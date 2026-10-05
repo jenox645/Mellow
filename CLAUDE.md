@@ -44,7 +44,7 @@ build_setup.py     the build (SETUP.bat / setup.sh call it); MellowDLP.spec, ins
 - Communication: SSE (`EventSource('/api/progress')`) for download progress; HTTP for everything else
 - Build: `python build_setup.py` → esbuild **bundles** `gui/app.jsx` (+imports) → `static/app.bundle.js`; copies `gui/index.html` → `static/index.html` and `gui/fonts/` → `static/fonts/` (fonts are bundled: the app makes no requests to Google Fonts or any other CDN)
 - Config: JSON at `~/.mellow_dlp.json`; analytics DB at `~/.mellow_dlp.duckdb`
-- Desktop wrapper: FlaskWebGUI (Tkinter-based, NOT Electron); `main.py` has a single-instance guard via `~/.mellow_dlp.port`
+- Desktop wrapper: FlaskWebGUI opens a Chrome/Edge/Brave/Chromium `--app` window (NOT Electron, no bundled browser; Tk is only used for native file dialogs and the Windows clipboard). Without such a browser `main.py` serves and opens the default browser instead. `main.py` has a single-instance guard via `~/.mellow_dlp.port`
 
 ## Key State That Must Persist
 - Feed: url, analyzed info, format/quality/options (`useSessionState('feed_*')`, JSON in sessionStorage); defaults seeded from config `default_*` keys when no session state exists
