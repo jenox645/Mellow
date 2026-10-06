@@ -112,8 +112,8 @@ function App() {
   // GUIDE: the tour of the page on screen (the vault has one per view)
   const startGuide = React.useCallback(() => {
     setShortcutHelp(false);
-    setTourId(tourIdFor(page, !!document.querySelector('[data-tour="vault-back"]')));
-  }, [page]);
+    setTourId(tourIdFor(page, !!selectedVaultFolder));
+  }, [page, selectedVaultFolder]);
   const closeGuide = React.useCallback(() => setTourId(null), []);
   const startGuideRef = React.useRef(startGuide);
   startGuideRef.current = startGuide;

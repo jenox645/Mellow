@@ -105,7 +105,9 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
   const [syncModal, setSyncModal] = React.useState(null);
   const [folderStatsModal, setFolderStatsModal] = React.useState(null); // folder stats modal
   const [folderStatsData, setFolderStatsData] = React.useState(null);
-  const [fileThumbs, setFileThumbs] = React.useState({});
+  // path → thumbnail URL for the open folder; null until known, so a card
+  // doesn't fetch a guessed URL first and the right one after
+  const [fileThumbs, setFileThumbs] = React.useState(null);
   const [vaultScale, setVaultScale] = React.useState(() => { try { return localStorage.getItem('vault_scale') || 'md'; } catch { return 'md'; } });
   const [selectedFiles, setSelectedFiles] = React.useState(new Set());
   const [selectionMode, setSelectionMode] = React.useState(false);
@@ -151,23 +153,25 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
     refreshLibraryEntries();
   }, []);
 
-  React.useEffect(() => {
-    if (!selectedFolder) return;
+  const loadFolder = React.useCallback((folder) => {
     setLoading(true);
-    API.get('/api/vault/folder?path=' + encodeURIComponent(selectedFolder))
+    setFileThumbs(null);
+    API.get('/api/vault/folder?path=' + encodeURIComponent(folder))
       .then(d => {
         const loaded = d.files || [];
         setFiles(loaded);
-        if (loaded.length > 0) {
-          const paths = loaded.map(f => f.path);
-          API.post('/api/vault/file-thumbs', { paths })
-            .then(r => setFileThumbs(r.thumbs || {}))
-            .catch(() => {});
-        }
+        if (!loaded.length) { setFileThumbs({}); return; }
+        API.post('/api/vault/file-thumbs', { paths: loaded.map(f => f.path) })
+          .then(r => setFileThumbs(r.thumbs || {}))
+          .catch(() => setFileThumbs({}));
       })
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, [selectedFolder]);
+  }, []);
+
+  React.useEffect(() => {
+    if (selectedFolder) loadFolder(selectedFolder);
+  }, [selectedFolder, loadFolder]);
 
   // Load thumbnail mosaics for all vault folder cards
   React.useEffect(() => {
@@ -678,18 +682,7 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
             <button className="btn btn-secondary btn-sm" title="Sync options / selective playlist sync" data-tour="vault-sync-options"
               onClick={() => setSyncModal(selectedFolderMeta)}>SYNC OPTIONS</button>
           )}
-          <button className="btn btn-secondary btn-sm" onClick={() => {
-            setLoading(true);
-            API.get('/api/vault/folder?path=' + encodeURIComponent(selectedFolder))
-              .then(d => {
-                const loaded = d.files || [];
-                setFiles(loaded);
-                if (loaded.length > 0) {
-                  API.post('/api/vault/file-thumbs', { paths: loaded.map(f => f.path) })
-                    .then(r => setFileThumbs(r.thumbs || {})).catch(() => {});
-                }
-              }).catch(() => {}).finally(() => setLoading(false));
-          }}>↻ REFRESH</button>
+          <button className="btn btn-secondary btn-sm" onClick={() => loadFolder(selectedFolder)}>↻ REFRESH</button>
           <button className="btn btn-secondary btn-sm" data-tour="vault-open" onClick={() => handleOpenFolder(selectedFolder)}>
             OPEN IN EXPLORER
           </button>
@@ -807,9 +800,10 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
               }}>
               <div style={{ position: 'relative', width: '100%', height: 100, overflow: 'hidden', background: 'linear-gradient(135deg,var(--bg3),var(--bg2))', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 32, color: 'var(--t4)' }}>
                 <span style={{ position: 'relative', zIndex: 0 }}>{isVideoExt(file.ext) ? '▶' : '♫'}</span>
-                {(fileThumbs[file.path] || '/api/vault/thumb?path=' + encodeURIComponent(file.path)) && (
+                {fileThumbs && (
                   <img
                     src={fileThumbs[file.path] || '/api/vault/thumb?path=' + encodeURIComponent(file.path)}
+                    loading="lazy" decoding="async"
                     style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', zIndex: 1 }}
                     alt=""
                     onError={e => { e.target.style.display = 'none'; }}

@@ -68,7 +68,8 @@ export function LoadingScreen({ onReady }) {
           });
         });
     };
-    const t = setTimeout(tryConnect, 600);
+    // Ask at once: the server is usually up before the splash has drawn
+    const t = setTimeout(tryConnect, 0);
     return () => clearTimeout(t);
   }, [tryReady]);
 

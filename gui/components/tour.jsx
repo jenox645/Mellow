@@ -4,7 +4,9 @@
 'use strict';
 
 import { placeCard } from '../lib/tours.js';
-import { TOUR_PAD_PX, TOUR_REVEAL_WAIT_MS, TOUR_SCROLL_WAIT_MS } from '../lib/constants.js';
+import {
+  TOUR_CARD_SIZE, TOUR_FOLLOW_MS, TOUR_MIN_VISIBLE_PX, TOUR_PAD_PX, TOUR_REVEAL_WAIT_MS, TOUR_SCROLL_WAIT_MS,
+} from '../lib/constants.js';
 
 const find = name => document.querySelector('[data-tour="' + name + '"]');
 const wait = ms => new Promise(r => setTimeout(r, ms));
@@ -14,19 +16,32 @@ function visibleEl(name) {
   const el = find(name);
   if (!el) return null;
   const r = el.getBoundingClientRect();
-  return r.width > 4 && r.height > 4 ? el : null;
+  return r.width > TOUR_MIN_VISIBLE_PX && r.height > TOUR_MIN_VISIBLE_PX ? el : null;
 }
 
-async function prepare(step) {
+// Open, or opening: the panel's class flips at the click, its height follows
+// during the CSS transition. Clicking again then would close it.
+function isOpen(name) {
+  const el = find(name);
+  return !!el && (el.classList.contains('open') || !!visibleEl(name));
+}
+
+// Open what the step's part sits in and scroll to it. Stops as soon as the
+// step is no longer current (live() false): no clicks or scrolling after
+// the user moved on or closed the guide. `opened` collects what it opened.
+async function prepare(step, live, opened) {
   for (const r of step.reveal || []) {
-    if (!visibleEl(r.unless)) {
+    if (!live()) return null;
+    if (!isOpen(r.unless)) {
       const toggle = find(r.click);
       if (toggle) {
         toggle.click();
+        opened.push(r);
         await wait(TOUR_REVEAL_WAIT_MS);
       }
     }
   }
+  if (!live()) return null;
   const el = step.target ? visibleEl(step.target) : null;
   if (el) {
     el.scrollIntoView({ block: 'center', behavior: 'smooth' });
@@ -76,8 +91,9 @@ export function Tour({ name, steps, onClose }) {
   const [el, setEl] = React.useState(null);
   const [ready, setReady] = React.useState(false);
   const [rect, setRect] = React.useState(null);
-  const [cardSize, setCardSize] = React.useState({ width: 340, height: 200 });
+  const [cardSize, setCardSize] = React.useState(TOUR_CARD_SIZE);
   const cardRef = React.useRef(null);
+  const opened = React.useRef([]);
   const step = steps[idx];
   const last = idx === steps.length - 1;
 
@@ -85,7 +101,7 @@ export function Tour({ name, steps, onClose }) {
   React.useEffect(() => {
     let live = true;
     setReady(false);
-    prepare(step).then(found => {
+    prepare(step, () => live, opened.current).then(found => {
       if (!live) return;
       setEl(found);
       setReady(true);
@@ -93,10 +109,21 @@ export function Tour({ name, steps, onClose }) {
     return () => { live = false; };
   }, [step]);
 
-  // Follow the part while the page moves (scrolling, panels opening)
+  // Leave the page as it was: close the panels the guide opened
+  React.useEffect(() => () => {
+    for (const r of opened.current.slice().reverse()) {
+      if (isOpen(r.unless)) {
+        const toggle = find(r.click);
+        if (toggle) toggle.click();
+      }
+    }
+  }, []);
+
+  // Follow the part and the card: every frame while they settle after a
+  // step change (scrolling, panels opening), then whenever the page scrolls
+  // or something changes size
   React.useEffect(() => {
-    let frame;
-    const tick = () => {
+    const measure = () => {
       if (el && el.isConnected) {
         const r = el.getBoundingClientRect();
         setRect(prev => (prev && Math.round(prev.left) === Math.round(r.left) && Math.round(prev.top) === Math.round(r.top)
@@ -110,11 +137,27 @@ export function Tour({ name, steps, onClose }) {
         setCardSize(prev => (Math.round(prev.width) === Math.round(c.width) && Math.round(prev.height) === Math.round(c.height))
           ? prev : { width: c.width, height: c.height });
       }
-      frame = requestAnimationFrame(tick);
     };
-    tick();
-    return () => cancelAnimationFrame(frame);
-  }, [el]);
+    let frame = 0;
+    const until = Date.now() + TOUR_FOLLOW_MS;
+    const settle = () => {
+      measure();
+      if (Date.now() < until) frame = requestAnimationFrame(settle);
+    };
+    settle();
+    const onChange = () => { cancelAnimationFrame(frame); frame = requestAnimationFrame(measure); };
+    window.addEventListener('scroll', onChange, true);
+    window.addEventListener('resize', onChange);
+    const resized = new ResizeObserver(onChange);
+    if (el) resized.observe(el);
+    if (cardRef.current) resized.observe(cardRef.current);
+    return () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener('scroll', onChange, true);
+      window.removeEventListener('resize', onChange);
+      resized.disconnect();
+    };
+  }, [el, idx]);
 
   const go = React.useCallback(delta => {
     const next = idx + delta;

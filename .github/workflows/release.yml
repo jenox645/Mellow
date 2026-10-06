@@ -111,8 +111,10 @@ jobs:
           }
       - name: Build
         run: python build_setup.py
-      - name: Smoke-test the exe
-        run: python scripts/smoke_binary.py dist/MellowDLP.exe
+      - name: Smoke-test the portable exe and the installed build
+        run: |
+          python scripts/smoke_binary.py dist/MellowDLP.exe
+          python scripts/smoke_binary.py dist/MellowDLP-app/MellowDLP.exe
       - uses: actions/upload-artifact@v7
         with:
           name: windows

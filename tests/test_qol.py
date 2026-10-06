@@ -49,6 +49,8 @@ def test_cookie_error_chains_read_as_one_line():
 
 def test_unknown_error_is_left_alone():
     assert errors.explain('ERROR: something nobody has seen before') is None
+    # A Mix (list=RD…) can't be listed by anyone: cookies won't help, so it isn't called private
+    assert errors.explain('ERROR: [youtube:tab] RDx: This playlist type is unviewable') is None
     assert errors.explain('') is None
 
 

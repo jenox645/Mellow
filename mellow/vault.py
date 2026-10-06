@@ -47,6 +47,26 @@ def is_format_part(path: Path) -> bool:
     return bool(_FORMAT_PART_RE.search(path.stem))
 
 
+def clean_stale_parts(folder: str, max_age_secs: float) -> int:
+    """Delete yt-dlp parts no sync has finished for max_age_secs: the item
+    left the playlist or stays unavailable, and the part (often the whole
+    video) only takes space nobody sees. A younger part is kept: the next
+    sync finishes the item from it. Returns how many were removed."""
+    removed = 0
+    cutoff = time.time() - max_age_secs
+    try:
+        for f in Path(folder).iterdir():
+            if f.is_file() and f.suffix.lower() in MEDIA_EXTS and is_format_part(f) \
+                    and f.stat().st_mtime < cutoff:
+                f.unlink()
+                removed += 1
+    except OSError as exc:
+        log.warning(f"stale part cleanup in {folder} stopped: {exc}")
+    if removed:
+        log.info(f"removed {removed} unfinished download part(s) from {folder}")
+    return removed
+
+
 def is_media(path: Path) -> bool:
     """A finished media file: a media extension, not hidden, not a yt-dlp part."""
     return (path.suffix.lower() in MEDIA_EXTS and not path.name.startswith(".")
@@ -331,18 +351,22 @@ def resolve_file_thumbs(paths: list[str], get_conn: Callable) -> dict[str, str]:
                 _dir_cache[key] = {}
         return _dir_cache[key]
 
-    with get_conn() as con:
-        for p in paths[:FILE_THUMBS_LIMIT]:
-            fp = Path(p)
-            match = _dir_images(fp.parent).get(fp.stem.lower())
-            if match:
-                result[p] = f"/api/vault/thumb?path={quote(str(match))}"
-            else:
-                row = con.execute(
-                    "SELECT thumbnail_url FROM downloads WHERE file_path=? LIMIT 1", [p]
-                ).fetchone()
-                if row and row[0]:
-                    result[p] = row[0]
+    no_sidecar: list[str] = []
+    for p in paths[:FILE_THUMBS_LIMIT]:
+        fp = Path(p)
+        match = _dir_images(fp.parent).get(fp.stem.lower())
+        if match:
+            result[p] = f"/api/vault/thumb?path={quote(str(match))}"
+        else:
+            no_sidecar.append(p)
+    if no_sidecar:
+        # One query for the whole folder, not one per file
+        with get_conn() as con:
+            rows = con.execute(
+                "SELECT file_path, any_value(thumbnail_url) FROM downloads "
+                "WHERE list_contains(?, file_path) AND thumbnail_url IS NOT NULL GROUP BY file_path",
+                [no_sidecar]).fetchall()
+        result.update({path: url for path, url in rows if url})
     return result
 
 

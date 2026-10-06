@@ -20,13 +20,14 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Callable
 
-from . import analytics, downloader, errors
+from . import analytics, downloader, errors, vault
 from .config import download_root, load_config, update_config
 from .constants import (
     DEFAULT_DOWNLOAD_WORKERS,
     DEFAULT_SCHEDULE_START,
     JOB_HISTORY_KEEP,
     MAX_DOWNLOAD_WORKERS,
+    STALE_PART_DAYS,
     SYNC_REPORT_ITEMS_KEEP,
     WORKER_POLL_SECS,
 )
@@ -475,6 +476,8 @@ class JobManager:
                                              error=job.get("error"))
             except Exception as exc:
                 log.warning(f"sync report not saved: {exc}")
+            if status != "cancelled":
+                vault.clean_stale_parts(folder, STALE_PART_DAYS * 86400)
         if status != "complete":
             return
         # Stamped on completion, not enqueue, so a failed sync isn't "synced"

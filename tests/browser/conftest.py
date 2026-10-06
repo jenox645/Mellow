@@ -61,11 +61,35 @@ def _make_clips(folder: Path) -> None:
         ], check=True)
 
 
+# DASH videos: video and audio as separate streams, like YouTube, so a
+# download merges two parts. Audio requests for the names in here fail (403).
+DASH_CLIPS = ("dash-one", "dash-two")
+DASH_AUDIO_REFUSED: set[str] = set()
+
+
+def _make_dash(folder: Path) -> None:
+    ffmpeg = shutil.which("ffmpeg")
+    for i, name in enumerate(DASH_CLIPS):
+        out = folder / name
+        out.mkdir()
+        subprocess.run([
+            ffmpeg, "-v", "error", "-y",
+            "-f", "lavfi", "-i", "testsrc=size=160x120:rate=15:duration=2",
+            "-f", "lavfi", "-i", f"sine=frequency={440 + 220 * i}:duration=2",
+            "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p",
+            "-c:a", "aac", "-b:a", "64k", "-shortest", "-map", "0:v", "-map", "1:a",
+            "-f", "dash", "-seg_duration", "1", "-use_template", "1", "-use_timeline", "0",
+            "-adaptation_sets", "id=0,streams=v id=1,streams=a", str(out / "manifest.mpd"),
+        ], check=True)
+
+
 @pytest.fixture(scope="session")
 def media_site(tmp_path_factory):
-    """A tiny video site: /<name>.mp4, /slow/<name>.mp4 and /playlist (three clips)."""
+    """A tiny video site: /<name>.mp4, /slow/<name>.mp4, /playlist (three clips) and
+    /playlist-dash (two videos with separate audio, see DASH_AUDIO_REFUSED)."""
     folder = tmp_path_factory.mktemp("media")
     _make_clips(folder)
+    _make_dash(folder)
     site = Flask("media_site")
 
     @site.route("/<name>.mp4")
@@ -91,6 +115,20 @@ def media_site(tmp_path_factory):
         return ("<html><head><title>Test Mix</title></head><body>"
                 '<video src="/clip.mp4"></video><video src="/second.mp4"></video>'
                 '<video src="/third.mp4"></video></body></html>')
+
+    @site.route("/dash/<name>/<path:file>")
+    def dash(name, file):
+        if name not in DASH_CLIPS:
+            abort(404)
+        if name in DASH_AUDIO_REFUSED and "stream1" in file:
+            abort(403)
+        return send_from_directory(folder / name, file, conditional=True)
+
+    @site.route("/playlist-dash")
+    def playlist_dash():
+        return ("<html><head><title>Dash Mix</title></head><body>"
+                + "".join(f'<video src="/dash/{n}/manifest.mpd"></video>' for n in DASH_CLIPS)
+                + "</body></html>")
 
     url, stop = _serve(site)
     yield url

@@ -31,7 +31,7 @@ build_setup.py     the build (SETUP.bat / setup.sh call it); MellowDLP.spec, ins
   - `errors.py` — `explain()` maps raw yt-dlp errors to `{code, title, hint, action}`; `jobs._make_cb` annotates every `error`/`item_failed` event, `/api/info` errors too
   - `analytics.py` — DuckDB only (shared per-path connection handed out as cursors); filesystem scans live in `vault.py`
   - `scheduler.py` — vault auto-sync loop (config: `auto_sync_enabled`, `vault_sync_schedule`)
-  - `vault.py` / `library.py` — vault & library business logic
+  - `vault.py` / `library.py` — vault & library business logic. Folder scans use `vault.is_media()`, which leaves out yt-dlp format parts (`Title.f399.mp4`, the video alone, left behind when a playlist item fails under `ignoreerrors`); every sync ends with `clean_stale_parts()` (older than `STALE_PART_DAYS`), younger parts let the next sync finish the item
   - `backup.py` — config+DB zip export/restore (touches the DB file only inside `analytics.exclusive_file_access()`; DuckDB locks an open file on Windows)
   - `config.py` — atomic config persistence + `update_config()` for read-modify-write; `load_config()` layers the saved file over `_DEFAULTS`, so new keys need no per-caller fallback. `download_root(cfg)` is the download folder (never re-derive `~/Downloads/MellowDLP`); `request_settings()` / `download_settings()` are the cookie/network/tuning opts every yt-dlp call and job copies
   - `formats.py` — the on/off download options (`TOGGLES`: embed_*, sponsorblock, normalize_audio) and `toggles(source, fallback)`; every download, sync format and library entry takes them from here
@@ -44,7 +44,7 @@ build_setup.py     the build (SETUP.bat / setup.sh call it); MellowDLP.spec, ins
 - Communication: SSE (`EventSource('/api/progress')`) for download progress; HTTP for everything else
 - Build: `python build_setup.py` → esbuild **bundles** `gui/app.jsx` (+imports) → `static/app.bundle.js`; copies `gui/index.html` → `static/index.html` and `gui/fonts/` → `static/fonts/` (fonts are bundled: the app makes no requests to Google Fonts or any other CDN)
 - Config: JSON at `~/.mellow_dlp.json`; analytics DB at `~/.mellow_dlp.duckdb`
-- Desktop wrapper: FlaskWebGUI opens a Chrome/Edge/Brave/Chromium `--app` window (NOT Electron, no bundled browser; Tk is only used for native file dialogs and the Windows clipboard). Without such a browser `main.py` serves and opens the default browser instead. `main.py` has a single-instance guard via `~/.mellow_dlp.port`
+- Desktop wrapper: FlaskWebGUI opens a Chrome/Edge/Brave/Chromium `--app` window (NOT Electron, no bundled browser; Tk is only used for native file dialogs and the Windows clipboard). Without such a browser `main.py` serves and opens the default browser instead, and `_watch_pages` quits once no page has been connected (`server.open_pages()`, the SSE streams) for `PAGE_GONE_EXIT_SECS` and nothing downloads. `main.py` has a single-instance guard via `~/.mellow_dlp.port`
 
 ## Key State That Must Persist
 - Feed: url, analyzed info, format/quality/options (`useSessionState('feed_*')`, JSON in sessionStorage); defaults seeded from config `default_*` keys when no session state exists
@@ -144,6 +144,7 @@ python build_setup.py --run-tests
 # Start a built binary headless and check it serves the app (CI + release do this):
 python scripts/smoke_binary.py dist/MellowDLP
 ```
+- `MellowDLP.spec` builds the app twice: one file (`dist/MellowDLP[.exe]`, the portable exe and the Linux binary; it unpacks itself at every start) and one folder (`dist/MellowDLP-app/`, what the Windows installer installs and the AppImage carries; nothing to unpack, ~2.5× faster start). installer.iss deletes `{app}\_internal` before installing the new one
 - Dependencies are pinned: `requirements.txt` (runtime; yt-dlp has a floor only, on purpose), `requirements-dev.txt`, `requirements-build.txt` (PyInstaller, Pillow), and `package.json` + `package-lock.json` (esbuild, ESLint, React — the build copies React's UMD files from `node_modules`; React 19 has none, so stay on 18). The build runs `npm ci` when the lockfile changed. Dependabot proposes bumps weekly
 - flaskwebgui ≥ 1.1.9 (1.1.8 crashes at import without a browser installed); it needs Python 3.12
 - `main.py --no-window` serves on 127.0.0.1 without opening a window (use your own browser; the smoke test uses it)

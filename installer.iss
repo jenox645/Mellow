@@ -1,6 +1,6 @@
 ; AppVersion is normally injected by build_setup.py via /DAppVersion=x.y.z
 #ifndef AppVersion
-  #define AppVersion "2.7.0"
+  #define AppVersion "2.8.0"
 #endif
 
 [Setup]
@@ -24,8 +24,13 @@ UninstallDisplayIcon={app}\MellowDLP.exe
 [Tasks]
 Name: desktopicon; Description: "Create desktop shortcut"
 
+[InstallDelete]
+; The previous version's libraries: the new ones replace them as a whole
+Type: filesandordirs; Name: "{app}\_internal"
+
 [Files]
-Source: "dist\MellowDLP.exe"; DestDir: "{app}"; Flags: ignoreversion
+; The one-folder build: nothing to unpack at each start (the portable exe has to)
+Source: "dist\MellowDLP-app\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{autoprograms}\MellowDLP"; Filename: "{app}\MellowDLP.exe"; IconFilename: "{app}\MellowDLP.exe"

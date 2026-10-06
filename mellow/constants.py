@@ -5,6 +5,8 @@ Anything that reads like a tuning knob lives here, not inline at call sites.
 from __future__ import annotations
 
 # ── File extensions ───────────────────────────────────────────────────────────
+# A yt-dlp part ("Title.f399.mp4") a sync hasn't finished in this long is dropped
+STALE_PART_DAYS: int = 7
 MEDIA_EXTS: frozenset[str] = frozenset({
     '.mp3', '.mp4', '.mkv', '.webm', '.flac', '.m4a',
     '.wav', '.opus', '.aac', '.ogg', '.avi', '.mov',
