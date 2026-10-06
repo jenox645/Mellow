@@ -149,7 +149,7 @@ export function SignalApiPage() {
 
       <div className="terminal-layout">
         {/* PRESET LIST */}
-        <div className="preset-panel">
+        <div className="preset-panel" data-tour="signal-presets">
           <div className="ph">
             <span className="ptag amber">PRESETS</span>
             <span className="ptitle">QUICK QUERIES</span>
@@ -166,7 +166,7 @@ export function SignalApiPage() {
         </div>
 
         {/* QUERY PANEL */}
-        <div className="query-panel">
+        <div className="query-panel" data-tour="signal-query">
           <div className="query-area">
             <div className="inp-label" style={{ marginBottom: 6 }}>SQL QUERY (SELECT ONLY)</div>
             <textarea
@@ -230,7 +230,7 @@ export function SignalApiPage() {
       </div>
 
       {/* SCHEMA */}
-      <div style={{ marginTop: 16 }}>
+      <div data-tour="signal-schema" style={{ marginTop: 16 }}>
         <div className="opts-adv-toggle" style={{ padding: '10px 0', borderTop: '1px solid var(--border)' }}
           onClick={() => setSchemaOpen(o => !o)}>
           <span dangerouslySetInnerHTML={{ __html: schemaOpen ? SVG.chevron_down : SVG.chevron_right }} />
@@ -240,7 +240,7 @@ export function SignalApiPage() {
       </div>
 
       {/* REST API DOCS */}
-      <div style={{ marginTop: 4 }}>
+      <div data-tour="signal-api" style={{ marginTop: 4 }}>
         <div className="opts-adv-toggle" style={{ padding: '10px 0', borderTop: '1px solid var(--border)' }}
           onClick={() => setDocsOpen(o => !o)}>
           <span dangerouslySetInnerHTML={{ __html: docsOpen ? SVG.chevron_down : SVG.chevron_right }} />
@@ -285,7 +285,7 @@ export function SignalApiPage() {
       </div>
 
       {/* OUTBOUND WEBHOOKS */}
-      <div style={{ marginTop: 4 }}>
+      <div data-tour="signal-webhooks" style={{ marginTop: 4 }}>
         <div className="opts-adv-toggle" style={{ padding: '10px 0', borderTop: '1px solid var(--border)' }}
           onClick={() => setWebhooksOpen(o => !o)}>
           <span dangerouslySetInnerHTML={{ __html: webhooksOpen ? SVG.chevron_down : SVG.chevron_right }} />
@@ -317,7 +317,7 @@ export function SignalApiPage() {
       </div>
 
       {/* LIVE EVENT STREAM */}
-      <div style={{ marginTop: 4 }}>
+      <div data-tour="signal-events" style={{ marginTop: 4 }}>
         <div className="opts-adv-toggle" style={{ padding: '10px 0', borderTop: '1px solid var(--border)' }}
           onClick={() => setEventsOpen(o => !o)}>
           <span dangerouslySetInnerHTML={{ __html: eventsOpen ? SVG.chevron_down : SVG.chevron_right }} />

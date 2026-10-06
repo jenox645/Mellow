@@ -223,3 +223,40 @@ def test_whats_new_shows_once_after_an_update_and_from_config(page, app_url):
     page.locator(".nav-item", has_text=re.compile("config", re.I)).first.click()
     page.get_by_text("WHAT'S NEW", exact=True).click()                     # every release
     expect(modal.locator(".wn-release")).to_have_count(len(__import__("mellow.changelog").changelog.load()))
+
+
+def test_the_guide_walks_through_a_page(page, downloads):
+    page.locator(".topbar-guide").click()
+    card = page.locator(".tour-card")
+    expect(card.locator(".tour-count")).to_have_text(re.compile(r"^1 / \d+$"))
+    expect(card.locator(".tour-title")).to_have_text("Paste a link")
+    expect(page.locator(".tour-spot")).not_to_have_class(re.compile("none"))
+    # The format step opens the collapsed OPTIONS panel to point at it
+    expect(page.locator(".opts-panel")).not_to_have_class(re.compile("open"))
+    while card.locator(".tour-title").inner_text() != "Format and quality":
+        page.keyboard.press("ArrowRight")
+    expect(page.locator(".opts-panel")).to_have_class(re.compile("open"))
+    # Nothing analyzed yet: that step says when it shows up
+    while card.locator(".tour-title").inner_text() != "Before you download":
+        page.keyboard.press("ArrowRight")
+    expect(card.locator(".tour-missing")).to_have_text(re.compile("after ANALYZE"))
+    page.keyboard.press("Escape")
+    expect(page.locator(".tour-root")).to_have_count(0)
+
+
+def test_the_guide_has_a_tour_for_an_open_vault_folder(page, downloads):
+    (downloads / "Lofi").mkdir()
+    (downloads / "Lofi" / "a.mp4").write_bytes(b"\0" * 1024)
+    page.locator(".nav-item", has_text="VAULT").click()
+    page.get_by_title("Refresh vault").click()
+    page.locator(".vault-folder-card", has_text="Lofi").click()
+    page.locator(".vault-breadcrumb").wait_for()
+    page.keyboard.press("g")
+    expect(page.locator(".tour-tag")).to_have_text("GUIDE · VAULT FOLDER")
+    # Leaving the page (2 = Queue) closes the guide; so does a click outside the card
+    page.keyboard.press("2")
+    expect(page.locator(".tour-root")).to_have_count(0)
+    page.keyboard.press("g")
+    expect(page.locator(".tour-tag")).to_have_text("GUIDE · QUEUE")
+    page.mouse.click(5, 5)
+    expect(page.locator(".tour-root")).to_have_count(0)

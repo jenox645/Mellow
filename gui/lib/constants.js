@@ -71,3 +71,8 @@ export const AUDIO_QUALITIES = [['best', 'BEST'], ['320', '320K'], ['256', '256K
 
 // Error patterns that usually mean yt-dlp is outdated
 export const BREAKAGE_RE = /unable to extract|unsupported url|extractor|sign in to confirm|http error 403/i;
+
+// GUIDE (components/tour.jsx)
+export const TOUR_PAD_PX = 6;               // spotlight margin around the part it explains
+export const TOUR_REVEAL_WAIT_MS = 380;     // after opening OPTIONS/ADVANCED (their CSS transition is 0.3s)
+export const TOUR_SCROLL_WAIT_MS = 320;     // smooth scroll to the part before pointing at it

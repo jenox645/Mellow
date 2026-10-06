@@ -100,7 +100,7 @@ export function QueuePage({ dlState, showNotif, activeJobs, playlistItems, setPl
         </div>
       </div>
 
-      <div className="g4" style={{ marginBottom: 16 }}>
+      <div className="g4" style={{ marginBottom: 16 }} data-tour="queue-stats">
         <div className="stat"><div className="stat-label">ACTIVE</div><div className="stat-value amber">{activeCount}</div></div>
         <div className="stat" title="Downloads waiting to start, plus the items left in the running playlist">
           <div className="stat-label">QUEUED</div>
@@ -112,7 +112,7 @@ export function QueuePage({ dlState, showNotif, activeJobs, playlistItems, setPl
 
       {/* BACKEND JOB QUEUE — queued syncs / extra URLs invisible until now */}
       {jobs.length > 0 && (
-        <div className="panel" style={{ marginBottom: 16 }}>
+        <div className="panel" style={{ marginBottom: 16 }} data-tour="queue-jobs">
           <div className="panel-hud" /><div className="panel-hud-br" />
           <div className="ph">
             <span className="ptag amber">JOBS</span>
@@ -181,7 +181,7 @@ export function QueuePage({ dlState, showNotif, activeJobs, playlistItems, setPl
       )}
 
       {isDownloading && (
-        <div className="panel" style={{ marginBottom: 16 }}>
+        <div className="panel" style={{ marginBottom: 16 }} data-tour="queue-active">
           <div className="panel-hud" /><div className="panel-hud-br" />
           <div className="ph">
             <span className="ptag">ACTIVE</span>
@@ -219,7 +219,7 @@ export function QueuePage({ dlState, showNotif, activeJobs, playlistItems, setPl
       )}
 
       {(playlistItems && playlistItems.length > 0) || (completedItems && completedItems.length > 0) || (failedItems && failedItems.length > 0) ? (
-        <div className="panel">
+        <div className="panel" data-tour="queue-playlist">
           <div className="panel-hud" /><div className="panel-hud-br" />
           <div className="ph">
             <span className="ptag">PLAYLIST</span>
@@ -336,7 +336,7 @@ export function QueuePage({ dlState, showNotif, activeJobs, playlistItems, setPl
           )}
         </div>
       ) : (
-        <div className="panel">
+        <div className="panel" data-tour="queue-playlist">
           <div className="panel-hud" /><div className="panel-hud-br" />
           <div className="ph">
             <span className="ptag">QUEUE</span>

@@ -129,7 +129,7 @@ const PAGE_META = {
   config:    { path: 'CONFIG', ja: 'システム設定', isLake: true },
 };
 
-export function TopBar({ page }) {
+export function TopBar({ page, onGuide }) {
   const [time, setTime] = React.useState('');
   const [date, setDate] = React.useState('');
 
@@ -153,6 +153,9 @@ export function TopBar({ page }) {
         MELLOW · <span className={accClass}>{meta.path}</span> · {meta.ja}
       </div>
       <div className="topbar-spacer" />
+      {onGuide && (
+        <div className="topbar-guide" onClick={onGuide} title="What each part of this page does (G)">? GUIDE</div>
+      )}
       <div className="topbar-time">{time}</div>
       <div className="topbar-tag">{date}</div>
       <div className="topbar-tag amber">ADMIN</div>

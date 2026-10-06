@@ -181,7 +181,7 @@ export function ConfigPage({ config, setConfig, showNotif, installAppUpdate, onA
           <div className="vlabel">システム設定 / SYSTEM CONFIG</div>
           <div className="vtitle"><span style={{ color: 'var(--t1)' }}>SYS</span> <span className="a">CONFIG</span></div>
         </div>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }} data-tour="config-save">
           <button className="btn btn-secondary btn-sm" onClick={handleReset}>RESET DEFAULTS</button>
           <button className="btn btn-primary btn-sm" onClick={handleSave}>SAVE CONFIG →</button>
         </div>
@@ -191,7 +191,7 @@ export function ConfigPage({ config, setConfig, showNotif, installAppUpdate, onA
         {/* LEFT COLUMN */}
         <div>
           {/* STORAGE */}
-          <div className="cfg-panel">
+          <div className="cfg-panel" data-tour="config-storage">
             <div className="cfg-ph">
               <span className="ptag">STORAGE</span>
               <span className="ptitle">FILE OUTPUT</span>
@@ -252,7 +252,7 @@ export function ConfigPage({ config, setConfig, showNotif, installAppUpdate, onA
           </div>
 
           {/* DOWNLOAD DEFAULTS */}
-          <div className="cfg-panel">
+          <div className="cfg-panel" data-tour="config-defaults">
             <div className="cfg-ph">
               <span className="ptag">DEFAULTS</span>
               <span className="ptitle">DOWNLOAD DEFAULTS</span>
@@ -366,7 +366,7 @@ export function ConfigPage({ config, setConfig, showNotif, installAppUpdate, onA
           </div>
 
           {/* AUTHENTICATION */}
-          <div className="cfg-panel">
+          <div className="cfg-panel" data-tour="config-auth">
             <div className="cfg-ph">
               <span className="ptag">AUTH</span>
               <span className="ptitle">AUTHENTICATION</span>
@@ -437,7 +437,7 @@ export function ConfigPage({ config, setConfig, showNotif, installAppUpdate, onA
         {/* RIGHT COLUMN */}
         <div>
           {/* NETWORK */}
-          <div className="cfg-panel">
+          <div className="cfg-panel" data-tour="config-network">
             <div className="cfg-ph">
               <span className="ptag">NETWORK</span>
               <span className="ptitle">NETWORK SETTINGS</span>
@@ -483,7 +483,7 @@ export function ConfigPage({ config, setConfig, showNotif, installAppUpdate, onA
           </div>
 
           {/* BEHAVIOR */}
-          <div className="cfg-panel">
+          <div className="cfg-panel" data-tour="config-behavior">
             <div className="cfg-ph">
               <span className="ptag">BEHAVIOR</span>
               <span className="ptitle">APP BEHAVIOR</span>
@@ -648,7 +648,7 @@ export function ConfigPage({ config, setConfig, showNotif, installAppUpdate, onA
                   </button>
                 </div>
               </div>
-              <div className="settings-row">
+              <div className="settings-row" data-tour="config-backup">
                 <div className="settings-label">
                   <div className="sl-name">Backup &amp; Restore</div>
                   <div className="sl-sub">Zip of config + analytics DB; restore keeps .pre-restore copies</div>
@@ -664,7 +664,7 @@ export function ConfigPage({ config, setConfig, showNotif, installAppUpdate, onA
                   <input ref={restoreInputRef} type="file" accept=".zip" style={{ display: 'none' }} onChange={handleRestoreFile} />
                 </div>
               </div>
-              <div className="settings-row">
+              <div className="settings-row" data-tour="config-ffmpeg">
                 <div className="settings-label">
                   <div className="sl-name">FFmpeg</div>
                   <div className="sl-sub" title={sysInfo.ffmpeg_path || ''}>
@@ -689,7 +689,7 @@ export function ConfigPage({ config, setConfig, showNotif, installAppUpdate, onA
                   )}
                 </div>
               </div>
-              <div className="settings-row">
+              <div className="settings-row" data-tour="config-versions">
                 <div className="settings-label">
                   <div className="sl-name">MellowDLP Version</div>
                   <div className="sl-sub">
@@ -715,7 +715,7 @@ export function ConfigPage({ config, setConfig, showNotif, installAppUpdate, onA
                   )}
                 </div>
               </div>
-              <div className="settings-row">
+              <div className="settings-row" data-tour="config-ytdlp">
                 <div className="settings-label">
                   <div className="sl-name">yt-dlp Version</div>
                   <div className="sl-sub">

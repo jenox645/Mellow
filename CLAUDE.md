@@ -39,7 +39,7 @@ build_setup.py     the build (SETUP.bat / setup.sh call it); MellowDLP.spec, ins
 - Frontend (React UMD, bundled by esbuild from ES modules):
   - `gui/app.jsx` — App root: routing, clipboard watcher, shortcuts; feeds SSE events to `downloadsReducer` and runs the effects it queues
   - `gui/lib/` — `api.js`, `util.js`, `constants.js`, `formats.js` (FORMAT_TOGGLES as one `{key: bool}`), `hooks.js` (`useSessionState`), `downloads.js` (the progress-event reducer), `mascots.js`, `sound.js`. The root `package.json` (`"type": "module"`) lets node test them directly
-  - `gui/components/` — `common.jsx`, `icons.jsx`, `chrome.jsx`, `loading.jsx`, `vault-modals.jsx`
+  - `gui/components/` — `common.jsx`, `icons.jsx`, `chrome.jsx`, `loading.jsx`, `vault-modals.jsx`, `tour.jsx` (the GUIDE)
   - `gui/pages/` — `feed.jsx`, `queue.jsx`, `vault.jsx`, `analytics.jsx`, `signal.jsx`, `config.jsx`
 - Communication: SSE (`EventSource('/api/progress')`) for download progress; HTTP for everything else
 - Build: `python build_setup.py` → esbuild **bundles** `gui/app.jsx` (+imports) → `static/app.bundle.js`; copies `gui/index.html` → `static/index.html` and `gui/fonts/` → `static/fonts/` (fonts are bundled: the app makes no requests to Google Fonts or any other CDN)
@@ -107,6 +107,7 @@ A new event = a case in `applyEvent` + a test in `tests/js/downloads.test.mjs`.
 - `skip_shorts` / `skip_live` (config, copied by `download_settings`) become a yt-dlp `match_filter` only on playlist-like runs (`ignoreerrors`); a single pasted link is never filtered
 - `/api/cookies/test` loads cookies from the request's (unsaved) settings; `/api/filename-preview` validates a template and names a sample video with it. Cookie failures are explained by `errors.py` (`cookies_locked` / `cookies_encrypted` / `cookies_not_found`)
 - Victory overlay at App root (outside all page components), z-index 9999
+- GUIDE (top bar `? GUIDE`, key `G`): `gui/lib/tours.js` holds one list of steps per page (`vault_folder` for an open folder); each step points at an element marked `data-tour="<target>"` and can `reveal` a collapsed panel first ({click, unless}). A new feature worth explaining = a `data-tour` attribute + a step; `tests/js/tours.test.mjs` fails when a step's target isn't marked anywhere. Steps whose part isn't on screen show centred with their `missing` note
 - Every job must end in exactly one terminal event (`complete`/`error`/`cancelled`) — the UI has no timeout; `jobs._worker` pushes `error` if a job crashes
 - `jobs.run_job` holds back each downloader run's terminal event and emits the job's one terminal itself: with several URLs, a failed one becomes `item_failed` + a `warning` on `complete` (all failed → one `error`)
 - Sync timestamps (`vault_sync_times`, library `last_synced`) are written by `JobManager._on_finished` when a sync completes, never on enqueue

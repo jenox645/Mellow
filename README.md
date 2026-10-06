@@ -84,6 +84,8 @@ The window is a Chrome, Edge, Brave or Chromium app window (Windows always has E
 - **Archive file**: each folder's `mellow_archive.txt` lists what's in it, so nothing downloads twice. Import it on another computer to rebuild the same library.
 - **Analytics**: your download history by platform, format and uploader, with CSV export and custom SQL.
 
+**Not sure what something does?** Click **? GUIDE** at the top of any page (or press G): it walks you through that page, part by part.
+
 **When things go wrong**
 - **Plain-language errors**: outdated yt-dlp, bot checks, private or removed videos, geo-blocks, network trouble, a full disk… each explained with the fix, often a one-click button.
 - **Cookies** from your browser for age-restricted or members-only videos, with a TEST button.

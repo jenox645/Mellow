@@ -310,17 +310,17 @@ export function AnalyticsPage({ stats, refreshStats, showNotif }) {
           <div className="vtitle"><span style={{ color: 'var(--t1)' }}>DATA</span> <span className="a">LAKE</span></div>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
-          <div className="range-tabs">
+          <div className="range-tabs" data-tour="analytics-range">
             {['7d','30d','all'].map(r => (
               <div key={r} className={'range-tab' + (range === r ? ' active' : '')} onClick={() => setRange(r)}>
                 {r === 'all' ? 'ALL TIME' : r.toUpperCase()}
               </div>
             ))}
           </div>
-          <button className="btn btn-secondary btn-sm" onClick={() => setWrappedOpen(true)} title="Year in review">
+          <button className="btn btn-secondary btn-sm" data-tour="analytics-wrapped" onClick={() => setWrappedOpen(true)} title="Year in review">
             ✦ WRAPPED
           </button>
-          <button className="btn btn-amber btn-sm" onClick={handleExport}>
+          <button className="btn btn-amber btn-sm" data-tour="analytics-export" onClick={handleExport}>
             <Ico name="download" /> EXPORT CSV
           </button>
         </div>
@@ -329,7 +329,7 @@ export function AnalyticsPage({ stats, refreshStats, showNotif }) {
       {wrappedOpen && <WrappedModal onClose={() => setWrappedOpen(false)} />}
 
       {/* KPI CARDS — click any value to edit/override */}
-      <div className="g4" style={{ marginBottom: 16 }}>
+      <div className="g4" style={{ marginBottom: 16 }} data-tour="analytics-stats">
         <div className="stat">
           <div className="stat-label">TOTAL DOWNLOADS</div>
           <EditableStat
@@ -403,7 +403,7 @@ export function AnalyticsPage({ stats, refreshStats, showNotif }) {
       </div>
 
       {/* CHARTS ROW */}
-      <div className="g2" style={{ marginBottom: 0 }}>
+      <div className="g2" style={{ marginBottom: 0 }} data-tour="analytics-charts">
         <div className="chart-panel">
           <div className="chart-title">Download Trend</div>
           <div className="chart-sub">DOWNLOADS PER DAY — {range === 'all' ? 'ALL TIME' : 'LAST ' + range.toUpperCase()}</div>

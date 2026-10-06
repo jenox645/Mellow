@@ -384,25 +384,25 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
                   API.post('/api/vault/sync-all', {})
                     .then(d => showNotif('Sync All Queued', d.count + ' folder(s) queued', 'success'))
                     .catch(e => showNotif('Sync Error', e.message, 'error'));
-                }}>↻ SYNC ALL</button>
+                }} data-tour="vault-sync-all">↻ SYNC ALL</button>
             )}
-            <button className="btn btn-secondary btn-sm" onClick={() => setDupModal(true)} title="Find duplicate files across folders">⧉ FIND DUPES</button>
-            <button className="btn btn-secondary btn-sm" onClick={handleWatchFolder}>
+            <button className="btn btn-secondary btn-sm" data-tour="vault-dupes" onClick={() => setDupModal(true)} title="Find duplicate files across folders">⧉ FIND DUPES</button>
+            <button className="btn btn-secondary btn-sm" data-tour="vault-watch" onClick={handleWatchFolder}>
               <Ico name="folder" /> WATCH FOLDER
             </button>
-            <button className="btn btn-primary btn-sm" onClick={onAddVault}>ADD PLAYLIST</button>
+            <button className="btn btn-primary btn-sm" data-tour="vault-add" onClick={onAddVault}>ADD PLAYLIST</button>
           </div>
         </div>
 
         {vaultFolders.length === 0 ? (
-          <div className="empty-state">
+          <div className="empty-state" data-tour="vault-folders">
             <Mascot src={MASCOT_COMFY_SAFE || MASCOT_CHILLING} className="empty-mascot" wrapClass="empty-mascot-wrap" />
             <div className="empty-title">VAULT EMPTY</div>
             <div className="empty-sub" onClick={onAddVault}>Add a playlist or watch folder to get started</div>
           </div>
         ) : (
-          <div className="vault-folder-grid" style={{ '--vault-card-width': vaultScale === 'sm' ? '160px' : vaultScale === 'lg' ? '280px' : '200px' }}>
-            {vaultFolders.map(folder => {
+          <div className="vault-folder-grid" data-tour="vault-folders" style={{ '--vault-card-width': vaultScale === 'sm' ? '160px' : vaultScale === 'lg' ? '280px' : '200px' }}>
+            {vaultFolders.map((folder, folderIdx) => {
               const thumbs = folderMosaics[folder.path] || [];
               const showMosaic = thumbs.length > 0;
               return (
@@ -431,7 +431,7 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
                   )}
 
                   {/* Three-dot menu button */}
-                  <div className="vfc-menu-btn" onClick={e => {
+                  <div className="vfc-menu-btn" data-tour={folderIdx === 0 ? 'vault-card-menu' : undefined} onClick={e => {
                     e.stopPropagation();
                     if (cardMenuData && cardMenuData.folder.path === folder.path) {
                       setCardMenuData(null);
@@ -670,7 +670,7 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
             ))}
           </div>
           {canSync && (
-            <button className="btn btn-amber btn-sm" onClick={handleSync} disabled={!!syncingId}>
+            <button className="btn btn-amber btn-sm" data-tour="vault-sync" onClick={handleSync} disabled={!!syncingId}>
               {syncingId ? 'SYNCING...' : (<><Ico name="sync" /> SYNC NOW</>)}
             </button>
           )}
@@ -697,14 +697,14 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
       </div>
 
       {/* BREADCRUMB */}
-      <div className="vault-breadcrumb">
+      <div className="vault-breadcrumb" data-tour="vault-back">
         <span className="vbc-root" onClick={() => setSelectedFolder(null)}>VAULT ROOT</span>
         <span className="vbc-sep">›</span>
         <span className="vbc-current">{folderName.toUpperCase()}</span>
       </div>
 
       {(libEntry || canSync || syncReport) && (
-        <div className="panel" style={{ marginBottom: 16 }}>
+        <div className="panel" style={{ marginBottom: 16 }} data-tour="vault-report">
           <div className="ph">
             <span className="ptag cyan">SYNCED</span>
             <span className="ptitle">{libEntry ? libEntry.name : folderName}</span>
@@ -718,7 +718,7 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
 
       {!loading && files.length > 0 && (
         <>
-          <div className="vault-lib-controls">
+          <div className="vault-lib-controls" data-tour="vault-tools">
             <div className="vault-lib-search-wrap">
               <span className="vault-lib-search-icon"><Ico name="signal" size={12} /></span>
               <input
@@ -784,7 +784,7 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
           <div className="empty-sub">Download something to this folder</div>
         </div>
       ) : (
-        <div className="lib-grid" style={{ '--lib-card-min': vaultScale === 'sm' ? '130px' : vaultScale === 'lg' ? '240px' : '175px' }}>
+        <div className="lib-grid" data-tour="vault-files" style={{ '--lib-card-min': vaultScale === 'sm' ? '130px' : vaultScale === 'lg' ? '240px' : '175px' }}>
           {files
             .filter(f => !vaultSearch || f.name.toLowerCase().includes(vaultSearch.toLowerCase()))
             .sort((a, b) => {

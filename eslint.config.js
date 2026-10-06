@@ -37,6 +37,8 @@ export default [
         ResizeObserver: 'readonly',
         setTimeout: 'readonly',
         clearTimeout: 'readonly',
+        requestAnimationFrame: 'readonly',
+        cancelAnimationFrame: 'readonly',
         setInterval: 'readonly',
         clearInterval: 'readonly',
         localStorage: 'readonly',
