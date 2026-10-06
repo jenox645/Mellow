@@ -380,6 +380,11 @@ built_exe = HERE / "dist" / exe_name
 if not built_exe.exists():
     fail(f"PyInstaller finished but binary not found at {built_exe}")
 print(f"  dist/{exe_name} ({built_exe.stat().st_size:,} bytes) — OK")
+# The one-folder build (MellowDLP.spec): the installer and the AppImage ship it
+app_dir = HERE / "dist" / "MellowDLP-app"
+if not (app_dir / exe_name).exists():
+    fail(f"PyInstaller finished but the one-folder build is missing at {app_dir}")
+print("  dist/MellowDLP-app/ (installed / AppImage build) — OK")
 
 
 # ── Step 12: Installer / AppImage / Desktop shortcut ─────────────────────────
@@ -392,8 +397,12 @@ if IS_LINUX:
     for d in [appdir_bin, appdir_icons]:
         d.mkdir(parents=True, exist_ok=True)
 
-    shutil.copy2(built_exe, appdir_bin / "MellowDLP")
-    (appdir_bin / "MellowDLP").chmod(0o755)
+    # The one-folder build: an AppImage is already a mounted image, so a
+    # one-file binary inside it would unpack itself again at every start
+    appdir_app = appdir / "usr" / "lib" / "mellowdlp"
+    shutil.rmtree(appdir_app, ignore_errors=True)
+    (appdir_bin / "MellowDLP").unlink(missing_ok=True)
+    shutil.copytree(app_dir, appdir_app, symlinks=True)
 
     icon_png = ASSETS / "mellow_256.png"
     if icon_png.exists():
@@ -416,7 +425,7 @@ if IS_LINUX:
     apprun.write_text(
         '#!/bin/bash\n'
         'HERE="$(dirname "$(readlink -f "${0}")")"\n'
-        'exec "${HERE}/usr/bin/MellowDLP" "$@"\n'
+        'exec "${HERE}/usr/lib/mellowdlp/MellowDLP" "$@"\n'
     )
     apprun.chmod(0o755)
 

@@ -286,3 +286,24 @@ def test_the_guide_has_a_tour_for_an_open_vault_folder(page, downloads):
     expect(page.locator(".tour-tag")).to_have_text("GUIDE · QUEUE")
     page.mouse.click(5, 5)
     expect(page.locator(".tour-root")).to_have_count(0)
+
+
+def test_a_big_vault_folder_loads_only_the_thumbnails_on_screen(page, downloads):
+    folder = downloads / "Big"
+    folder.mkdir()
+    for i in range(150):
+        (folder / f"clip {i:03d}.mp4").write_bytes(b"\0" * 1024)
+        (folder / f"clip {i:03d}.jpg").write_bytes(b"\xff\xd8\xff\xd9")
+    asked = []
+    page.on("request", lambda r: "/api/vault/thumb" in r.url and asked.append(r.url))
+    page.locator(".nav-item", has_text="VAULT").click()
+    page.get_by_title("Refresh vault").click()
+    asked.clear()
+    page.locator(".vault-folder-card", has_text="Big").click()
+    expect(page.locator(".lib-card")).to_have_count(150)
+    page.wait_for_timeout(1500)
+    # Only the thumbnails themselves: it used to ask for a guessed URL (the
+    # video's own path) first, then the right one. And only the cards on
+    # screen, not all 150 (the folder card's mosaic shows the first four too)
+    assert all(".jpg" in u for u in asked), [u for u in asked if ".jpg" not in u][:3]
+    assert 0 < len(set(asked)) < 100, len(set(asked))

@@ -47,6 +47,12 @@ a = Analysis(
 
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
+# Two builds of the same app:
+# - one file (dist/MellowDLP[.exe]): the portable exe and the Linux binary.
+#   It unpacks itself to a temp folder at every start, which an antivirus
+#   then scans again: seconds on a laptop.
+# - one folder (dist/MellowDLP-app/): what the Windows installer installs and
+#   the AppImage carries. Nothing to unpack, so it starts at once.
 exe = EXE(
     pyz,
     a.scripts,
@@ -62,4 +68,28 @@ exe = EXE(
     runtime_tmpdir=None,
     console=False,
     icon=_icon,
+)
+
+exe_dir = EXE(
+    pyz,
+    a.scripts,
+    [],
+    exclude_binaries=True,
+    name="MellowDLP",
+    debug=False,
+    bootloader_ignore_signals=True,
+    strip=_is_linux,
+    upx=False,
+    console=False,
+    icon=_icon,
+)
+
+app_dir = COLLECT(
+    exe_dir,
+    a.binaries,
+    a.zipfiles,
+    a.datas,
+    strip=_is_linux,
+    upx=False,
+    name="MellowDLP-app",
 )

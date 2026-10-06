@@ -246,3 +246,17 @@ def test_a_sync_drops_parts_nobody_finished_for_a_week(tmp_dir):
     m = jobs.JobManager()
     m._on_finished({'type': 'sync', 'sync_path': tmp_dir, 'report': None}, 'error')
     assert sorted(os.listdir(tmp_dir)) == ['Fresh [bbbbbbbbbbb].f399.mp4', 'Song.mp4', 'notes.f399.txt']
+
+
+def test_file_thumbnails_come_from_sidecars_then_history(tmp_dir):
+    from mellow import analytics
+    analytics.init_db()
+    _touch(tmp_dir, 'a.mp4', 'a.jpg', 'b.mp4', 'c.mp4')
+    folder = Path(tmp_dir)
+    analytics.record_download({'url': 'https://youtu.be/b', 'file_path': str(folder / 'b.mp4'),
+                               'thumbnail_url': 'https://i.ytimg.com/b.jpg'})
+    analytics.record_download({'url': 'https://youtu.be/c', 'file_path': str(folder / 'c.mp4')})
+    thumbs = vault.resolve_file_thumbs([str(folder / n) for n in ('a.mp4', 'b.mp4', 'c.mp4')], analytics.get_conn)
+    assert thumbs[str(folder / 'a.mp4')].startswith('/api/vault/thumb?path=') and 'a.jpg' in thumbs[str(folder / 'a.mp4')]
+    assert thumbs[str(folder / 'b.mp4')] == 'https://i.ytimg.com/b.jpg'
+    assert str(folder / 'c.mp4') not in thumbs

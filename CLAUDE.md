@@ -144,6 +144,7 @@ python build_setup.py --run-tests
 # Start a built binary headless and check it serves the app (CI + release do this):
 python scripts/smoke_binary.py dist/MellowDLP
 ```
+- `MellowDLP.spec` builds the app twice: one file (`dist/MellowDLP[.exe]`, the portable exe and the Linux binary; it unpacks itself at every start) and one folder (`dist/MellowDLP-app/`, what the Windows installer installs and the AppImage carries; nothing to unpack, ~2.5× faster start). installer.iss deletes `{app}\_internal` before installing the new one
 - Dependencies are pinned: `requirements.txt` (runtime; yt-dlp has a floor only, on purpose), `requirements-dev.txt`, `requirements-build.txt` (PyInstaller, Pillow), and `package.json` + `package-lock.json` (esbuild, ESLint, React — the build copies React's UMD files from `node_modules`; React 19 has none, so stay on 18). The build runs `npm ci` when the lockfile changed. Dependabot proposes bumps weekly
 - flaskwebgui ≥ 1.1.9 (1.1.8 crashes at import without a browser installed); it needs Python 3.12
 - `main.py --no-window` serves on 127.0.0.1 without opening a window (use your own browser; the smoke test uses it)

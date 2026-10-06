@@ -351,18 +351,22 @@ def resolve_file_thumbs(paths: list[str], get_conn: Callable) -> dict[str, str]:
                 _dir_cache[key] = {}
         return _dir_cache[key]
 
-    with get_conn() as con:
-        for p in paths[:FILE_THUMBS_LIMIT]:
-            fp = Path(p)
-            match = _dir_images(fp.parent).get(fp.stem.lower())
-            if match:
-                result[p] = f"/api/vault/thumb?path={quote(str(match))}"
-            else:
-                row = con.execute(
-                    "SELECT thumbnail_url FROM downloads WHERE file_path=? LIMIT 1", [p]
-                ).fetchone()
-                if row and row[0]:
-                    result[p] = row[0]
+    no_sidecar: list[str] = []
+    for p in paths[:FILE_THUMBS_LIMIT]:
+        fp = Path(p)
+        match = _dir_images(fp.parent).get(fp.stem.lower())
+        if match:
+            result[p] = f"/api/vault/thumb?path={quote(str(match))}"
+        else:
+            no_sidecar.append(p)
+    if no_sidecar:
+        # One query for the whole folder, not one per file
+        with get_conn() as con:
+            rows = con.execute(
+                "SELECT file_path, any_value(thumbnail_url) FROM downloads "
+                "WHERE list_contains(?, file_path) AND thumbnail_url IS NOT NULL GROUP BY file_path",
+                [no_sidecar]).fetchall()
+        result.update({path: url for path, url in rows if url})
     return result
 
 

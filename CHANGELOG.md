@@ -8,7 +8,9 @@ Each release is a `## X.Y.Z` heading followed by `- **Title**: what it does`
 lines. A pull request that raises `APP_VERSION` adds its section here: CI
 fails without one.
 
-## 2.7.1
+## 2.8.0
+- **Starts faster**: the installed app is now a folder of files instead of one exe that unpacked itself (and was scanned by the antivirus) at every launch. It starts about 2.5× faster, more on a laptop with Windows Defender. The portable exe stays a single file.
+- **Big vault folders open about 4× faster**: only the thumbnails on screen load (the rest as you scroll), each one once, and cards off screen cost nothing until you scroll to them.
 - **GET FFMPEG keeps your ffmpeg if an update can't finish**: the one already installed is set aside and put back, instead of being deleted first.
 - **Unfinished parts are cleaned up**: a part of a video that no sync could finish for a week (the video left the playlist or stays private) is deleted, so it doesn't take space unseen.
 - **YouTube Mixes aren't called private**: "This playlist type is unviewable" no longer suggests setting up cookies, which can't open a Mix.
