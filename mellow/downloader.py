@@ -9,7 +9,7 @@ from typing import Any, Callable
 
 import yt_dlp
 
-from . import analytics
+from . import analytics, errors
 from .constants import (
     AUDIO_FORMATS,
     LOUDNORM_FILTER,
@@ -1097,7 +1097,7 @@ def test_cookies(cookie_opts: dict) -> dict:
         while cause is not None and len(causes) < 4:
             causes.append(str(cause))
             cause = cause.__cause__ or cause.__context__
-        return {"ok": False, "error": " — ".join(c for c in causes if c)}
+        return {"ok": False, "error": errors.tidy(causes)}
     undecryptable = 0
     for line in logger.lines:
         m = re.search(r"(\d+) could not be decrypted", line)

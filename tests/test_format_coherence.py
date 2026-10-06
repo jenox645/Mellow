@@ -219,3 +219,18 @@ def test_mirror_finds_files_named_without_an_id(tmp_dir):
     assert [f['name'] for f in preview['to_delete']] == ['Some Song.mp3']
     preview = _mirror(tmp_dir, {'pl1': ['ccccccccccc']})
     assert preview['to_delete'] == [] and preview['unchanged_count'] == 1
+
+
+def test_yt_dlp_parts_left_by_a_failed_item_are_not_media(tmp_dir):
+    """A playlist run carries on past a failed item (ignoreerrors) and leaves its
+    downloaded part behind: "Title.f399.mp4" is the video alone, no sound. It
+    used to show in the vault as a video and count as downloaded."""
+    _touch(tmp_dir, 'Song [dQw4w9WgXcQ].mp4', 'Broken [aaaaaaaaaaa].f399.mp4',
+           'Broken [aaaaaaaaaaa].f251-drc.webm', 'Other.fhls-1080p.mp4', 'Live at the Fest.final.mp4')
+    names = [f['name'] for f in vault.list_folder_files(tmp_dir)]
+    assert names == ['Live at the Fest.final.mp4', 'Song [dQw4w9WgXcQ].mp4']
+    assert vault.infer_folder_format(tmp_dir) == {'sync_audio': False, 'container': 'mp4'}
+    # The archive isn't backfilled with the broken item, so the next sync finishes it
+    vault.generate_archive(tmp_dir)
+    archive = (Path(tmp_dir) / 'mellow_archive.txt').read_text()
+    assert 'dQw4w9WgXcQ' in archive and 'aaaaaaaaaaa' not in archive

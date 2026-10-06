@@ -240,6 +240,8 @@ def test_the_guide_walks_through_a_page(page, downloads):
     while card.locator(".tour-title").inner_text() != "Before you download":
         page.keyboard.press("ArrowRight")
     expect(card.locator(".tour-missing")).to_have_text(re.compile("after ANALYZE"))
+    # …with a made-up sample of what it will show
+    expect(card.locator(".tour-ex")).to_contain_text("ALREADY DOWNLOADED")
     page.keyboard.press("Escape")
     expect(page.locator(".tour-root")).to_have_count(0)
 

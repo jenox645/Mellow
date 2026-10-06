@@ -675,7 +675,7 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
             </button>
           )}
           {canSync && selectedFolderMeta && (
-            <button className="btn btn-secondary btn-sm" title="Sync options / selective playlist sync"
+            <button className="btn btn-secondary btn-sm" title="Sync options / selective playlist sync" data-tour="vault-sync-options"
               onClick={() => setSyncModal(selectedFolderMeta)}>SYNC OPTIONS</button>
           )}
           <button className="btn btn-secondary btn-sm" onClick={() => {
@@ -690,7 +690,7 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
                 }
               }).catch(() => {}).finally(() => setLoading(false));
           }}>↻ REFRESH</button>
-          <button className="btn btn-secondary btn-sm" onClick={() => handleOpenFolder(selectedFolder)}>
+          <button className="btn btn-secondary btn-sm" data-tour="vault-open" onClick={() => handleOpenFolder(selectedFolder)}>
             OPEN IN EXPLORER
           </button>
         </div>
@@ -735,7 +735,7 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
             </select>
           </div>
           <div className="vault-lib-count">TOTAL: <span>{files.filter(f => !vaultSearch || f.name.toLowerCase().includes(vaultSearch.toLowerCase())).length} ITEMS</span></div>
-          <div className="randomizer-bar">
+          <div className="randomizer-bar" data-tour="vault-random">
             <span className="opts-label">RANDOMIZE</span>
             <div className="rand-stepper">
               <button className="rand-step-btn" onClick={() => setRandomizerCount(c => Math.max(1, c - 1))}>−</button>
@@ -756,7 +756,7 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
             )}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingBottom: 4 }}>
-            <button className={'btn btn-sm ' + (selectionMode ? 'btn-primary' : 'btn-secondary')}
+            <button className={'btn btn-sm ' + (selectionMode ? 'btn-primary' : 'btn-secondary')} data-tour="vault-select"
               onClick={() => { setSelectionMode(s => !s); setSelectedFiles(new Set()); }}>
               {selectionMode ? 'EXIT SELECT' : 'SELECT'}
             </button>

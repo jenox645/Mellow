@@ -36,6 +36,23 @@ from .library import folder_path_for_entry
 
 log = logging.getLogger(__name__)
 
+# yt-dlp downloads video and audio as separate parts ("Title.f399.mp4",
+# "Title.f251.webm") and merges them. A part outlives a failed item in a
+# playlist run (ignoreerrors): it isn't the media file, and the video one has
+# no sound. The next sync finishes it from the part.
+_FORMAT_PART_RE = _re.compile(r"\.f(\d+[\w-]*|(hls|dash|http)-[\w.=-]+)$", _re.IGNORECASE)
+
+
+def is_format_part(path: Path) -> bool:
+    return bool(_FORMAT_PART_RE.search(path.stem))
+
+
+def is_media(path: Path) -> bool:
+    """A finished media file: a media extension, not hidden, not a yt-dlp part."""
+    return (path.suffix.lower() in MEDIA_EXTS and not path.name.startswith(".")
+            and not is_format_part(path))
+
+
 # Matches yt-dlp's YouTube ID embedded in filenames: [dQw4w9WgXcW]
 _YT_ID_RE = _re.compile(r'\[([A-Za-z0-9_-]{11})\]')
 
@@ -74,7 +91,7 @@ def get_folder_media_stats(path: str) -> dict:
     total, count = 0, 0
     try:
         for entry in p.rglob("*"):
-            if entry.is_file() and not entry.name.startswith(".") and entry.suffix.lower() in MEDIA_EXTS:
+            if entry.is_file() and is_media(entry):
                 total += entry.stat().st_size
                 count += 1
     except OSError:
@@ -153,7 +170,7 @@ def list_folder_files(path: str) -> list[dict]:
     files = []
     try:
         for f in sorted(root.iterdir()):
-            if f.is_file() and f.suffix.lower() in MEDIA_EXTS and not f.name.startswith("."):
+            if f.is_file() and is_media(f):
                 try:
                     stat = f.stat()
                     files.append({
@@ -283,7 +300,7 @@ def get_folder_previews(path: str) -> list[str]:
             if f.is_file() and f.suffix.lower() in IMAGE_EXTS
         }
         for f in sorted(all_files):
-            if f.is_file() and f.suffix.lower() in MEDIA_EXTS and not f.name.startswith("."):
+            if f.is_file() and is_media(f):
                 match = img_map.get(f.stem.lower())
                 if match:
                     thumb_urls.append(f"/api/vault/thumb?path={quote(str(match))}")
@@ -343,7 +360,7 @@ def get_folder_stats(path: str, linked_playlists: list) -> dict:
                 continue
             file_count += 1
             ext = f.suffix.lower()
-            if ext in MEDIA_EXTS:
+            if is_media(f):
                 try:
                     st = f.stat()
                 except OSError:
@@ -416,7 +433,7 @@ def get_mirror_preview(path: str, vp: list[str], request_opts: dict | None = Non
     file_ids: dict[str, str] = {}
     try:
         for f in p.iterdir():
-            if not f.is_file() or f.suffix.lower() not in MEDIA_EXTS:
+            if not f.is_file() or not is_media(f):
                 continue
             m = _YT_ID_RE.search(f.name)
             if m:
@@ -604,7 +621,7 @@ def generate_archive(folder: str, prune: bool = False) -> dict:
     disk_yt_ids: set[str] = set()
     try:
         for f in p.iterdir():
-            if f.is_file() and f.suffix.lower() in MEDIA_EXTS:
+            if f.is_file() and is_media(f):
                 m = _YT_ID_RE.search(f.name)
                 if m:
                     disk_yt_ids.add(m.group(1))
@@ -648,7 +665,7 @@ def get_cleanup_candidates(path: str, budget_bytes: int) -> dict:
     total = 0
     try:
         for f in p.rglob("*"):
-            if not f.is_file() or f.name.startswith(".") or f.suffix.lower() not in MEDIA_EXTS:
+            if not f.is_file() or not is_media(f):
                 continue
             try:
                 st = f.stat()
@@ -695,7 +712,7 @@ def find_duplicates(folders: list[str]) -> list[dict]:
             continue
         try:
             for f in p.iterdir():
-                if not f.is_file() or f.suffix.lower() not in MEDIA_EXTS:
+                if not f.is_file() or not is_media(f):
                     continue
                 key = str(f)
                 if key in seen_paths:
@@ -795,7 +812,7 @@ def infer_folder_format(path: str) -> dict:
     try:
         for f in Path(path).iterdir():
             ext = f.suffix.lower().lstrip(".")
-            if not f.is_file() or f.suffix.lower() not in MEDIA_EXTS:
+            if not f.is_file() or not is_media(f):
                 continue
             bucket = video if f.suffix.lower() in VIDEO_EXTS else audio
             bucket[ext] = bucket.get(ext, 0) + 1

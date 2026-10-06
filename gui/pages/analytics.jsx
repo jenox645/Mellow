@@ -520,7 +520,7 @@ export function AnalyticsPage({ stats, refreshStats, showNotif }) {
       </div>
 
       {/* SYNC HEALTH */}
-      <div className="chart-panel" style={{ marginBottom: 16 }}>
+      <div className="chart-panel" style={{ marginBottom: 16 }} data-tour="analytics-sync-health">
         <div className="chart-title">Sync Health</div>
         <div className="chart-sub">LAST 10 LIBRARY / VAULT SYNC RUNS</div>
         {(localStats.sync_runs || []).length ? (
@@ -548,7 +548,7 @@ export function AnalyticsPage({ stats, refreshStats, showNotif }) {
       </div>
 
       {/* RECENT DOWNLOADS TABLE */}
-      <div className="chart-panel">
+      <div className="chart-panel" data-tour="analytics-recent">
         <div className="chart-title">Recent Downloads</div>
         <div className="chart-sub">LAST 10 RECORDS FROM DUCKDB</div>
         <table className="data-table">

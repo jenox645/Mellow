@@ -27,12 +27,48 @@ async function prepare(step) {
       }
     }
   }
-  const el = visibleEl(step.target);
+  const el = step.target ? visibleEl(step.target) : null;
   if (el) {
     el.scrollIntoView({ block: 'center', behavior: 'smooth' });
     await wait(TOUR_SCROLL_WAIT_MS);
   }
   return el;
+}
+
+// A made-up sample of what a part shows (tours.js `example`)
+function TourExample({ example }) {
+  if (example.kind === 'file') {
+    return (
+      <div className="tour-ex">
+        <div className="tour-ex-head">📄 {example.name}</div>
+        <pre className="tour-ex-file">{example.lines.join('\n')}</pre>
+      </div>
+    );
+  }
+  if (example.kind === 'pairs') {
+    return (
+      <div className="tour-ex">
+        <div className="tour-ex-head">EXAMPLE</div>
+        {example.pairs.map(([a, b], i) => (
+          <div key={i} className="tour-ex-pair"><span>{a}</span><span className="tour-ex-arrow">→</span><span>{b}</span></div>
+        ))}
+      </div>
+    );
+  }
+  return (
+    <div className="tour-ex">
+      <div className="tour-ex-head">EXAMPLE</div>
+      {example.rows.map((r, i) => (
+        <div key={i} className="tour-ex-row">
+          <div className="tour-ex-main">
+            <div className="tour-ex-text">{r.text}</div>
+            {r.sub && <div className="tour-ex-sub">{r.sub}</div>}
+          </div>
+          {r.badge && <span className={'tour-ex-badge ' + (r.tone || '')}>{r.badge}</span>}
+        </div>
+      ))}
+    </div>
+  );
 }
 
 export function Tour({ name, steps, onClose }) {
@@ -122,8 +158,10 @@ export function Tour({ name, steps, onClose }) {
         </div>
         <div key={idx} className="tour-body">
           <div className="tour-title">{step.title}</div>
-          {!spot && ready && step.missing && <div className="tour-missing">{step.missing}</div>}
+          {!step.target && <div className="tour-concept">HOW IT WORKS</div>}
+          {step.target && !spot && ready && step.missing && <div className="tour-missing">{step.missing}</div>}
           <div className="tour-text">{step.text}</div>
+          {step.example && (!step.example.onlyMissing || (ready && !spot)) && <TourExample example={step.example} />}
           {step.tip && <div className="tour-tip"><span>TIP</span>{step.tip}</div>}
         </div>
         <div className="tour-foot">

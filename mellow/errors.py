@@ -24,8 +24,10 @@ _RULES: list[tuple[str, str, str, str, str | None]] = [
     (r"could not be decrypted|failed to decrypt|dpapi|app.bound",
      "cookies_encrypted",
      "The browser's cookies are encrypted",
-     "Chrome and Edge lock their cookies away from other apps. Use Firefox, or export a "
-     "cookies.txt with a browser extension and choose it in Config → Authentication.",
+     "On Windows, Chrome, Edge, Brave, Opera and Vivaldi encrypt their cookies so that only the browser "
+     "itself can read them. Pick Firefox under Browser Cookies, or export a cookies.txt with the "
+     "\"Get cookies.txt LOCALLY\" extension, set Browser Cookies to Disabled and choose the file under "
+     "Cookies File (Config → Authentication).",
      OPEN_CONFIG),
     (r"could not find \S+ cookies database|could not find (safari|firefox) cookies|"
      r"could not find firefox container",
@@ -48,6 +50,16 @@ _RULES: list[tuple[str, str, str, str, str | None]] = [
     (r"members-only|join this channel|available to this channel's members", "members_only",
      "Members-only video",
      "It needs cookies from an account that is a member of the channel: Config → Authentication.",
+     OPEN_CONFIG),
+    # YouTube tells anyone not signed in that a private playlist "does not exist"
+    (r"playlist does not exist|playlist is private|this playlist (is )?(private|unavailable)"
+     r"|playlist.{0,20}unviewable",
+     "private_playlist",
+     "Private playlist, or it doesn't exist",
+     "Most of the time the playlist is private: YouTube says it doesn't exist to anyone who isn't signed in "
+     "to the account that owns it. In Config → Authentication, set Browser Cookies to a browser signed in "
+     "to that account (on Windows, Firefox or a cookies.txt), TEST, then analyze again. If it still fails, "
+     "check the link.",
      OPEN_CONFIG),
     (r"private video|video is private", "private",
      "Private video",
@@ -114,6 +126,17 @@ _RULES: list[tuple[str, str, str, str, str | None]] = [
      OPEN_CONFIG),
 ]
 _COMPILED = [(re.compile(p, re.IGNORECASE), code, title, hint, action) for p, code, title, hint, action in _RULES]
+
+
+def tidy(messages: list[str]) -> str:
+    """One readable line from a chain of error messages: no "ERROR: ERROR:"
+    prefixes, nothing said twice."""
+    seen: list[str] = []
+    for m in messages:
+        m = re.sub(r"^(\s*ERROR:\s*)+", "", m or "").strip()
+        if m and not any(m in s for s in seen):
+            seen = [s for s in seen if s not in m] + [m]
+    return " — ".join(seen)
 
 
 def annotate(event: dict) -> dict:
