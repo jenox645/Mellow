@@ -19,15 +19,37 @@ test('every page has a tour', () => {
 
 test('every step says something and points at an element the pages mark', () => {
   for (const [id, steps] of Object.entries(TOURS)) {
-    assert.equal(new Set(steps.map(s => s.target)).size, steps.length, id + ': a target twice');
+    const targets = steps.map(s => s.target).filter(Boolean);
+    assert.equal(new Set(targets).size, targets.length, id + ': a target twice');
     for (const s of steps) {
       assert.ok(s.title && s.text, id + ': ' + s.target);
-      assert.ok(tagged(s.target), id + ': nothing is marked data-tour="' + s.target + '"');
+      // A step without a target explains an idea (add-only vs mirror, the archive file)
+      assert.ok(s.target === null || tagged(s.target), id + ': nothing is marked data-tour="' + s.target + '"');
       for (const r of s.reveal || []) {
         assert.ok(tagged(r.click) && tagged(r.unless), id + ': reveal ' + JSON.stringify(r));
       }
     }
   }
+});
+
+test('examples are well formed', () => {
+  const kinds = { rows: 'rows', file: 'lines', pairs: 'pairs' };
+  for (const [id, steps] of Object.entries(TOURS)) {
+    for (const s of steps.filter(st => st.example)) {
+      const list = s.example[kinds[s.example.kind]];
+      assert.ok(Array.isArray(list) && list.length, id + ': ' + s.title);
+      if (s.example.kind === 'file') assert.ok(s.example.name, id + ': ' + s.title);
+      if (s.example.kind === 'rows') assert.ok(list.every(r => r.text), id + ': ' + s.title);
+      if (s.example.kind === 'pairs') assert.ok(list.every(pair => pair.length === 2), id + ': ' + s.title);
+      assert.ok(!s.example.onlyMissing || s.target, id + ': onlyMissing needs a target');
+    }
+  }
+});
+
+test('most steps carry a tip or an example', () => {
+  const steps = Object.values(TOURS).flat();
+  const rich = steps.filter(s => s.tip || s.example).length;
+  assert.ok(rich / steps.length >= 0.75, rich + ' of ' + steps.length);
 });
 
 test('the vault has a tour per view', () => {

@@ -8,6 +8,12 @@ Each release is a `## X.Y.Z` heading followed by `- **Title**: what it does`
 lines. A pull request that raises `APP_VERSION` adds its section here: CI
 fails without one.
 
+## 2.7.0
+- **A deeper GUIDE**: more steps on every page (the archive file, add-only vs mirror, budgets, randomize, presets, file names, cookies…), a tip on almost every step, and made-up examples of what a part looks like before it shows up.
+- **Private playlists explained**: a playlist that "does not exist" is usually private. MellowDLP now says so and how to fix it (your browser's sign-in, in Config → Authentication), with an OPEN CONFIG button on the Feed.
+- **Clearer cookie errors**: when Chrome, Edge or Brave won't share their cookies, the message says what to use instead (Firefox, or a cookies.txt), without repeating yt-dlp's raw error.
+- **Messages stay up long enough to read**: long explanations no longer vanish after 6 seconds.
+
 ## 2.6.0
 - **GUIDE on every page**: click **? GUIDE** at the top (or press G) and MellowDLP walks you through the page you're on, one part at a time: it lights the part up, scrolls to it, opens collapsed panels, and says what it does. ← / → to step, Esc to stop.
 

@@ -128,18 +128,37 @@
     .tour-spot.none{border-color:transparent}
     .tour-spot.none::after{display:none}
     @keyframes tour-pulse{0%{opacity:0.9;transform:scale(1)}100%{opacity:0;transform:scale(1.04)}}
-    .tour-card{position:fixed;width:340px;max-width:calc(100vw - 24px);background:var(--bg1);border:1px solid var(--border2);box-shadow:0 10px 40px rgba(0,0,0,0.6);transition:left 0.4s cubic-bezier(.2,.8,.2,1),top 0.4s cubic-bezier(.2,.8,.2,1),opacity 0.2s}
+    .tour-card{position:fixed;width:380px;max-width:calc(100vw - 24px);max-height:calc(100vh - 24px);display:flex;flex-direction:column;background:var(--bg1);border:1px solid var(--border2);box-shadow:0 10px 40px rgba(0,0,0,0.6);transition:left 0.4s cubic-bezier(.2,.8,.2,1),top 0.4s cubic-bezier(.2,.8,.2,1),opacity 0.2s}
     .tour-card.moving{opacity:0.55}
     .tour-head{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--border);font-family:'Share Tech Mono',monospace;font-size:9px;letter-spacing:0.12em}
     .tour-tag{color:var(--cyan);text-transform:uppercase}
     .tour-count{color:var(--t3);margin-left:auto}
     .tour-x{cursor:pointer;color:var(--t3);padding:0 2px}
     .tour-x:hover{color:var(--red)}
-    .tour-body{padding:14px 16px 6px;animation:tour-in 0.3s ease-out}
+    .tour-body{padding:14px 16px 6px;animation:tour-in 0.3s ease-out;overflow-y:auto;min-height:0}
     @keyframes tour-in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
     .tour-title{font-family:'Oxanium',sans-serif;font-size:15px;font-weight:700;color:var(--t1);letter-spacing:0.04em;margin-bottom:8px}
     .tour-text{font-size:12px;line-height:1.6;color:var(--t2)}
     .tour-missing{font-family:'Share Tech Mono',monospace;font-size:9px;color:var(--amber);letter-spacing:0.08em;margin-bottom:8px}
+    .tour-concept{font-family:'Share Tech Mono',monospace;font-size:9px;color:var(--purple);letter-spacing:0.12em;margin-bottom:8px}
+    .tour-ex{margin-top:10px;border:1px solid var(--border2);background:var(--bg);font-size:11px}
+    .tour-ex-head{font-family:'Share Tech Mono',monospace;font-size:8px;letter-spacing:0.14em;color:var(--t3);padding:5px 9px;border-bottom:1px solid var(--border);text-transform:uppercase}
+    .tour-ex-file{margin:0;padding:7px 9px;font-family:'Share Tech Mono',monospace;font-size:10px;line-height:1.6;color:var(--green);white-space:pre-wrap;word-break:break-all}
+    .tour-ex-pair{display:flex;gap:8px;align-items:baseline;padding:5px 9px;border-bottom:1px solid var(--border);font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--t2)}
+    .tour-ex-pair:last-child,.tour-ex-row:last-child{border-bottom:none}
+    .tour-ex-pair span:first-child{color:var(--cyan);flex:1 1 50%;word-break:break-all}
+    .tour-ex-pair span:last-child{flex:1 1 50%}
+    .tour-ex-arrow{color:var(--t4)}
+    .tour-ex-row{display:flex;align-items:center;gap:10px;padding:6px 9px;border-bottom:1px solid var(--border)}
+    .tour-ex-main{flex:1;min-width:0}
+    .tour-ex-text{color:var(--t1);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .tour-ex-sub{font-family:'Share Tech Mono',monospace;font-size:9px;color:var(--t3);margin-top:2px}
+    .tour-ex-badge{font-family:'Share Tech Mono',monospace;font-size:8px;letter-spacing:0.08em;padding:2px 6px;border:1px solid var(--border2);color:var(--t2);white-space:nowrap}
+    .tour-ex-badge.cyan{color:var(--cyan);border-color:var(--cyan)}
+    .tour-ex-badge.green{color:var(--green);border-color:var(--green)}
+    .tour-ex-badge.red{color:var(--red);border-color:var(--red)}
+    .tour-ex-badge.amber{color:var(--amber);border-color:var(--amber)}
+    .tour-ex-badge.purple{color:var(--purple);border-color:var(--purple)}
     .tour-tip{margin-top:10px;padding:7px 10px;border-left:2px solid var(--cyan);background:var(--cyan3);font-size:11px;line-height:1.5;color:var(--t2)}
     .tour-tip span{font-family:'Share Tech Mono',monospace;font-size:8px;color:var(--cyan);letter-spacing:0.14em;margin-right:8px}
     .tour-foot{display:flex;align-items:center;gap:8px;padding:10px 14px 12px}

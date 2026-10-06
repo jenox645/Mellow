@@ -7,6 +7,8 @@ export const LOADING_MIN_MS = 1000;            // click-to-skip floor
 // Toasts
 export const NOTIF_TIMEOUT_MS = 6000;
 export const NOTIF_ACTION_TIMEOUT_MS = 12000;  // toasts with buttons linger
+export const NOTIF_READ_MS_PER_CHAR = 45;      // long explanations stay up long enough to read…
+export const NOTIF_MAX_TIMEOUT_MS = 30000;     // …up to this
 
 // Analyze
 export const ANALYZE_SLOW_MS = 15000;          // show the "still analyzing" hint after this

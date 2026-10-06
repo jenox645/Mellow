@@ -10,6 +10,8 @@ import { API } from './lib/api.js';
 import {
   CLIPBOARD_URL_RE,
   NOTIF_ACTION_TIMEOUT_MS,
+  NOTIF_MAX_TIMEOUT_MS,
+  NOTIF_READ_MS_PER_CHAR,
   NOTIF_TIMEOUT_MS,
   PAGE_ORDER,
   STATS_POLL_ACTIVE_MS,
@@ -126,10 +128,9 @@ function App() {
   const showNotif = React.useCallback((title, body, type = 'info', actions = null) => {
     setNotif({ title, body, type, actions });
     if (notifTimer.current) clearTimeout(notifTimer.current);
-    notifTimer.current = setTimeout(
-      () => setNotif(null),
-      actions ? NOTIF_ACTION_TIMEOUT_MS : NOTIF_TIMEOUT_MS
-    );
+    const base = actions ? NOTIF_ACTION_TIMEOUT_MS : NOTIF_TIMEOUT_MS;
+    const reading = String(body || '').length * NOTIF_READ_MS_PER_CHAR;
+    notifTimer.current = setTimeout(() => setNotif(null), Math.min(Math.max(base, reading), NOTIF_MAX_TIMEOUT_MS));
   }, []);
 
   // GET FFMPEG: download, check and install it (progress: ffmpeg_install events)
@@ -463,6 +464,7 @@ function App() {
             onPause={() => API.post('/api/download/pause', {}).catch(() => {})}
             onResume={() => API.post('/api/download/resume', {}).catch(() => {})}
             onClearCompleted={() => setCompletedItems([])}
+            errorActions={errorActions}
           />
         )}
         {page === 'queue' && (

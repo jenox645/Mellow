@@ -15,7 +15,7 @@ import {
   ANALYZE_SLOW_MS, AUDIO_FORMATS, AUDIO_QUALITIES, CONTAINERS, LOSSLESS_AUDIO, QUALITIES,
 } from '../lib/constants.js';
 
-export function FeedPage({ dlState, stats, sysInfo, refreshStats, showNotif, switchPage, config, setConfig, suggestedUrl, onSuggestedConsumed, onPlaylistDownload, playlistItems, setPlaylistItems, completedItems, failedItems, playlistTotalCount, playlistCompletedCount, isPaused, syncJobLabel, fetchingPlaylistItems, onPause, onResume, onClearCompleted }) {
+export function FeedPage({ dlState, stats, sysInfo, refreshStats, showNotif, switchPage, config, setConfig, suggestedUrl, onSuggestedConsumed, onPlaylistDownload, playlistItems, setPlaylistItems, completedItems, failedItems, playlistTotalCount, playlistCompletedCount, isPaused, syncJobLabel, fetchingPlaylistItems, onPause, onResume, onClearCompleted, errorActions }) {
   // Kept in sessionStorage: the Feed comes back as it was after switching pages
   const [url, setUrl] = useSessionState('feed_url', '');
   const [analyzing, setAnalyzing] = React.useState(false);
@@ -106,7 +106,7 @@ export function FeedPage({ dlState, stats, sysInfo, refreshStats, showNotif, swi
         })
         .catch(e => {
           const d = e.data || {};
-          showNotif(d.title || 'Search Failed', d.hint || e.message, 'error');
+          showNotif(d.title || 'Search Failed', d.hint || e.message, 'error', errorActions && errorActions(d.action));
         })
         .finally(() => setAnalyzing(false));
       return;
@@ -134,10 +134,10 @@ export function FeedPage({ dlState, stats, sysInfo, refreshStats, showNotif, swi
       .catch(e => {
         // Explained when the backend recognises it; the raw text otherwise
         const d = e.data || {};
-        showNotif(d.title || 'Error', d.hint || e.message, 'error');
+        showNotif(d.title || 'Error', d.hint || e.message, 'error', errorActions && errorActions(d.action));
       })
       .finally(() => setAnalyzing(false));
-  }, [url, showNotif, setPlaylistItems]);
+  }, [url, showNotif, setPlaylistItems, errorActions]);
 
   // Clipboard watcher accepted: load the detected URL and analyze right away
   React.useEffect(() => {
@@ -407,7 +407,7 @@ export function FeedPage({ dlState, stats, sysInfo, refreshStats, showNotif, swi
                 : (analyzing ? 'SEARCHING...' : 'SEARCH →')}
             </button>
           )}
-          <button className="btn btn-secondary btn-sm" onClick={handlePaste}>PASTE</button>
+          <button className="btn btn-secondary btn-sm" data-tour="feed-paste" onClick={handlePaste}>PASTE</button>
           <button className="btn btn-secondary btn-sm" data-tour="feed-import" onClick={handleImportFile} title="Import URLs from .txt file">IMPORT FILE</button>
         </div>
         <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: 'var(--t4)', padding: '0 18px 8px', marginTop: -10 }}>
@@ -436,7 +436,7 @@ export function FeedPage({ dlState, stats, sysInfo, refreshStats, showNotif, swi
         <div className={'opts-panel' + (optsOpen ? ' open' : '')} data-tour="feed-options">
           <div className="opts-inner">
             {/* PRESETS — one-click saved option bundles */}
-            <div className="opts-row">
+            <div className="opts-row" data-tour="feed-presets">
               <span className="opts-label">PRESETS</span>
               <div className="pills" style={{ alignItems: 'center' }}>
                 {(config.download_presets || []).map(p => (

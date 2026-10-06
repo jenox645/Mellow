@@ -18,7 +18,8 @@ from mellow import errors, jobs
      'geo_blocked', errors.OPEN_CONFIG),
     ('ERROR: Sign in to confirm your age. This video may be inappropriate for some users.',
      'bot_check', errors.OPEN_CONFIG),  # yt-dlp words both the same way; either fix is cookies
-    ('ERROR: [youtube:tab] PLx: YouTube said: The playlist does not exist.', 'unavailable', None),
+    ('ERROR: [youtube:tab] PLx: YouTube said: The playlist does not exist.', 'private_playlist', errors.OPEN_CONFIG),
+    ('ERROR: [youtube:tab] PLx: YouTube said: This playlist is private.', 'private_playlist', errors.OPEN_CONFIG),
     ('ERROR: [youtube] aaaaaaaaaaa: This video is unavailable', 'unavailable', None),
     ('ERROR: Unsupported URL: https://example.com/page', 'unsupported', errors.UPDATE_YTDLP),
     ('ERROR: [youtube] abc: Requested format is not available', 'format', None),
@@ -34,6 +35,16 @@ def test_known_errors_are_explained(raw, code, action):
     found = errors.explain(raw)
     assert found and found['code'] == code and found['action'] == action
     assert found['title'] and found['hint']
+
+
+def test_cookie_error_chains_read_as_one_line():
+    chain = ['ERROR: ERROR: Failed to decrypt with DPAPI. See https://github.com/yt-dlp/yt-dlp/issues/10927 for more info',
+             'failed to load cookies',
+             'ERROR: Failed to decrypt with DPAPI. See https://github.com/yt-dlp/yt-dlp/issues/10927 for more info']
+    assert errors.tidy(chain) == ('Failed to decrypt with DPAPI. See https://github.com/yt-dlp/yt-dlp/issues/10927 '
+                                  'for more info — failed to load cookies')
+    assert errors.explain(errors.tidy(chain))['code'] == 'cookies_encrypted'
+    assert 'Brave' in errors.explain(errors.tidy(chain))['hint']
 
 
 def test_unknown_error_is_left_alone():

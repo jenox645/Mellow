@@ -104,7 +104,8 @@ export function ConfigPage({ config, setConfig, showNotif, installAppUpdate, onA
       })
       .catch(e => {
         const d = e.data || {};
-        showNotif(d.title || 'Cookies Not Readable', d.hint ? d.hint + ' (' + e.message + ')' : e.message, 'error');
+        // The hint says what to do; yt-dlp's own words only when nothing explains them
+        showNotif(d.title || 'Cookies Not Readable', d.hint || e.message, 'error');
       })
       .finally(() => setTestingCookies(false));
   };
@@ -216,7 +217,7 @@ export function ConfigPage({ config, setConfig, showNotif, installAppUpdate, onA
                   <span style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: 'var(--t3)' }}>~/.mellow_dlp.duckdb</span>
                 </div>
               </div>
-              <div className="settings-row">
+              <div className="settings-row" data-tour="config-template">
                 <div className="settings-label">
                   <div className="sl-name">Filename Template</div>
                   <div className="sl-sub">yt-dlp output template — a "/" makes subfolders</div>
@@ -232,7 +233,7 @@ export function ConfigPage({ config, setConfig, showNotif, installAppUpdate, onA
                     value={local.filename_template || ''} onChange={e => set('filename_template', e.target.value)} placeholder="%(title)s [%(id)s].%(ext)s" />
                 </div>
               </div>
-              <div className="settings-row">
+              <div className="settings-row" data-tour="config-archive">
                 <div className="settings-label">
                   <div className="sl-name">Download Archive File</div>
                   <div className="sl-sub">mellow_archive.txt — tracks downloaded items, import as URL list</div>
@@ -625,7 +626,7 @@ export function ConfigPage({ config, setConfig, showNotif, installAppUpdate, onA
                   <span style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 10, color: 'var(--cyan)' }}>{fmtBytes(sysInfo.db_size_bytes || 0)}</span>
                 </div>
               </div>
-              <div className="settings-row">
+              <div className="settings-row" data-tour="config-log">
                 <div className="settings-label">
                   <div className="sl-name">Log File</div>
                   <div className="sl-sub">{sysInfo.log_path || 'What happened, for troubleshooting or a bug report'}</div>
@@ -773,7 +774,7 @@ export function ConfigPage({ config, setConfig, showNotif, installAppUpdate, onA
           </div>
 
           {/* DANGER ZONE */}
-          <div className="cfg-panel cfg-danger">
+          <div className="cfg-panel cfg-danger" data-tour="config-danger">
             <div className="cfg-ph">
               <span className="ptag red">DANGER</span>
               <span className="ptitle" style={{ color: 'var(--red)' }}>DANGER ZONE</span>
