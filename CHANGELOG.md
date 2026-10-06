@@ -12,6 +12,7 @@ fails without one.
 - **A deeper GUIDE**: more steps on every page (the archive file, add-only vs mirror, budgets, randomize, presets, file names, cookies…), a tip on almost every step, and made-up examples of what a part looks like before it shows up.
 - **Private playlists explained**: a playlist that "does not exist" is usually private. MellowDLP now says so and how to fix it (your browser's sign-in, in Config → Authentication), with an OPEN CONFIG button on the Feed.
 - **Clearer cookie errors**: when Chrome, Edge or Brave won't share their cookies, the message says what to use instead (Firefox, or a cookies.txt), without repeating yt-dlp's raw error.
+- **No more silent videos in the vault**: when a playlist item failed halfway, the video part yt-dlp had already downloaded ("Title.f399.mp4", no sound) showed up as a finished video and was marked as downloaded. It's now ignored, and the next sync finishes that video properly.
 - **Messages stay up long enough to read**: long explanations no longer vanish after 6 seconds.
 
 ## 2.6.0
