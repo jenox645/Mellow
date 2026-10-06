@@ -8,6 +8,9 @@ Each release is a `## X.Y.Z` heading followed by `- **Title**: what it does`
 lines. A pull request that raises `APP_VERSION` adds its section here: CI
 fails without one.
 
+## 2.6.0
+- **GUIDE on every page**: click **? GUIDE** at the top (or press G) and MellowDLP walks you through the page you're on, one part at a time: it lights the part up, scrolls to it, opens collapsed panels, and says what it does. ← / → to step, Esc to stop.
+
 ## 2.5.1
 - **Opens without Chrome or Edge**: on a Linux system with no Chromium-based browser, MellowDLP opens in your default browser instead of starting with no window.
 - **GET FFMPEG and antivirus**: when an antivirus scan briefly locks the new ffmpeg on Windows, GET FFMPEG waits for it instead of failing with "Access is denied".

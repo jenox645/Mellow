@@ -382,7 +382,7 @@ export function FeedPage({ dlState, stats, sysInfo, refreshStats, showNotif, swi
           <span className="ptitle">URL PASTE — URLを貼り付け</span>
           <span className="psub">PASTE URL HERE</span>
         </div>
-        <div className="url-row">
+        <div className="url-row" data-tour="feed-url">
           <div className="url-input-wrap">
             <input
               className="url-input"
@@ -395,6 +395,7 @@ export function FeedPage({ dlState, stats, sysInfo, refreshStats, showNotif, swi
           </div>
           <button
             className={'btn btn-secondary btn-sm' + (optsOpen ? ' active-btn' : '')}
+            data-tour="feed-options-btn"
             onClick={() => setOptsOpen(o => !o)}
           >
             OPTIONS
@@ -407,7 +408,7 @@ export function FeedPage({ dlState, stats, sysInfo, refreshStats, showNotif, swi
             </button>
           )}
           <button className="btn btn-secondary btn-sm" onClick={handlePaste}>PASTE</button>
-          <button className="btn btn-secondary btn-sm" onClick={handleImportFile} title="Import URLs from .txt file">IMPORT FILE</button>
+          <button className="btn btn-secondary btn-sm" data-tour="feed-import" onClick={handleImportFile} title="Import URLs from .txt file">IMPORT FILE</button>
         </div>
         <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: 'var(--t4)', padding: '0 18px 8px', marginTop: -10 }}>
           ENTER: {!url.trim() ? 'paste' : !info && !analyzing ? (isLinkLike(url) ? 'analyze' : 'search') : 'download'}
@@ -420,7 +421,7 @@ export function FeedPage({ dlState, stats, sysInfo, refreshStats, showNotif, swi
         </div>
 
         {/* SAVE TO — this download's folder; ↑/↓ recall the ones used before */}
-        <div className="save-to-row">
+        <div className="save-to-row" data-tour="feed-save-to">
           <span className="opts-label">SAVE TO</span>
           <FolderInput
             value={downloadPath}
@@ -432,7 +433,7 @@ export function FeedPage({ dlState, stats, sysInfo, refreshStats, showNotif, swi
         </div>
 
         {/* OPTIONS PANEL */}
-        <div className={'opts-panel' + (optsOpen ? ' open' : '')}>
+        <div className={'opts-panel' + (optsOpen ? ' open' : '')} data-tour="feed-options">
           <div className="opts-inner">
             {/* PRESETS — one-click saved option bundles */}
             <div className="opts-row">
@@ -523,10 +524,12 @@ export function FeedPage({ dlState, stats, sysInfo, refreshStats, showNotif, swi
               </>
             )}
 
+            <div data-tour="feed-toggles">
             <FormatToggles values={toggles} onChange={setToggle} media={mode} hints={{
               embed_subs: 'Embedded in the video — languages: ' + (config.sub_langs || 'en')
                 + (config.keep_sub_files ? ', also kept as .srt files' : '') + ' (Config → Download Defaults)',
             }} />
+            </div>
 
             {videoChapters.length > 0 && (
               <div className="opts-advanced">
@@ -560,12 +563,12 @@ export function FeedPage({ dlState, stats, sysInfo, refreshStats, showNotif, swi
               </div>
             )}
 
-            <div className="opts-advanced">
-              <div className="opts-adv-toggle" onClick={() => setAdvOpen(o => !o)}>
+            <div className="opts-advanced" data-tour="feed-advanced">
+              <div className="opts-adv-toggle" data-tour="feed-advanced-toggle" onClick={() => setAdvOpen(o => !o)}>
                 <span dangerouslySetInnerHTML={{ __html: advOpen ? SVG.chevron_down : SVG.chevron_right }} />
                 ADVANCED OPTIONS
               </div>
-              <div className={'opts-adv-body' + (advOpen ? ' open' : '')}>
+              <div className={'opts-adv-body' + (advOpen ? ' open' : '')} data-tour="feed-advanced-body">
                 <div className="opts-adv-grid">
                   <div>
                     <div className="inp-label">CLIP START (HH:MM:SS)</div>
@@ -586,7 +589,7 @@ export function FeedPage({ dlState, stats, sysInfo, refreshStats, showNotif, swi
         </div>
 
         {/* INFO CARD */}
-        <div className={'info-card' + (info ? ' open' : '')}>
+        <div className={'info-card' + (info ? ' open' : '')} data-tour="feed-info">
           {info && (
             <div className="info-inner">
               {/* LEFT: thumbnail block — fixed 160×90, no border-radius */}
@@ -671,7 +674,7 @@ export function FeedPage({ dlState, stats, sysInfo, refreshStats, showNotif, swi
       )}
 
       {/* ACTIVE DOWNLOAD PANEL */}
-      <div className={'dl-panel panel' + (isDownloading ? ' open' : '')} style={{ marginBottom: 16 }}>
+      <div className={'dl-panel panel' + (isDownloading ? ' open' : '')} style={{ marginBottom: 16 }} data-tour="feed-progress">
         <div className="panel-hud" /><div className="panel-hud-br" />
         <div className="ph">
           <span className="ptag">ACTIVE</span>

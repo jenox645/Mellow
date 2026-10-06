@@ -33,9 +33,12 @@ import { AnalyticsPage } from './pages/analytics.jsx';
 import { SignalApiPage } from './pages/signal.jsx';
 import { ConfigPage } from './pages/config.jsx';
 import { AddVaultModal } from './components/vault-modals.jsx';
+import { Tour } from './components/tour.jsx';
+import { TOURS, tourIdFor } from './lib/tours.js';
 
 const KEYBOARD_SHORTCUTS = [
   ['1 – 6', 'Jump to Feed / Queue / Vault / Analytics / Signal / Config'],
+  ['G', 'Guide: what each part of this page does'],
   ['?', 'Toggle this help'],
   ['Esc', 'Close dialogs'],
   ['Enter (Feed)', 'Paste → Analyze → Download'],
@@ -103,6 +106,16 @@ function App() {
   const toastedVersion = React.useRef(null);
   const [clipboardSuggestion, setClipboardSuggestion] = React.useState(null);
   const [shortcutHelp, setShortcutHelp] = React.useState(false);
+  const [tourId, setTourId] = React.useState(null);
+  // GUIDE: the tour of the page on screen (the vault has one per view)
+  const startGuide = React.useCallback(() => {
+    setShortcutHelp(false);
+    setTourId(tourIdFor(page, !!document.querySelector('[data-tour="vault-back"]')));
+  }, [page]);
+  const closeGuide = React.useCallback(() => setTourId(null), []);
+  const startGuideRef = React.useRef(startGuide);
+  startGuideRef.current = startGuide;
+  React.useEffect(() => { setTourId(null); }, [page]);
   const configRef = React.useRef(config);
   const notifTimer = React.useRef(null);
   const victoryTimer = React.useRef(null);
@@ -334,6 +347,8 @@ function App() {
       const num = parseInt(e.key, 10);
       if (num >= 1 && num <= PAGE_ORDER.length) {
         setPage(PAGE_ORDER[num - 1]);
+      } else if (e.key === 'g' || e.key === 'G') {
+        startGuideRef.current();
       } else if (e.key === '?') {
         setShortcutHelp(s => !s);
       } else if (e.key === 'Escape') {
@@ -421,7 +436,7 @@ function App() {
       />
 
       <div className="main">
-        <TopBar page={page} />
+        <TopBar page={page} onGuide={startGuide} />
 
         {page === 'feed' && (
           <FeedPage
@@ -571,6 +586,11 @@ function App() {
       )}
 
       {shortcutHelp && <ShortcutHelpOverlay onClose={() => setShortcutHelp(false)} />}
+
+      {tourId && (
+        <Tour key={tourId} name={tourId === 'vault_folder' ? 'VAULT FOLDER' : tourId.toUpperCase()}
+          steps={TOURS[tourId]} onClose={closeGuide} />
+      )}
 
       {restorableJobs && (
         <Modal
