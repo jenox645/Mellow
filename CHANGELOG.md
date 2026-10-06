@@ -8,6 +8,9 @@ Each release is a `## X.Y.Z` heading followed by `- **Title**: what it does`
 lines. A pull request that raises `APP_VERSION` adds its section here: CI
 fails without one.
 
+## 2.8.1
+- **"This video is not available" explained**: YouTube's catch-all refusal now says what usually lifts it (a signed-in browser's cookies, in Config → Authentication), with an OPEN CONFIG button, instead of the raw error.
+
 ## 2.8.0
 - **Starts faster**: the installed app is now a folder of files instead of one exe that unpacked itself (and was scanned by the antivirus) at every launch. It starts about 2.5× faster, more on a laptop with Windows Defender. The portable exe stays a single file.
 - **Big vault folders open about 4× faster**: only the thumbnails on screen load (the rest as you scroll), each one once, and cards off screen cost nothing until you scroll to them.
