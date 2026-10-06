@@ -74,6 +74,15 @@ _RULES: list[tuple[str, str, str, str, str | None]] = [
      "Not published yet",
      "It is a scheduled premiere or live stream. Try again once it has started.",
      None),
+    # YouTube's catch-all: it says this to a session it won't play the video
+    # to (removed, Premium/members-only, age- or region-limited without a
+    # sign-in) without saying which. A signed-in browser's cookies often open it.
+    (r"this video is not available|video is not available", "not_available",
+     "YouTube won't play this video to MellowDLP",
+     "Open the link in your browser. If it plays there while you're signed in, MellowDLP needs that "
+     "sign-in: Config → Authentication → Browser Cookies (on Windows, Firefox or a cookies.txt), then try "
+     "again. If it doesn't play there either, it was removed or isn't available in your country.",
+     OPEN_CONFIG),
     (r"video (is )?unavailable|has been removed|no longer available|account .{0,40}terminated|does not exist",
      "unavailable",
      "Video unavailable",

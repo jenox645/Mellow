@@ -21,6 +21,8 @@ from mellow import errors, jobs
     ('ERROR: [youtube:tab] PLx: YouTube said: The playlist does not exist.', 'private_playlist', errors.OPEN_CONFIG),
     ('ERROR: [youtube:tab] PLx: YouTube said: This playlist is private.', 'private_playlist', errors.OPEN_CONFIG),
     ('ERROR: [youtube] aaaaaaaaaaa: This video is unavailable', 'unavailable', None),
+    # The user's Short: YouTube's generic refusal, often lifted by a signed-in browser's cookies
+    ('ERROR: [youtube] dNqn1P8Omeo: This video is not available', 'not_available', errors.OPEN_CONFIG),
     ('ERROR: Unsupported URL: https://example.com/page', 'unsupported', errors.UPDATE_YTDLP),
     ('ERROR: [youtube] abc: Requested format is not available', 'format', None),
     ('<urlopen error [Errno 11001] getaddrinfo failed>', 'network', errors.OPEN_CONFIG),
