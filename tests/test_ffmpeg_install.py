@@ -239,3 +239,55 @@ def test_gives_up_with_a_plain_message_when_it_stays_locked(tmp_path):
     assert sleep.call_count == ffmpeg_install.FFMPEG_SWAP_ATTEMPTS
     assert not ffmpeg_locate.MANAGED_DIR.exists()
     assert _leftovers(tmp_path) == []
+
+
+def test_a_locked_swap_keeps_the_ffmpeg_already_installed(tmp_path):
+    managed = ffmpeg_locate.MANAGED_DIR
+    managed.mkdir()
+    (managed / 'ffmpeg.exe').write_bytes(b'MZ old ffmpeg')
+    real_replace = type(tmp_path).replace
+
+    def staging_locked(self, target):
+        if self.name.endswith('.new'):      # the new build's folder stays locked
+            raise PermissionError(5, 'Access is denied')
+        return real_replace(self, target)
+
+    with patch('mellow.ffmpeg_install._EXE', '.exe'), \
+            patch('mellow.ffmpeg_install._probe', return_value='ffmpeg version 9.0'), \
+            patch('mellow.ffmpeg_install.time.sleep'), \
+            patch.object(type(tmp_path), 'replace', staging_locked):
+        events, _ = _install(_site({WIN: _windows_build()}), plat='win64')
+    assert events[-1]['stage'] == 'error'
+    assert (managed / 'ffmpeg.exe').read_bytes() == b'MZ old ffmpeg'
+    assert _leftovers(tmp_path) == []
+
+
+def test_an_update_replaces_the_ffmpeg_already_installed(tmp_path):
+    managed = ffmpeg_locate.MANAGED_DIR
+    managed.mkdir()
+    (managed / 'ffmpeg.exe').write_bytes(b'MZ old ffmpeg')
+    with patch('mellow.ffmpeg_install._EXE', '.exe'), \
+            patch('mellow.ffmpeg_install._probe', return_value='ffmpeg version 9.0'):
+        events, _ = _install(_site({WIN: _windows_build()}), plat='win64')
+    assert events[-1]['stage'] == 'done'
+    assert (managed / 'ffmpeg.exe').read_bytes() == b'MZ ffmpeg'
+    assert _leftovers(tmp_path) == []
+
+
+def test_any_failed_swap_puts_the_old_ffmpeg_back(tmp_path):
+    managed = ffmpeg_locate.MANAGED_DIR
+    managed.mkdir()
+    (managed / 'ffmpeg.exe').write_bytes(b'MZ old ffmpeg')
+    real_replace = type(tmp_path).replace
+
+    def disk_error(self, target):
+        if self.name.endswith('.new'):
+            raise OSError(5, 'I/O error')
+        return real_replace(self, target)
+
+    with patch('mellow.ffmpeg_install._EXE', '.exe'), \
+            patch('mellow.ffmpeg_install._probe', return_value='ffmpeg version 9.0'), \
+            patch.object(type(tmp_path), 'replace', disk_error):
+        events, _ = _install(_site({WIN: _windows_build()}), plat='win64')
+    assert events[-1]['stage'] == 'error'
+    assert (managed / 'ffmpeg.exe').read_bytes() == b'MZ old ffmpeg'

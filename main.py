@@ -3,9 +3,11 @@ from __future__ import annotations
 import atexit
 import json
 import logging
+import os
 import socket
 import sys
 import threading
+import time
 import webbrowser
 from pathlib import Path
 from urllib.request import urlopen
@@ -20,6 +22,9 @@ WINDOW_WIDTH = 1100
 WINDOW_HEIGHT = 780
 INSTANCE_PROBE_TIMEOUT_SECS = 2
 BROWSER_OPEN_DELAY_SECS = 1      # let the server start listening first
+PAGE_WATCH_INTERVAL_SECS = 2
+PAGE_GONE_EXIT_SECS = 30        # a reload or a short network hiccup reconnects well before
+FIRST_PAGE_TIMEOUT_SECS = 120
 
 # Written on startup with the live port; lets a second launch find us
 PORT_FILE = Path.home() / ".mellow_dlp.port"
@@ -123,10 +128,46 @@ def _run_window(flask_app, port: int) -> None:
         # with no window: open the default browser instead
         url = f"http://127.0.0.1:{port}"
         log.warning(f"no Chromium-based browser found: opening {url} in the default browser")
-        threading.Timer(BROWSER_OPEN_DELAY_SECS, webbrowser.open, (url,)).start()
+        threading.Timer(BROWSER_OPEN_DELAY_SECS, _open_in_browser, (url,)).start()
+        threading.Thread(target=_watch_pages, daemon=True).start()
         flask_app.run(host="127.0.0.1", port=port, threaded=True)
         return
     ui.run()
+
+
+def _open_in_browser(url: str) -> None:
+    if not webbrowser.open(url):
+        log.error(f"couldn't open a browser: open {url} yourself")
+        print(f"MellowDLP: open {url} in your browser", flush=True)
+
+
+def _watch_pages(sleep=time.sleep, clock=time.monotonic) -> None:
+    """In a browser tab there is no window whose closing ends the app: quit
+    once no page has been open for PAGE_GONE_EXIT_SECS and nothing downloads,
+    or when no page ever connected within FIRST_PAGE_TIMEOUT_SECS."""
+    from mellow import jobs, server
+    started = clock()
+    seen = False
+    gone_since = None
+    while True:
+        sleep(PAGE_WATCH_INTERVAL_SECS)
+        now = clock()
+        if server.open_pages():
+            seen, gone_since = True, None
+            continue
+        if jobs.manager.has_active():
+            continue
+        if not seen:
+            if now - started < FIRST_PAGE_TIMEOUT_SECS:
+                continue
+            log.info("no page ever connected: quitting")
+            break
+        gone_since = gone_since or now
+        if now - gone_since >= PAGE_GONE_EXIT_SECS:
+            log.info("the MellowDLP tab was closed: quitting")
+            break
+    _remove_port_file()
+    os._exit(0)
 
 
 if __name__ == "__main__":

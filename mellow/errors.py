@@ -37,7 +37,7 @@ _RULES: list[tuple[str, str, str, str, str | None]] = [
      OPEN_CONFIG),
     (r"failed to load cookies|unsupported browser", "cookies",
      "Couldn't load the cookies",
-     "Check Config → Authentication (TEST shows what's wrong).",
+     "Check the browser and profile in Config → Authentication, or use a cookies.txt file instead.",
      OPEN_CONFIG),
     (r"sign in to confirm|not a bot", "bot_check",
      "YouTube wants a sign-in to confirm you're not a bot",
@@ -52,8 +52,8 @@ _RULES: list[tuple[str, str, str, str, str | None]] = [
      "It needs cookies from an account that is a member of the channel: Config → Authentication.",
      OPEN_CONFIG),
     # YouTube tells anyone not signed in that a private playlist "does not exist"
-    (r"playlist does not exist|playlist is private|this playlist (is )?(private|unavailable)"
-     r"|playlist.{0,20}unviewable",
+    # (not "This playlist type is unviewable": that's a Mix, which no sign-in opens)
+    (r"playlist does not exist|playlist is private|this playlist (is )?(private|unavailable)",
      "private_playlist",
      "Private playlist, or it doesn't exist",
      "Most of the time the playlist is private: YouTube says it doesn't exist to anyone who isn't signed in "

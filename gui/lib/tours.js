@@ -13,6 +13,8 @@
 // `onlyMissing: true` shows it only while the real part isn't on screen.
 'use strict';
 
+import { TOUR_CARD_GAP_PX, TOUR_CARD_MARGIN_PX } from './constants.js';
+
 const OPTIONS = { click: 'feed-options-btn', unless: 'feed-options' };
 
 export const TOURS = {
@@ -487,7 +489,7 @@ export function tourIdFor(page, vaultFolderOpen) {
 
 // Where the explanation card goes: below the target if it fits, else above,
 // else beside it; always inside the window. Rects are {left, top, width, height}.
-export function placeCard(target, card, viewport, gap = 14, margin = 12) {
+export function placeCard(target, card, viewport, gap = TOUR_CARD_GAP_PX, margin = TOUR_CARD_MARGIN_PX) {
   const clampX = x => Math.max(margin, Math.min(x, viewport.width - card.width - margin));
   const clampY = y => Math.max(margin, Math.min(y, viewport.height - card.height - margin));
   if (!target) {

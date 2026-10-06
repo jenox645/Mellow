@@ -83,6 +83,12 @@ def _sse_unsubscribe(q: queue.Queue) -> None:
             _sse_subscribers.remove(q)
 
 
+def open_pages() -> int:
+    """How many app pages are connected (each keeps an /api/progress stream open)."""
+    with _sse_lock:
+        return len(_sse_subscribers)
+
+
 # ── Download job queue ────────────────────────────────────────────────────────
 # Owned by jobs.JobManager (worker pool, reordering, persistence). The alias
 # keeps call sites readable.

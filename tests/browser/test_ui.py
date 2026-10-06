@@ -225,6 +225,16 @@ def test_whats_new_shows_once_after_an_update_and_from_config(page, app_url):
     expect(modal.locator(".wn-release")).to_have_count(len(__import__("mellow.changelog").changelog.load()))
 
 
+def _step_to(page, title):
+    """Step through the guide at a reading pace (each step settles) until `title`."""
+    for _ in range(20):
+        if page.locator(".tour-card .tour-title").inner_text() == title:
+            return
+        page.keyboard.press("ArrowRight")
+        page.wait_for_timeout(800)
+    raise AssertionError("no guide step " + title)
+
+
 def test_the_guide_walks_through_a_page(page, downloads):
     page.locator(".topbar-guide").click()
     card = page.locator(".tour-card")
@@ -233,17 +243,31 @@ def test_the_guide_walks_through_a_page(page, downloads):
     expect(page.locator(".tour-spot")).not_to_have_class(re.compile("none"))
     # The format step opens the collapsed OPTIONS panel to point at it
     expect(page.locator(".opts-panel")).not_to_have_class(re.compile("open"))
-    while card.locator(".tour-title").inner_text() != "Format and quality":
-        page.keyboard.press("ArrowRight")
+    _step_to(page, "Format and quality")
     expect(page.locator(".opts-panel")).to_have_class(re.compile("open"))
     # Nothing analyzed yet: that step says when it shows up
-    while card.locator(".tour-title").inner_text() != "Before you download":
-        page.keyboard.press("ArrowRight")
+    _step_to(page, "Before you download")
     expect(card.locator(".tour-missing")).to_have_text(re.compile("after ANALYZE"))
     # …with a made-up sample of what it will show
     expect(card.locator(".tour-ex")).to_contain_text("ALREADY DOWNLOADED")
     page.keyboard.press("Escape")
     expect(page.locator(".tour-root")).to_have_count(0)
+    # The panels it opened are closed again
+    expect(page.locator(".opts-panel")).not_to_have_class(re.compile("open"))
+    expect(page.locator(".opts-adv-body").last).not_to_have_class(re.compile("open"))
+
+
+def test_the_guide_survives_fast_key_presses(page, downloads):
+    page.keyboard.press("g")
+    card = page.locator(".tour-card")
+    # Rush through the steps that open OPTIONS: each used to click its toggle
+    # again while it was still opening, closing it
+    for _ in range(5):
+        page.keyboard.press("ArrowRight")
+    expect(card.locator(".tour-title")).to_have_text("Presets")
+    page.wait_for_timeout(1500)
+    expect(page.locator(".opts-panel")).to_have_class(re.compile("open"))
+    expect(page.locator(".tour-spot")).not_to_have_class(re.compile("none"))
 
 
 def test_the_guide_has_a_tour_for_an_open_vault_folder(page, downloads):

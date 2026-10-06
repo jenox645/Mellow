@@ -104,8 +104,10 @@ export function ConfigPage({ config, setConfig, showNotif, installAppUpdate, onA
       })
       .catch(e => {
         const d = e.data || {};
-        // The hint says what to do; yt-dlp's own words only when nothing explains them
-        showNotif(d.title || 'Cookies Not Readable', d.hint || e.message, 'error');
+        // The hint says what to do. yt-dlp's own words follow, except where the hint already
+        // says it all (encrypted cookies: the raw text repeats a DPAPI error and an issue link)
+        const body = !d.hint ? e.message : d.code === 'cookies_encrypted' ? d.hint : d.hint + ' (' + e.message + ')';
+        showNotif(d.title || 'Cookies Not Readable', body, 'error');
       })
       .finally(() => setTestingCookies(false));
   };

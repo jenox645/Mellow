@@ -8,6 +8,13 @@ Each release is a `## X.Y.Z` heading followed by `- **Title**: what it does`
 lines. A pull request that raises `APP_VERSION` adds its section here: CI
 fails without one.
 
+## 2.7.1
+- **GET FFMPEG keeps your ffmpeg if an update can't finish**: the one already installed is set aside and put back, instead of being deleted first.
+- **Unfinished parts are cleaned up**: a part of a video that no sync could finish for a week (the video left the playlist or stays private) is deleted, so it doesn't take space unseen.
+- **YouTube Mixes aren't called private**: "This playlist type is unviewable" no longer suggests setting up cookies, which can't open a Mix.
+- **In a browser tab (no Chrome or Edge on Linux), MellowDLP quits when you close the tab**, once nothing is downloading.
+- **The GUIDE tidies up**: it closes the panels it opened, and fast key presses no longer close OPTIONS on it.
+
 ## 2.7.0
 - **A deeper GUIDE**: more steps on every page (the archive file, add-only vs mirror, budgets, randomize, presets, file names, cookies…), a tip on almost every step, and made-up examples of what a part looks like before it shows up.
 - **Private playlists explained**: a playlist that "does not exist" is usually private. MellowDLP now says so and how to fix it (your browser's sign-in, in Config → Authentication), with an OPEN CONFIG button on the Feed.

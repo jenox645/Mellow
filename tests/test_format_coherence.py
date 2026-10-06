@@ -234,3 +234,15 @@ def test_yt_dlp_parts_left_by_a_failed_item_are_not_media(tmp_dir):
     vault.generate_archive(tmp_dir)
     archive = (Path(tmp_dir) / 'mellow_archive.txt').read_text()
     assert 'dQw4w9WgXcQ' in archive and 'aaaaaaaaaaa' not in archive
+
+
+def test_a_sync_drops_parts_nobody_finished_for_a_week(tmp_dir):
+    """A part a sync can't finish (the video left the playlist, or stays
+    private) used to sit there hidden for good, often the size of the video."""
+    _touch(tmp_dir, 'Gone [aaaaaaaaaaa].f399.mp4', 'Fresh [bbbbbbbbbbb].f399.mp4', 'Song.mp4', 'notes.f399.txt')
+    week_old = os.path.getmtime(Path(tmp_dir) / 'Song.mp4') - 8 * 86400
+    for name in ('Gone [aaaaaaaaaaa].f399.mp4', 'Song.mp4', 'notes.f399.txt'):
+        os.utime(Path(tmp_dir) / name, (week_old, week_old))
+    m = jobs.JobManager()
+    m._on_finished({'type': 'sync', 'sync_path': tmp_dir, 'report': None}, 'error')
+    assert sorted(os.listdir(tmp_dir)) == ['Fresh [bbbbbbbbbbb].f399.mp4', 'Song.mp4', 'notes.f399.txt']

@@ -137,19 +137,30 @@ def _probe(ffmpeg: Path) -> str:
 
 
 def _swap_in(staging: Path, target: Path) -> None:
-    """Replace `target` with the `staging` folder in one rename.
+    """Replace `target` with the `staging` folder.
 
-    On Windows an antivirus scanning the ffmpeg.exe that was just written and
-    run can hold its folder for a moment ("Access is denied"): retry a while.
+    The ffmpeg already there is set aside first and put back if the new one
+    can't take its place: a failed update never leaves the user with none. On
+    Windows an antivirus scanning the ffmpeg.exe that was just written and run
+    can hold its folder for a moment ("Access is denied"): retry a while.
     """
-    for attempt in range(FFMPEG_SWAP_ATTEMPTS):
+    previous = target.with_name(target.name + ".old")
+    shutil.rmtree(previous, ignore_errors=True)
+    for _ in range(FFMPEG_SWAP_ATTEMPTS):
         try:
-            shutil.rmtree(target, ignore_errors=True)
+            if target.exists():
+                target.replace(previous)
             staging.replace(target)
-            return
-        except PermissionError as exc:
+        except OSError as exc:
+            if previous.exists() and not target.exists():
+                previous.replace(target)
+            if not isinstance(exc, PermissionError):
+                raise
             log.info(f"ffmpeg install: can't move it into place yet ({exc})")
             time.sleep(FFMPEG_SWAP_RETRY_SECS)
+            continue
+        shutil.rmtree(previous, ignore_errors=True)
+        return
     raise InstallError("Windows wouldn't let MellowDLP move ffmpeg into place "
                        "(an antivirus scan?). Try GET FFMPEG again in a minute.")
 
