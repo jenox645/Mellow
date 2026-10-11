@@ -123,6 +123,12 @@ _RULES: list[tuple[str, str, str, str, str | None]] = [
      "The download drive is full",
      "Free up some space, or choose another folder in Config → Storage.",
      OPEN_CONFIG),
+    (r"file ?name too long|errno 36|filename or extension is too long|winerror 206|path too long",
+     "name_too_long",
+     "The file name is too long for this folder",
+     "MellowDLP shortens long titles by itself, but your file name template or this folder's path "
+     "leaves no room. Pick a folder closer to the drive's root, or shorten the template in Config → Storage.",
+     OPEN_CONFIG),
     (r"permission denied|access is denied|errno 13", "no_permission",
      "Can't write to the download folder",
      "Pick a folder you can write to (Config → Storage), or close the file if another program has it open.",

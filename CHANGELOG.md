@@ -8,8 +8,13 @@ Each release is a `## X.Y.Z` heading followed by `- **Title**: what it does`
 lines. A pull request that raises `APP_VERSION` adds its section here: CI
 fails without one.
 
-## 2.8.1
+## 2.9.0
+- **A video copied from a Mix or playlist is downloaded alone**: a link copied while a YouTube Mix or playlist plays ("watch?v=…&list=…") used to load the whole list, some 50 songs for a Mix. MellowDLP now takes just that video, and THE WHOLE MIX (or PLAYLIST) next to it reads the list instead.
+- **Long titles no longer fail downloads**: a title too long for a file name (a TikTok or Instagram caption, a long Japanese title, a deep folder on Windows) is cut short to fit, instead of failing with "File name too long" or "No such file or directory".
+- **The computer stays awake while downloading**: a laptop no longer goes to sleep in the middle of a playlist, and a ⏾ LATER download can start at night. The screen can still turn off, and closing the lid still sleeps. Config → App Behavior → Keep the Computer Awake turns it off.
 - **"This video is not available" explained**: YouTube's catch-all refusal now says what usually lifts it (a signed-in browser's cookies, in Config → Authentication), with an OPEN CONFIG button, instead of the raw error.
+- **Cancelled downloads don't lower the success rate**: Analytics leaves the ones you cancelled out of it.
+- **What's new reads properly**: one 2.8.0 note showed as "— , once nothing is downloading".
 
 ## 2.8.0
 - **Starts faster**: the installed app is now a folder of files instead of one exe that unpacked itself (and was scanned by the antivirus) at every launch. It starts about 2.5× faster, more on a laptop with Windows Defender. The portable exe stays a single file.
@@ -17,7 +22,7 @@ fails without one.
 - **GET FFMPEG keeps your ffmpeg if an update can't finish**: the one already installed is set aside and put back, instead of being deleted first.
 - **Unfinished parts are cleaned up**: a part of a video that no sync could finish for a week (the video left the playlist or stays private) is deleted, so it doesn't take space unseen.
 - **YouTube Mixes aren't called private**: "This playlist type is unviewable" no longer suggests setting up cookies, which can't open a Mix.
-- **In a browser tab (no Chrome or Edge on Linux), MellowDLP quits when you close the tab**, once nothing is downloading.
+- **Closing the tab quits MellowDLP**: when it runs in a browser tab (no Chrome or Edge on Linux), once nothing is downloading.
 - **The GUIDE tidies up**: it closes the panels it opened, and fast key presses no longer close OPTIONS on it.
 
 ## 2.7.0

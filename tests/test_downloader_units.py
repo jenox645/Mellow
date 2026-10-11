@@ -208,3 +208,66 @@ def test_saved_hook_reports_the_final_file(tmp_path):
     hook(str(f))
     hook(str(tmp_path / 'gone.mp3'))   # nothing kept: no event
     assert events == [{'status': 'item_saved', 'file_path': str(f), 'file_size': 1234, 'library_id': 'lib1'}]
+
+
+# ── File names that fit ───────────────────────────────────────────────────
+
+_LONG_INFO = {
+    "id": "dQw4w9WgXcQ", "ext": "webm", "upload_date": "20240131",
+    "title": "とても長い：タイトル/テスト " * 30,           # 450 characters, ~1.3 KB in UTF-8
+    "playlist_title": "My very long playlist name " * 10, "playlist_index": 7,
+    "section_title": "A chapter whose name goes on and on " * 8, "section_number": 3,
+}
+
+
+def _expand(template, out_dir, windows):
+    import yt_dlp
+    fitted = downloader._fit_template(template, out_dir, windows=windows)
+    with yt_dlp.YoutubeDL({"windows_filenames": True, "quiet": True}) as ydl:
+        return str(out_dir / ydl.evaluate_outtmpl(fitted, dict(_LONG_INFO), True))
+
+
+@pytest.mark.parametrize("template", [
+    "%(title)s.%(ext)s",
+    "%(title)s [%(id)s].%(ext)s",
+    "%(playlist_title)s/%(playlist_index)03d - %(title)s.%(ext)s",
+    "%(upload_date>%Y/%m)s/%(title)s.%(ext)s",
+    "%(title)s - %(section_number)02d %(section_title)s.%(ext)s",     # chosen chapters
+])
+@pytest.mark.parametrize("windows", [False, True])
+def test_a_long_title_still_fits_a_file_name(template, windows):
+    from pathlib import PurePosixPath, PureWindowsPath
+    out_dir = PureWindowsPath(r"C:\Users\someone\Downloads\MellowDLP") if windows \
+        else PurePosixPath("/home/someone/Downloads/MellowDLP")
+    path = _expand(template, out_dir, windows)
+    # Room for what yt-dlp adds while it works (".f251.webm.part")
+    working = path + ".f251-drc.webm.part"
+    for name in working.replace("\\", "/").split("/"):
+        assert (len(name) if windows else len(name.encode())) <= 255, name
+    if windows:
+        assert len(working) <= 259, working
+    assert "とても長い" in path                       # cut, not dropped
+    if "[%(id)s]" in template:
+        assert "[dQw4w9WgXcQ]" in path                 # the id after the title survives
+
+
+def test_a_short_title_is_left_whole():
+    from pathlib import PureWindowsPath
+    title = "x" * 100                          # YouTube's longest title
+    fitted = downloader._fit_template("%(title)s [%(id)s].%(ext)s",
+                                      PureWindowsPath(r"C:\Users\someone\Downloads\MellowDLP"), windows=True)
+    import yt_dlp
+    with yt_dlp.YoutubeDL({"quiet": True}) as ydl:
+        assert ydl.evaluate_outtmpl(fitted, {"title": title, "id": "a", "ext": "mp4"}, True) == title + " [a].mp4"
+
+
+@pytest.mark.parametrize("template", ["%(title).50s.%(ext)s", "%(id)s.%(ext)s", "%(title,id)s.%(ext)s"])
+def test_a_template_without_plain_free_text_is_kept(template):
+    from pathlib import Path
+    assert downloader._fit_template(template, Path("/x"), windows=False) == template
+
+
+def test_a_deep_folder_still_leaves_a_readable_title():
+    from pathlib import PureWindowsPath
+    deep = PureWindowsPath("C:\\" + "\\".join(["a folder with a long name"] * 9))
+    assert "%(title).32s" in downloader._fit_template("%(title)s.%(ext)s", deep, windows=True)

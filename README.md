@@ -66,7 +66,7 @@ The window is a Chrome, Edge, Brave or Chromium app window (Windows always has E
 ## Features
 
 **Downloading**
-- **Feed**: paste a link (or Ctrl+V / drop it anywhere in the window), ANALYZE, pick format and quality, DOWNLOAD. Videos, whole playlists, audio only, or several links at once. Type words instead of a link to **search YouTube**.
+- **Feed**: paste a link (or Ctrl+V / drop it anywhere in the window), ANALYZE, pick format and quality, DOWNLOAD. Videos, whole playlists, audio only, or several links at once. Type words instead of a link to **search YouTube**. A link copied while a Mix or playlist plays gets just that video, with one click for the whole list.
 - **SAVE TO** under the URL bar: this download's folder. ↑/↓ step through the folders you used before, like a terminal prompt; typing narrows the list. Empty = the default folder from Config.
 - **Before you download**: a size estimate (and a warning when it won't fit the drive), and a note when you already have that video, with a shortcut to the file.
 - **Options**: embed cover art, metadata, chapters and subtitles; cut out sponsor segments ([SponsorBlock](https://sponsor.ajay.app/)); even out the volume (-14 LUFS); pick chapters or a time range to save only part of a video.
@@ -75,6 +75,7 @@ The window is a Chrome, Edge, Brave or Chromium app window (Windows always has E
 **The queue**
 - Live progress per job (speed, ETA, thumbnails). Pause, resume, reorder, cancel; run up to 3 downloads at once (Config → `download_workers`).
 - **Download later**: ⏾ LATER queues a download for a set time of day, like the middle of the night (Config → "Later" Downloads Start At; the app must be running).
+- **Keeps the computer awake** while downloads run or wait, so a laptop doesn't fall asleep halfway through a playlist (the screen can still turn off; Config → Keep the Computer Awake).
 - Unfinished jobs survive a restart; failed items retry with their original options.
 - Optional desktop notification and chime when a download finishes or fails in the background.
 

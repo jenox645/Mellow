@@ -66,6 +66,10 @@ def _make_clips(folder: Path) -> None:
 DASH_CLIPS = ("dash-one", "dash-two")
 DASH_AUDIO_REFUSED: set[str] = set()
 
+# A title longer than a file name may be: 330 bytes in UTF-8 (the limit is
+# 255 on Linux and macOS) and long enough to break Windows' 260-character path
+LONG_TITLE = "とても長いタイトルのテスト動画です" * 6 + " – part ①"
+
 
 def _make_dash(folder: Path) -> None:
     ffmpeg = shutil.which("ffmpeg")
@@ -86,7 +90,8 @@ def _make_dash(folder: Path) -> None:
 @pytest.fixture(scope="session")
 def media_site(tmp_path_factory):
     """A tiny video site: /<name>.mp4, /slow/<name>.mp4, /playlist (three clips) and
-    /playlist-dash (two videos with separate audio, see DASH_AUDIO_REFUSED)."""
+    /playlist-dash (two videos with separate audio, see DASH_AUDIO_REFUSED) and
+    /titled/<name> (a page whose one video is named LONG_TITLE)."""
     folder = tmp_path_factory.mktemp("media")
     _make_clips(folder)
     _make_dash(folder)
@@ -115,6 +120,11 @@ def media_site(tmp_path_factory):
         return ("<html><head><title>Test Mix</title></head><body>"
                 '<video src="/clip.mp4"></video><video src="/second.mp4"></video>'
                 '<video src="/third.mp4"></video></body></html>')
+
+    @site.route("/titled/<name>")
+    def titled(name):
+        return (f"<html><head><title>{LONG_TITLE}</title></head><body>"
+                f'<video src="/{name}.mp4"></video></body></html>')
 
     @site.route("/dash/<name>/<path:file>")
     def dash(name, file):

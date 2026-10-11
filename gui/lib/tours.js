@@ -108,6 +108,15 @@ export const TOURS = {
       ] },
     },
     {
+      target: 'feed-from-list', title: 'A video from a playlist or Mix',
+      missing: 'Shows up when a link was copied while a playlist or YouTube Mix played.',
+      text: 'A link copied while a playlist or Mix plays ("watch?v=…&list=…") names both the video and the list. '
+        + 'MellowDLP takes just the video; THE WHOLE PLAYLIST (or MIX) reads the list instead.',
+      example: { onlyMissing: true, kind: 'rows', rows: [
+        { text: 'youtube.com/watch?v=dQw4…&list=RDdQw4…', sub: 'just this video', badge: 'FROM A YOUTUBE MIX', tone: 'amber' },
+      ] },
+    },
+    {
       target: 'feed-progress', title: 'Live progress',
       missing: 'Shows up while something downloads.',
       text: 'Speed, time left, and every playlist item as it finishes, fails or waits. ⏸ PAUSE stops every download '
@@ -399,6 +408,7 @@ export const TOURS = {
       target: 'config-template', title: 'File names',
       text: 'How downloaded files are named, with yt-dlp fields. A "/" makes subfolders. The line under it names a '
         + 'sample video with your template.',
+      tip: 'A title too long for a file name (a TikTok caption, a deep folder on Windows) is cut short to fit.',
       example: { kind: 'pairs', pairs: [
         ['%(title)s.%(ext)s', 'Never Gonna Give You Up.mp4'],
         ['%(uploader)s/%(title)s.%(ext)s', 'Rick Astley/Never Gonna Give You Up.mp4'],
@@ -441,9 +451,11 @@ export const TOURS = {
     {
       target: 'config-behavior', title: 'Behavior',
       text: 'How many downloads run at once, the ⏾ LATER start time, what happens when the queue finishes (open the '
-        + 'folder), auto-sync of vault folders, the copied-link suggestion, notifications, update checks and the '
-        + 'completion sound.',
-      tip: 'Auto-Sync Vault Folders must be on for the folders\' sync schedules to run.',
+        + 'folder), keeping the computer awake while downloads run or wait, auto-sync of vault folders, the '
+        + 'copied-link suggestion, notifications, update checks and the completion sound.',
+      tip: 'A laptop that goes to sleep stops its downloads, and a ⏾ LATER download can\'t start in a sleeping '
+        + 'computer: Keep the Computer Awake (on by default) prevents that. Auto-Sync Vault Folders must be on for '
+        + 'the folders\' sync schedules to run.',
     },
     {
       target: 'config-backup', title: 'Backup',

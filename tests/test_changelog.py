@@ -29,6 +29,13 @@ def test_this_version_has_release_notes():
     assert shipped[0] == APP_VERSION, "the newest CHANGELOG.md section must be the current version"
 
 
+def test_every_shipped_item_reads_as_title_then_text():
+    # "- **Title**, text" showed in What's new as "Title — , text"
+    for entry in changelog.load():
+        for item in entry["items"]:
+            assert item["text"] and item["text"][0] not in ",;:—-", (entry["version"], item)
+
+
 def test_parse():
     entries = changelog.parse(SAMPLE)
     assert [e["version"] for e in entries] == ["2.5.0", "2.4.0", "2.3.0"]

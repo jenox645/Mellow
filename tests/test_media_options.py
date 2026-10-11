@@ -1,3 +1,4 @@
+
 """The yt-dlp options built for cover art, trimming, the webm container and
 SponsorBlock.
 
@@ -7,6 +8,7 @@ format, webm asked for an m4a audio stream it cannot hold, and SponsorBlock
 looked the segments up without ever cutting them out.
 """
 import os
+import re
 import threading
 import time
 from pathlib import Path
@@ -40,7 +42,8 @@ def test_embed_thumbnail_makes_ytdlp_write_and_keep_the_thumbnail(tmp_dir):
     assert ydl_opts['writethumbnail'] is True
     # No stray "<playlist name>.jpg" next to the items
     assert ydl_opts['outtmpl']['pl_thumbnail'] == ''
-    assert ydl_opts['outtmpl']['default'].endswith('%(title)s.%(ext)s')
+    # The default name: the title (cut to fit a file name) and the extension
+    assert re.search(r'%\(title\)\.\d+[Bs]\.%\(ext\)s$', ydl_opts['outtmpl']['default'])
     assert {'key': 'FFmpegThumbnailsConvertor', 'format': 'jpg', 'when': 'before_dl'} \
         in ydl_opts['postprocessors']
     (pp,), kwargs = ydl.add_post_processor.call_args
@@ -297,7 +300,9 @@ CHAPTERS = [{'index': 2, 'title': 'Verse', 'start': 30, 'end': 90}, {'index': 5,
 def _outtmpl(ydl_opts):
     tmpl = ydl_opts['outtmpl']
     tmpl = tmpl['default'] if isinstance(tmpl, dict) else tmpl
-    return tmpl.replace('\\', '/')  # the template is joined with the OS separator
+    tmpl = tmpl.replace('\\', '/')  # the template is joined with the OS separator
+    # Free-text fields come cut to fit a file name ("%(title).182B"): compare the fields
+    return re.sub(r'\)\.\d+[Bs]', ')s', tmpl)
 
 
 def test_chosen_chapters_become_one_named_file_each(tmp_dir):

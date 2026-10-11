@@ -20,7 +20,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Callable
 
-from . import analytics, downloader, errors, vault
+from . import analytics, downloader, errors, power, vault
 from .config import download_root, load_config, update_config
 from .constants import (
     DEFAULT_DOWNLOAD_WORKERS,
@@ -256,6 +256,9 @@ class JobManager:
             with self._cv:
                 unfinished = [j for j in self._jobs if j["status"] == "active"] + self._pending
                 pending = [{k: j.get(k) for k in _PERSIST_KEYS} for j in unfinished]
+            # A queued job is one the computer should stay awake for, a
+            # scheduled one included (it can't start in a sleeping computer)
+            power.keeper.set(bool(unfinished) and bool(load_config().get("keep_awake", True)))
             if pending:
                 QUEUE_STATE_PATH.write_text(json.dumps(pending), encoding="utf-8")
             elif QUEUE_STATE_PATH.exists():

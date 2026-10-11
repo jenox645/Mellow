@@ -379,7 +379,7 @@ export function AnalyticsPage({ stats, refreshStats, showNotif }) {
           <div className="stat-value green">
             {localStats.success_rate !== null && localStats.success_rate !== undefined ? localStats.success_rate + '%' : '—'}
           </div>
-          <div className="stat-sub">of all attempts</div>
+          <div className="stat-sub">of all attempts (cancels left out)</div>
         </div>
         <div className="stat">
           <div className="stat-label">CONTENT DURATION</div>

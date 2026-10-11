@@ -44,3 +44,21 @@ def test_analytics_query_allows_leading_comments_but_not_writes(client):
     assert ok['error'] is None and ok['rows'] == [[0]]
     for sql in ('-- sneaky\nDELETE FROM downloads', '/* x */ DROP TABLE downloads', '-- only a comment'):
         assert client.post('/api/analytics/query', json={'sql': sql}).get_json()['error'], sql
+
+
+def test_a_cancelled_download_is_not_a_failure(client):
+    import datetime
+
+    from mellow import analytics
+    for status in ['success', 'success', 'success', 'error', 'cancelled', 'cancelled']:
+        analytics.record_download({'url': 'https://example.com/v', 'title': 'v', 'platform': 'Other',
+                                   'format': 'video', 'status': status})
+    assert analytics.get_stats('30d')['success_rate'] == 75.0          # 3 of 4: the cancels don't count
+    assert analytics.get_wrapped(datetime.date.today().year)['success_rate'] == 75.0
+
+
+def test_only_cancelled_downloads_have_no_success_rate(client):
+    from mellow import analytics
+    analytics.record_download({'url': 'https://example.com/v', 'title': 'v', 'platform': 'Other',
+                               'format': 'video', 'status': 'cancelled'})
+    assert analytics.get_stats('30d')['success_rate'] is None

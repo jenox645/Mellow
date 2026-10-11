@@ -21,6 +21,20 @@ from mellow import scheduler  # noqa: E402
 scheduler.start = lambda *args, **kwargs: None
 
 
+class RecordingKeeper:
+    """Stands in for power.keeper: a test run must never block the computer's sleep."""
+
+    def __init__(self):
+        self.calls = []
+
+    def set(self, want):
+        self.calls.append(bool(want))
+
+    @property
+    def want(self):
+        return bool(self.calls and self.calls[-1])
+
+
 @pytest.fixture(autouse=True)
 def isolated_user_files(tmp_path):
     """Point every per-user file at a temp dir for every test.
@@ -39,6 +53,7 @@ def isolated_user_files(tmp_path):
             patch('mellow.jobs.QUEUE_STATE_PATH', tmp_path / 'queue.json'), \
             patch('mellow.ytdlp_update.OVERLAY_PATH', tmp_path / 'ytdlp.zip'), \
             patch('mellow.ffmpeg_locate.MANAGED_DIR', tmp_path / 'ffmpeg'), \
+            patch('mellow.power.keeper', RecordingKeeper()), \
             patch.dict('os.environ', {}), \
             patch.multiple(ffmpeg_locate, _cached=ffmpeg_locate._cached,
                            _last_miss=ffmpeg_locate._last_miss):
