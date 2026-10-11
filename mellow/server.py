@@ -1049,6 +1049,18 @@ def api_vault_mirror_preview() -> Response:
     return jsonify(result), 500 if result.get("error") else 200
 
 
+@app.route("/api/vault/retag", methods=["POST"])
+def api_vault_retag() -> Response:
+    """Album, track numbers and artists for the audio files of a folder."""
+    data = request.get_json(force=True) or {}
+    path = data.get("path", "").strip()
+    if not path or not os.path.isdir(path):
+        return jsonify({"error": "Invalid path"}), 400
+    cfg = load_config()
+    result = _vault.retag(path, cfg.get("vault_playlists", {}).get(path, []), request_settings(cfg))
+    return jsonify(result), 500 if result.get("error") else 200
+
+
 @app.route("/api/vault/mirror-confirm", methods=["POST"])
 def api_vault_mirror_confirm() -> Response:
     data = request.get_json(force=True) or {}

@@ -123,6 +123,7 @@ def init_db() -> None:
             ("download_speed_avg_bps", "BIGINT"),
             ("elapsed_seconds", "INTEGER"),
             ("thumbnail_url", "TEXT"),
+            ("video_id", "TEXT"),     # the site's id of the item (re-tag matches files by it)
         ])
 
         con.execute("""
@@ -195,8 +196,8 @@ def record_download(meta: dict) -> None:
                 id, url, title, uploader, platform, duration_seconds,
                 file_size_bytes, format, quality, container, file_path,
                 status, error_message, download_speed_avg_bps, elapsed_seconds,
-                thumbnail_url
-            ) VALUES (nextval('downloads_seq'),?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                thumbnail_url, video_id
+            ) VALUES (nextval('downloads_seq'),?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """, [
             meta.get("url", ""),
             meta.get("title"),
@@ -213,6 +214,7 @@ def record_download(meta: dict) -> None:
             meta.get("download_speed_avg_bps"),
             meta.get("elapsed_seconds"),
             meta.get("thumbnail_url"),
+            meta.get("video_id"),
         ])
 
 

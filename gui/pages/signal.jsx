@@ -34,7 +34,8 @@ const SCHEMA_TEXT = `-- downloads
   container TEXT, file_path TEXT,
   timestamp TIMESTAMP, status TEXT,
   error_message TEXT, download_speed_avg_bps BIGINT,
-  elapsed_seconds INTEGER, thumbnail_url TEXT
+  elapsed_seconds INTEGER, thumbnail_url TEXT,
+  video_id TEXT  -- the site's id of the item (from 2.10.0)
 
 -- library
   id TEXT PK, name TEXT, url TEXT,

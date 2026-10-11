@@ -297,6 +297,19 @@ export const TOURS = {
       tip: 'A deleted file stays listed in the archive file, so the next sync won\'t download it again.',
     },
     {
+      target: 'vault-retag', title: 'Album tags (RE-TAG)',
+      missing: 'Shows up in a folder with songs (MP3, M4A, Opus, FLAC).',
+      text: 'Music apps sort songs by their tags. Audio downloads get the playlist as their album and their place in it '
+        + 'as the track number (Album Tags option). ♪ RE-TAG gives the same tags to the songs already here, numbered '
+        + 'in the playlist\'s current order, so a reordered playlist is renumbered too.',
+      tip: 'A song with a real album of its own (YouTube Music) keeps it. Only the tags change, never the sound or the file names.',
+      example: { kind: 'pairs', pairs: [
+        ['Album: (none)', 'Album: Chill Mix'],
+        ['Track: (none)', 'Track: 7'],
+        ['Artist: RickAstleyVEVO', 'Artist: Rick Astley'],
+      ] },
+    },
+    {
       target: 'vault-open', title: 'The real folder',
       text: 'OPEN IN EXPLORER shows this folder on your disk. ↻ REFRESH rescans it after you add or remove files '
         + 'outside MellowDLP.',

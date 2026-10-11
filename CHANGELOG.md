@@ -8,6 +8,10 @@ Each release is a `## X.Y.Z` heading followed by `- **Title**: what it does`
 lines. A pull request that raises `APP_VERSION` adds its section here: CI
 fails without one.
 
+## 2.10.0
+- **Synced music plays as one album**: songs saved as audio from a playlist now carry the playlist's name as their album and their place in it as the track number, so a music app or your phone groups the folder as one album, in playlist order. Artists lose YouTube's " - Topic" and "VEVO" (e.g. "RickAstleyVEVO" becomes "Rick Astley"). A song with a real album of its own (YouTube Music) keeps it. The Album Tags option (on by default) turns it off.
+- **♪ RE-TAG**: a vault folder with songs has a RE-TAG button that gives the songs already there the same tags, numbered in the linked playlist's current order, so a reordered playlist is renumbered too. Only the tags change: the files, their names and the sound stay as they are.
+
 ## 2.9.0
 - **A video copied from a Mix or playlist is downloaded alone**: a link copied while a YouTube Mix or playlist plays ("watch?v=…&list=…") used to load the whole list, some 50 songs for a Mix. MellowDLP now takes just that video, and THE WHOLE MIX (or PLAYLIST) next to it reads the list instead.
 - **Long titles no longer fail downloads**: a title too long for a file name (a TikTok or Instagram caption, a long Japanese title, a deep folder on Windows) is cut short to fit, instead of failing with "File name too long" or "No such file or directory".

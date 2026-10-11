@@ -100,3 +100,51 @@ def test_an_audio_sync_saves_mp3s(app_url, linked_folder):
         assert "audio" in _streams(f["path"]), f["name"]
     # The folder remembers its format: a sync without options (auto-sync, SYNC ALL) stays MP3
     assert _api(app_url, "/api/config")["vault_sync_formats"][str(linked_folder)]["sync_audio"] is True
+
+
+def _tags(path):
+    """The file's tags: the container's, and the audio stream's (Ogg keeps them there)."""
+    out = subprocess.run([shutil.which("ffprobe"), "-v", "error", "-show_entries", "format_tags:stream_tags",
+                          "-of", "json", str(path)], capture_output=True, text=True, check=True)
+    data = json.loads(out.stdout)
+    tags = dict(data["format"].get("tags", {}))
+    for stream in data.get("streams", []):
+        tags.update(stream.get("tags", {}))
+    return {k.lower(): v for k, v in tags.items()}
+
+
+@pytest.mark.parametrize("audio_format", ["mp3", "m4a", "opus", "flac"])
+def test_an_audio_sync_tags_the_songs_as_one_album_in_playlist_order(app_url, linked_folder, audio_format):
+    from mellow import jobs
+    _api(app_url, "/api/vault/sync", {"path": str(linked_folder), "sync_audio": True,
+                                      "audio_format": audio_format})
+    assert jobs.manager.wait_idle(SYNC_TIMEOUT_SECS)
+    files = _api(app_url, "/api/vault/folder?path=" + quote(str(linked_folder)))["files"]
+    tags = {f["name"]: _tags(f["path"]) for f in files}
+    assert len(tags) == len(DASH_CLIPS), tags
+    assert {t.get("album") for t in tags.values()} == {"Dash Mix"}, tags
+    assert {t.get("album_artist") for t in tags.values()} == {"Various Artists"}, tags
+    by_track = sorted((t["track"], name) for name, t in tags.items())
+    assert [track for track, _ in by_track] == ["1", "2"], tags
+    assert "(1)" in by_track[0][1] and "(2)" in by_track[1][1], by_track   # the page's order
+
+
+def test_retag_gives_old_downloads_album_tags_in_playlist_order(app_url, linked_folder):
+    """Files saved before album tags existed (or with the option off) get
+    them from RE-TAG, matched to the playlist by the id the history keeps."""
+    from mellow import jobs
+    _api(app_url, "/api/vault/sync", {"path": str(linked_folder), "sync_audio": True,
+                                      "audio_format": "mp3", "music_tags": False})
+    assert jobs.manager.wait_idle(SYNC_TIMEOUT_SECS)
+    files = {f["name"]: f["path"] for f in _api(app_url, "/api/vault/folder?path=" + quote(str(linked_folder)))["files"]}
+    assert all(_tags(p).get("album") is None for p in files.values())
+
+    result = _api(app_url, "/api/vault/retag", {"path": str(linked_folder)})
+    assert result["tagged"] == 2 and result["numbered"] == 2 and result["album"] == "Dash Mix", result
+    tracks = {name: _tags(p) for name, p in files.items()}
+    assert {t["album"] for t in tracks.values()} == {"Dash Mix"}
+    assert sorted((t["track"], n) for n, t in tracks.items()) == [
+        ("1", "Dash Mix (1).mp3"), ("2", "Dash Mix (2).mp3")], tracks
+    for p in files.values():
+        assert _streams(p) == ["audio"]          # the file still plays: only its tags changed
+    assert _api(app_url, "/api/vault/retag", {"path": str(linked_folder)})["unchanged"] == 2

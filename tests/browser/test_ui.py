@@ -337,3 +337,25 @@ def test_a_big_vault_folder_loads_only_the_thumbnails_on_screen(page, downloads)
     # screen, not all 150 (the folder card's mosaic shows the first four too)
     assert all(".jpg" in u for u in asked), [u for u in asked if ".jpg" not in u][:3]
     assert 0 < len(set(asked)) < 100, len(set(asked))
+
+
+def test_retag_a_folder_of_songs_from_the_vault(page, downloads):
+    import shutil
+    import subprocess
+    folder = downloads / "Road Trip"
+    folder.mkdir()
+    for name in ("One", "Two"):
+        subprocess.run([shutil.which("ffmpeg"), "-v", "error", "-f", "lavfi", "-i", "sine=duration=1",
+                        "-metadata", "artist=Lofi Girl - Topic", str(folder / f"{name}.mp3")], check=True)
+    (folder / "clip.mp4").write_bytes(b"\0" * 1024)
+    page.locator(".nav-item", has_text="VAULT").click()
+    page.get_by_title("Refresh vault").click()
+    page.locator(".vault-folder-card", has_text="Road Trip").click()
+    page.locator("[data-tour=vault-retag]").click()
+    dialog = page.locator(".modal-box", has_text="RE-TAG")
+    expect(dialog).to_contain_text("the folder's name")       # no linked playlist: no track numbers offered
+    dialog.get_by_text("RE-TAG 2 FILES").click()
+    assert "2 files tagged" in _notification(page, "Tags Updated")
+    import mutagen
+    tags = mutagen.File(str(folder / "One.mp3"), easy=True)
+    assert tags["album"] == ["Road Trip"] and tags["artist"] == ["Lofi Girl"]
