@@ -74,6 +74,15 @@ _RULES: list[tuple[str, str, str, str, str | None]] = [
      "Not published yet",
      "It is a scheduled premiere or live stream. Try again once it has started.",
      None),
+    # YouTube's catch-all: it says this to a session it won't play the video
+    # to (removed, Premium/members-only, age- or region-limited without a
+    # sign-in) without saying which. A signed-in browser's cookies often open it.
+    (r"this video is not available|video is not available", "not_available",
+     "YouTube won't play this video to MellowDLP",
+     "Open the link in your browser. If it plays there while you're signed in, MellowDLP needs that "
+     "sign-in: Config → Authentication → Browser Cookies (on Windows, Firefox or a cookies.txt), then try "
+     "again. If it doesn't play there either, it was removed or isn't available in your country.",
+     OPEN_CONFIG),
     (r"video (is )?unavailable|has been removed|no longer available|account .{0,40}terminated|does not exist",
      "unavailable",
      "Video unavailable",
@@ -113,6 +122,12 @@ _RULES: list[tuple[str, str, str, str, str | None]] = [
     (r"no space left|disk (is )?full|errno 28", "disk_full",
      "The download drive is full",
      "Free up some space, or choose another folder in Config → Storage.",
+     OPEN_CONFIG),
+    (r"file ?name too long|errno 36|filename or extension is too long|winerror 206|path too long",
+     "name_too_long",
+     "The file name is too long for this folder",
+     "MellowDLP shortens long titles by itself, but your file name template or this folder's path "
+     "leaves no room. Pick a folder closer to the drive's root, or shorten the template in Config → Storage.",
      OPEN_CONFIG),
     (r"permission denied|access is denied|errno 13", "no_permission",
      "Can't write to the download folder",

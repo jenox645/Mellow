@@ -119,6 +119,29 @@ export function isLinkLike(text) {
   return /^[a-z][a-z0-9+.-]*:\S/i.test(t) || /^(www\.)?[\w-]+(\.[\w-]+)+(\/\S*)?$/i.test(t);
 }
 
+// A YouTube video opened from a playlist or a Mix ("watch?v=…&list=…", what
+// the address bar holds while one plays): {video, playlist, mix} with the
+// video alone and the link as it was (yt-dlp reads a Mix only through a
+// watch link). null for any other link.
+const PLAYLIST_PARAMS = ['list', 'index', 'start_radio', 'pp', 'playnext'];
+export function videoInPlaylist(link) {
+  const text = (link || '').trim();
+  let u;
+  try {
+    u = new URL(/^[a-z][a-z0-9+.-]*:/i.test(text) ? text : 'https://' + text);
+  } catch {
+    return null;
+  }
+  const host = u.hostname.toLowerCase().replace(/^(www|m)\./, '');
+  const list = u.searchParams.get('list');
+  let id = null;
+  if (host === 'youtu.be') id = u.pathname.split('/')[1];
+  else if ((host === 'youtube.com' || host === 'music.youtube.com') && u.pathname === '/watch') id = u.searchParams.get('v');
+  if (!list || !id) return null;
+  PLAYLIST_PARAMS.forEach(k => u.searchParams.delete(k));
+  return { video: u.toString(), playlist: text, mix: /^RD/.test(list) };
+}
+
 // 1234567 → "1.2M"
 export function fmtCount(n) {
   if (n == null) return '';

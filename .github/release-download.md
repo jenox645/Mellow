@@ -9,6 +9,6 @@
 
 **Already using MellowDLP?** No need to download: click UPDATE in its status bar.
 
-Windows may say "Windows protected your PC": the exe isn't code-signed. Click **More info → Run anyway**. To check a file first, compare `certutil -hashfile <file> SHA256` (Linux: `sha256sum -c SHA256SUMS.txt --ignore-missing`) with `SHA256SUMS.txt`.
+Windows may say "Windows protected your PC": the exe isn't code-signed. Click **More info → Run anyway**. To check a file first, compare `certutil -hashfile <file> SHA256` (Linux: `sha256sum -c SHA256SUMS.txt --ignore-missing`) with `SHA256SUMS.txt`. To check it was built by this repository's release workflow, not uploaded by hand: `gh attestation verify <file> --repo {repo}` ([GitHub CLI](https://cli.github.com/)).
 
 No ffmpeg yet? The app offers **GET FFMPEG** at its first start.

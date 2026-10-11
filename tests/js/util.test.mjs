@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 
 import {
   estimateDownloadBytes, fmtBytes, fmtCount, fmtDuration, idxRanges, isLinkLike, matchFolders, parseClock,
-  splitFolder, stepHistory,
+  splitFolder, stepHistory, videoInPlaylist,
 } from '../../gui/lib/util.js';
 import { defaultToggles, togglesFor, togglesFrom } from '../../gui/lib/formats.js';
 
@@ -82,4 +82,25 @@ test('SAVE TO history: filter by what was typed, step with the arrows, split for
   assert.deepEqual(splitFolder('D:\\Music\\Lofi\\'), { name: 'Lofi', parent: 'D:\\Music\\' });
   assert.deepEqual(splitFolder('/home/me/Videos'), { name: 'Videos', parent: '/home/me/' });
   assert.deepEqual(splitFolder('Downloads'), { name: 'Downloads', parent: '' });
+});
+
+test('videoInPlaylist finds a video opened from a playlist or a Mix', () => {
+  const mix = 'https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=RDdQw4w9WgXcQ&start_radio=1';
+  assert.deepEqual(videoInPlaylist(mix),
+    { video: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ', playlist: mix, mix: true });
+  const pl = 'https://youtube.com/watch?v=abc123&list=PLx0sYbCqOb8TBPRdmBHs5Iftvv9TPboYG&index=4&si=share';
+  assert.deepEqual(videoInPlaylist(pl),
+    { video: 'https://youtube.com/watch?v=abc123&si=share', playlist: pl, mix: false });
+  assert.equal(videoInPlaylist('https://youtu.be/abc123?list=PLx&t=42').video, 'https://youtu.be/abc123?t=42');
+  assert.equal(videoInPlaylist('music.youtube.com/watch?v=abc&list=RDAMVMabc').video,
+    'https://music.youtube.com/watch?v=abc');
+  assert.equal(videoInPlaylist('https://m.youtube.com/watch?v=abc&list=PLx').video, 'https://m.youtube.com/watch?v=abc');
+  for (const other of [
+    'https://www.youtube.com/playlist?list=PLx',      // a playlist link is meant as one
+    'https://www.youtube.com/watch?v=abc',
+    'https://example.com/watch?v=abc&list=PLx',
+    'lofi beats', '', null,
+  ]) {
+    assert.equal(videoInPlaylist(other), null, String(other));
+  }
 });

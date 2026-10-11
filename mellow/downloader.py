@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import re
 import threading
 import time
@@ -12,14 +13,19 @@ import yt_dlp
 from . import analytics, errors
 from .constants import (
     AUDIO_FORMATS,
+    FILENAME_MAX,
     LOUDNORM_FILTER,
     MAX_CHOSEN_CHAPTERS,
+    NAME_FIELD_MIN,
+    NAME_FIELD_RESERVE,
+    NAME_SUFFIX_RESERVE,
     PAUSE_POLL_SECS,
     SEARCH_QUERY_MAX_LEN,
     SEARCH_RESULTS,
     SOCKET_TIMEOUT_SECS,
     SPONSORBLOCK_REMOVE_CATEGORIES,
     THUMB_FETCH_TIMEOUT_SECS,
+    WINDOWS_MAX_PATH,
 )
 from .ffmpeg_locate import find_ffmpeg
 
@@ -615,7 +621,7 @@ def _build_ydl_opts(url: str, out_dir: Path, opts: dict, *, ffmpeg: str | None,
     start_time = "" if chapters else _opt_str(opts, "start_time")
     end_time = "" if chapters else _opt_str(opts, "end_time")
     embed_subs = bool(opts.get("embed_subs")) and not want_audio
-    outtmpl = str(out_dir / _output_template(opts, chapters))
+    outtmpl = str(out_dir / _fit_template(_output_template(opts, chapters), out_dir))
     log.debug(f"yt-dlp outtmpl={outtmpl!r} mode={_opt_str(opts, 'mode', 'video').lower()} "
               f"audio_format={_opt_str(opts, 'audio_format', 'mp3').lower()} "
               f"quality={_opt_str(opts, 'quality', 'best')} container={_opt_str(opts, 'container', 'mp4').lower()}")
@@ -663,6 +669,59 @@ def _output_template(opts: dict, chapters: list[dict]) -> str:
     stem = template[:-len(".%(ext)s")] if template.endswith(".%(ext)s") \
         else template.replace("%(ext)s", "").rstrip(".")
     return f"{stem} - %(section_number)02d %(section_title)s.%(ext)s"
+
+
+# Fields whose value can be any length; written plainly ("%(title)s") they get
+# a byte limit. A field with its own format ("%(title).50s") is left as it is.
+_FREE_TEXT_FIELD_RE = re.compile(
+    r"%\((title|fulltitle|alt_title|description|playlist|playlist_title|section_title"
+    r"|track|album|artist|creator|uploader|channel)\)s")
+# Any template field: %(name)s, %(name).50B, %(a,b|default)s, %(n)02d…
+_ANY_FIELD_RE = re.compile(r"%\([^)]*\)[-#0 +]*\d*(?:\.\d+)?[a-zA-Z]")
+
+
+def _template_parts(template: str) -> list[str]:
+    """The template's folders and file name: split at / and \\ outside fields
+    (a date format like "%(upload_date>%Y/%m)s" holds one)."""
+    parts, start = [], 0
+    for m in re.finditer(_ANY_FIELD_RE.pattern + r"|[/\\]", template):
+        if m.group(0) in ("/", "\\"):
+            parts.append(template[start:m.start()])
+            start = m.end()
+    return parts + [template[start:]]
+
+
+def _fit_template(template: str, out_dir: Path, windows: bool | None = None) -> str:
+    """The template with its free-text fields cut so the names it makes fit.
+
+    A file name may be 255 bytes on Linux and macOS; on Windows 255 characters,
+    and the whole path 259 (without long-path support). A long title otherwise
+    fails the download with "File name too long" or, on Windows, "No such file
+    or directory". yt-dlp cuts a field after replacing the characters a name
+    can't hold: ".NB" at N bytes (on a character boundary), ".Ns" at N characters.
+    """
+    if windows is None:
+        windows = os.name == "nt"
+    size = len if windows else (lambda text: len(text.encode()))
+    parts = _template_parts(template)
+    counts = [len(_FREE_TEXT_FIELD_RE.findall(part)) for part in parts]
+    if not any(counts):
+        return template
+
+    def fixed_size(part: str) -> int:
+        """What a path part takes besides its free-text fields."""
+        others = len(_ANY_FIELD_RE.findall(part)) - len(_FREE_TEXT_FIELD_RE.findall(part))
+        return size(_ANY_FIELD_RE.sub("", part)) + others * NAME_FIELD_RESERVE
+
+    fixed = [fixed_size(part) for part in parts]
+    caps = [(FILENAME_MAX - NAME_SUFFIX_RESERVE - f) // n if n else 0 for f, n in zip(fixed, counts)]
+    if windows:
+        room = WINDOWS_MAX_PATH - len(str(out_dir)) - len(parts) - NAME_SUFFIX_RESERVE - sum(fixed)
+        caps = [min(cap, room // sum(counts)) for cap in caps]
+    unit = "s" if windows else "B"
+    return "/".join(
+        _FREE_TEXT_FIELD_RE.sub(lambda m, cap=cap: f"%({m.group(1)}).{max(NAME_FIELD_MIN, cap)}{unit}", part)
+        for part, cap in zip(parts, caps))
 
 
 def _ffmpeg_format(opts: dict, want_audio: bool, embed_subs: bool, trimmed: bool,

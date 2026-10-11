@@ -35,7 +35,7 @@ export function ConfigPage({ config, setConfig, showNotif, installAppUpdate, onA
     'write_metadata', 'skip_shorts', 'skip_live', 'sub_langs', 'auto_subs', 'keep_sub_files',
     'ui_victory_animation', 'ui_victory_sync',
     'default_mode', 'default_quality', 'default_container', 'default_audio_format', 'default_audio_quality',
-    'download_workers', 'schedule_start', 'on_queue_done', 'auto_sync_enabled', 'auto_sync_default_interval',
+    'download_workers', 'schedule_start', 'on_queue_done', 'keep_awake', 'auto_sync_enabled', 'auto_sync_default_interval',
     'update_check_on_launch', 'clipboard_watch', 'completion_sound', 'desktop_notifications',
   ];
   const NUMERIC_DEFAULTS = { concurrent_fragments: 4, sleep_interval: 0, retries: 3, download_workers: 1 };
@@ -523,6 +523,15 @@ export function ConfigPage({ config, setConfig, showNotif, installAppUpdate, onA
                     <option value="nothing">Do nothing</option>
                     <option value="open_folder">Open the download folder</option>
                   </select>
+                </div>
+              </div>
+              <div className="settings-row">
+                <div className="settings-label">
+                  <div className="sl-name">Keep the Computer Awake</div>
+                  <div className="sl-sub">No sleep while downloads run or wait for their time (the screen can still turn off)</div>
+                </div>
+                <div className="settings-ctrl">
+                  <Toggle checked={local.keep_awake !== false} onChange={v => set('keep_awake', v)} />
                 </div>
               </div>
               <div className="settings-row">

@@ -256,7 +256,6 @@ def _stats_totals(con: duckdb.DuckDBPyConnection, where: str, params: list) -> d
     statuses = dict(con.execute(f"""
         SELECT status, COUNT(*) FROM downloads WHERE status IS NOT NULL {where} GROUP BY status
     """, params).fetchall())
-    attempts = sum(statuses.values())
     return {
         "total_downloads": count,
         "total_size_bytes": size,
@@ -265,8 +264,14 @@ def _stats_totals(con: duckdb.DuckDBPyConnection, where: str, params: list) -> d
         "avg_speed_bps": avg_speed or 0,
         "peak_speed_bps": peak_speed or 0,
         "status_counts": statuses,
-        "success_rate": round(statuses.get("success", 0) / attempts * 100, 1) if attempts else None,
+        "success_rate": _success_rate(statuses),
     }
+
+
+def _success_rate(statuses: dict[str, int]) -> float | None:
+    """Percent of downloads that worked. One the user cancelled didn't fail."""
+    attempts = sum(n for status, n in statuses.items() if status != "cancelled")
+    return round(statuses.get("success", 0) / attempts * 100, 1) if attempts else None
 
 
 def _stats_breakdowns(con: duckdb.DuckDBPyConnection, where: str, params: list) -> dict[str, Any]:
@@ -389,8 +394,7 @@ def get_wrapped(year: int) -> dict:
         """, [year]).fetchall()
 
     month_map = {row[0]: row[1] for row in by_month}
-    st_map = {row[0]: row[1] for row in statuses}
-    attempts = sum(st_map.values())
+    st_map = {row[0]: row[1] for row in statuses if row[0] is not None}
     return {
         "year": year,
         "total_downloads": total,
@@ -399,7 +403,7 @@ def get_wrapped(year: int) -> dict:
         "top_uploaders": [{"uploader": r[0], "count": r[1]} for r in top_uploaders],
         "monthly": [month_map.get(m, 0) for m in range(1, 13)],
         "busiest_day": {"day": busiest_day[0], "count": busiest_day[1]} if busiest_day else None,
-        "success_rate": round(st_map.get("success", 0) / attempts * 100, 1) if attempts else None,
+        "success_rate": _success_rate(st_map),
         "format_split": {r[0]: r[1] for r in fmt_split},
     }
 

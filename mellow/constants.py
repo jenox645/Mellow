@@ -108,3 +108,11 @@ FFMPEG_SWAP_RETRY_SECS: float = 0.5  # can hold its folder for a few seconds on 
 LOG_MAX_BYTES: int = 1024 * 1024     # ~/.mellow_dlp.log rotates at this size
 LOG_BACKUPS: int = 3                 # rotated log files kept
 LOW_DISK_WARN_BYTES: int = 2 * 1024 ** 3  # warn when output drive has < 2 GB free
+# File names: a title can be any length (a TikTok caption is the whole post).
+# Free-text fields in the file name template are cut to fit these limits.
+FILENAME_MAX: int = 255              # one file name: bytes on Linux and macOS, characters on Windows
+WINDOWS_MAX_PATH: int = 259          # a whole path without long-path support (260 with the NUL)
+NAME_SUFFIX_RESERVE: int = 48        # what yt-dlp adds while working: .f<format>, .temp, .part, .en.vtt…
+NAME_FIELD_RESERVE: int = 24         # any other field (an [id], a date) as it will be expanded
+NAME_FIELD_MIN: int = 32             # never cut a title shorter than this (bytes or characters)
+HELPER_START_CHECK_SECS: float = 0.5  # keep awake: a helper still running after this has its block

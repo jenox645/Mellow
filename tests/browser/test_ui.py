@@ -90,6 +90,36 @@ def test_search_then_pick_a_result(page, media_site):
     expect(page.locator(".info-title")).to_contain_text("third")
 
 
+def test_a_video_copied_from_a_mix_is_analyzed_alone(page):
+    """A link copied while a Mix plays names the video and the Mix; analyzing
+    it used to load the whole Mix (some 50 songs) for the one song wanted."""
+    video = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+    mix = video + "&list=RDdQw4w9WgXcQ&start_radio=1"
+
+    def fake_info(url, cookie_opts=None):
+        if "list=" in url:
+            return {"title": "Mix - Rick Astley", "is_playlist": True, "playlist_count": 2, "platform": "YouTube",
+                    "items": [{"idx": i, "id": f"v{i}", "title": f"Song {i}", "url": f"https://youtu.be/v{i}"}
+                              for i in (1, 2)]}
+        return {"title": "Never Gonna Give You Up", "id": "dQw4w9WgXcQ", "is_playlist": False,
+                "platform": "YouTube", "duration": 213, "webpage_url": url}
+
+    with patch("mellow.downloader.get_video_info", side_effect=fake_info) as info:
+        _analyze(page, mix)
+        box = page.get_by_placeholder(re.compile("youtube", re.I))
+        assert info.call_args.args[0] == video
+        expect(box).to_have_value(video)                    # what DOWNLOAD will send
+        expect(page.locator(".info-title")).to_contain_text("Never Gonna Give You Up")
+        chip = page.locator("[data-tour=feed-from-list]")
+        expect(chip).to_contain_text("FROM A YOUTUBE MIX")
+
+        chip.get_by_text("THE WHOLE MIX").click()
+        expect(page.locator(".pl-queue-item")).to_have_count(2)
+        assert info.call_args.args[0] == mix
+        expect(box).to_have_value(mix)
+        expect(page.locator("[data-tour=feed-from-list]")).to_have_count(0)
+
+
 def test_cancel_a_running_download(page, app_url, media_site, downloads):
     _analyze(page, f"{media_site}/slow/long.mp4")   # served at ~250 KB/s
     page.locator(".info-actions .btn-primary").click()

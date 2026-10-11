@@ -3,7 +3,7 @@
 
 import { API, cancelShownDownload } from '../lib/api.js';
 import {
-  estimateDownloadBytes, fmtBytes, fmtCount, fmtDuration, fmtEta, fmtSpeed, idxRanges, isLinkLike, timeAgo,
+  estimateDownloadBytes, fmtBytes, fmtCount, fmtDuration, fmtEta, fmtSpeed, idxRanges, isLinkLike, timeAgo, videoInPlaylist,
 } from '../lib/util.js';
 import { SVG, Ico } from '../components/icons.jsx';
 import { FileActions, FolderInput, FormatToggles, Mascot, Pipeline } from '../components/common.jsx';
@@ -92,8 +92,10 @@ export function FeedPage({ dlState, stats, sysInfo, refreshStats, showNotif, swi
 
   // explicitUrl lets callers analyze a URL the `url` state hasn't caught up
   // to yet (clipboard suggestion); plain onClick passes an event — ignored.
-  const handleAnalyze = React.useCallback((explicitUrl) => {
-    const target = (typeof explicitUrl === 'string' ? explicitUrl : url).trim();
+  // A video opened from a playlist or Mix is analyzed alone, with a link to
+  // the whole list (wholePlaylist: true analyzes the link as it is).
+  const handleAnalyze = React.useCallback((explicitUrl, wholePlaylist = false) => {
+    let target = (typeof explicitUrl === 'string' ? explicitUrl : url).trim();
     if (!target) return;
     if (!isLinkLike(target)) {
       setAnalyzing(true);
@@ -111,12 +113,17 @@ export function FeedPage({ dlState, stats, sysInfo, refreshStats, showNotif, swi
         .finally(() => setAnalyzing(false));
       return;
     }
+    const inList = !wholePlaylist && videoInPlaylist(target);
+    if (inList) {
+      target = inList.video;
+      setUrl(target);   // what DOWNLOAD sends
+    }
     setAnalyzing(true);
     setInfo(null);
     setPlaylistItems && setPlaylistItems(null);
     API.post('/api/info', { url: target })
       .then(data => {
-        setInfo(data);
+        setInfo(inList && !data.is_playlist ? { ...data, from_list: { url: inList.playlist, mix: inList.mix } } : data);
         if (data.is_playlist && data.items && setPlaylistItems) {
           setPlaylistItems(data.items.map(item => ({ ...item, selected: true })));
         } else if (data.is_playlist) {
@@ -622,6 +629,15 @@ export function FeedPage({ dlState, stats, sysInfo, refreshStats, showNotif, swi
                     ) : (
                       <span style={{ color: 'var(--t4)' }}>file moved or deleted since</span>
                     )}
+                  </div>
+                )}
+                {info.from_list && (
+                  <div className="info-prev" data-tour="feed-from-list" title={info.from_list.url}>
+                    <span className="tag amber">{info.from_list.mix ? 'FROM A YOUTUBE MIX' : 'FROM A PLAYLIST'}</span>
+                    <span style={{ color: 'var(--t4)' }}>just this video</span>
+                    <span className="info-prev-link" onClick={() => { setUrl(info.from_list.url); handleAnalyze(info.from_list.url, true); }}>
+                      {info.from_list.mix ? 'THE WHOLE MIX' : 'THE WHOLE PLAYLIST'}
+                    </span>
                   </div>
                 )}
                 <div className="info-tags">

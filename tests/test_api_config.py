@@ -50,3 +50,26 @@ def test_requests_for_another_host_name_are_refused(client):
         assert client.get(path, headers={'Host': 'evil.example:5000'}).status_code == 403
     for host in ('localhost:5000', '127.0.0.1:61234', '[::1]:5000', 'localhost'):
         assert client.get('/api/config', headers={'Host': host}).status_code == 200, host
+
+
+def test_pages_from_other_sites_get_nothing(client, tmp_path):
+    import shutil
+    from pathlib import Path
+    photo = tmp_path / 'private.png'
+    shutil.copy(Path(__file__).resolve().parents[1] / 'assets' / 'banner.png', photo)
+    thumb = f'/api/vault/thumb?path={photo}'
+    # An <img>, <iframe> or fetch() from a page you happen to visit
+    for path in (thumb, '/', '/api/config', '/api/clipboard'):
+        assert client.get(path, headers={'Sec-Fetch-Site': 'cross-site'}).status_code == 403, path
+    # The app itself, a link you open, an older browser that doesn't say
+    for site in ('same-origin', 'none', None):
+        headers = {'Sec-Fetch-Site': site} if site else {}
+        assert client.get(thumb, headers=headers).status_code == 200, site
+
+
+def test_no_answer_can_be_embedded_or_framed_by_another_origin(client):
+    for path in ('/', '/api/config', '/api/system'):
+        resp = client.get(path)
+        assert resp.headers['Cross-Origin-Resource-Policy'] == 'same-origin', path
+        assert "frame-ancestors 'none'" in resp.headers['Content-Security-Policy'], path
+        assert resp.headers['X-Frame-Options'] == 'DENY', path

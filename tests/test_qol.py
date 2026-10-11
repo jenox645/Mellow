@@ -21,10 +21,15 @@ from mellow import errors, jobs
     ('ERROR: [youtube:tab] PLx: YouTube said: The playlist does not exist.', 'private_playlist', errors.OPEN_CONFIG),
     ('ERROR: [youtube:tab] PLx: YouTube said: This playlist is private.', 'private_playlist', errors.OPEN_CONFIG),
     ('ERROR: [youtube] aaaaaaaaaaa: This video is unavailable', 'unavailable', None),
+    # The user's Short: YouTube's generic refusal, often lifted by a signed-in browser's cookies
+    ('ERROR: [youtube] dNqn1P8Omeo: This video is not available', 'not_available', errors.OPEN_CONFIG),
     ('ERROR: Unsupported URL: https://example.com/page', 'unsupported', errors.UPDATE_YTDLP),
     ('ERROR: [youtube] abc: Requested format is not available', 'format', None),
     ('<urlopen error [Errno 11001] getaddrinfo failed>', 'network', errors.OPEN_CONFIG),
     ('[Errno 28] No space left on device', 'disk_full', errors.OPEN_CONFIG),
+    ("ERROR: unable to open for writing: [Errno 36] File name too long: '/x/a.mp4.part'",
+     'name_too_long', errors.OPEN_CONFIG),
+    ('[WinError 206] The filename or extension is too long', 'name_too_long', errors.OPEN_CONFIG),
     ('HTTP Error 429: Too Many Requests', 'rate_limited', errors.OPEN_CONFIG),
     ('ERROR: [generic] late: Unable to download webpage: HTTP Error 404: NOT FOUND', 'not_found', None),
     ("ERROR: [generic] x: Unable to download webpage: <urlopen error Tunnel connection failed: "
