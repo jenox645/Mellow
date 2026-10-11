@@ -30,6 +30,7 @@ Windows and Linux.
 - [ffmpeg](#ffmpeg)
 - [Staying up to date](#staying-up-to-date)
 - [Troubleshooting](#troubleshooting)
+- [Safety and privacy](#safety-and-privacy)
 - [Your files](#your-files)
 - [Build from source](#build-from-source)
 - [Development](#development)
@@ -58,6 +59,12 @@ certutil -hashfile MellowDLP-2.5.1-windows-portable.exe SHA256
 ```
 
 (Linux: `sha256sum -c SHA256SUMS.txt --ignore-missing`.) Updates installed by the app don't trigger the warning, and the app checks their checksums itself.
+
+From 2.9.0 on, you can also check that a file was built from this repository's code by its public release workflow, not uploaded by hand ([more below](#safety-and-privacy)):
+
+```
+gh attestation verify MellowDLP-2.9.0-windows-setup.exe --repo jenox645/Mellow
+```
 
 The window is a Chrome, Edge, Brave or Chromium app window (Windows always has Edge). A Linux system with none of them opens MellowDLP in your default browser instead.
 
@@ -131,6 +138,29 @@ Without ffmpeg the app still works, with limits it tells you about: audio stays 
 | Downloads hang on some networks | Config → Force IPv4 |
 | SmartScreen blocks the exe | [More info → Run anyway](#download) |
 | Something else | [Open an issue](https://github.com/jenox645/Mellow/issues/new/choose) with the end of the log: it's `~/.mellow_dlp.log` (`%USERPROFILE%\.mellow_dlp.log` on Windows). Updates log to `~/.mellow_dlp_update.log` |
+
+---
+
+## Safety and privacy
+
+MellowDLP is a personal project, not a company product, so here is what you can check rather than take on trust.
+
+**Where the files come from.** Every release is built and published by [GitHub Actions](.github/workflows/release.yml) from this repository's code, after each build is started and tested. Nobody builds or uploads a file by hand. Each file carries a signed [build provenance attestation](https://docs.github.com/en/actions/security-for-github-actions/using-artifact-attestations/using-artifact-attestations-to-establish-provenance-for-builds) (from 2.9.0 on). With the [GitHub CLI](https://cli.github.com/), `gh attestation verify <file> --repo jenox645/Mellow` shows the commit and the workflow that built it, and fails for any other file.
+
+**Not code-signed (yet).** A Windows code-signing certificate costs money and an identity check, which is why SmartScreen warns. The attestation above is the free way to tie a file to this repository.
+
+**Updates.** The app downloads only from this repository's GitHub releases, only a newer version, and checks the file against the release's `SHA256SUMS.txt` before running anything. yt-dlp updates come from yt-dlp's own releases (checked against its `SHA2-256SUMS`), and GET FFMPEG from [BtbN's builds](https://github.com/BtbN/FFmpeg-Builds) (checked against their `checksums.sha256`). A checksum from the same place as the file catches a broken or swapped download, not a hacked GitHub account; [SECURITY.md](SECURITY.md) has the details and how to report a problem.
+
+**What it connects to.**
+- The sites you download from.
+- GitHub and PyPI, to look for MellowDLP and yt-dlp updates: at start and every 6 hours while open. Config → **Update Check on Launch** turns both off.
+- GitHub, when you click GET FFMPEG or UPDATE.
+- [SponsorBlock](https://sponsor.ajay.app/), only when that option is on.
+- Webhooks, only those you set up yourself.
+
+There are no accounts and no telemetry: your history and the Analytics page live in a database on your computer. The app's own server listens on `127.0.0.1` only, and refuses requests from web pages.
+
+**What you download is up to you.** Whether you may download something depends on what it is, the site's terms and the law where you live. MellowDLP (like yt-dlp) doesn't get around DRM.
 
 ---
 

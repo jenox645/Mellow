@@ -13,6 +13,8 @@ fails without one.
 - **Long titles no longer fail downloads**: a title too long for a file name (a TikTok or Instagram caption, a long Japanese title, a deep folder on Windows) is cut short to fit, instead of failing with "File name too long" or "No such file or directory".
 - **The computer stays awake while downloading**: a laptop no longer goes to sleep in the middle of a playlist, and a ⏾ LATER download can start at night. The screen can still turn off, and closing the lid still sleeps. Config → App Behavior → Keep the Computer Awake turns it off.
 - **"This video is not available" explained**: YouTube's catch-all refusal now says what usually lifts it (a signed-in browser's cookies, in Config → Authentication), with an OPEN CONFIG button, instead of the raw error.
+- **Web pages can't reach into MellowDLP**: a site you visit could point an image tag at MellowDLP's local server and show your own pictures inside its page, or make it run ffmpeg on a video. The server now refuses anything a browser marks as coming from another site, and no other page may embed or frame it.
+- **Releases you can check**: every file of a release now has a signed build provenance, so `gh attestation verify <file> --repo jenox645/Mellow` proves it was built by this repository's public workflow, not uploaded by hand. The README's new Safety and privacy section says what MellowDLP connects to (no telemetry) and how updates are checked.
 - **Cancelled downloads don't lower the success rate**: Analytics leaves the ones you cancelled out of it.
 - **What's new reads properly**: one 2.8.0 note showed as "— , once nothing is downloading".
 

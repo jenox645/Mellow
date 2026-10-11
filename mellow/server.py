@@ -212,6 +212,32 @@ def _local_host_guard() -> Response | None:
 
 
 @app.before_request
+def _cross_site_guard() -> Response | None:
+    """Nothing for pages from other sites (the browser's Fetch Metadata).
+
+    A web page you visit can point an <img>, <video> or <iframe> at this
+    server: it would show your own pictures and videos inside its page (the
+    vault serves them by path), make a thumbnail request run ffmpeg and write
+    a sidecar, or frame the app to trick you into clicking. Browsers say where
+    a request comes from; a link you open or type says "none".
+    """
+    if request.headers.get("Sec-Fetch-Site") == "cross-site":
+        return jsonify({"error": "Requests from other sites are not allowed"}), 403
+    return None
+
+
+@app.after_request
+def _isolation_headers(resp: Response) -> Response:
+    """For browsers that send no Sec-Fetch-Site (and pages on another port of
+    this machine): no answer may be used by another origin's page, and no
+    page may frame the app."""
+    resp.headers.setdefault("Cross-Origin-Resource-Policy", "same-origin")
+    resp.headers.setdefault("Content-Security-Policy", "frame-ancestors 'none'")
+    resp.headers.setdefault("X-Frame-Options", "DENY")
+    return resp
+
+
+@app.before_request
 def _api_write_guard() -> Response | None:
     if request.method not in ("POST", "PUT", "DELETE") or not request.path.startswith("/api/"):
         return None
