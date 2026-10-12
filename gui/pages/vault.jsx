@@ -4,7 +4,8 @@
 import { API } from '../lib/api.js';
 import { fmtBytes, fmtDate, timeAgo } from '../lib/util.js';
 import { Ico } from '../components/icons.jsx';
-import { Modal, Mascot } from '../components/common.jsx';
+import { TAGGABLE_AUDIO } from '../lib/constants.js';
+import { Modal, Mascot, useFitInWindow } from '../components/common.jsx';
 import {
   MASCOT_CHILLING, MASCOT_TIRED, MASCOT_FRUSTRATED, MASCOT_COMFY_SAFE,
 } from '../lib/mascots.js';
@@ -100,9 +101,13 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
   const [vaultSort, setVaultSort] = React.useState('name');
   const [folderMosaics, setFolderMosaics] = React.useState({});
   const [cardMenuData, setCardMenuData] = React.useState(null); // { folder, top, right }
+  const ctxMenuRef = useFitInWindow(ctxMenu);
+  const cardMenuRef = useFitInWindow(cardMenuData);
   const [linkPlModal, setLinkPlModal] = React.useState(null);
   const [renameModal, setRenameModal] = React.useState(null);
   const [syncModal, setSyncModal] = React.useState(null);
+  const [retagOpen, setRetagOpen] = React.useState(false);
+  const [retagging, setRetagging] = React.useState(false);
   const [folderStatsModal, setFolderStatsModal] = React.useState(null); // folder stats modal
   const [folderStatsData, setFolderStatsData] = React.useState(null);
   // path → thumbnail URL for the open folder; null until known, so a card
@@ -216,6 +221,24 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
     .sort((a, b) => new Date(b) - new Date(a))[0] || null;
   // A folder with linked playlists can sync before its first sync, too
   const canSync = !!(libEntry || (selectedFolderMeta && selectedFolderMeta.playlist_count > 0));
+  const taggableCount = files.filter(f => TAGGABLE_AUDIO.includes((f.ext || '').toLowerCase())).length;
+
+  // RE-TAG: album, track numbers (the linked playlist's current order) and
+  // artists for the audio files already here, as a download now writes them
+  const handleRetag = React.useCallback(() => {
+    if (!selectedFolder) return;
+    setRetagging(true);
+    API.post('/api/vault/retag', { path: selectedFolder })
+      .then(r => {
+        setRetagOpen(false);
+        const numbered = r.numbered ? `, numbered in playlist order (${r.numbered})` : '';
+        showNotif('Tags Updated', `${r.tagged} file${r.tagged === 1 ? '' : 's'} tagged as the album "${r.album}"${numbered}`
+          + (r.unchanged ? ` · ${r.unchanged} already right` : '') + (r.failed ? ` · ${r.failed} couldn't be written` : ''),
+          r.failed ? 'warn' : 'success');
+      })
+      .catch(e => showNotif('Re-tag Failed', e.message, 'error'))
+      .finally(() => setRetagging(false));
+  }, [selectedFolder, showNotif]);
 
   // What the folder's last sync did; refetched when a sync finishes (lastSynced moves)
   const [syncReport, setSyncReport] = React.useState(null);
@@ -479,6 +502,7 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
         {cardMenuData && (
           <div
             className="vfc-menu-popup"
+            ref={cardMenuRef}
             style={{ top: cardMenuData.top, right: cardMenuData.right }}
             onClick={e => e.stopPropagation()}
           >
@@ -682,6 +706,10 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
             <button className="btn btn-secondary btn-sm" title="Sync options / selective playlist sync" data-tour="vault-sync-options"
               onClick={() => setSyncModal(selectedFolderMeta)}>SYNC OPTIONS</button>
           )}
+          {taggableCount > 0 && (
+            <button className="btn btn-secondary btn-sm" data-tour="vault-retag" onClick={() => setRetagOpen(true)}
+              title="Album, track numbers and artists for the songs in this folder">♪ RE-TAG</button>
+          )}
           <button className="btn btn-secondary btn-sm" onClick={() => loadFolder(selectedFolder)}>↻ REFRESH</button>
           <button className="btn btn-secondary btn-sm" data-tour="vault-open" onClick={() => handleOpenFolder(selectedFolder)}>
             OPEN IN EXPLORER
@@ -843,7 +871,7 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
       )}
 
       {ctxMenu && (
-        <div className="ctx-menu" style={{ left: ctxMenu.x, top: ctxMenu.y }} onClick={e => e.stopPropagation()}>
+        <div className="ctx-menu" ref={ctxMenuRef} style={{ left: ctxMenu.x, top: ctxMenu.y }} onClick={e => e.stopPropagation()}>
           <div className="ctx-item" onClick={() => { setPreviewFile(ctxMenu.file); setCtxMenu(null); }}>
             <Ico name="play" /> Preview in App
           </div>
@@ -857,6 +885,29 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
             <Ico name="trash" /> Delete
           </div>
         </div>
+      )}
+
+      {retagOpen && (
+        <Modal title="RE-TAG — ALBUM TAGS" onClose={() => !retagging && setRetagOpen(false)}
+          footer={
+            <>
+              <button className="btn btn-secondary btn-sm" onClick={() => setRetagOpen(false)} disabled={retagging}>CANCEL</button>
+              <button className="btn btn-primary btn-sm" data-tour="vault-retag-go" onClick={handleRetag} disabled={retagging}>
+                {retagging ? 'TAGGING…' : `♪ RE-TAG ${taggableCount} FILE${taggableCount === 1 ? '' : 'S'}`}
+              </button>
+            </>
+          }
+        >
+          <div className="retag-info">
+            <p>Writes into the {taggableCount} song{taggableCount === 1 ? '' : 's'} of this folder, as new downloads get them:</p>
+            <ul>
+              <li><b>Album</b>: {canSync ? 'the linked playlist\'s name' : 'the folder\'s name'}, and <b>album artist</b> Various Artists</li>
+              {canSync && <li><b>Track number</b>: each song's place in the playlist <i>now</i> (reads the playlist, so a reordered one is renumbered)</li>}
+              <li><b>Artist</b>: without "- Topic" or "VEVO"</li>
+            </ul>
+            <p className="retag-note">A song with a real album of its own (YouTube Music) keeps it. Only tags change: the files, their names and the sound stay as they are.</p>
+          </div>
+        </Modal>
       )}
 
       {deleteConfirm && (

@@ -42,12 +42,18 @@ export const APP_UPDATE_POLL_MS = 6 * 60 * 60 * 1000;
 // Clipboard watcher
 export const CLIPBOARD_URL_RE = /^https?:\/\/\S+$/;
 
+// Gap kept between a pop-up menu and the window's edge
+export const MENU_EDGE_PX = 8;
+
 // Keyboard navigation — keys 1..N jump to these pages
 export const PAGE_ORDER = ['feed', 'queue', 'vault', 'analytics', 'signal', 'config'];
 
 // Tooltip of the SponsorBlock option (feed and library entries)
 // Tooltip of the Normalize Volume option (audio downloads)
 export const NORMALIZE_HINT = 'Even out loudness across tracks (EBU R128, -14 LUFS, as streaming services play them). Re-encodes the audio';
+
+// Tooltip of the Album Tags option (audio downloads)
+export const MUSIC_TAGS_HINT = 'A playlist plays as one album in music apps: its name as the album, each song\'s position as the track number, artists without "- Topic". A real album (YouTube Music) is kept';
 
 export const SPONSORBLOCK_HINT = 'Cut sponsor, intro, outro and self-promo segments out of YouTube downloads';
 
@@ -57,6 +63,7 @@ export const FORMAT_TOGGLES = [
   { key: 'embed_thumbnail', label: 'Embed Thumbnail', def: true },
   { key: 'embed_subs', label: 'Subtitles', def: false, only: 'video' },
   { key: 'normalize_audio', label: 'Normalize Volume', def: false, only: 'audio', hint: NORMALIZE_HINT },
+  { key: 'music_tags', label: 'Album Tags', def: true, only: 'audio', hint: MUSIC_TAGS_HINT },
   { key: 'embed_chapters', label: 'Chapters', def: true },
   { key: 'embed_metadata', label: 'Metadata', def: true },
   { key: 'sponsorblock', label: 'SponsorBlock', def: false, hint: SPONSORBLOCK_HINT },
@@ -68,6 +75,8 @@ export const QUALITIES = ['best', '4k', '1080p', '720p', '480p', '360p'];
 export const CONTAINERS = ['mp4', 'mkv', 'webm'];
 export const AUDIO_FORMATS = ['mp3', 'aac', 'flac', 'm4a', 'opus', 'wav'];
 export const LOSSLESS_AUDIO = ['flac', 'wav'];
+// Audio files RE-TAG can write tags into (mellow/music_tags.py TAGGABLE_EXTS)
+export const TAGGABLE_AUDIO = ['mp3', 'm4a', 'aac', 'flac', 'opus', 'ogg'];
 // [value, label]; 'best' = highest-quality VBR
 export const AUDIO_QUALITIES = [['best', 'BEST'], ['320', '320K'], ['256', '256K'], ['192', '192K'], ['128', '128K']];
 

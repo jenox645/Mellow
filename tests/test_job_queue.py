@@ -393,7 +393,7 @@ def test_queue_finished_opens_the_folder_when_configured(client, tmp_dir):
     with patch('mellow.desktop.show_in_folder') as show, \
             patch('mellow.server._push_progress', side_effect=events.append):
         server._queue_finished([{'output_dir': tmp_dir}])
-    show.assert_called_once_with(tmp_dir)
+    show.assert_called_once_with(tmp_dir, bring_forward=False)   # not in front of whatever is open
     assert events == [{'status': 'queue_done', 'count': 1, 'folders': [tmp_dir]}]
     client.post('/api/config', json={'on_queue_done': 'nothing'})
     with patch('mellow.desktop.show_in_folder') as show, patch('mellow.server._push_progress'):

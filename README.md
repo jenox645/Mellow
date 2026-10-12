@@ -89,6 +89,7 @@ The window is a Chrome, Edge, Brave or Chromium app window (Windows always has E
 **Your library**
 - **Vault**: browse what you downloaded by folder, with thumbnails, file stats, OPEN and FOLDER buttons.
 - **Library sync**: link a folder to a playlist or channel and keep it in step, add-only or mirror (removes files no longer in the playlist). Syncs run on a schedule if you like, and each one leaves a report: what came in, what was skipped, what failed.
+- **Music tags**: songs synced as audio carry the playlist as their album and their place in it as the track number, so music apps play the folder as one album, in order. ♪ RE-TAG gives songs already in a folder the same tags.
 - **Archive file**: each folder's `mellow_archive.txt` lists what's in it, so nothing downloads twice. Import it on another computer to rebuild the same library.
 - **Analytics**: your download history by platform, format and uploader, with CSV export and custom SQL.
 

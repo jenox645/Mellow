@@ -10,7 +10,7 @@ from typing import Any, Callable
 
 import yt_dlp
 
-from . import analytics, errors
+from . import analytics, errors, music_tags
 from .constants import (
     AUDIO_FORMATS,
     FILENAME_MAX,
@@ -908,6 +908,7 @@ def _playlist_records(info: dict, base: dict, item_stats: dict, wanted_ext: str,
         rows.append({
             **base,
             "url": entry.get("webpage_url") or entry.get("url", ""),
+            "video_id": entry.get("id"),
             "title": entry.get("title"),
             "uploader": entry.get("uploader") or entry.get("channel"),
             "duration_seconds": req[0].get("duration") or entry.get("duration"),
@@ -923,11 +924,15 @@ def _playlist_records(info: dict, base: dict, item_stats: dict, wanted_ext: str,
 
 
 def _run_ydl(url: str, ydl_opts: dict, *, normalize_audio: bool, embed_thumb: bool,
-             speed_tracker: dict, logger: _GeoBlockLogger | None) -> dict | None:
+             speed_tracker: dict, logger: _GeoBlockLogger | None,
+             tag_music: bool = False) -> dict | None:
     """Run yt-dlp for one download; raises DownloadError when nothing could be had."""
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         if normalize_audio and not _ExtractAudioNormalized.replacing(ydl):
             log.warning("normalize_audio: no audio extraction step to attach to")
+        if tag_music:
+            # Album, track and artist for FFmpegMetadata, decided per item
+            ydl.add_post_processor(music_tags.MusicTagsPP(ydl), when="pre_process")
         if embed_thumb:
             # Added last so it runs after audio extraction and metadata
             ydl.add_post_processor(
@@ -979,6 +984,7 @@ def _single_records(info: dict | None, base: dict, saved: dict, wanted_ext: str,
         rows.append({
             **base,
             "title": f"{saved['title']} — {section}" if section else saved["title"],
+            "video_id": (info or {}).get("id"),
             "uploader": saved["uploader"],
             "duration_seconds": part.get("duration") or saved["duration"],
             "file_size_bytes": Path(fp).stat().st_size,
@@ -1032,6 +1038,8 @@ def _download_video(
                   else _opt_str(opts, "container", "mp4")).lower()
     embed_thumb = bool(ffmpeg and opts.get("embed_thumbnail"))
     normalize_audio = bool(ffmpeg and want_audio and opts.get("normalize_audio"))
+    # Written by the metadata step: nothing to add to without it
+    tag_music = bool(ffmpeg and want_audio and opts.get("music_tags") and opts.get("embed_metadata"))
     ydl_opts, warning = _build_ydl_opts(
         url, out_dir, opts, ffmpeg=ffmpeg, want_audio=want_audio, embed_thumb=embed_thumb,
         warn=lambda code, message: progress_cb({"status": "warning", "code": code,
@@ -1051,7 +1059,7 @@ def _download_video(
     saved = _saved_file(None)
     try:
         info = _run_ydl(url, ydl_opts, normalize_audio=normalize_audio, embed_thumb=embed_thumb,
-                        speed_tracker=speed_tracker, logger=logger)
+                        speed_tracker=speed_tracker, logger=logger, tag_music=tag_music)
         saved = _saved_file(info)
         if cancel_event.is_set():
             progress_cb({"status": "cancelled"})

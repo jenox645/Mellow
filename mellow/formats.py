@@ -16,6 +16,7 @@ TOGGLES: dict[str, bool] = {
     "embed_subs": False,       # video only
     "sponsorblock": False,
     "normalize_audio": False,  # audio only
+    "music_tags": True,        # audio only: album/track from the playlist (music_tags.py)
 }
 
 # The format choices that go with them in a remembered sync format

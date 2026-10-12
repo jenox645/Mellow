@@ -426,8 +426,11 @@ def get_folder_stats(path: str, linked_playlists: list) -> dict:
 
 # ── Mirror preview & confirm ──────────────────────────────────────────────────
 
-def get_mirror_preview(path: str, vp: list[str], request_opts: dict | None = None) -> dict:
-    """Return local files not present in any linked playlist."""
+def _read_playlists(vp: list[str], request_opts: dict | None) -> tuple[list[dict], list[str]]:
+    """([{title, entries}] for each linked playlist that could be read, [urls that couldn't]).
+
+    A flat listing: ids, urls and titles in playlist order, no video pages.
+    """
     import yt_dlp as _ydl
 
     from . import downloader
@@ -436,7 +439,7 @@ def get_mirror_preview(path: str, vp: list[str], request_opts: dict | None = Non
         # Same cookies/proxy as the sync itself, so private playlists list
         downloader._apply_cookie_opts(ydl_opts, request_opts)
         downloader._apply_network_opts(ydl_opts, request_opts)
-    playlist_ids: set[str] = set()
+    lists: list[dict] = []
     fetch_errors: list[str] = []
     for playlist_url in vp:
         try:
@@ -444,12 +447,18 @@ def get_mirror_preview(path: str, vp: list[str], request_opts: dict | None = Non
                 info = ydl.extract_info(playlist_url, download=False)
             if not info:
                 raise ValueError("no playlist data")
-            for entry in (info.get("entries") or []):
-                if entry and entry.get("id"):
-                    playlist_ids.add(entry["id"])
+            lists.append({"title": info.get("title"),
+                          "entries": [e for e in (info.get("entries") or []) if e]})
         except Exception as exc:
-            log.warning(f"mirror preview: could not read {playlist_url}: {exc}")
+            log.warning(f"could not read playlist {playlist_url}: {exc}")
             fetch_errors.append(playlist_url)
+    return lists, fetch_errors
+
+
+def get_mirror_preview(path: str, vp: list[str], request_opts: dict | None = None) -> dict:
+    """Return local files not present in any linked playlist."""
+    lists, fetch_errors = _read_playlists(vp, request_opts)
+    playlist_ids = {e["id"] for pl in lists for e in pl["entries"] if e.get("id")}
 
     p = Path(path)
     # IDs backed by an actual file on disk (deletable) vs archive-only IDs
@@ -508,25 +517,82 @@ def get_mirror_preview(path: str, vp: list[str], request_opts: dict | None = Non
 _YT_URL_ID_RE = _re.compile(r'(?:[?&]v=|youtu\.be/|/shorts/)([A-Za-z0-9_-]{11})')
 
 
+def _history_in(folder: Path) -> list[tuple[str, str, str | None]]:
+    """(file name, source URL, item id) of the files in `folder` the download
+    history knows (the id is recorded from 2.10.0 on)."""
+    try:
+        with analytics.get_conn() as con:
+            rows = con.execute(
+                "SELECT file_path, url, video_id FROM downloads "
+                "WHERE status='success' AND file_path IS NOT NULL"
+            ).fetchall()
+    except Exception:
+        return []
+    found = []
+    for file_path, url, video_id in rows:
+        f = Path(file_path)
+        if f.parent == folder and f.is_file():
+            found.append((f.name, url or "", video_id))
+    return found
+
+
 def _history_ids_in(folder: Path) -> dict[str, str]:
     """YouTube id -> file name, for files in `folder` that the download
     history knows the source URL of."""
     ids: dict[str, str] = {}
-    try:
-        with analytics.get_conn() as con:
-            rows = con.execute(
-                "SELECT file_path, url FROM downloads WHERE status='success' AND file_path IS NOT NULL"
-            ).fetchall()
-    except Exception:
-        return ids
-    for file_path, url in rows:
-        f = Path(file_path)
-        if f.parent != folder or not f.is_file():
-            continue
-        m = _YT_URL_ID_RE.search(url or "")
+    for name, url, _ in _history_in(folder):
+        m = _YT_URL_ID_RE.search(url)
         if m:
-            ids.setdefault(m.group(1), f.name)
+            ids.setdefault(m.group(1), name)
     return ids
+
+
+# ── Re-tag ────────────────────────────────────────────────────────────────────
+
+def retag(path: str, vp: list[str], request_opts: dict | None = None) -> dict:
+    """Tag a folder's audio files as one album, numbered in the linked
+    playlist's current order (music_tags.retag_folder).
+
+    The album is the playlist's name (the folder's name without a playlist,
+    or with several). Files are matched to playlist items by the URL they
+    were downloaded from, or the [id] in their name. Nothing is written when
+    a linked playlist can't be read: its numbers would be wrong.
+    """
+    from . import music_tags
+    folder = Path(path)
+    lists, fetch_errors = _read_playlists(vp, request_opts) if vp else ([], [])
+    if fetch_errors:
+        return {"error": "The linked playlist couldn't be read: nothing was changed. "
+                         "Check the connection (and cookies for a private playlist), then try again."}
+    album = lists[0]["title"] if len(lists) == 1 and lists[0]["title"] else folder.name
+
+    history = _history_in(folder)
+    by_id = {vid: name for name, _, vid in history if vid}
+    for vid, name in _history_ids_in(folder).items():
+        by_id.setdefault(vid, name)
+    # A URL names one file only for sites that give each item its own page
+    names_per_url: dict[str, set[str]] = {}
+    for name, url, _ in history:
+        names_per_url.setdefault(url, set()).add(name)
+    by_url = {url: next(iter(names)) for url, names in names_per_url.items() if url and len(names) == 1}
+    try:
+        for f in folder.iterdir():
+            m = _YT_ID_RE.search(f.name)
+            if m and f.is_file():
+                by_id.setdefault(m.group(1), f.name)
+    except OSError as exc:
+        return {"error": f"Cannot read {folder}: {exc}"}
+    order: dict[str, int] = {}
+    position = 0
+    for pl in lists:
+        for entry in pl["entries"]:
+            position += 1
+            name = (by_id.get(entry.get("id") or "")
+                    or by_url.get(entry.get("url") or "") or by_url.get(entry.get("webpage_url") or ""))
+            if name:
+                order.setdefault(name, position)
+    result = music_tags.retag_folder(folder, album, order)
+    return {**result, "album": album, "numbered": len(order)}
 
 
 def _subtitle_files(media: Path) -> list[Path]:
