@@ -271,3 +271,29 @@ def test_a_deep_folder_still_leaves_a_readable_title():
     from pathlib import PureWindowsPath
     deep = PureWindowsPath("C:\\" + "\\".join(["a folder with a long name"] * 9))
     assert "%(title).32s" in downloader._fit_template("%(title)s.%(ext)s", deep, windows=True)
+
+
+def test_items_removed_from_the_queue_are_skipped_while_the_playlist_runs():
+    """✕ on a pending item adds it to the job's skip_items: the match filter
+    reads that list at every entry, so it works on a running download."""
+    ydl_opts = {}
+    opts = {'skip_items': [], 'skip_shorts': True}
+    downloader._apply_playlist_opts(ydl_opts, opts, 'https://www.youtube.com/playlist?list=PLx')
+    match = ydl_opts['match_filter']
+    assert match({'id': 'a', 'title': 'One'}) is None
+    opts['skip_items'].append('a')                       # ✕ while it runs
+    assert match({'id': 'a', 'title': 'One'}) == f'One {downloader.REMOVED_REASON}'
+    assert match({'id': 'b', 'url': 'https://x/b'}, incomplete=True) is None
+    opts['skip_items'].append('https://x/b')             # a link works as well as an id
+    assert downloader.REMOVED_REASON in match({'id': 'b', 'url': 'https://x/b'})
+    # The skip filters still apply to the rest
+    assert 'does not pass filter' in match({'id': 'c', 'title': 'Short', 'media_type': 'short'})
+    events = []
+    downloader._GeoBlockLogger(events.append, None).debug(f'[download] One {downloader.REMOVED_REASON}')
+    assert [(e['reason'], e['title']) for e in events] == [('removed', 'One')]
+
+
+def test_a_single_link_gets_no_queue_filter():
+    ydl_opts = {}
+    downloader._apply_playlist_opts(ydl_opts, {'skip_items': []}, 'https://youtu.be/x')
+    assert 'match_filter' not in ydl_opts

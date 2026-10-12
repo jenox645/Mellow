@@ -525,3 +525,41 @@ def test_a_sync_whose_playlist_cant_be_read_still_runs():
         with patch('mellow.vault._read_playlists', return_value=([], ['https://x/a'])):
             assert vault.sync_plan(tmp, ['https://x/a']) is None
     assert [e['status'] for e in events] == ['complete']
+
+
+def test_skip_adds_to_a_queued_or_running_job_and_its_links_are_left_out():
+    events, seen = [], []
+    m = _make_manager(events)
+
+    def fake_dl(url, out, opts, cb, lib_id=None, cancel_event=None, pause_event=None):
+        seen.append(url)
+        if url == 'https://x/a':
+            assert m.skip('multi', ['https://x/c']) is job   # ✕ while the job runs
+        return _finishes(url, out, opts, cb)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        job = {'id': 'multi', 'type': 'feed', 'label': 'links', 'url': 'https://x/a',
+               'multi_urls': ['https://x/a', 'https://x/b', 'https://x/c'], 'output_dir': tmp,
+               'opts': {}, 'library_id': None, 'status': 'queued', 'cancel_event': threading.Event(),
+               'counts': {'new': 0, 'errors': 0}}
+        m._jobs.append(job)
+        assert m.skip('multi', ['https://x/b', '']) is job        # while it waits
+        assert m.skip('nope', ['https://x/b']) is None
+        job['status'] = 'active'
+        with patch('mellow.downloader.download_video', side_effect=fake_dl):
+            assert m.run_job(job) == 'complete'
+    assert seen == ['https://x/a']
+    assert job['opts']['skip_items'] == ['https://x/b', 'https://x/c']
+    assert 'https://x/b (removed from the queue)' in job['report']['filtered']
+    job['status'] = 'complete'
+    assert m.skip('multi', ['https://x/a']) is None           # over: nothing to skip
+
+
+def test_the_skip_route(client):
+    with patch.object(jobs.manager, 'skip', return_value=None):
+        assert client.post('/api/queue/j1/skip', json={'items': ['a']}).status_code == 404
+    with patch.object(jobs.manager, 'skip', return_value={'opts': {'skip_items': ['a']}}) as skip:
+        r = client.post('/api/queue/j1/skip', json={'items': ['a']})
+        assert r.status_code == 200 and r.get_json()['skipped'] == 1
+        skip.assert_called_once_with('j1', ['a'])
+    assert client.post('/api/queue/j1/skip', json={'items': []}).status_code == 400

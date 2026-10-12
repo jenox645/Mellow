@@ -57,12 +57,17 @@ def test_download_a_video(page, media_site, downloads):
     page.get_by_text("clip", exact=False).first.wait_for()
 
 
-def test_playlist_without_a_removed_item(page, media_site, downloads):
+def test_playlist_without_an_unticked_item(page, media_site, downloads):
     _analyze(page, f"{media_site}/playlist")
     rows = page.locator(".pl-queue-item")
     expect(rows).to_have_count(3)
-    rows.nth(1).locator(".pl-queue-remove").click()
-    expect(rows).to_have_count(2)
+    picks = page.locator(".pending-picks").first
+    picks.get_by_text("NONE").click()
+    expect(page.locator(".pl-queue-check.on")).to_have_count(0)
+    picks.get_by_text("ALL").click()
+    rows.nth(1).click()                                   # untick the second
+    expect(page.locator(".pl-queue-check.on")).to_have_count(2)
+    expect(page.locator(".queue-list-header").first).to_contain_text("2 OF 3 SELECTED")
     page.locator(".info-actions .btn-primary").click()
     page.get_by_text("JUST DOWNLOAD").click()
     _notification(page, "Download Complete")
@@ -88,6 +93,41 @@ def test_search_then_pick_a_result(page, media_site):
     page.locator(".info-actions .btn-primary").wait_for(timeout=30_000)
     assert box.input_value() == f"{media_site}/third.mp4"
     expect(page.locator(".info-title")).to_contain_text("third")
+
+
+def test_search_results_ticked_together_download_together(page, media_site, downloads):
+    results = [
+        {"idx": i, "id": name, "title": f"Lofi beats — {name}", "url": f"{media_site}/{name}.mp4",
+         "thumbnail": "", "duration": 2, "uploader": "Mellow Records", "view_count": 10}
+        for i, name in enumerate(["clip", "second", "third"], start=1)
+    ]
+    with patch("mellow.downloader.search", return_value=results):
+        box = page.get_by_placeholder(re.compile("youtube", re.I))
+        box.fill("lofi beats")
+        box.press("Enter")
+        rows = page.locator(".search-result")
+        expect(rows).to_have_count(3)
+    rows.nth(0).locator(".search-check").click()
+    rows.nth(2).locator(".search-check").click()
+    page.get_by_role("button", name="LIST 2 →").click()
+    expect(page.locator(".info-title")).to_contain_text('2 picked from "lofi beats"')
+    page.locator(".info-actions .btn-primary").click()
+    _notification(page, "Download Complete")
+    names = _files(downloads)
+    assert len(names) == 2 and not any("second" in n for n in names), names
+
+
+def test_an_item_removed_from_a_running_download_is_skipped(page, media_site, downloads):
+    """✕ only hid a pending item: it was downloaded anyway."""
+    _analyze(page, f"{media_site}/playlist-long-first")
+    page.locator(".info-actions .btn-primary").click()
+    page.get_by_text("JUST DOWNLOAD").click()
+    third = page.locator(".pl-queue-item", has_text="(3)")
+    third.locator(".pl-queue-remove").click()            # while the slow first one downloads
+    expect(third).to_have_count(0)
+    _notification(page, "Download Complete")
+    names = _files(downloads)
+    assert len(names) == 2 and not any("(3)" in n for n in names), names
 
 
 def test_a_video_copied_from_a_mix_is_analyzed_alone(page):
@@ -422,7 +462,7 @@ def test_a_sync_shows_what_it_reads_and_what_it_downloads(page, media_site, down
     page.locator(".vault-folder-card", has_text="Slow Mix").click()
     page.locator("[data-tour=vault-sync]").click()
     page.locator(".nav-item", has_text="QUEUE").click()
-    banner = page.locator(".sync-banner", has_text="PLAYLIST READ")
+    banner = page.locator(".sync-plan-bar", has_text="PLAYLIST READ")
     banner.wait_for(timeout=DOWNLOAD_TIMEOUT_MS)
     expect(banner).to_contain_text("PLAYLIST READ · 3")
     expect(banner).to_contain_text("1 ALREADY IN FOLDER")
@@ -432,4 +472,36 @@ def test_a_sync_shows_what_it_reads_and_what_it_downloads(page, media_site, down
     toast = page.locator(".notif", has_text="Sync Complete")
     toast.wait_for(timeout=DOWNLOAD_TIMEOUT_MS)
     expect(toast).to_contain_text("2 new · 1 already in the folder")
-    expect(page.locator(".sync-banner")).to_have_count(0)
+    expect(page.locator(".sync-plan-bar")).to_have_count(0)
+
+
+def test_a_folder_picked_by_mistake_moves_with_its_playlist(page, media_site, downloads, tmp_path):
+    """Someone picked the wrong folder for a playlist: ⇄ MOVE takes it, its
+    files and its link elsewhere, and the next sync downloads nothing again."""
+    from mellow import config, jobs
+    folder = downloads / "Wrong Place"
+    folder.mkdir()
+    target = tmp_path / "Music"
+    target.mkdir()
+    url = f"{media_site}/playlist"
+    config.update_config(lambda c: c.update(vault_playlists={str(folder): [url]}))
+    page.locator(".nav-item", has_text="VAULT").click()
+    page.get_by_title("Refresh vault").click()
+    page.locator(".vault-folder-card", has_text="Wrong Place").click()
+    page.locator("[data-tour=vault-sync]").click()
+    page.locator(".victory-overlay").wait_for(timeout=DOWNLOAD_TIMEOUT_MS)
+    page.locator(".victory-overlay").click()
+    assert jobs.manager.wait_idle(60)
+    # The open folder shows what the sync brought (it stayed "no media here")
+    expect(page.locator(".lib-grid .lib-card")).to_have_count(3)
+    with patch("mellow.desktop.ask_folder", return_value=str(target)), \
+            patch("mellow.desktop.tkinter_available", True):
+        page.locator("[data-tour=vault-move]").click()
+        page.locator("[data-tour=vault-move-go]").click()
+    _notification(page, "Folder Moved")
+    moved = target / "Wrong Place"
+    assert not folder.exists() and len(_files(moved)) == 4      # 3 clips + the archive
+    expect(page.locator(".vault-breadcrumb")).to_contain_text(re.compile("wrong place", re.I))
+    assert config.load_config()["vault_playlists"] == {str(moved): [url]}
+    page.locator("[data-tour=vault-sync]").click()
+    _notification(page, "Up To Date")

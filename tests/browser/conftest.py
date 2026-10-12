@@ -90,7 +90,8 @@ def _make_dash(folder: Path) -> None:
 @pytest.fixture(scope="session")
 def media_site(tmp_path_factory):
     """A tiny video site: /<name>.mp4, /slow/<name>.mp4, /playlist (three clips),
-    /playlist-slow (three clips served slowly) and
+    /playlist-slow (three clips served slowly), /playlist-long-first (a slow
+    long clip, then two quick ones) and
     /playlist-dash (two videos with separate audio, see DASH_AUDIO_REFUSED) and
     /titled/<name> (a page whose one video is named LONG_TITLE)."""
     folder = tmp_path_factory.mktemp("media")
@@ -127,6 +128,12 @@ def media_site(tmp_path_factory):
         return ("<html><head><title>Slow Mix</title></head><body>"
                 '<video src="/slow/clip.mp4"></video><video src="/slow/second.mp4"></video>'
                 '<video src="/slow/long.mp4"></video></body></html>')
+
+    @site.route("/playlist-long-first")
+    def playlist_long_first():
+        return ("<html><head><title>Long First</title></head><body>"
+                '<video src="/slow/long.mp4"></video><video src="/clip.mp4"></video>'
+                '<video src="/second.mp4"></video></body></html>')
 
     @site.route("/titled/<name>")
     def titled(name):

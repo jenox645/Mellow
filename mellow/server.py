@@ -24,6 +24,7 @@ from . import (
     downloader,
     errors,
     ffmpeg_install,
+    folder_move,
     formats,
     jobs,
     scheduler,
@@ -590,6 +591,18 @@ def api_queue_retry(job_id: str) -> Response:
     return jsonify({"ok": True, "job_id": job["id"]})
 
 
+@app.route("/api/queue/<job_id>/skip", methods=["POST"])
+def api_queue_skip(job_id: str) -> Response:
+    """Items ✕'d in a pending list: {"items": [id or link, ...]}."""
+    items = (request.get_json(force=True) or {}).get("items")
+    if not isinstance(items, list) or not items:
+        return jsonify({"error": "No items"}), 400
+    job = jobs.manager.skip(job_id, items)
+    if job is None:
+        return jsonify({"error": "That download has already finished"}), 404
+    return jsonify({"ok": True, "skipped": len(job["opts"]["skip_items"])})
+
+
 @app.route("/api/queue/<job_id>/start-now", methods=["POST"])
 def api_queue_start_now(job_id: str) -> Response:
     """Run a job queued for later without waiting for its time."""
@@ -965,6 +978,24 @@ def api_vault_rename() -> Response:
             vault_names.pop(path, None)
     update_config(_rename)
     return jsonify({"ok": True})
+
+
+@app.route("/api/vault/move", methods=["POST"])
+def api_vault_move() -> Response:
+    """Move a vault folder into another folder: {path, into}. Its playlists,
+    sync settings, library entry and history follow (folder_move)."""
+    data = request.get_json(force=True) or {}
+    path, into = str(data.get("path") or "").strip(), str(data.get("into") or "").strip()
+    if not path or not into:
+        return jsonify({"error": "path and into required"}), 400
+    if jobs.manager.uses_folder(path):
+        return jsonify({"error": "A download into this folder is queued or running. "
+                                 "Move it once that is done."}), 409
+    try:
+        new_path = folder_move.move_folder(path, into)
+    except folder_move.MoveError as exc:
+        return jsonify({"error": str(exc)}), 400
+    return jsonify({"ok": True, "path": new_path})
 
 
 @app.route("/api/vault/remove", methods=["POST"])

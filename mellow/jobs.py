@@ -161,6 +161,20 @@ class JobManager:
         self._persist()
         return job
 
+    def skip(self, job_id: str, items: list[str]) -> dict | None:
+        """Leave items out of a queued or running job: playlist entries by id
+        or link, links of a multi-link job. One already downloading finishes.
+        Returns the job, or None when it is unknown or already over."""
+        items = [str(i) for i in items if i]
+        with self._cv:
+            job = next((j for j in self._jobs if j["id"] == job_id), None)
+            if job is None or job["status"] not in ("queued", "active"):
+                return None
+            removed = job["opts"].setdefault("skip_items", [])
+            removed.extend(i for i in items if i not in removed)
+        self._persist()
+        return job
+
     def retry(self, job_id: str, url: str | None = None) -> dict | None:
         """Run job `job_id` again, or just `url` from it, with its options and folder.
 
@@ -209,6 +223,17 @@ class JobManager:
         with self._cv:
             return any(
                 j.get("sync_path") == sync_path and j["status"] in ("queued", "active")
+                for j in self._jobs
+            )
+
+    def uses_folder(self, folder: str) -> bool:
+        """True when a queued or running job downloads into `folder` (or a
+        folder inside it): it can't be moved from under the job."""
+        from .folder_move import is_inside
+        with self._cv:
+            return any(
+                j["status"] in ("queued", "active")
+                and any(is_inside(p, folder) for p in (j.get("output_dir"), j.get("sync_path")) if p)
                 for j in self._jobs
             )
 
@@ -397,6 +422,8 @@ class JobManager:
         # The metadata toggle is read at run time so config changes apply to
         # already-queued jobs too.
         job["opts"]["write_metadata"] = load_config().get("write_metadata", True)
+        # Items ✕'d in the Queue (ids or links); skip() adds to this very list
+        removed = job["opts"].setdefault("skip_items", [])
         push = self._make_cb(job)
         if job["type"] == "sync":
             # What the sync will download and what the folder already has,
@@ -409,6 +436,9 @@ class JobManager:
         for url in urls:
             if cancel_event.is_set():
                 break
+            if url in removed:
+                push({"status": "item_skipped", "reason": "removed", "title": url})
+                continue
             terminal: dict = {}
             reported: list[bool] = []
 
@@ -465,6 +495,8 @@ class JobManager:
                 # For the sync report only; one per archived item is no UI news
                 if event.get("reason") == "filtered":
                     _keep(report["filtered"], event.get("title") or "?")
+                elif event.get("reason") == "removed":
+                    _keep(report["filtered"], f"{event.get('title') or '?'} (removed from the queue)")
                 else:
                     report["archived"] += 1
                 return

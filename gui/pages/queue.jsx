@@ -5,10 +5,11 @@ import { API, cancelShownDownload } from '../lib/api.js';
 import { fmtBytes, fmtSpeed, fmtEta, fmtDuration, timeAgo } from '../lib/util.js';
 import { Ico } from '../components/icons.jsx';
 import { FileActions, Mascot, SyncBanner } from '../components/common.jsx';
+import { PendingList } from '../components/pending-list.jsx';
 import { MASCOT_TIRED } from '../lib/mascots.js';
 import { QUEUE_POLL_MS } from '../lib/constants.js';
 
-export function QueuePage({ dlState, showNotif, activeJobs, playlistItems, setPlaylistItems, completedItems, failedItems, playlistTotalCount, playlistCompletedCount, isPaused, pausedCount, failedCount, syncJobLabel, syncPlan, onPause, onResume, onClearCompleted, onClearFailed }) {
+export function QueuePage({ dlState, showNotif, activeJobs, playlistItems, setPlaylistItems, completedItems, failedItems, playlistTotalCount, playlistCompletedCount, isPaused, pausedCount, failedCount, syncJobLabel, syncPlan, playlistJobId, onPause, onResume, onClearCompleted, onClearFailed }) {
   const isDownloading = dlState && dlState.pct !== undefined;
   // Every running job (Concurrent Downloads > 1), not just the one on the Feed
   const activeCount = Math.max(Object.keys(activeJobs || {}).length, isDownloading ? 1 : 0);
@@ -16,7 +17,6 @@ export function QueuePage({ dlState, showNotif, activeJobs, playlistItems, setPl
   const [qTab, setQTab] = React.useState('pending');
   // The IN FOLDER tab leaves with the sync it belongs to
   React.useEffect(() => { if (!syncPlan && qTab === 'have') setQTab('pending'); }, [syncPlan, qTab]);
-  const [removingItems, setRemovingItems] = React.useState(new Set());
   const [jobs, setJobs] = React.useState([]);
 
   const loadJobs = React.useCallback(() => {
@@ -80,11 +80,6 @@ export function QueuePage({ dlState, showNotif, activeJobs, playlistItems, setPl
   const JOB_BADGE = { queued: 'queued', active: 'downloading', complete: 'completed', failed: 'failed', cancelled: 'queued' };
   const JOB_COLOR = { queued: 'var(--cyan)', active: 'var(--amber)', complete: 'var(--green)', failed: 'var(--red)', cancelled: 'var(--t4)' };
   const queuedJobsCount = jobs.filter(j => j.status === 'queued').length;
-
-  const handleRemove = (idx) => {
-    setRemovingItems(prev => new Set([...prev, idx]));
-    // Actual removal from state happens in onAnimationEnd
-  };
 
   return (
     <div className="content active">
@@ -301,45 +296,15 @@ export function QueuePage({ dlState, showNotif, activeJobs, playlistItems, setPl
             </div>
           ) : qTab === 'pending' ? (
             <>
-              <div className="queue-list-header">
-                <span className="qlh-left">PENDING ITEMS — 待機中</span>
-                <span className="qlh-right">{(playlistItems ? playlistItems.length : 0)} TRACKS{syncPlan ? '' : ' · CLICK ✕ TO REMOVE'}</span>
-              </div>
-              {syncPlan && (!playlistItems || playlistItems.length === 0) && (
+              {syncPlan && (!playlistItems || playlistItems.length === 0) ? (
                 <div style={{ padding: '20px', fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: 'var(--t3)', textAlign: 'center' }}>
                   {syncPlan.new > 0 ? 'FINISHING UP…' : 'NOTHING NEW — THE FOLDER HAS EVERY ITEM'}
                 </div>
+              ) : (
+                <PendingList items={playlistItems || []} setItems={setPlaylistItems} jobId={playlistJobId}
+                  showNotif={showNotif}
+                  skipHint={syncPlan ? '✕ SKIPS THIS TIME (THE NEXT SYNC TRIES AGAIN)' : null} />
               )}
-              <div className="pl-queue-list">
-                {(playlistItems || []).map(item => (
-                  <div
-                    key={item.idx}
-                    className={'pl-queue-item' + (removingItems.has(item.idx) ? ' completing' : '')}
-                    onAnimationEnd={removingItems.has(item.idx) ? () => {
-                      setPlaylistItems(prev => prev ? prev.filter(x => x.idx !== item.idx) : prev);
-                      setRemovingItems(prev => { const n = new Set(prev); n.delete(item.idx); return n; });
-                    } : undefined}
-                  >
-                    <span className="pl-queue-drag">⠿</span>
-                    <span className="pl-queue-idx">{item.idx}</span>
-                    {item.thumbnail
-                      ? <img src={item.thumbnail} className="pl-queue-thumb" alt="" onError={e => { e.target.style.display = 'none'; }} />
-                      : <div className="pl-queue-thumb-ph">▶</div>
-                    }
-                    <div className="pl-queue-info">
-                      <div className="pl-queue-title">{item.title || 'Unknown'}</div>
-                      {item.uploader && <div className="pl-queue-sub">{item.uploader}</div>}
-                    </div>
-                    <span className="pl-queue-dur">{item.duration ? fmtDuration(item.duration) : '—'}</span>
-                    <div className="pl-queue-st"><span className="q-st-badge queued">QUEUED</span></div>
-                    {!syncPlan && (
-                      <div className="pl-queue-remove" onClick={() => handleRemove(item.idx)}>
-                        <Ico name="x" size={10} />
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
             </>
           ) : (
             <div className="pl-queue-list">

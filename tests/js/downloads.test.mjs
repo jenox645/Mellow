@@ -215,3 +215,17 @@ test("a sync plan doesn't take the list from a Feed playlist or another job's pa
   assert.equal(s.syncPlan, null);
   assert.equal(s.playlistItems, null);
 });
+
+test('the pending list belongs to a job until that job ends', () => {
+  let s = downloadsReducer(initialDownloads(), { type: 'set', key: 'playlistJobId', value: 'p' });
+  s = run([{ status: 'starting', job_id: 'other' }, { status: 'complete', job_id: 'other' }], s);
+  assert.equal(s.playlistJobId, 'p');            // another job ending leaves it alone
+  s = run([{ status: 'cancelled', job_id: 'p' }], s);
+  assert.equal(s.playlistJobId, null);
+  // A sync's plan: ✕ skips in the sync
+  s = run([{ status: 'sync_plan', job_id: 's', job_type: 'sync', total: 1, have: 0, new: 1,
+    items: [{ idx: 1, id: 'x' }], have_items: [] }]);
+  assert.equal(s.playlistJobId, 's');
+  s = run([{ status: 'complete', job_id: 's', job_type: 'sync' }], s);
+  assert.equal(s.playlistJobId, null);
+});

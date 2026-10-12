@@ -28,6 +28,7 @@ export function initialDownloads() {
     jobItemsDone: {},          // items each running job finished (a sync's celebration)
     currentPlaylist: { name: '', count: 0 },
     syncJobLabel: null,
+    playlistJobId: null,       // the job the pending list belongs to (✕ skips its items)
     syncPlan: null,            // the running sync's plan: {jobId, name, total, have, new, haveItems, failed}
     appUpdate: null,           // MellowDLP updating itself: {stage, pct, version}
     ffmpegInstall: null,       // GET FFMPEG running: {stage, pct, version}
@@ -69,8 +70,10 @@ export function syncName(label) {
 }
 
 // The sync whose plan fills the Queue ended: its lists go with it
-const withoutPlan = (s, jobId) => (s.syncPlan && s.syncPlan.jobId === jobId
-  ? { ...s, syncPlan: null, playlistItems: null, syncJobLabel: null } : s);
+const withoutPlan = (s, jobId) => {
+  if (s.syncPlan && s.syncPlan.jobId === jobId) s = { ...s, syncPlan: null, playlistItems: null, syncJobLabel: null };
+  return s.playlistJobId && s.playlistJobId === jobId ? { ...s, playlistJobId: null } : s;
+};
 
 // "Lofi Beats: 2 new · 63 already in the folder" for a sync's end
 export function syncSummaryText(name, summary) {
@@ -170,7 +173,7 @@ export function applyEvent(state, data, now = Date.now()) {
       s = { ...s,
         syncPlan: { jobId, name: syncName(data.job_label), total: data.total || 0, have: data.have || 0,
           new: data.new || 0, haveItems: data.have_items || [], failed: (data.failed_playlists || []).length },
-        playlistItems: (data.items || []).map(i => ({ ...i, selected: true })),
+        playlistItems: (data.items || []).map(i => ({ ...i, selected: true })), playlistJobId: jobId,
         playlistTotalCount: data.new || 0, playlistCompletedCount: 0 };
       break;
 
