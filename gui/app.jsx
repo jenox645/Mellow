@@ -80,7 +80,7 @@ function App() {
   const {
     appState, dlState, activeJobs, speedHistory, playlistItems, completedItems, failedItems,
     playlistTotalCount, playlistCompletedCount, failedCount, isPaused, pausedCount, syncJobLabel,
-    fetchingPlaylistItems, appUpdate, ffmpegInstall,
+    syncPlan, appUpdate, ffmpegInstall,
   } = dl;
   // setState-style setters for the pages (stable: dispatch never changes)
   const setters = React.useMemo(() => {
@@ -460,7 +460,7 @@ function App() {
             playlistCompletedCount={playlistCompletedCount}
             isPaused={isPaused}
             syncJobLabel={syncJobLabel}
-            fetchingPlaylistItems={fetchingPlaylistItems}
+            syncPlan={syncPlan}
             onPause={() => API.post('/api/download/pause', {}).catch(() => {})}
             onResume={() => API.post('/api/download/resume', {}).catch(() => {})}
             onClearCompleted={() => setCompletedItems([])}
@@ -482,7 +482,7 @@ function App() {
             pausedCount={pausedCount}
             failedCount={failedCount}
             syncJobLabel={syncJobLabel}
-            fetchingPlaylistItems={fetchingPlaylistItems}
+            syncPlan={syncPlan}
             onPause={() => API.post('/api/download/pause', {}).catch(() => {})}
             onResume={() => API.post('/api/download/resume', {}).catch(() => {})}
             onClearCompleted={() => setCompletedItems([])}
@@ -501,9 +501,6 @@ function App() {
             onRefreshVault={refreshVault}
             isDownloading={!!(dlState && dlState.status !== 'complete' && dlState.status !== 'error')}
             onSyncStart={setSyncJobLabel}
-            onSyncItems={(items, count, name) => dispatch(items === null
-              ? { type: 'playlist_started', name, count: 0, fetching: true }
-              : { type: 'playlist_items', items, count, name })}
           />
         )}
         {page === 'analytics' && (

@@ -225,7 +225,7 @@ export function LinkPlaylistModal({ folder, onClose, showNotif }) {
   );
 }
 
-export function SyncPlaylistModal({ folder, onClose, showNotif, onRefreshVault, isDownloading, onSyncStart, onSyncItems }) {
+export function SyncPlaylistModal({ folder, onClose, showNotif, onRefreshVault, isDownloading, onSyncStart }) {
   const [playlists, setPlaylists] = React.useState(null);
   const [selectedPlaylists, setSelectedPlaylists] = React.useState(null);
   const [syncMode, setSyncMode] = React.useState('add');
@@ -294,18 +294,8 @@ export function SyncPlaylistModal({ folder, onClose, showNotif, onRefreshVault, 
       .then(() => {
         const label = folder.name + ' — ' + activePlaylists.length + ' playlist(s)';
         showNotif('Sync Queued', label, 'success');
+        // The sync reads its playlists when it starts and lists them in the Queue (sync_plan)
         onSyncStart && onSyncStart(label);
-        if (onSyncItems) {
-          onSyncItems(null, 0, folder.name);
-          Promise.all(
-            activePlaylists.map(url =>
-              API.post('/api/playlist-items', { url }).then(r => r.items || []).catch(() => [])
-            )
-          ).then(results => {
-            const allItems = results.flat();
-            onSyncItems(allItems, allItems.length, folder.name + ' sync');
-          });
-        }
         onRefreshVault && onRefreshVault();
         onClose();
       })
@@ -345,17 +335,6 @@ export function SyncPlaylistModal({ folder, onClose, showNotif, onRefreshVault, 
           showNotif('Not Deleted', removed.errors.length + ' file(s) could not be deleted (in use or read-only?)', 'error');
         }
         onSyncStart && onSyncStart(label);
-        if (onSyncItems && activePlaylists.length) {
-          onSyncItems(null, 0, folder.name);
-          Promise.all(
-            activePlaylists.map(url =>
-              API.post('/api/playlist-items', { url }).then(r => r.items || []).catch(() => [])
-            )
-          ).then(results => {
-            const allItems = results.flat();
-            onSyncItems(allItems, allItems.length, folder.name + ' sync');
-          });
-        }
         onRefreshVault && onRefreshVault();
         onClose();
       })

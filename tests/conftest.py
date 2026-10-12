@@ -35,8 +35,18 @@ class RecordingKeeper:
         return bool(self.calls and self.calls[-1])
 
 
+def _no_sync_plan(request):
+    """A sync job reads its playlists before it starts (jobs._sync_plan). Unit
+    tests mock the downloader with made-up playlist URLs, so that read is off
+    there; browser tests drive the real app against locally served playlists."""
+    from mellow import jobs
+    if request.node.get_closest_marker('browser'):
+        return jobs._sync_plan
+    return lambda job: None
+
+
 @pytest.fixture(autouse=True)
-def isolated_user_files(tmp_path):
+def isolated_user_files(tmp_path, request):
     """Point every per-user file at a temp dir for every test.
 
     Without this a test run reads and writes the developer's real
@@ -54,6 +64,7 @@ def isolated_user_files(tmp_path):
             patch('mellow.ytdlp_update.OVERLAY_PATH', tmp_path / 'ytdlp.zip'), \
             patch('mellow.ffmpeg_locate.MANAGED_DIR', tmp_path / 'ffmpeg'), \
             patch('mellow.power.keeper', RecordingKeeper()), \
+            patch('mellow.jobs._sync_plan', _no_sync_plan(request)), \
             patch.dict('os.environ', {}), \
             patch.multiple(ffmpeg_locate, _cached=ffmpeg_locate._cached,
                            _last_miss=ffmpeg_locate._last_miss):

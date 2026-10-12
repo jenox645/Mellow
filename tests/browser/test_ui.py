@@ -405,3 +405,31 @@ def test_a_vault_sync_that_brought_new_songs_is_celebrated(page, media_site, dow
     expect(overlay).to_contain_text("Lofi Beats")
     overlay.click()
     expect(overlay).to_have_count(0, timeout=5000)
+
+
+def test_a_sync_shows_what_it_reads_and_what_it_downloads(page, media_site, downloads):
+    """A sync used to list the whole playlist as QUEUED, the songs the folder
+    already had too: the Queue now shows what reading the playlist found."""
+    from mellow import config, vault
+    folder = downloads / "Slow Mix"
+    folder.mkdir()
+    url = f"{media_site}/playlist-slow"
+    first = vault._read_playlists([url], None)[0][0]["entries"][0]
+    (folder / "mellow_archive.txt").write_text(vault.archive_key(first) + "\n", encoding="utf-8")
+    config.update_config(lambda c: c.update(vault_playlists={str(folder): [url]}))
+    page.locator(".nav-item", has_text="VAULT").click()
+    page.get_by_title("Refresh vault").click()
+    page.locator(".vault-folder-card", has_text="Slow Mix").click()
+    page.locator("[data-tour=vault-sync]").click()
+    page.locator(".nav-item", has_text="QUEUE").click()
+    banner = page.locator(".sync-banner", has_text="PLAYLIST READ")
+    banner.wait_for(timeout=DOWNLOAD_TIMEOUT_MS)
+    expect(banner).to_contain_text("PLAYLIST READ · 3")
+    expect(banner).to_contain_text("1 ALREADY IN FOLDER")
+    expect(banner).to_contain_text("2 TO DOWNLOAD")
+    page.locator(".q-tab", has_text="IN FOLDER (1)").click()
+    expect(page.locator(".pl-queue-have")).to_have_count(1)
+    toast = page.locator(".notif", has_text="Sync Complete")
+    toast.wait_for(timeout=DOWNLOAD_TIMEOUT_MS)
+    expect(toast).to_contain_text("2 new · 1 already in the folder")
+    expect(page.locator(".sync-banner")).to_have_count(0)

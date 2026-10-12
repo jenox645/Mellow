@@ -121,6 +121,30 @@ export function EditableStat({ value, colorClass, format, onSave }) {
   );
 }
 
+// The running sync, above the Queue's lists: queued (its playlists are read
+// when it starts), then what reading them found (sync_plan)
+export function SyncBanner({ plan, label }) {
+  if (!plan && !label) return null;
+  return (
+    <div className="sync-banner" data-tour="sync-plan">
+      <span className="sync-banner-spin">⟳</span>
+      {!plan ? (
+        <span>SYNC QUEUED: {label}<span className="sync-banner-note"> · the playlist is read when it starts</span></span>
+      ) : (
+        <>
+          <span className="sync-banner-name">SYNC — {plan.name}</span>
+          <span className="sync-banner-ok" title="The linked playlist(s) could be read">✓ PLAYLIST READ · {plan.total}</span>
+          <span className="sync-banner-ok" title="Recorded in the folder's archive: the sync skips these">✓ {plan.have} ALREADY IN FOLDER</span>
+          {plan.new > 0
+            ? <span className="sync-banner-new">↓ {plan.new} TO DOWNLOAD</span>
+            : <span className="sync-banner-ok">✓ UP TO DATE</span>}
+          {plan.failed > 0 && <span className="sync-banner-warn">⚠ {plan.failed} PLAYLIST(S) COULDN'T BE READ</span>}
+        </>
+      )}
+    </div>
+  );
+}
+
 export function Modal({ title, onClose, children, footer }) {
   React.useEffect(() => {
     const handler = (e) => { if (e.key === 'Escape') onClose(); };

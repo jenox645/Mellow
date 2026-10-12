@@ -46,6 +46,9 @@ WORKER_POLL_SECS: float = 5.0       # idle download workers re-check the queue t
 JOB_HISTORY_KEEP: int = 20           # finished jobs retained in /api/queue/status
 SYNC_REPORT_ITEMS_KEEP: int = 200    # titles/failures listed per sync report
 SYNC_REPORTS_KEEP: int = 10          # past sync reports kept per folder
+# A sync's plan lists every item to download, but at most this many of the
+# ones the folder already has (the count is always exact)
+SYNC_PLAN_HAVE_LIST_MAX: int = 500
 SSE_QUEUE_MAXSIZE: int = 500         # per-subscriber event buffer
 SSE_PING_INTERVAL_SECS: int = 25     # keepalive ping cadence
 

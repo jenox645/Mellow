@@ -24,6 +24,7 @@ from .constants import (
     M3U8_TEMP_MAX_AGE_SECS,
     MEDIA_EXTS,
     SUBTITLE_EXTS,
+    SYNC_PLAN_HAVE_LIST_MAX,
     THUMB_FFMPEG_SEEK_SECS,
     THUMB_FFMPEG_TIMEOUT_SECS,
     THUMB_FFMPEG_WIDTH,
@@ -477,18 +478,8 @@ def get_mirror_preview(path: str, vp: list[str], request_opts: dict | None = Non
     # download history, or mirror mode could never remove anything.
     for vid_id, fname in _history_ids_in(p).items():
         file_ids.setdefault(vid_id, fname)
-    archive_ids: set[str] = set()
-    for archive_file in [p / "mellow_archive.txt", *p.glob(".mellow_archive_*.txt")]:
-        if not archive_file.exists():
-            continue
-        try:
-            for line in archive_file.read_text(encoding="utf-8", errors="ignore").splitlines():
-                parts = line.strip().split()
-                # Only youtube entries can be matched against YouTube playlist IDs
-                if len(parts) == 2 and parts[0].lower() == "youtube":
-                    archive_ids.add(parts[1])
-        except Exception:
-            pass
+    # Only youtube entries can be matched against YouTube playlist IDs
+    archive_ids = {key.split(" ", 1)[1] for key in _archive_keys(p) if key.startswith("youtube ")}
 
     to_delete = []
     # A playlist that failed to load would make its files look orphaned:
@@ -511,6 +502,68 @@ def get_mirror_preview(path: str, vp: list[str], request_opts: dict | None = Non
         "playlist_count": len(vp),
         "playlist_ids_found": len(playlist_ids),
         "fetch_errors": fetch_errors,
+    }
+
+
+def _archive_keys(folder: Path) -> set[str]:
+    """The folder's download archive as yt-dlp keys it: "<extractor> <id>",
+    extractor lowercased (old hidden archives included)."""
+    keys: set[str] = set()
+    for archive_file in [folder / "mellow_archive.txt", *folder.glob(".mellow_archive_*.txt")]:
+        try:
+            lines = archive_file.read_text(encoding="utf-8", errors="ignore").splitlines()
+        except OSError:
+            continue
+        for line in lines:
+            parts = line.split()
+            if len(parts) == 2:
+                keys.add(f"{parts[0].lower()} {parts[1]}")
+    return keys
+
+
+def archive_key(entry: dict) -> str | None:
+    """The line yt-dlp's download archive records for a playlist entry
+    ("<extractor> <id>", as YoutubeDL._make_archive_id builds it), or None."""
+    extractor = entry.get("extractor_key") or entry.get("ie_key")
+    return f"{extractor.lower()} {entry['id']}" if extractor and entry.get("id") else None
+
+
+def sync_plan(folder: str, urls: list[str], request_opts: dict | None = None) -> dict | None:
+    """What a sync of `folder` will find, before it downloads anything.
+
+    Reads the linked playlists the way the sync will (flat, same cookies) and
+    marks each item `have` when the folder's archive records it, which is what
+    makes yt-dlp skip it. Returns {items (to download, in playlist order),
+    have_items (at most SYNC_PLAN_HAVE_LIST_MAX), total, have, new,
+    failed_playlists}, or None when no playlist could be read.
+    """
+    from . import downloader
+    lists, fetch_errors = _read_playlists(urls, request_opts)
+    if not lists:
+        return None
+    p = Path(folder)
+    if p.is_dir():
+        generate_archive(folder)    # the backfill the sync itself starts with
+    have_keys = _archive_keys(p)
+    new: list[dict] = []
+    have: list[dict] = []
+    seen: set[str] = set()
+    for pl in lists:
+        entries = [e for e in pl["entries"] if e]
+        for item, entry in zip(downloader._flat_items(entries), entries):
+            key = archive_key(entry)
+            if key and key in seen:
+                continue    # in two linked playlists: downloaded once
+            if key:
+                seen.add(key)
+            (have if key in have_keys else new).append(item)
+    return {
+        "items": new,
+        "have_items": have[:SYNC_PLAN_HAVE_LIST_MAX],
+        "total": len(new) + len(have),
+        "have": len(have),
+        "new": len(new),
+        "failed_playlists": fetch_errors,
     }
 
 

@@ -73,6 +73,16 @@ def configured_workers() -> int:
     return max(1, min(MAX_DOWNLOAD_WORKERS, n))
 
 
+def _sync_plan(job: dict) -> dict | None:
+    """vault.sync_plan() for a sync job. Reading the playlist can fail (offline,
+    private): the sync then runs without a plan, it never fails because of it."""
+    try:
+        return vault.sync_plan(job["output_dir"], job.get("multi_urls") or [job["url"]], job["opts"])
+    except Exception as exc:
+        log.warning(f"sync plan for {job['output_dir']} failed: {exc}")
+        return None
+
+
 class JobManager:
     def __init__(self) -> None:
         self._cv = threading.Condition()
@@ -388,6 +398,12 @@ class JobManager:
         # already-queued jobs too.
         job["opts"]["write_metadata"] = load_config().get("write_metadata", True)
         push = self._make_cb(job)
+        if job["type"] == "sync":
+            # What the sync will download and what the folder already has,
+            # before the first download starts (the Queue lists it)
+            plan = _sync_plan(job)
+            if plan:
+                push({"status": "sync_plan", **plan})
         # (url, result, terminal event, whether the run already reported item_failed)
         outcomes: list[tuple[str, str, dict, bool]] = []
         for url in urls:
@@ -433,6 +449,10 @@ class JobManager:
                       "message": terminal.get("message") or f"Could not download {url}"})
             note = f"{len(failed)} of {len(outcomes)} links could not be downloaded."
             complete["warning"] = " ".join(w for w in (complete.get("warning"), note) if w)
+        if job["type"] == "sync":
+            complete["sync_summary"] = {"new": job["counts"]["new"],
+                                        "already": job["report"]["archived"],
+                                        "failed": job["counts"]["errors"]}
         push(complete)
         return "complete"
 

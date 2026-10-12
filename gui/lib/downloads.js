@@ -28,7 +28,7 @@ export function initialDownloads() {
     jobItemsDone: {},          // items each running job finished (a sync's celebration)
     currentPlaylist: { name: '', count: 0 },
     syncJobLabel: null,
-    fetchingPlaylistItems: false,
+    syncPlan: null,            // the running sync's plan: {jobId, name, total, have, new, haveItems, failed}
     appUpdate: null,           // MellowDLP updating itself: {stage, pct, version}
     ffmpegInstall: null,       // GET FFMPEG running: {stage, pct, version}
     effects: [],               // side effects waiting for the App (see applyEvent)
@@ -53,15 +53,6 @@ export function downloadsReducer(state, action) {
         playlistCompletedCount: 0,
         failedCount: 0,
         failedItems: [],
-        fetchingPlaylistItems: !!action.fetching,
-      };
-    case 'playlist_items':
-      return {
-        ...state,
-        playlistItems: action.items.map(i => ({ ...i, selected: true })),
-        fetchingPlaylistItems: false,
-        playlistTotalCount: action.count,
-        currentPlaylist: { name: action.name || '', count: action.count },
       };
     case 'effects_done':
       // Only the ones the App has run: more may have queued meanwhile
@@ -75,6 +66,19 @@ export function downloadsReducer(state, action) {
 // "Library sync — Chill Mix"
 export function syncName(label) {
   return (label || '').replace(/^(Library sync|Sync) — /, '').replace(/ \(\d+ playlist\(s\)\)$/, '');
+}
+
+// The sync whose plan fills the Queue ended: its lists go with it
+const withoutPlan = (s, jobId) => (s.syncPlan && s.syncPlan.jobId === jobId
+  ? { ...s, syncPlan: null, playlistItems: null, syncJobLabel: null } : s);
+
+// "Lofi Beats: 2 new · 63 already in the folder" for a sync's end
+export function syncSummaryText(name, summary) {
+  const parts = summary.new > 0
+    ? [summary.new + ' new', summary.already + ' already in the folder']
+    : ['up to date, nothing new' + (summary.already ? ' (' + summary.already + ' already in the folder)' : '')];
+  if (summary.failed > 0) parts.push(summary.failed + ' failed');
+  return (name ? name + ': ' : '') + parts.join(' · ');
 }
 
 const withoutJob = (jobs, jobId) => {
@@ -158,6 +162,18 @@ export function applyEvent(state, data, now = Date.now()) {
       }
       break;
 
+    case 'sync_plan':
+      // A sync read its playlists: the Queue lists what it will download (and
+      // what the folder already has), unless a Feed playlist or another job
+      // holds the list
+      if (!isPrimary || s.playlistActive) return state;
+      s = { ...s,
+        syncPlan: { jobId, name: syncName(data.job_label), total: data.total || 0, have: data.have || 0,
+          new: data.new || 0, haveItems: data.have_items || [], failed: (data.failed_playlists || []).length },
+        playlistItems: (data.items || []).map(i => ({ ...i, selected: true })),
+        playlistTotalCount: data.new || 0, playlistCompletedCount: 0 };
+      break;
+
     case 'item_done': {
       const vid = data.video_id;
       if (vid && s.seenVideoIds.includes(vid)) return state;
@@ -200,16 +216,27 @@ export function applyEvent(state, data, now = Date.now()) {
     case 'complete': {
       const itemsDone = (jobId && s.jobItemsDone[jobId]) || 0;
       s = { ...s, activeJobs: withoutJob(s.activeJobs, jobId), jobItemsDone: withoutJob(s.jobItemsDone, jobId) };
-      fx.push({ type: 'chime' });
-      fx.push(data.warning
-        // Saved, but not the way it was asked for (e.g. no ffmpeg to convert)
-        ? { type: 'notify', title: 'Downloaded With Limits', body: data.warning, kind: 'warn', file: data.file_path }
-        : { type: 'notify', title: 'Download Complete', body: data.title || 'File saved successfully', kind: 'success', file: data.file_path });
-      fx.push({ type: 'desktop', title: 'Download complete', body: data.title || '' });
+      const summary = data.job_type === 'sync' && data.sync_summary;
+      if (summary) {
+        // Every sync says how it went, the periodic ones too; only new files
+        // are worth a sound and a desktop notification
+        const body = syncSummaryText(syncName(data.job_label), summary) + (data.warning ? ' — ' + data.warning : '');
+        fx.push({ type: 'notify', title: summary.new > 0 ? 'Sync Complete' : 'Sync: Up To Date', body,
+          kind: data.warning ? 'warn' : 'success' });
+        if (summary.new > 0) fx.push({ type: 'chime' }, { type: 'desktop', title: 'Sync complete', body });
+      } else {
+        fx.push({ type: 'chime' });
+        fx.push(data.warning
+          // Saved, but not the way it was asked for (e.g. no ffmpeg to convert)
+          ? { type: 'notify', title: 'Downloaded With Limits', body: data.warning, kind: 'warn', file: data.file_path }
+          : { type: 'notify', title: 'Download Complete', body: data.title || 'File saved successfully', kind: 'success', file: data.file_path });
+        fx.push({ type: 'desktop', title: 'Download complete', body: data.title || '' });
+      }
       fx.push({ type: 'refreshStats' }, { type: 'refreshVault' });
+      s = withoutPlan(s, jobId);
       if (isPrimary) {   // a background job finishing leaves the main panel alone
         s = { ...endPrimary(s, 'idle'), pausedCount: 0, syncJobLabel: null,
-          speedHistory: [...s.speedHistory.slice(1), 0], playlistItems: null, fetchingPlaylistItems: false };
+          speedHistory: [...s.speedHistory.slice(1), 0], playlistItems: null };
         if (s.playlistActive) {
           s.playlistActive = false;
           fx.push({ type: 'victory', sync: !!data.library_id,
@@ -244,6 +271,7 @@ export function applyEvent(state, data, now = Date.now()) {
       fx.push({ type: 'desktop', title: data.title || 'Download failed', body: data.hint || item.title });
       fx.push({ type: 'refreshStats' });
       if (isPrimary) s = endPrimary(s, 'error');
+      s = withoutPlan(s, jobId);
       break;
     }
 
@@ -251,6 +279,7 @@ export function applyEvent(state, data, now = Date.now()) {
       s = { ...s, activeJobs: withoutJob(s.activeJobs, jobId), jobItemsDone: withoutJob(s.jobItemsDone, jobId) };
       fx.push({ type: 'notify', title: 'Cancelled', body: 'Download stopped', kind: 'info' });
       if (isPrimary) s = { ...endPrimary(s, 'idle'), pausedCount: 0 };
+      s = withoutPlan(s, jobId);
       break;
 
     case 'queue_done':

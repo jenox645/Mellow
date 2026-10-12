@@ -74,12 +74,13 @@ The frontend handles them in one place: `gui/lib/downloads.js` `applyEvent(state
 reducer over the download state (dlState, activeJobs, playlist/completed/failed items, pause, counts).
 Side effects (toasts, chime, desktop notification, refreshes, the victory overlay) are queued in
 `state.effects`, and the App runs them in order and acknowledges them (`effects_done`). Pages change this
-state through setState-style setters (`{type:'set', key, value}`) or `playlist_started` / `playlist_items`.
+state through setState-style setters (`{type:'set', key, value}`) or `playlist_started`.
 A new event = a case in `applyEvent` + a test in `tests/js/downloads.test.mjs`. The victory overlay follows a Feed playlist
 (`playlist_started` → `playlistActive`) or any `sync` job whose `complete` comes after at least one `item_done`
 (`jobItemsDone`, named by `syncName(job_label)`).
 - `starting` — download started
 - `downloading` — progress update with `pct`, `speed`, `eta`, `current_item_title`, `current_item_thumb`
+- `sync_plan` — a `sync` job read its playlists before downloading (`jobs._sync_plan` → `vault.sync_plan`): `items` (to download), `have_items` (already in the folder's archive, at most `SYNC_PLAN_HAVE_LIST_MAX`), `total`, `have`, `new`, `failed_playlists`. Keys come from `vault.archive_key()` (what yt-dlp's archive records). The reducer turns it into `syncPlan` + `playlistItems` (Queue: `<SyncBanner>`, IN FOLDER tab) unless a Feed playlist or another job holds the list; a sync's `complete` carries `sync_summary` `{new, already, failed}` for its toast
 - `item_done` — one file finished: `title`, `thumbnail`, `video_id`, `playlist_index`
 - `item_failed` — one item failed: `reason` (`geo_blocked`/`error`), `message`
 - `item_saved` — an item's final file after every postprocessor (yt-dlp `post_hooks`): `file_path`, `file_size`; the UI attaches it to the job's newest finished item (OPEN / FOLDER)
@@ -174,6 +175,7 @@ python scripts/canary.py        # live-site extraction probe (also the weekly CI
 npm test                        # frontend unit tests via node:test (util, formats, the progress-event reducer)
 ```
 - `tests/conftest.py` redirects config, DB and queue files to a temp dir for every test (autouse) and drains `jobs.manager` on teardown — tests must never read or write `~/.mellow_dlp*`
+- A sync job reads its playlists first (`jobs._sync_plan`); conftest turns that off outside the browser tests (unit tests use made-up playlist URLs). A test of the plan patches `mellow.jobs._sync_plan` back to the real one (`from mellow.jobs import _sync_plan` at import time)
 - When a test enqueues through the API with `downloader.download_video` mocked, call `jobs.manager.wait_idle()` inside the `patch` block so the worker can't run the real downloader afterwards
 
 ## Lint
