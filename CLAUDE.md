@@ -89,7 +89,7 @@ A new event = a case in `applyEvent` + a test in `tests/js/downloads.test.mjs`. 
 - `error` (includes `url` for retry, `code: ffmpeg_missing` when that is the likely cause) / `cancelled` — terminal states
 - `error` and `item_failed` also carry `code`, `title`, `hint` and `action` (`update_ytdlp` | `open_config` | null) when `errors.explain()` recognises the message; the UI shows title + hint and a button for the action
 - `paused` / `resumed` — pause toggles
-- `ytdlp_updated` — after yt-dlp self-update
+- `ytdlp_updated` — after yt-dlp self-update: `ok`, `message` (the reason when it failed), `restart_required`
 - `ffmpeg_install` — GET FFMPEG: `stage` `downloading` (`pct`) → `installing` → `done` (`path`, `detail`) or `error` (`message`); the status bar and Config's FFmpeg row show it
 - `app_update` — MellowDLP updating itself: `stage` `downloading` (`pct`) → `installing` → `restarting` (the app then exits; `AppUpdateOverlay` covers the page), or `error` with `message`
 
@@ -105,7 +105,7 @@ A new event = a case in `applyEvent` + a test in `tests/js/downloads.test.mjs`. 
 - Deleting a media file goes through `vault.delete_media_file()` (sidecars + history rows too)
 - All magic numbers live in `constants.py` (backend) / `gui/lib/constants.js` (frontend)
 - Stats polling: 3s during active download, 30s idle (frontend constants)
-- Format lists (qualities, containers, audio formats, bitrates) live only in `gui/lib/constants.js`
+- Format lists (qualities, containers, audio formats, bitrates) for the UI live in `gui/lib/constants.js`; the backend validates against its own `AUDIO_FORMATS` / `VIDEO_CONTAINERS` (constants.py), and `tests/test_formats.py` fails when the two disagree
 - A new on/off download option is one entry in `formats.TOGGLES` and one in `FORMAT_TOGGLES` (constants.js; a test compares them) plus its effect in `downloader`. Downloads, sync formats (`SYNC_FORMAT_KEYS`), library entries (one DB column per toggle, added by `init_db`) and the `<FormatToggles>` checkboxes in the Feed and both vault dialogs pick it up
 - A vault folder's sync format: request → `vault_sync_formats[path]` (last choice, saved by the sync dialog and the Feed's vault link) → its library entry → `infer_folder_format()` (what the files are). Auto-sync and "sync all" send no format, so this chain decides them
 - Every yt-dlp call (analyze, playlist items, mirror preview, cookie test, downloads) goes through `_apply_cookie_opts` + `_apply_network_opts` (proxy, `force_ipv4`, socket timeout); build them with `config.request_settings(cfg)`

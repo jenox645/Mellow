@@ -115,7 +115,8 @@ test('queue finished and yt-dlp update toasts', () => {
   assert.deepEqual(types(run([{ status: 'queue_done', count: 1 }])), ['desktop']);
   assert.equal(run([{ status: 'queue_done', count: 3 }]).effects[0].title, 'Queue Finished');
   assert.equal(run([{ status: 'ytdlp_updated', ok: true, restart_required: true }]).effects[0].title, 'Restart To Finish');
-  assert.equal(run([{ status: 'ytdlp_updated', ok: false, error: 'x' }]).effects[0].kind, 'error');
+  assert.equal(run([{ status: 'ytdlp_updated', ok: false, message: 'x' }]).effects[0].kind, 'error');
+  assert.equal(run([{ status: 'ytdlp_updated', ok: false, message: 'x' }]).effects[0].body, 'x');
 });
 
 test('MellowDLP updating itself: progress, then the restart or a failure', () => {

@@ -277,6 +277,6 @@ MellowDLP is a window onto other people's great work: [yt-dlp](https://github.co
 
 ## License
 
-MellowDLP's code is under the [MIT license](LICENSE): use it, change it, share it, keep the copyright notice. The Mellow character and its artwork (mascot drawings, icons, banner) are not: they stay © jenox645, see [assets/LICENSE.md](assets/LICENSE.md) for what you may do with them.
+MellowDLP is under the [MIT license](LICENSE): use it, change it, share it, keep the copyright notice. That includes Mellow herself: the mascot was designed with an AI image generator and redrawn by hand as vectors, so she's shared on the same terms as the code.
 
 The downloadable app also contains other people's open-source software under their own licenses, among them yt-dlp (Unlicense), mutagen (GPL-2.0-or-later), Flask (BSD-3-Clause), DuckDB (MIT) and React (MIT). Their source code is linked under [Thanks](#thanks).

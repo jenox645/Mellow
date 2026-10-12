@@ -292,7 +292,7 @@ export function applyEvent(state, data, now = Date.now()) {
       fx.push(data.ok
         ? { type: 'notify', title: data.restart_required ? 'Restart To Finish' : 'Updated',
           body: data.message || 'yt-dlp updated successfully', kind: 'success' }
-        : { type: 'notify', title: 'Update failed', body: data.error || '', kind: 'error' });
+        : { type: 'notify', title: 'Update failed', body: data.message || '', kind: 'error' });
       fx.push({ type: 'refreshStats' });
       break;
 
