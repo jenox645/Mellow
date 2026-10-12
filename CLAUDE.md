@@ -10,9 +10,13 @@ assets/            icons, mascot art (*_vector used by the build), installer ima
                    originals/ holds unused source art
 tests/             pytest suite (imports `from mellow import …`, patches `mellow.<module>.<name>`);
                    tests/js/ = frontend unit tests (node:test); tests/browser/ = Chromium smoke tests (marker `browser`)
-scripts/canary.py  live-site extraction probe; scripts/smoke_binary.py starts a build headless and checks it
-build_setup.py     the build (SETUP.bat / setup.sh call it); MellowDLP.spec, installer.iss,
-                   build_linux_deb.py are its packaging inputs
+scripts/canary.py  live-site extraction probe; scripts/smoke_binary.py starts a build headless and checks it;
+                   scripts/screenshots.py makes the README's pictures (assets/screenshots/) from made-up demo data
+build_setup.py     the build (SETUP.bat / setup.sh call it); packaging/ holds its inputs: MellowDLP.spec
+                   (absolute paths from the repo root, built into dist/ and build/ wherever it's started),
+                   installer.iss (SourceDir=..) and build_linux_deb.py
+docs/              CONTRIBUTING.md: building, development, screenshots, releasing (README is for users)
+pyproject.toml     ruff and pytest settings (the app isn't a pip package)
 ```
 
 ## Architecture
@@ -71,7 +75,9 @@ reducer over the download state (dlState, activeJobs, playlist/completed/failed 
 Side effects (toasts, chime, desktop notification, refreshes, the victory overlay) are queued in
 `state.effects`, and the App runs them in order and acknowledges them (`effects_done`). Pages change this
 state through setState-style setters (`{type:'set', key, value}`) or `playlist_started` / `playlist_items`.
-A new event = a case in `applyEvent` + a test in `tests/js/downloads.test.mjs`.
+A new event = a case in `applyEvent` + a test in `tests/js/downloads.test.mjs`. The victory overlay follows a Feed playlist
+(`playlist_started` → `playlistActive`) or any `sync` job whose `complete` comes after at least one `item_done`
+(`jobItemsDone`, named by `syncName(job_label)`).
 - `starting` — download started
 - `downloading` — progress update with `pct`, `speed`, `eta`, `current_item_title`, `current_item_thumb`
 - `item_done` — one file finished: `title`, `thumbnail`, `video_id`, `playlist_index`
@@ -149,7 +155,7 @@ python build_setup.py --run-tests
 # Start a built binary headless and check it serves the app (CI + release do this):
 python scripts/smoke_binary.py dist/MellowDLP
 ```
-- `MellowDLP.spec` builds the app twice: one file (`dist/MellowDLP[.exe]`, the portable exe and the Linux binary; it unpacks itself at every start) and one folder (`dist/MellowDLP-app/`, what the Windows installer installs and the AppImage carries; nothing to unpack, ~2.5× faster start). installer.iss deletes `{app}\_internal` before installing the new one
+- `packaging/MellowDLP.spec` builds the app twice: one file (`dist/MellowDLP[.exe]`, the portable exe and the Linux binary; it unpacks itself at every start) and one folder (`dist/MellowDLP-app/`, what the Windows installer installs and the AppImage carries; nothing to unpack, ~2.5× faster start). installer.iss deletes `{app}\_internal` before installing the new one
 - Dependencies are pinned: `requirements.txt` (runtime; yt-dlp has a floor only, on purpose), `requirements-dev.txt`, `requirements-build.txt` (PyInstaller, Pillow), and `package.json` + `package-lock.json` (esbuild, ESLint, React — the build copies React's UMD files from `node_modules`; React 19 has none, so stay on 18). The build runs `npm ci` when the lockfile changed. Dependabot proposes bumps weekly
 - flaskwebgui ≥ 1.1.9 (1.1.8 crashes at import without a browser installed); it needs Python 3.12
 - `main.py --no-window` serves on 127.0.0.1 without opening a window (use your own browser; the smoke test uses it)
@@ -157,7 +163,7 @@ python scripts/smoke_binary.py dist/MellowDLP
 - The App looks for a newer MellowDLP at every launch and every `APP_UPDATE_POLL_MS` (6 h) while open (config `update_check_on_launch`); the offer stays in the status bar (`appUpdateOffer`, UPDATE → `takeAppUpdate`), the toast comes once per version
 - Self-update restarts through a helper started with `PYINSTALLER_RESET_ENVIRONMENT=1` (a one-file build must not inherit the old copy's unpack folder); `/api/app-update/install` answers 409 while downloads run unless `force` (they're saved and offered again after the restart)
 - Every `APP_VERSION` needs a `## X.Y.Z` section at the top of `CHANGELOG.md` (`- **Title**: text` lines): `tests/test_changelog.py` fails CI without it, release.yml refuses to publish without it and starts the GitHub release notes with it, and the app shows it once after updating (`/api/whats-new`, `WhatsNewModal`; `/api/whats-new/seen`; Config → WHAT'S NEW = every release). RESET DEFAULTS keeps `last_seen_version`
-- Releases: merging a change of `APP_VERSION` into main publishes `vX.Y.Z` by itself (release.yml runs on main when `mellow/version.py` changes, skips a version whose tag exists, and `gh release create --target` makes the tag); pushing a tag `vX.Y.Z` equal to `APP_VERSION` does the same by hand. A feature PR that should reach installed copies bumps `APP_VERSION` (and installer.iss's fallback). Either way `.github/workflows/release.yml` builds the Windows installer and the Linux binary + AppImage, smoke-tests each, and publishes the GitHub release with `SHA256SUMS.txt` and a signed build provenance per file (`actions/attest-build-provenance`, before the release is created) (a `-suffix` tag is a pre-release). PRs touching packaging run the builds without publishing
+- Releases: merging a change of `APP_VERSION` into main publishes `vX.Y.Z` by itself (release.yml runs on main when `mellow/version.py` changes, skips a version whose tag exists, and `gh release create --target` makes the tag); pushing a tag `vX.Y.Z` equal to `APP_VERSION` does the same by hand. A feature PR that should reach installed copies bumps `APP_VERSION` (and packaging/installer.iss's fallback). Either way `.github/workflows/release.yml` builds the Windows installer and the Linux binary + AppImage, smoke-tests each, and publishes the GitHub release with `SHA256SUMS.txt` and a signed build provenance per file (`actions/attest-build-provenance`, before the release is created) (a `-suffix` tag is a pre-release). PRs touching packaging run the builds without publishing
 
 ## Tests
 ```bash

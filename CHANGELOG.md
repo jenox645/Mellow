@@ -10,6 +10,7 @@ fails without one.
 
 ## 2.10.1
 - **Syncs are celebrated too**: Mellow's celebration only came after a playlist downloaded from the Feed. A vault sync (SYNC NOW, SYNC ALL, auto-sync) that brought new songs now ends with it as well, with the folder's name and how many came in; an up-to-date sync stays quiet. Config → Sync Completion Animation turns it off.
+- **Folder covers line up**: in the Vault, a folder linked to a playlist showed a smaller cover than the others (its extra line squeezed it). Every cover now has the same shape.
 
 ## 2.10.0
 - **Synced music plays as one album**: songs saved as audio from a playlist now carry the playlist's name as their album and their place in it as the track number, so a music app or your phone groups the folder as one album, in playlist order. Artists lose YouTube's " - Topic" and "VEVO" (e.g. "RickAstleyVEVO" becomes "Rick Astley"). A song with a real album of its own (YouTube Music) keeps it. The Album Tags option (on by default) turns it off.

@@ -4,6 +4,8 @@
 #endif
 
 [Setup]
+; Paths below are relative to the repository root (this file is in packaging/)
+SourceDir=..
 AppName=MellowDLP
 AppVersion={#AppVersion}
 DefaultDirName={autopf}\MellowDLP

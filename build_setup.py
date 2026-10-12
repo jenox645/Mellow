@@ -364,13 +364,14 @@ if FRONTEND_ONLY:
     print(f"\n    static/app.bundle.js  ({bundle.stat().st_size:,} bytes)\n")
     sys.exit(0)
 
-spec_file = HERE / "MellowDLP.spec"
+spec_file = HERE / "packaging" / "MellowDLP.spec"
 if not spec_file.exists():
     fail(f"Missing {spec_file}")
 
 # --clean wipes PyInstaller's cache: keep it for installer builds (correctness),
 # skip it for "App only" dev builds (saves a minute or two per iteration)
-_pyi_args = [sys.executable, "-m", "PyInstaller", "--noconfirm"]
+_pyi_args = [sys.executable, "-m", "PyInstaller", "--noconfirm",
+             "--distpath", str(HERE / "dist"), "--workpath", str(HERE / "build")]
 if not DESKTOP_SHORTCUT:
     _pyi_args.append("--clean")
 run([*_pyi_args, str(spec_file)])
@@ -380,7 +381,7 @@ built_exe = HERE / "dist" / exe_name
 if not built_exe.exists():
     fail(f"PyInstaller finished but binary not found at {built_exe}")
 print(f"  dist/{exe_name} ({built_exe.stat().st_size:,} bytes) — OK")
-# The one-folder build (MellowDLP.spec): the installer and the AppImage ship it
+# The one-folder build (packaging/MellowDLP.spec): the installer and the AppImage ship it
 app_dir = HERE / "dist" / "MellowDLP-app"
 if not (app_dir / exe_name).exists():
     fail(f"PyInstaller finished but the one-folder build is missing at {app_dir}")
@@ -504,7 +505,7 @@ elif IS_WINDOWS:
     iscc = _find_iscc()
     if iscc:
         print(f"  Inno Setup found: {iscc}")
-        iss_file = HERE / "installer.iss"
+        iss_file = HERE / "packaging" / "installer.iss"
         run([str(iscc), f"/DAppVersion={VERSION}", str(iss_file)])
         setup_exe = HERE / "dist" / "MellowDLP_Setup.exe"
         if setup_exe.exists():

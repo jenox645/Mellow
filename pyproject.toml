@@ -1,0 +1,21 @@
+# Tool settings. MellowDLP isn't a pip package: the app is built with
+# build_setup.py (dependencies: requirements*.txt, package.json).
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+# Lint the app only, not side projects that may live in the same checkout
+extend-exclude = ["datalake", "assignment"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-v"
+markers = [
+    "e2e: end-to-end tests requiring real network and yt-dlp",
+    "slow: slow tests (100+ item playlists, manual runs only)",
+    "browser: tests against a local media server with real yt-dlp + ffmpeg: UI smoke tests in Chromium, vault syncs (tests/browser, CI job \"browser\")",
+]
