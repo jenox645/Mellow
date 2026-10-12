@@ -4,16 +4,18 @@
 import { API, cancelShownDownload } from '../lib/api.js';
 import { fmtBytes, fmtSpeed, fmtEta, fmtDuration, timeAgo } from '../lib/util.js';
 import { Ico } from '../components/icons.jsx';
-import { FileActions, Mascot } from '../components/common.jsx';
+import { FileActions, Mascot, SyncBanner } from '../components/common.jsx';
 import { MASCOT_TIRED } from '../lib/mascots.js';
 import { QUEUE_POLL_MS } from '../lib/constants.js';
 
-export function QueuePage({ dlState, showNotif, activeJobs, playlistItems, setPlaylistItems, completedItems, failedItems, playlistTotalCount, playlistCompletedCount, isPaused, pausedCount, failedCount, syncJobLabel, fetchingPlaylistItems, onPause, onResume, onClearCompleted, onClearFailed }) {
+export function QueuePage({ dlState, showNotif, activeJobs, playlistItems, setPlaylistItems, completedItems, failedItems, playlistTotalCount, playlistCompletedCount, isPaused, pausedCount, failedCount, syncJobLabel, syncPlan, onPause, onResume, onClearCompleted, onClearFailed }) {
   const isDownloading = dlState && dlState.pct !== undefined;
   // Every running job (Concurrent Downloads > 1), not just the one on the Feed
   const activeCount = Math.max(Object.keys(activeJobs || {}).length, isDownloading ? 1 : 0);
   const queueCount = playlistItems ? playlistItems.length : 0;
   const [qTab, setQTab] = React.useState('pending');
+  // The IN FOLDER tab leaves with the sync it belongs to
+  React.useEffect(() => { if (!syncPlan && qTab === 'have') setQTab('pending'); }, [syncPlan, qTab]);
   const [removingItems, setRemovingItems] = React.useState(new Set());
   const [jobs, setJobs] = React.useState([]);
 
@@ -218,7 +220,7 @@ export function QueuePage({ dlState, showNotif, activeJobs, playlistItems, setPl
         </div>
       )}
 
-      {(playlistItems && playlistItems.length > 0) || (completedItems && completedItems.length > 0) || (failedItems && failedItems.length > 0) ? (
+      {(playlistItems && playlistItems.length > 0) || (completedItems && completedItems.length > 0) || (failedItems && failedItems.length > 0) || syncPlan || syncJobLabel ? (
         <div className="panel" data-tour="queue-playlist">
           <div className="panel-hud" /><div className="panel-hud-br" />
           <div className="ph">
@@ -227,12 +229,17 @@ export function QueuePage({ dlState, showNotif, activeJobs, playlistItems, setPl
             <span className="psub">
               {qTab === 'pending' ? (playlistItems ? playlistItems.length : 0) + ' PENDING'
                 : qTab === 'completed' ? (completedItems ? completedItems.length : 0) + ' DONE'
+                : qTab === 'have' ? (syncPlan ? syncPlan.have : 0) + ' IN FOLDER'
                 : (failedItems ? failedItems.length : 0) + ' FAILED'}
             </span>
           </div>
           <div className="q-tabs" style={{ display: 'flex', alignItems: 'center' }}>
             <div className={'q-tab' + (qTab === 'pending' ? ' active' : '')} onClick={() => setQTab('pending')}>PENDING</div>
             <div className={'q-tab' + (qTab === 'completed' ? ' active' : '')} onClick={() => setQTab('completed')}>COMPLETED</div>
+            {syncPlan && syncPlan.have > 0 && (
+              <div className={'q-tab' + (qTab === 'have' ? ' active' : '')} onClick={() => setQTab('have')} data-tour="queue-in-folder"
+                title="Items of the playlist the folder already has: the sync skips them">IN FOLDER ({syncPlan.have})</div>
+            )}
             <div className={'q-tab' + (qTab === 'failed' ? ' active' : '')} onClick={() => setQTab('failed')} style={failedItems && failedItems.length ? { color: 'var(--red)' } : undefined}>
               FAILED{failedItems && failedItems.length ? ' (' + failedItems.length + ')' : ''}
             </div>
@@ -248,7 +255,30 @@ export function QueuePage({ dlState, showNotif, activeJobs, playlistItems, setPl
               <span style={{ marginLeft: failedItems.filter(i => i.url).length > 1 ? 0 : 'auto', cursor: 'pointer', fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: 'var(--red)', padding: '0 10px' }} onClick={onClearFailed}>CLEAR ✕</span>
             )}
           </div>
-          {qTab === 'failed' ? (
+          <SyncBanner plan={syncPlan} label={syncJobLabel} />
+          {qTab === 'have' && syncPlan ? (
+            <div className="pl-queue-list">
+              {syncPlan.haveItems.map(item => (
+                <div key={item.idx + ':' + item.id} className="pl-queue-item pl-queue-have">
+                  <span className="pl-queue-idx">{item.idx}</span>
+                  {item.thumbnail
+                    ? <img src={item.thumbnail} className="pl-queue-thumb" alt="" onError={e => { e.target.style.display = 'none'; }} />
+                    : <div className="pl-queue-thumb-ph">✓</div>}
+                  <div className="pl-queue-info">
+                    <div className="pl-queue-title">{item.title || 'Unknown'}</div>
+                    {item.uploader && <div className="pl-queue-sub">{item.uploader}</div>}
+                  </div>
+                  <span className="pl-queue-dur">{item.duration ? fmtDuration(item.duration) : '—'}</span>
+                  <div className="pl-queue-st"><span className="q-st-badge completed">IN FOLDER</span></div>
+                </div>
+              ))}
+              {syncPlan.have > syncPlan.haveItems.length && (
+                <div style={{ padding: '8px 14px', fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: 'var(--t3)', textAlign: 'center' }}>
+                  +{syncPlan.have - syncPlan.haveItems.length} more already in the folder
+                </div>
+              )}
+            </div>
+          ) : qTab === 'failed' ? (
             <div className="pl-queue-list">
               {(failedItems || []).map((item, i) => (
                 <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 14px', borderBottom: '1px solid var(--border)' }}>
@@ -273,12 +303,11 @@ export function QueuePage({ dlState, showNotif, activeJobs, playlistItems, setPl
             <>
               <div className="queue-list-header">
                 <span className="qlh-left">PENDING ITEMS — 待機中</span>
-                <span className="qlh-right">{(playlistItems ? playlistItems.length : 0)} TRACKS · CLICK ✕ TO REMOVE</span>
+                <span className="qlh-right">{(playlistItems ? playlistItems.length : 0)} TRACKS{syncPlan ? '' : ' · CLICK ✕ TO REMOVE'}</span>
               </div>
-              {syncJobLabel && (
-                <div style={{ padding: '6px 14px', background: 'var(--bg3)', borderBottom: '1px solid var(--border)', fontFamily: 'Share Tech Mono', fontSize: 9, color: 'var(--cyan)', display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span style={{ animation: 'spin 1s linear infinite', display: 'inline-block' }}>⟳</span>
-                  SYNC QUEUED: {syncJobLabel}
+              {syncPlan && (!playlistItems || playlistItems.length === 0) && (
+                <div style={{ padding: '20px', fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: 'var(--t3)', textAlign: 'center' }}>
+                  {syncPlan.new > 0 ? 'FINISHING UP…' : 'NOTHING NEW — THE FOLDER HAS EVERY ITEM'}
                 </div>
               )}
               <div className="pl-queue-list">
@@ -303,9 +332,11 @@ export function QueuePage({ dlState, showNotif, activeJobs, playlistItems, setPl
                     </div>
                     <span className="pl-queue-dur">{item.duration ? fmtDuration(item.duration) : '—'}</span>
                     <div className="pl-queue-st"><span className="q-st-badge queued">QUEUED</span></div>
-                    <div className="pl-queue-remove" onClick={() => handleRemove(item.idx)}>
-                      <Ico name="x" size={10} />
-                    </div>
+                    {!syncPlan && (
+                      <div className="pl-queue-remove" onClick={() => handleRemove(item.idx)}>
+                        <Ico name="x" size={10} />
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -342,17 +373,11 @@ export function QueuePage({ dlState, showNotif, activeJobs, playlistItems, setPl
             <span className="ptag">QUEUE</span>
             <span className="ptitle">PENDING DOWNLOADS — 待機中</span>
           </div>
-          {fetchingPlaylistItems ? (
-            <div style={{ padding: '20px', fontFamily: 'Share Tech Mono', fontSize: 9, color: 'var(--t3)', textAlign: 'center' }}>
-              FETCHING PLAYLIST ITEMS...
-            </div>
-          ) : (
-            <div className="empty-state">
-              <Mascot src={MASCOT_TIRED} className="empty-mascot tint-cyan" wrapClass="empty-mascot-wrap" style={{ width: 180 }} />
-              <div className="empty-title">QUEUE EMPTY</div>
-              <div className="empty-sub">PASTE A URL IN FEED TO START DOWNLOADING</div>
-            </div>
-          )}
+          <div className="empty-state">
+            <Mascot src={MASCOT_TIRED} className="empty-mascot tint-cyan" wrapClass="empty-mascot-wrap" style={{ width: 180 }} />
+            <div className="empty-title">QUEUE EMPTY</div>
+            <div className="empty-sub">PASTE A URL IN FEED TO START DOWNLOADING</div>
+          </div>
         </div>
       )}
     </div>

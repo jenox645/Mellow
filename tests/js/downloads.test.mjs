@@ -170,3 +170,48 @@ test('a vault sync that brought new songs is celebrated, an up-to-date one is no
   assert.deepEqual(s.effects.at(-1), { type: 'victory', sync: true, name: 'Chill Mix', count: 1 });
   assert.deepEqual(s.jobItemsDone, {});
 });
+
+test('a sync lists what it will download and what the folder has, then says how it went', () => {
+  const label = 'Sync — Lofi Beats (1 playlist(s))';
+  const ev = (status, extra = {}) => ({ status, job_id: 's', job_type: 'sync', job_label: label, ...extra });
+  let s = run([
+    ev('sync_plan', { total: 4, have: 2, new: 2, failed_playlists: [],
+      items: [{ idx: 2, id: 'b', title: 'B' }, { idx: 4, id: 'd', title: 'D' }],
+      have_items: [{ idx: 1, id: 'a', title: 'A' }, { idx: 3, id: 'c', title: 'C' }] }),
+    ev('starting'),
+  ]);
+  // Only what will be downloaded is pending; the rest is listed as in the folder
+  assert.deepEqual(s.playlistItems.map(i => i.title), ['B', 'D']);
+  assert.deepEqual({ ...s.syncPlan, haveItems: s.syncPlan.haveItems.map(i => i.title) },
+    { jobId: 's', name: 'Lofi Beats', total: 4, have: 2, new: 2, haveItems: ['A', 'C'], failed: 0 });
+  s = run([ev('item_done', { video_id: 'b', title: 'B' })], s);
+  assert.deepEqual(s.playlistItems.map(i => i.title), ['D']);
+  s = run([ev('item_done', { video_id: 'd', title: 'D' }),
+    ev('complete', { sync_summary: { new: 2, already: 2, failed: 0 } })], s);
+  assert.equal(s.syncPlan, null);
+  assert.equal(s.playlistItems, null);
+  const toast = s.effects.find(fx => fx.type === 'notify');
+  assert.deepEqual([toast.title, toast.body], ['Sync Complete', 'Lofi Beats: 2 new · 2 already in the folder']);
+  assert.deepEqual(s.effects.at(-1), { type: 'victory', sync: true, name: 'Lofi Beats', count: 2 });
+
+  // Up to date (a periodic sync, say): a quiet toast, no sound, no desktop notification, no celebration
+  s = run([ev('sync_plan', { total: 3, have: 3, new: 0, items: [], have_items: [] }),
+    ev('complete', { sync_summary: { new: 0, already: 3, failed: 0 } })]);
+  assert.deepEqual(types(s), ['notify', 'refreshStats', 'refreshVault']);
+  assert.equal(s.effects[0].title, 'Sync: Up To Date');
+  assert.equal(s.effects[0].body, 'Lofi Beats: up to date, nothing new (3 already in the folder)');
+});
+
+test("a sync plan doesn't take the list from a Feed playlist or another job's panel", () => {
+  const plan = { status: 'sync_plan', job_id: 's', job_type: 'sync', total: 1, have: 0, new: 1,
+    items: [{ idx: 1, id: 'x', title: 'X' }], have_items: [] };
+  let s = downloadsReducer(initialDownloads(), { type: 'playlist_started', name: 'Mix', count: 2 });
+  s = run([plan], s);
+  assert.equal(s.syncPlan, null);
+  s = run([{ status: 'starting', job_id: 'feed' }, plan]);
+  assert.equal(s.syncPlan, null);
+  // A failed or cancelled sync takes its plan along
+  s = run([plan, { status: 'cancelled', job_id: 's', job_type: 'sync' }]);
+  assert.equal(s.syncPlan, null);
+  assert.equal(s.playlistItems, null);
+});

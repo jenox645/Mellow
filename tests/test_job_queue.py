@@ -1,8 +1,10 @@
 import tempfile
 import threading
+from pathlib import Path
 from unittest.mock import patch
 
-from mellow import jobs
+from mellow import jobs, vault
+from mellow.jobs import _sync_plan as real_sync_plan  # conftest switches it off in unit tests
 
 
 def _make_manager(events):
@@ -467,3 +469,59 @@ def test_failed_sync_still_leaves_a_report(client, tmp_path):
 
 def test_no_report_before_the_first_sync(client, tmp_path):
     assert client.get('/api/vault/sync-report', query_string={'path': str(tmp_path)}).get_json() == {'report': None}
+
+
+
+def _sync_job(tmp, urls):
+    return {'id': 'sync1', 'type': 'sync', 'label': 'Sync — Mix (1 playlist(s))', 'url': urls[0],
+            'multi_urls': urls, 'output_dir': tmp, 'opts': {}, 'library_id': None, 'status': 'active'}
+
+
+def _finishes(url, out, opts, cb, lib_id=None, cancel_event=None, pause_event=None):
+    cb({'status': 'complete', 'title': url})
+    return 'success'
+
+
+def test_a_sync_reads_its_playlists_first_and_ends_with_a_summary():
+    """sync_plan before any download (the Queue lists it), sync_summary on complete."""
+    events = []
+    playlist = [{'id': f'v{i}', 'ie_key': 'Youtube', 'title': f'Song {i}'} for i in range(1, 5)]
+    other = [playlist[1], {'id': 'v9', 'ie_key': 'Youtube', 'title': 'Song 9'}]
+
+    def fake_dl(url, out, opts, cb, lib_id=None, cancel_event=None, pause_event=None):
+        assert events[0]['status'] == 'sync_plan'      # announced before the run
+        cb({'status': 'item_skipped', 'reason': 'archive'})
+        cb({'status': 'item_done', 'video_id': 'v2', 'title': 'Song 2'})
+        return _finishes(url, out, opts, cb)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        (Path(tmp) / 'mellow_archive.txt').write_text('youtube v1\nyoutube v3\n', encoding='utf-8')
+        read = ([{'title': 'Mix', 'entries': playlist}, {'title': 'Other', 'entries': other}], ['https://x/dead'])
+        with patch('mellow.jobs._sync_plan', real_sync_plan), \
+                patch('mellow.vault._read_playlists', return_value=read), \
+                patch('mellow.downloader.download_video', side_effect=fake_dl):
+            assert _make_manager(events).run_job(_sync_job(tmp, ['https://x/a', 'https://x/dead'])) == 'complete'
+
+    plan = events[0]
+    assert plan['job_id'] == 'sync1' and plan['job_type'] == 'sync'
+    # v2 is in both playlists: listed (and downloaded) once
+    assert [i['id'] for i in plan['items']] == ['v2', 'v4', 'v9']
+    assert [i['id'] for i in plan['have_items']] == ['v1', 'v3']
+    assert (plan['total'], plan['have'], plan['new']) == (5, 2, 3)
+    assert plan['failed_playlists'] == ['https://x/dead']
+    complete = [e for e in events if e['status'] == 'complete'][0]
+    # Summed over both playlist runs
+    assert complete['sync_summary'] == {'new': 2, 'already': 2, 'failed': 0}
+
+
+def test_a_sync_whose_playlist_cant_be_read_still_runs():
+    events = []
+    with tempfile.TemporaryDirectory() as tmp:
+        with patch('mellow.jobs._sync_plan', real_sync_plan), \
+                patch('mellow.vault._read_playlists', side_effect=RuntimeError('offline')), \
+                patch('mellow.downloader.download_video', side_effect=_finishes):
+            assert _make_manager(events).run_job(_sync_job(tmp, ['https://x/a'])) == 'complete'
+        # Nothing could be read at all: no plan, the sync goes ahead
+        with patch('mellow.vault._read_playlists', return_value=([], ['https://x/a'])):
+            assert vault.sync_plan(tmp, ['https://x/a']) is None
+    assert [e['status'] for e in events] == ['complete']

@@ -6,7 +6,7 @@ import {
   estimateDownloadBytes, fmtBytes, fmtCount, fmtDuration, fmtEta, fmtSpeed, idxRanges, isLinkLike, timeAgo, videoInPlaylist,
 } from '../lib/util.js';
 import { SVG, Ico } from '../components/icons.jsx';
-import { FileActions, FolderInput, FormatToggles, Mascot, Pipeline } from '../components/common.jsx';
+import { FileActions, FolderInput, FormatToggles, Mascot, Pipeline, SyncBanner } from '../components/common.jsx';
 import { VaultLinkPromptModal } from '../components/vault-modals.jsx';
 import { MASCOT_CHILLING } from '../lib/mascots.js';
 import { defaultToggles, togglesFrom } from '../lib/formats.js';
@@ -15,7 +15,7 @@ import {
   ANALYZE_SLOW_MS, AUDIO_FORMATS, AUDIO_QUALITIES, CONTAINERS, LOSSLESS_AUDIO, QUALITIES,
 } from '../lib/constants.js';
 
-export function FeedPage({ dlState, stats, sysInfo, refreshStats, showNotif, switchPage, config, setConfig, suggestedUrl, onSuggestedConsumed, onPlaylistDownload, playlistItems, setPlaylistItems, completedItems, failedItems, playlistTotalCount, playlistCompletedCount, isPaused, syncJobLabel, fetchingPlaylistItems, onPause, onResume, onClearCompleted, errorActions }) {
+export function FeedPage({ dlState, stats, sysInfo, refreshStats, showNotif, switchPage, config, setConfig, suggestedUrl, onSuggestedConsumed, onPlaylistDownload, playlistItems, setPlaylistItems, completedItems, failedItems, playlistTotalCount, playlistCompletedCount, isPaused, syncJobLabel, syncPlan, onPause, onResume, onClearCompleted, errorActions }) {
   // Kept in sessionStorage: the Feed comes back as it was after switching pages
   const [url, setUrl] = useSessionState('feed_url', '');
   const [analyzing, setAnalyzing] = React.useState(false);
@@ -784,14 +784,9 @@ export function FeedPage({ dlState, stats, sysInfo, refreshStats, showNotif, swi
               <div>
                 <div className="queue-list-header">
                   <span className="qlh-left">PENDING ITEMS — 待機中</span>
-                  <span className="qlh-right">{playlistItems.length} TRACKS · CLICK ✕ TO REMOVE</span>
+                  <span className="qlh-right">{playlistItems.length} TRACKS{syncPlan ? '' : ' · CLICK ✕ TO REMOVE'}</span>
                 </div>
-                {syncJobLabel && (
-                  <div style={{ padding: '6px 14px', background: 'var(--bg3)', borderBottom: '1px solid var(--border)', fontFamily: 'Share Tech Mono', fontSize: 9, color: 'var(--cyan)', display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <span style={{ animation: 'spin 1s linear infinite', display: 'inline-block' }}>⟳</span>
-                    SYNC QUEUED: {syncJobLabel}
-                  </div>
-                )}
+                <SyncBanner plan={syncPlan} label={syncJobLabel} />
                 <div className="pl-queue-list" style={{ maxHeight: 216 }}>
                   {playlistItems.slice(0, 12).map(item => (
                     <div
@@ -814,11 +809,13 @@ export function FeedPage({ dlState, stats, sysInfo, refreshStats, showNotif, swi
                       </div>
                       <span className="pl-queue-dur">{item.duration ? fmtDuration(item.duration) : '—'}</span>
                       <div className="pl-queue-st"><span className="q-st-badge queued">QUEUED</span></div>
-                      <div className="pl-queue-remove" onClick={() => {
-                        setRemovingFeedItems(prev => new Set([...prev, item.idx]));
-                      }}>
-                        <Ico name="x" size={10} />
-                      </div>
+                      {!syncPlan && (
+                        <div className="pl-queue-remove" onClick={() => {
+                          setRemovingFeedItems(prev => new Set([...prev, item.idx]));
+                        }}>
+                          <Ico name="x" size={10} />
+                        </div>
+                      )}
                     </div>
                   ))}
                   {playlistItems.length > 12 && (
@@ -829,7 +826,9 @@ export function FeedPage({ dlState, stats, sysInfo, refreshStats, showNotif, swi
                   )}
                 </div>
               </div>
-            ) : (fetchingItems || fetchingPlaylistItems) ? (
+            ) : (syncPlan || syncJobLabel) ? (
+              <SyncBanner plan={syncPlan} label={syncJobLabel} />
+            ) : fetchingItems ? (
               <div style={{ padding: '20px', fontFamily: 'Share Tech Mono', fontSize: 9, color: 'var(--t3)', textAlign: 'center' }}>
                 FETCHING PLAYLIST ITEMS...
               </div>

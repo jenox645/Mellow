@@ -167,6 +167,17 @@ export const TOURS = {
         { text: 'Track two', sub: 'Not available in your country', badge: '↻ RETRY', tone: 'red' },
       ] },
     },
+    {
+      target: 'sync-plan', title: 'What a sync found',
+      text: 'A vault sync (SYNC NOW, SYNC ALL or the periodic auto-sync) first reads its playlist and checks the '
+        + 'folder: PENDING lists only what it will download, IN FOLDER what the folder already has. When it ends, a '
+        + 'toast says how it went: "2 new", or "up to date".',
+      tip: 'Open the folder in the VAULT to see its last sync item by item: what was added, skipped or failed.',
+      missing: 'Shows up while a vault sync runs.',
+      example: { onlyMissing: true, kind: 'rows', rows: [
+        { text: '✓ PLAYLIST READ · 65', sub: '63 already in the folder', badge: '↓ 2 TO DOWNLOAD', tone: 'cyan' },
+      ] },
+    },
   ],
 
   vault: [

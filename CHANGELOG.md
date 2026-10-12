@@ -8,6 +8,11 @@ Each release is a `## X.Y.Z` heading followed by `- **Title**: what it does`
 lines. A pull request that raises `APP_VERSION` adds its section here: CI
 fails without one.
 
+## 2.11.0
+- **See what a sync is doing**: a vault sync used to list its playlist's every song as QUEUED, the ones already in the folder too. It now reads the playlist first and the Queue says what it found: "✓ playlist read · 65 · ✓ 63 already in folder · ↓ 2 to download". PENDING lists only the songs it will download; a new IN FOLDER tab lists the rest. This works for SYNC NOW, SYNC ALL and the periodic auto-sync alike.
+- **Every sync says how it went**: when a sync ends, a toast says "2 new · 63 already in the folder" or "up to date, nothing new", so you can tell the periodic sync is doing its job. Only a sync that brought something new plays the sound and shows a desktop notification.
+- **The celebration counts the right songs**: a SYNC NOW started from the vault was celebrated with the whole playlist's count, even when nothing new came in. It now counts the songs that were actually downloaded.
+
 ## 2.10.1
 - **Syncs are celebrated too**: Mellow's celebration only came after a playlist downloaded from the Feed. A vault sync (SYNC NOW, SYNC ALL, auto-sync) that brought new songs now ends with it as well, with the folder's name and how many came in; an up-to-date sync stays quiet. Config → Sync Completion Animation turns it off.
 - **Folder covers line up**: in the Vault, a folder linked to a playlist showed a smaller cover than the others (its extra line squeezed it). Every cover now has the same shape.

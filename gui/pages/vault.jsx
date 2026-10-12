@@ -88,7 +88,7 @@ function SyncReport({ report, folder, showNotif }) {
   );
 }
 
-export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, config, setConfig, showNotif, onAddVault, onRefreshVault, isDownloading, onSyncStart, onSyncItems }) {
+export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, config, setConfig, showNotif, onAddVault, onRefreshVault, isDownloading, onSyncStart }) {
   const [files, setFiles] = React.useState([]);
   const [loading, setLoading] = React.useState(false);
   const [ctxMenu, setCtxMenu] = React.useState(null);
@@ -551,7 +551,7 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
 
         {dupModal && <DuplicatesModal onClose={() => setDupModal(false)} showNotif={showNotif} onRefreshVault={onRefreshVault} />}
 
-        {syncModal && <SyncPlaylistModal folder={syncModal} onClose={() => setSyncModal(null)} showNotif={showNotif} onRefreshVault={onRefreshVault} isDownloading={isDownloading} onSyncStart={onSyncStart} onSyncItems={onSyncItems} />}
+        {syncModal && <SyncPlaylistModal folder={syncModal} onClose={() => setSyncModal(null)} showNotif={showNotif} onRefreshVault={onRefreshVault} isDownloading={isDownloading} onSyncStart={onSyncStart} />}
 
         {renameModal && (
           <RenameVaultModal
@@ -949,7 +949,7 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
 
       {/* Opened by SYNC OPTIONS; it was only mounted in the grid view, so the
           button in this view did nothing */}
-      {syncModal && <SyncPlaylistModal folder={syncModal} onClose={() => setSyncModal(null)} showNotif={showNotif} onRefreshVault={onRefreshVault} isDownloading={isDownloading} onSyncStart={onSyncStart} onSyncItems={onSyncItems} />}
+      {syncModal && <SyncPlaylistModal folder={syncModal} onClose={() => setSyncModal(null)} showNotif={showNotif} onRefreshVault={onRefreshVault} isDownloading={isDownloading} onSyncStart={onSyncStart} />}
     </div>
   );
 }

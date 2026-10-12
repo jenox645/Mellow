@@ -90,6 +90,28 @@ def test_a_second_sync_downloads_nothing_already_there(app_url, linked_folder):
     assert report["added"] == [] and report["archived"] == len(DASH_CLIPS), report
 
 
+def test_a_sync_says_what_it_will_download_and_what_the_folder_has(app_url, linked_folder):
+    """The Queue used to list a synced playlist's every item as queued, even
+    the ones the folder had: each sync now reads its playlist first
+    (sync_plan) and ends with what it did (sync_summary)."""
+    from mellow import jobs
+    events = []
+    push = jobs.manager._push
+    jobs.manager._push = lambda event: (events.append(dict(event)), push(event))
+    try:
+        _sync(app_url, linked_folder)
+        _sync(app_url, linked_folder)
+    finally:
+        jobs.manager._push = push
+    n = len(DASH_CLIPS)
+    plans = [e for e in events if e["status"] == "sync_plan"]
+    assert [(p["total"], p["new"], p["have"]) for p in plans] == [(n, n, 0), (n, 0, n)]
+    assert [i["title"] for i in plans[0]["items"]] == [i["title"] for i in plans[1]["have_items"]]
+    assert all(p["job_type"] == "sync" and p["failed_playlists"] == [] for p in plans)
+    summaries = [e["sync_summary"] for e in events if e["status"] == "complete"]
+    assert summaries == [{"new": n, "already": 0, "failed": 0}, {"new": 0, "already": n, "failed": 0}]
+
+
 def test_an_audio_sync_saves_mp3s(app_url, linked_folder):
     from mellow import jobs
     _api(app_url, "/api/vault/sync", {"path": str(linked_folder), "sync_audio": True, "audio_format": "mp3"})
