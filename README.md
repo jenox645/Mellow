@@ -11,6 +11,7 @@ Paste a link, pick a format, download. Or link a playlist to a folder and let it
 [![Downloads](https://img.shields.io/github/downloads/jenox645/Mellow/total?color=00d8ff)](https://github.com/jenox645/Mellow/releases)
 [![CI](https://github.com/jenox645/Mellow/actions/workflows/ci.yml/badge.svg)](https://github.com/jenox645/Mellow/actions/workflows/ci.yml)
 ![Windows | Linux](https://img.shields.io/badge/platform-Windows%20%7C%20Linux-informational)
+[![License: MIT](https://img.shields.io/badge/license-MIT-00d8ff)](LICENSE)
 
 **[Download for Windows or Linux](https://github.com/jenox645/Mellow/releases/latest)** · [What's new](CHANGELOG.md) · [Report a bug](https://github.com/jenox645/Mellow/issues/new/choose)
 
@@ -108,6 +109,7 @@ No account, no telemetry: your history stays on your computer. Every release is 
 - [Your files](#your-files)
 - [Build it yourself](#build-it-yourself)
 - [Thanks](#thanks)
+- [License](#license)
 
 ---
 
@@ -270,3 +272,11 @@ Windows: run `SETUP.bat`. Linux: `bash setup.sh`. Both need Python 3.12+ and Nod
 ## Thanks
 
 MellowDLP is a window onto other people's great work: [yt-dlp](https://github.com/yt-dlp/yt-dlp) does the downloading, [FFmpeg](https://ffmpeg.org/) ([BtbN's builds](https://github.com/BtbN/FFmpeg-Builds)) the converting, [SponsorBlock](https://sponsor.ajay.app/) knows where the sponsors are. Built with [Flask](https://flask.palletsprojects.com/), [FlaskWebGUI](https://github.com/ClimenteA/flaskwebgui), [DuckDB](https://duckdb.org/), [mutagen](https://github.com/quodlibet/mutagen), [React](https://react.dev/), [esbuild](https://esbuild.github.io/), [PyInstaller](https://pyinstaller.org/) and [Inno Setup](https://jrsoftware.org/isinfo.php). Fonts: Oxanium, Exo 2 and Share Tech Mono (SIL Open Font License).
+
+---
+
+## License
+
+MellowDLP's code is under the [MIT license](LICENSE): use it, change it, share it, keep the copyright notice. The Mellow character and its artwork (mascot drawings, icons, banner) are not: they stay © jenox645, see [assets/LICENSE.md](assets/LICENSE.md) for what you may do with them.
+
+The downloadable app also contains other people's open-source software under their own licenses, among them yt-dlp (Unlicense), mutagen (GPL-2.0-or-later), Flask (BSD-3-Clause), DuckDB (MIT) and React (MIT). Their source code is linked under [Thanks](#thanks).
