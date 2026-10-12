@@ -2,7 +2,7 @@
 build_linux_deb.py — Build a .deb package from the compiled MellowDLP binary.
 
 Run AFTER build_setup.py has produced dist/MellowDLP:
-    python3 build_linux_deb.py
+    python3 packaging/build_linux_deb.py
 """
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-HERE = Path(__file__).parent
+HERE = Path(__file__).resolve().parents[1]   # the repository root
 
 sys.path.insert(0, str(HERE))
 from mellow.version import APP_VERSION as VERSION  # noqa: E402 — single version source

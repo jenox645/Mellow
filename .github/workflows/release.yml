@@ -26,8 +26,7 @@ on:
     paths:
       - .github/workflows/release.yml
       - build_setup.py
-      - MellowDLP.spec
-      - installer.iss
+      - packaging/**
       - requirements*.txt
       - package-lock.json
       - main.py

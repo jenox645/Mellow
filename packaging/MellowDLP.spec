@@ -8,20 +8,24 @@ _is_windows = _platform.system() == "Windows"
 _is_linux   = _platform.system() == "Linux"
 _has_tkinter = _iu.find_spec("tkinter") is not None
 
-_icon = _os.path.join("assets", "mellow.ico") if _is_windows else None
+# The repository root (this file is in packaging/): every path below is
+# absolute, so the build doesn't depend on the folder it's started from
+ROOT = _os.path.dirname(SPECPATH)
+
+_icon = _os.path.join(ROOT, "assets", "mellow.ico") if _is_windows else None
 
 block_cipher = None
 
 a = Analysis(
-    ["main.py"],
-    pathex=[],
+    [_os.path.join(ROOT, "main.py")],
+    pathex=[ROOT],
     binaries=[],
     # The mellow package is found by following main.py's imports. yt-dlp's
     # metadata tells ytdlp_update which version is bundled (a newer download
     # in ~/.mellow_dlp_ytdlp.zip runs instead).
     datas=[
-        ("static", "static"),
-        ("CHANGELOG.md", "."),        # What's new (mellow/changelog.py)
+        (_os.path.join(ROOT, "static"), "static"),
+        (_os.path.join(ROOT, "CHANGELOG.md"), "."),   # What's new (mellow/changelog.py)
         *copy_metadata("yt-dlp"),
     ],
     hiddenimports=[

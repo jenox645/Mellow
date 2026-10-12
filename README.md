@@ -1,25 +1,99 @@
 <div align="center">
 
-![MellowDLP Banner](assets/banner.png)
+<img src="assets/banner.png" alt="Mellow, MellowDLP's mascot, curled up with headphones and a coffee in a cozy room at night" width="100%">
 
 # MellowDLP
 
-[![Latest release](https://img.shields.io/github/v/release/jenox645/Mellow?label=release)](https://github.com/jenox645/Mellow/releases/latest)
-[![Downloads](https://img.shields.io/github/downloads/jenox645/Mellow/total)](https://github.com/jenox645/Mellow/releases)
+**A cozy desktop app for [yt-dlp](https://github.com/yt-dlp/yt-dlp).**<br>
+Paste a link, pick a format, download. Or link a playlist to a folder and let it keep itself up to date.
+
+[![Latest release](https://img.shields.io/github/v/release/jenox645/Mellow?label=release&color=00d8ff)](https://github.com/jenox645/Mellow/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/jenox645/Mellow/total?color=00d8ff)](https://github.com/jenox645/Mellow/releases)
 [![CI](https://github.com/jenox645/Mellow/actions/workflows/ci.yml/badge.svg)](https://github.com/jenox645/Mellow/actions/workflows/ci.yml)
 ![Windows | Linux](https://img.shields.io/badge/platform-Windows%20%7C%20Linux-informational)
 
-A desktop app for [yt-dlp](https://github.com/yt-dlp/yt-dlp): paste a link, pick a format, download.
-YouTube, SoundCloud and the [thousands of sites](https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md) yt-dlp supports.
-Windows and Linux.
+**[Download for Windows or Linux](https://github.com/jenox645/Mellow/releases/latest)** · [What's new](CHANGELOG.md) · [Report a bug](https://github.com/jenox645/Mellow/issues/new/choose)
 
-[**Download**](https://github.com/jenox645/Mellow/releases/latest) · [What's new](CHANGELOG.md) · [Report a bug](https://github.com/jenox645/Mellow/issues/new/choose) · [Build from source](#build-from-source)
-
-> A personal project, shared as is.
-
-![Welcome screen](assets/welcome_screen.png)
+<img src="assets/screenshots/download.png" alt="MellowDLP downloading a playlist: the song in progress with its cover, speed and time left, and the songs still to come" width="100%">
 
 </div>
+
+## Why MellowDLP
+
+<table>
+<tr>
+<td width="50%" valign="top">
+
+**Downloads without the command line**<br>
+Paste a link from YouTube, SoundCloud or [thousands of other sites](https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md), or type words to search YouTube. Video up to 4K or audio (MP3, FLAC, Opus…), the size before you start, and every step as it happens.
+
+</td>
+<td width="50%" valign="top">
+
+**Playlists that keep themselves in sync**<br>
+Link a folder to a playlist or channel: new uploads come in on their own, on a schedule if you like. Nothing downloads twice, and every sync leaves a report of what came in and what failed.
+
+</td>
+</tr>
+<tr>
+<td valign="top">
+
+**A music library, not a pile of files**<br>
+Songs arrive with cover art, as one album per playlist, numbered in playlist order, with clean artist names. ♪ RE-TAG does the same for the songs you already have.
+
+</td>
+<td valign="top">
+
+**Errors in plain words, with the fix**<br>
+"Sign in to confirm you're not a bot", a private playlist, a geo-block, an outdated yt-dlp: each one says what it means and offers a button that fixes it.
+
+</td>
+</tr>
+<tr>
+<td valign="top">
+
+**Looks after itself**<br>
+Updates itself and yt-dlp in one click, gets ffmpeg for you, keeps the computer awake while it downloads, and picks up unfinished downloads after a restart.
+
+</td>
+<td valign="top">
+
+**Private, and checkable**<br>
+No account, no telemetry: your history stays on your computer. Every release is built in public by GitHub Actions and carries a signed provenance you can verify.
+
+</td>
+</tr>
+</table>
+
+## A look around
+
+**Paste, pick, download.** Video or audio, quality and container, cover art, chapters, subtitles, SponsorBlock, even volume, or just some chapters of a long video. Presets keep your favourite combinations.
+
+<img src="assets/screenshots/feed-options.png" alt="The Feed with a video analyzed and its download options open: quality, container, cover art, chapters, metadata" width="100%">
+
+**The queue.** Several downloads at once, reordered, paused, or scheduled for the night with ⏾ LATER.
+
+<img src="assets/screenshots/queue.png" alt="The Queue page: a download in progress, two downloads scheduled for 2 AM, and the playlist's songs waiting" width="100%">
+
+**The vault: your library.** Every download folder with its covers. A folder linked to a playlist syncs with one click or on a schedule.
+
+<img src="assets/screenshots/vault.png" alt="The Vault: eight folders shown as cover mosaics, three of them synced with a playlist two hours ago" width="100%">
+
+<img src="assets/screenshots/vault-folder.png" alt="A vault folder: its last sync report (3 new, 11 already there, 1 failed) and its songs with their covers" width="100%">
+
+**Mellow celebrates.** When a playlist or a sync is done, Mellow, the app's mascot, celebrates with you.
+
+<p align="center"><img src="assets/screenshots/celebration.gif" alt="Mellow cheering over the words PLAYLIST COMPLETE: Rainy Day Lofi, 8 items downloaded" width="640"></p>
+
+**Not sure what something does?** **? GUIDE** (or the G key) walks you through any page part by part, with made-up examples of what each part shows.
+
+<img src="assets/screenshots/guide.png" alt="The GUIDE explaining RE-TAG next to the button, with an example of the tags it writes" width="100%">
+
+**Your downloads in numbers.** History by platform, format and hour of the day, storage and speed over time, a yearly Wrapped, CSV export, and a SQL console for your own questions.
+
+<img src="assets/screenshots/analytics.png" alt="Analytics: 198 downloads, 20.4 GB, a 94.7% success rate, the download trend, storage by format, platforms and an activity heatmap" width="100%">
+
+<sub>Screenshots from made-up demo data (`scripts/screenshots.py`).</sub>
 
 ---
 
@@ -32,9 +106,8 @@ Windows and Linux.
 - [Troubleshooting](#troubleshooting)
 - [Safety and privacy](#safety-and-privacy)
 - [Your files](#your-files)
-- [Build from source](#build-from-source)
-- [Development](#development)
-- [Releasing](#releasing)
+- [Build it yourself](#build-it-yourself)
+- [Thanks](#thanks)
 
 ---
 
@@ -50,21 +123,27 @@ Get the newest release from the [Releases page](https://github.com/jenox645/Mell
 | `MellowDLP-X.Y.Z-linux-x86_64` | Linux, a plain binary |
 | `SHA256SUMS.txt` | Checksums of the files above |
 
-Every copy updates itself from inside the app afterwards ([below](#staying-up-to-date)), so you only download once.
+You only download once: every copy updates itself from inside the app ([more](#staying-up-to-date)).
 
-**Windows says "Windows protected your PC"?** The exe isn't code-signed, and SmartScreen warns about unsigned downloads it hasn't seen many times. Click **More info → Run anyway**. To check the file is the published one first, compare its checksum with the one in `SHA256SUMS.txt`:
+**Windows says "Windows protected your PC"?** The exe isn't code-signed, and SmartScreen warns about unsigned downloads it hasn't seen many times. Click **More info → Run anyway**.
 
-```
-certutil -hashfile MellowDLP-2.5.1-windows-portable.exe SHA256
-```
+<details>
+<summary>Check a download before running it</summary>
 
-(Linux: `sha256sum -c SHA256SUMS.txt --ignore-missing`.) Updates installed by the app don't trigger the warning, and the app checks their checksums itself.
-
-From 2.9.0 on, you can also check that a file was built from this repository's code by its public release workflow, not uploaded by hand ([more below](#safety-and-privacy)):
+Compare its checksum with the one in `SHA256SUMS.txt`:
 
 ```
-gh attestation verify MellowDLP-2.9.0-windows-setup.exe --repo jenox645/Mellow
+certutil -hashfile MellowDLP-2.10.1-windows-setup.exe SHA256
 ```
+
+(Linux: `sha256sum -c SHA256SUMS.txt --ignore-missing`.) Or check that it was built from this repository's code by its public release workflow, not uploaded by hand ([GitHub CLI](https://cli.github.com/), from 2.9.0 on):
+
+```
+gh attestation verify MellowDLP-2.10.1-windows-setup.exe --repo jenox645/Mellow
+```
+
+Updates installed by the app check their checksums themselves and don't trigger the SmartScreen warning.
+</details>
 
 The window is a Chrome, Edge, Brave or Chromium app window (Windows always has Edge). A Linux system with none of them opens MellowDLP in your default browser instead.
 
@@ -182,74 +261,12 @@ Downloads go to `Downloads/MellowDLP` unless you choose another folder. Uninstal
 
 ---
 
-## Build from source
+## Build it yourself
 
-Needs Python 3.12+ and Node.js 20+.
-
-**Windows**: run `SETUP.bat` and pick:
-
-1. Full installer: `dist\MellowDLP_Setup.exe`
-2. App only: `dist\MellowDLP.exe` and a Desktop shortcut (it updates itself like the portable exe)
-3. Frontend only: rebuilds `static\` in seconds, for UI work
-4. Run tests
-
-**Linux**:
-```bash
-git clone https://github.com/jenox645/Mellow
-cd Mellow
-bash setup.sh
-./dist/MellowDLP
-```
-
-Or as a `.deb` (after `setup.sh`): `python3 build_linux_deb.py && sudo dpkg -i dist/mellowdlp_*.deb`. A `.deb` install is updated by installing the next `.deb`.
-
-Both run `python build_setup.py`, which creates `.venv`, installs the pinned dependencies (`requirements.txt`, `requirements-build.txt`, `package-lock.json`), bundles the frontend with esbuild and packages the app with PyInstaller (plus Inno Setup for the Windows installer).
-
-**Run without packaging** (`static/` is build output, so build the frontend once first):
-```bash
-python build_setup.py --frontend-only
-python main.py               # in a window
-python main.py --no-window   # just the server; open the printed URL in any browser
-```
-On Linux, `python3-tk` gives you the native BROWSE dialogs, and `xclip` the "copied a link?" suggestion.
+Windows: run `SETUP.bat`. Linux: `bash setup.sh`. Both need Python 3.12+ and Node.js 20+. [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) has the details, how to run the tests, how the code is organized, and how a release is made.
 
 ---
 
-## Development
+## Thanks
 
-| Layer | Tech |
-|---|---|
-| Backend | Python 3.12+, Flask, yt-dlp (Python API), DuckDB |
-| Frontend | React 18 (UMD) in ES modules, bundled by esbuild; fonts bundled, no CDN |
-| Window | [FlaskWebGUI](https://github.com/ClimenteA/flaskwebgui): a Chromium-based browser in app mode |
-| Packaging | PyInstaller (one file), Inno Setup, appimagetool |
-
-`main.py` starts the app, the backend is in `mellow/` (`server.py` is the routes only), the frontend source in `gui/`. [CLAUDE.md](CLAUDE.md) is the detailed developer guide: architecture, events, and the rules the code keeps.
-
-**Tests and lint**
-```bash
-pip install -r requirements.txt -r requirements-dev.txt
-python -m pytest tests/ -m "not e2e and not slow and not browser"
-ruff check .
-npm ci
-npm test            # frontend unit tests (node:test)
-npm run lint        # ESLint
-```
-
-Tests never touch your real config, database or queue: every test runs in a temp folder.
-
-- `python -m pytest tests/browser -m browser` clicks through the main flows (download, playlist, search, cancel, vault) in Chromium, downloading from a local test site. Needs the frontend built, ffmpeg, and `python -m playwright install chromium`.
-- The `e2e` and `slow` markers download from real sites; run them by hand.
-- `python scripts/canary.py` checks extraction against live sites; CI runs it weekly on the yt-dlp pre-release.
-
-CI runs the Python, JavaScript and browser tests on every pull request; pull requests that touch packaging also build the Windows and Linux apps, smoke-test them, install GET FFMPEG for real, and update an old copy to the new build.
-
----
-
-## Releasing
-
-1. Raise `APP_VERSION` in `mellow/version.py` (and the fallback `AppVersion` in `installer.iss`).
-2. Add a `## X.Y.Z` section at the top of [CHANGELOG.md](CHANGELOG.md), as `- **Title**: what it does` lines. CI fails without it; the app shows it after updating, and the GitHub release starts with it.
-3. Merge the pull request. GitHub Actions builds the Windows installer, portable exe, Linux binary and AppImage, tests them, and publishes `vX.Y.Z` with `SHA256SUMS.txt`. Installed copies offer the update within hours.
-
-Pushing a tag `vX.Y.Z` that matches `APP_VERSION` does the same by hand; a `-suffix` tag makes a pre-release.
+MellowDLP is a window onto other people's great work: [yt-dlp](https://github.com/yt-dlp/yt-dlp) does the downloading, [FFmpeg](https://ffmpeg.org/) ([BtbN's builds](https://github.com/BtbN/FFmpeg-Builds)) the converting, [SponsorBlock](https://sponsor.ajay.app/) knows where the sponsors are. Built with [Flask](https://flask.palletsprojects.com/), [FlaskWebGUI](https://github.com/ClimenteA/flaskwebgui), [DuckDB](https://duckdb.org/), [mutagen](https://github.com/quodlibet/mutagen), [React](https://react.dev/), [esbuild](https://esbuild.github.io/), [PyInstaller](https://pyinstaller.org/) and [Inno Setup](https://jrsoftware.org/isinfo.php). Fonts: Oxanium, Exo 2 and Share Tech Mono (SIL Open Font License).

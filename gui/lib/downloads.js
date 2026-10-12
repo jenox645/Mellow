@@ -25,6 +25,7 @@ export function initialDownloads() {
     playlistTotalCount: 0,
     playlistCompletedCount: 0,
     playlistActive: false,     // a playlist download/sync is running: celebrate its end
+    jobItemsDone: {},          // items each running job finished (a sync's celebration)
     currentPlaylist: { name: '', count: 0 },
     syncJobLabel: null,
     fetchingPlaylistItems: false,
@@ -68,6 +69,12 @@ export function downloadsReducer(state, action) {
     default:
       return state;
   }
+}
+
+// The folder a sync job's label names: "Sync — Lofi Beats (1 playlist(s))",
+// "Library sync — Chill Mix"
+export function syncName(label) {
+  return (label || '').replace(/^(Library sync|Sync) — /, '').replace(/ \(\d+ playlist\(s\)\)$/, '');
 }
 
 const withoutJob = (jobs, jobId) => {
@@ -156,6 +163,7 @@ export function applyEvent(state, data, now = Date.now()) {
       if (vid && s.seenVideoIds.includes(vid)) return state;
       s = { ...s, playlistItems: withoutFinished(s.playlistItems, data),
         playlistCompletedCount: s.playlistCompletedCount + 1 };
+      if (jobId) s.jobItemsDone = { ...s.jobItemsDone, [jobId]: (s.jobItemsDone[jobId] || 0) + 1 };
       if (vid) s.seenVideoIds = [...s.seenVideoIds, vid];
       if (!(vid && s.completedItems.some(x => x.video_id === vid))) {
         s.completedItems = [{ video_id: vid, title: data.title, thumbnail: data.thumbnail, jobId, completedAt: now },
@@ -189,8 +197,9 @@ export function applyEvent(state, data, now = Date.now()) {
           ...s.failedItems].slice(0, FAILED_ITEMS_KEEP) };
       break;
 
-    case 'complete':
-      s = { ...s, activeJobs: withoutJob(s.activeJobs, jobId) };
+    case 'complete': {
+      const itemsDone = (jobId && s.jobItemsDone[jobId]) || 0;
+      s = { ...s, activeJobs: withoutJob(s.activeJobs, jobId), jobItemsDone: withoutJob(s.jobItemsDone, jobId) };
       fx.push({ type: 'chime' });
       fx.push(data.warning
         // Saved, but not the way it was asked for (e.g. no ffmpeg to convert)
@@ -205,14 +214,21 @@ export function applyEvent(state, data, now = Date.now()) {
           s.playlistActive = false;
           fx.push({ type: 'victory', sync: !!data.library_id,
             name: s.currentPlaylist.name, count: s.currentPlaylist.count });
+          break;
         }
       }
+      // A vault sync (SYNC NOW, auto-sync, SYNC ALL) starts without the
+      // Feed: celebrate it when it brought something new
+      if (data.job_type === 'sync' && itemsDone > 0) {
+        fx.push({ type: 'victory', sync: true, name: syncName(data.job_label), count: itemsDone });
+      }
       break;
+    }
 
     case 'error': {
       const item = failure(data, jobId, now);
-      s = { ...s, activeJobs: withoutJob(s.activeJobs, jobId), failedCount: s.failedCount + 1,
-        failedItems: [item, ...s.failedItems].slice(0, FAILED_ITEMS_KEEP) };
+      s = { ...s, activeJobs: withoutJob(s.activeJobs, jobId), jobItemsDone: withoutJob(s.jobItemsDone, jobId),
+        failedCount: s.failedCount + 1, failedItems: [item, ...s.failedItems].slice(0, FAILED_ITEMS_KEEP) };
       if (data.title) {
         // The backend recognised the error: plain words and the fix
         fx.push({ type: 'notify', title: data.title, body: data.hint, kind: 'error', action: data.action });
@@ -232,7 +248,7 @@ export function applyEvent(state, data, now = Date.now()) {
     }
 
     case 'cancelled':
-      s = { ...s, activeJobs: withoutJob(s.activeJobs, jobId) };
+      s = { ...s, activeJobs: withoutJob(s.activeJobs, jobId), jobItemsDone: withoutJob(s.jobItemsDone, jobId) };
       fx.push({ type: 'notify', title: 'Cancelled', body: 'Download stopped', kind: 'info' });
       if (isPrimary) s = { ...endPrimary(s, 'idle'), pausedCount: 0 };
       break;

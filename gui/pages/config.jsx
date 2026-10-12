@@ -775,7 +775,7 @@ export function ConfigPage({ config, setConfig, showNotif, installAppUpdate, onA
               <div className="settings-row">
                 <div className="settings-label">
                   <div className="sl-name">Sync Completion Animation</div>
-                  <div className="sl-sub">Show victory overlay when a vault sync finishes</div>
+                  <div className="sl-sub">Show the celebration when a vault sync brought new files</div>
                 </div>
                 <div className="settings-ctrl">
                   <Toggle checked={local.ui_victory_sync !== false} onChange={v => set('ui_victory_sync', v)} />
