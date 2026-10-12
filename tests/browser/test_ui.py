@@ -359,3 +359,31 @@ def test_retag_a_folder_of_songs_from_the_vault(page, downloads):
     import mutagen
     tags = mutagen.File(str(folder / "One.mp3"), easy=True)
     assert tags["album"] == ["Road Trip"] and tags["artist"] == ["Lofi Girl"]
+
+
+def test_a_cards_menu_stays_inside_the_window(page, downloads):
+    """The ⋯ menu of a card in the last column opened past the window's edge:
+    only its icons showed, the labels were cut off."""
+    folder = downloads / "Mix"
+    folder.mkdir()
+    for i in range(12):
+        (folder / f"Song {i:02d}.mp3").write_bytes(b"\0" * 1024)
+    page.set_viewport_size({"width": 1180, "height": 780})
+    page.locator(".nav-item", has_text="VAULT").click()
+    page.get_by_title("Refresh vault").click()
+    page.locator(".vault-folder-card", has_text="Mix").click()
+    cards = page.locator(".lib-card")
+    expect(cards).to_have_count(12)
+    # The right-most card of the first row, and the last card of all
+    tops = cards.evaluate_all("cs => cs.map(c => c.getBoundingClientRect().top)")
+    last_in_row = max(i for i, t in enumerate(tops) if t == tops[0])
+    for index in (last_in_row, 11):
+        cards.nth(index).scroll_into_view_if_needed()
+        cards.nth(index).locator(".lib-menu").click()
+        menu = page.locator(".ctx-menu")
+        expect(menu).to_contain_text("Delete")
+        box = menu.bounding_box()
+        assert box["x"] >= 0 and box["x"] + box["width"] <= 1180, box
+        assert box["y"] >= 0 and box["y"] + box["height"] <= 780, box
+        page.mouse.click(5, 5)
+        expect(menu).to_have_count(0)

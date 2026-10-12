@@ -5,6 +5,24 @@ import { API } from '../lib/api.js';
 import { togglesFor } from '../lib/formats.js';
 import { matchFolders, splitFolder, stepHistory } from '../lib/util.js';
 import { Ico } from './icons.jsx';
+import { MENU_EDGE_PX } from '../lib/constants.js';
+
+// A fixed-position pop-up menu opened next to what was clicked would run out
+// of the window for a card in the last column or row: shift it back inside.
+// `ref` goes on the menu; `key` is anything that changes when it reopens.
+export function useFitInWindow(key) {
+  const ref = React.useRef(null);
+  React.useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.transform = '';
+    const r = el.getBoundingClientRect();
+    const dx = Math.min(0, window.innerWidth - MENU_EDGE_PX - r.right);
+    const dy = Math.min(0, window.innerHeight - MENU_EDGE_PX - r.bottom);
+    if (dx || dy) el.style.transform = `translate(${Math.max(dx, MENU_EDGE_PX - r.left)}px, ${Math.max(dy, MENU_EDGE_PX - r.top)}px)`;
+  }, [key]);
+  return ref;
+}
 
 export function Toggle({ checked, onChange }) {
   return (

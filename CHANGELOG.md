@@ -11,6 +11,7 @@ fails without one.
 ## 2.10.0
 - **Synced music plays as one album**: songs saved as audio from a playlist now carry the playlist's name as their album and their place in it as the track number, so a music app or your phone groups the folder as one album, in playlist order. Artists lose YouTube's " - Topic" and "VEVO" (e.g. "RickAstleyVEVO" becomes "Rick Astley"). A song with a real album of its own (YouTube Music) keeps it. The Album Tags option (on by default) turns it off.
 - **♪ RE-TAG**: a vault folder with songs has a RE-TAG button that gives the songs already there the same tags, numbered in the linked playlist's current order, so a reordered playlist is renumbered too. Only the tags change: the files, their names and the sound stay as they are.
+- **Card menus stay in the window**: the ⋯ menu of a vault card in the last column or row opened past the window's edge, showing only its icons.
 
 ## 2.9.0
 - **A video copied from a Mix or playlist is downloaded alone**: a link copied while a YouTube Mix or playlist plays ("watch?v=…&list=…") used to load the whole list, some 50 songs for a Mix. MellowDLP now takes just that video, and THE WHOLE MIX (or PLAYLIST) next to it reads the list instead.

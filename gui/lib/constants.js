@@ -42,6 +42,9 @@ export const APP_UPDATE_POLL_MS = 6 * 60 * 60 * 1000;
 // Clipboard watcher
 export const CLIPBOARD_URL_RE = /^https?:\/\/\S+$/;
 
+// Gap kept between a pop-up menu and the window's edge
+export const MENU_EDGE_PX = 8;
+
 // Keyboard navigation — keys 1..N jump to these pages
 export const PAGE_ORDER = ['feed', 'queue', 'vault', 'analytics', 'signal', 'config'];
 

@@ -5,7 +5,7 @@ import { API } from '../lib/api.js';
 import { fmtBytes, fmtDate, timeAgo } from '../lib/util.js';
 import { Ico } from '../components/icons.jsx';
 import { TAGGABLE_AUDIO } from '../lib/constants.js';
-import { Modal, Mascot } from '../components/common.jsx';
+import { Modal, Mascot, useFitInWindow } from '../components/common.jsx';
 import {
   MASCOT_CHILLING, MASCOT_TIRED, MASCOT_FRUSTRATED, MASCOT_COMFY_SAFE,
 } from '../lib/mascots.js';
@@ -101,6 +101,8 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
   const [vaultSort, setVaultSort] = React.useState('name');
   const [folderMosaics, setFolderMosaics] = React.useState({});
   const [cardMenuData, setCardMenuData] = React.useState(null); // { folder, top, right }
+  const ctxMenuRef = useFitInWindow(ctxMenu);
+  const cardMenuRef = useFitInWindow(cardMenuData);
   const [linkPlModal, setLinkPlModal] = React.useState(null);
   const [renameModal, setRenameModal] = React.useState(null);
   const [syncModal, setSyncModal] = React.useState(null);
@@ -500,6 +502,7 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
         {cardMenuData && (
           <div
             className="vfc-menu-popup"
+            ref={cardMenuRef}
             style={{ top: cardMenuData.top, right: cardMenuData.right }}
             onClick={e => e.stopPropagation()}
           >
@@ -868,7 +871,7 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
       )}
 
       {ctxMenu && (
-        <div className="ctx-menu" style={{ left: ctxMenu.x, top: ctxMenu.y }} onClick={e => e.stopPropagation()}>
+        <div className="ctx-menu" ref={ctxMenuRef} style={{ left: ctxMenu.x, top: ctxMenu.y }} onClick={e => e.stopPropagation()}>
           <div className="ctx-item" onClick={() => { setPreviewFile(ctxMenu.file); setCtxMenu(null); }}>
             <Ico name="play" /> Preview in App
           </div>
