@@ -333,7 +333,7 @@ SOCIAL_HTML = """<!doctype html><html><head><meta charset="utf-8">
   <img class="shot" src="{shot}">
   <div class="text"><h1>MellowDLP</h1>
     <p>A desktop app for yt-dlp: paste a link, pick a format, download. Playlists synced into a library.</p>
-    <div class="tags">WINDOWS · LINUX · FREE</div></div>
+    <div class="tags">WINDOWS · LINUX · OPEN SOURCE</div></div>
 </body></html>"""
 
 
