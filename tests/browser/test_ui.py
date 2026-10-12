@@ -387,3 +387,21 @@ def test_a_cards_menu_stays_inside_the_window(page, downloads):
         assert box["y"] >= 0 and box["y"] + box["height"] <= 780, box
         page.mouse.click(5, 5)
         expect(menu).to_have_count(0)
+
+
+def test_a_vault_sync_that_brought_new_songs_is_celebrated(page, media_site, downloads):
+    """Only Feed playlist downloads used to end with Mellow's celebration;
+    SYNC NOW (and auto-sync) finished without it."""
+    from mellow import config
+    folder = downloads / "Lofi Beats"
+    folder.mkdir()
+    config.update_config(lambda c: c.update(vault_playlists={str(folder): [f"{media_site}/playlist"]}))
+    page.locator(".nav-item", has_text="VAULT").click()
+    page.get_by_title("Refresh vault").click()
+    page.locator(".vault-folder-card", has_text="Lofi Beats").click()
+    page.locator("[data-tour=vault-sync]").click()
+    overlay = page.locator(".victory-overlay")
+    overlay.wait_for(timeout=DOWNLOAD_TIMEOUT_MS)
+    expect(overlay).to_contain_text("Lofi Beats")
+    overlay.click()
+    expect(overlay).to_have_count(0, timeout=5000)

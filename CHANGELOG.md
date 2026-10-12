@@ -8,6 +8,9 @@ Each release is a `## X.Y.Z` heading followed by `- **Title**: what it does`
 lines. A pull request that raises `APP_VERSION` adds its section here: CI
 fails without one.
 
+## 2.10.1
+- **Syncs are celebrated too**: Mellow's celebration only came after a playlist downloaded from the Feed. A vault sync (SYNC NOW, SYNC ALL, auto-sync) that brought new songs now ends with it as well, with the folder's name and how many came in; an up-to-date sync stays quiet. Config → Sync Completion Animation turns it off.
+
 ## 2.10.0
 - **Synced music plays as one album**: songs saved as audio from a playlist now carry the playlist's name as their album and their place in it as the track number, so a music app or your phone groups the folder as one album, in playlist order. Artists lose YouTube's " - Topic" and "VEVO" (e.g. "RickAstleyVEVO" becomes "Rick Astley"). A song with a real album of its own (YouTube Music) keeps it. The Album Tags option (on by default) turns it off.
 - **♪ RE-TAG**: a vault folder with songs has a RE-TAG button that gives the songs already there the same tags, numbered in the linked playlist's current order, so a reordered playlist is renumbered too. Only the tags change: the files, their names and the sound stay as they are.

@@ -147,3 +147,25 @@ test('GET FFMPEG: progress, then done (refresh) or a failure with retry; warning
   assert.equal(run([{ status: 'warning', code: 'ffmpeg_missing', message: 'm' }]).effects[0].action, 'get_ffmpeg');
   assert.equal(run([{ status: 'warning', code: 'sponsorblock_skipped', message: 'm' }]).effects[0].action, null);
 });
+
+test('a vault sync that brought new songs is celebrated, an up-to-date one is not', () => {
+  const sync = (id, items) => [
+    { status: 'starting', job_id: id, job_type: 'sync', job_label: 'Sync — Lofi Beats (1 playlist(s))' },
+    ...items.map(v => ({ status: 'item_done', job_id: id, job_type: 'sync', video_id: v, title: v })),
+    { status: 'complete', job_id: id, job_type: 'sync', job_label: 'Sync — Lofi Beats (1 playlist(s))' },
+  ];
+  // Started from the Vault or by auto-sync: the Feed never said a playlist started
+  let s = run(sync('s1', ['a', 'b', 'c']));
+  assert.deepEqual(s.effects.at(-1), { type: 'victory', sync: true, name: 'Lofi Beats', count: 3 });
+  s = run(sync('s2', []));
+  assert.ok(!types(s).includes('victory'));
+  // A library sync's label, and a sync finishing behind another download
+  s = run([
+    { status: 'starting', job_id: 'main' },
+    { status: 'starting', job_id: 'lib', job_type: 'sync', job_label: 'Library sync — Chill Mix' },
+    { status: 'item_done', job_id: 'lib', job_type: 'sync', video_id: 'x' },
+    { status: 'complete', job_id: 'lib', job_type: 'sync', job_label: 'Library sync — Chill Mix' },
+  ]);
+  assert.deepEqual(s.effects.at(-1), { type: 'victory', sync: true, name: 'Chill Mix', count: 1 });
+  assert.deepEqual(s.jobItemsDone, {});
+});
