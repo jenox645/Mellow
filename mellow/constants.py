@@ -116,3 +116,5 @@ NAME_SUFFIX_RESERVE: int = 48        # what yt-dlp adds while working: .f<format
 NAME_FIELD_RESERVE: int = 24         # any other field (an [id], a date) as it will be expanded
 NAME_FIELD_MIN: int = 32             # never cut a title shorter than this (bytes or characters)
 HELPER_START_CHECK_SECS: float = 0.5  # keep awake: a helper still running after this has its block
+EXPLORER_FIND_SECS: float = 3.0      # how long to look for the Explorer window just opened
+EXPLORER_POLL_SECS: float = 0.1

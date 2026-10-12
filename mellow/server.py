@@ -137,7 +137,8 @@ def _queue_finished(done: list[dict]) -> None:
     _push_progress({"status": "queue_done", "count": len(done),
                     "folders": sorted({j["output_dir"] for j in done})})
     if load_config().get("on_queue_done") == "open_folder":
-        desktop.show_in_folder(done[-1]["output_dir"])
+        # Not in front of whatever the user is doing when the queue runs dry
+        desktop.show_in_folder(done[-1]["output_dir"], bring_forward=False)
 
 
 jobs.manager.start(_push_progress, on_idle=_queue_finished)
