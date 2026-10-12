@@ -24,6 +24,17 @@ def test_the_frontend_lists_the_same_toggles_with_the_same_defaults():
     assert found == formats.TOGGLES
 
 
+def test_the_frontend_offers_the_formats_the_backend_accepts():
+    """Each side keeps its own list (the UI orders them for people); they must agree."""
+    from mellow import constants
+    js = (Path(__file__).resolve().parent.parent / 'gui' / 'lib' / 'constants.js').read_text(encoding='utf-8')
+
+    def js_list(name):
+        return set(re.findall(r"'(\w+)'", re.search(rf"export const {name} = \[(.*?)\]", js).group(1)))
+    assert js_list('AUDIO_FORMATS') == set(constants.AUDIO_FORMATS)
+    assert js_list('CONTAINERS') == set(constants.VIDEO_CONTAINERS)
+
+
 def test_every_toggle_reaches_downloads_syncs_and_library_entries(client, tmp_dir):
     on = {k: not d for k, d in formats.TOGGLES.items()}     # each one flipped from its default
     sync = vault.build_sync_opts(on, None, {}, tmp_dir)

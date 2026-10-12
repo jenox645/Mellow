@@ -180,7 +180,7 @@ def run_update(push: Callable[[dict], None]) -> None:
         new_ver = download_latest()
     except Exception as exc:
         log.warning(f"yt-dlp update failed: {exc}")
-        push({"status": "ytdlp_updated", "ok": False, "error": str(exc)})
+        push({"status": "ytdlp_updated", "ok": False, "message": str(exc)})
         return
     log.info(f"yt-dlp update: running {running}, downloaded {new_ver}")
     if parse_version(new_ver) > parse_version(running):

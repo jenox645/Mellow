@@ -1,7 +1,8 @@
 # Contributing to MellowDLP
 
 Thanks for looking! Bug reports and ideas are welcome as [issues](https://github.com/jenox645/Mellow/issues/new/choose);
-for a change, open a pull request (its template lists the checks to run).
+for a change, open a pull request (its template lists the checks to run). What you contribute is
+under the project's [MIT license](../LICENSE).
 
 - [Build from source](#build-from-source)
 - [Development](#development)

@@ -36,7 +36,11 @@ function WrappedModal({ onClose }) {
     }>
       {!data ? (
         <div style={{ padding: 24, textAlign: 'center', fontFamily: 'Share Tech Mono, monospace', fontSize: 10, color: 'var(--t3)' }}>CRUNCHING THE NUMBERS...</div>
-      ) : data.error || !data.total_downloads ? (
+      ) : data.error ? (
+        <div style={{ padding: 24, textAlign: 'center', fontFamily: 'Share Tech Mono, monospace', fontSize: 10, color: 'var(--t3)' }}>
+          COULDN'T LOAD {year}. TRY AGAIN IN A MOMENT.
+        </div>
+      ) : !data.total_downloads ? (
         <div style={{ padding: 24, textAlign: 'center', fontFamily: 'Share Tech Mono, monospace', fontSize: 10, color: 'var(--t3)' }}>
           NOTHING DOWNLOADED IN {year} — A QUIET YEAR.
         </div>

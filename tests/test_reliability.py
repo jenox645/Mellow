@@ -309,7 +309,7 @@ def test_update_downloads_the_release_and_asks_for_a_restart(client, tmp_path):
 
 def test_update_refuses_a_file_that_fails_its_checksum(client, tmp_path):
     event = _run_update(client, tmp_path, running='2026.06.09', release='2026.09.27', checksum_ok=False)
-    assert event['ok'] is False and 'checksum' in event['error']
+    assert event['ok'] is False and 'checksum' in event['message']
     assert ytdlp_update.overlay_version() is None
 
 
