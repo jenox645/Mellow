@@ -1,6 +1,6 @@
 ; AppVersion is normally injected by build_setup.py via /DAppVersion=x.y.z
 #ifndef AppVersion
-  #define AppVersion "2.11.0"
+  #define AppVersion "2.12.0"
 #endif
 
 [Setup]

@@ -8,6 +8,14 @@ Each release is a `## X.Y.Z` heading followed by `- **Title**: what it does`
 lines. A pull request that raises `APP_VERSION` adds its section here: CI
 fails without one.
 
+## 2.12.0
+- **Pick what to download**: an analyzed playlist lists its items with checkboxes: untick the ones you don't want, or use ALL / NONE / INVERT. The list shows how many are ticked and how long they last together.
+- **Several search results at once**: tick results in a YouTube search and LIST them: they become one list you download together, with the format and options you choose.
+- **✕ really skips**: removing a pending item from a download that had already started only hid it; it was downloaded anyway. ✕ now leaves it out (one already downloading finishes). In a vault sync it skips the item this time; the next sync tries again.
+- **Move a folder**: picked the wrong folder for a playlist? ⇄ MOVE in the folder (or Move to… in a folder card's ⋯ menu) puts it somewhere else, with its linked playlists, sync settings, name, budget, history and archive file, so nothing downloads again.
+- **The open folder shows a sync's new files**: a folder open in the vault stayed "no media here" after a sync filled it, until REFRESH.
+- **Sync banner fix**: the "sync in progress" notice in the Feed had taken the look of 2.11.0's new sync banner.
+
 ## 2.11.0
 - **See what a sync is doing**: a vault sync used to list its playlist's every song as QUEUED, the ones already in the folder too. It now reads the playlist first and the Queue says what it found: "✓ playlist read · 65 · ✓ 63 already in folder · ↓ 2 to download". PENDING lists only the songs it will download; a new IN FOLDER tab lists the rest. This works for SYNC NOW, SYNC ALL and the periodic auto-sync alike.
 - **Every sync says how it went**: when a sync ends, a toast says "2 new · 63 already in the folder" or "up to date, nothing new", so you can tell the periodic sync is doing its job. Only a sync that brought something new plays the sound and shows a desktop notification.

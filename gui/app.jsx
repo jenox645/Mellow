@@ -80,7 +80,7 @@ function App() {
   const {
     appState, dlState, activeJobs, speedHistory, playlistItems, completedItems, failedItems,
     playlistTotalCount, playlistCompletedCount, failedCount, isPaused, pausedCount, syncJobLabel,
-    syncPlan, appUpdate, ffmpegInstall,
+    syncPlan, playlistJobId, appUpdate, ffmpegInstall,
   } = dl;
   // setState-style setters for the pages (stable: dispatch never changes)
   const setters = React.useMemo(() => {
@@ -88,10 +88,10 @@ function App() {
     return {
       setPlaylistItems: set('playlistItems'), setCompletedItems: set('completedItems'),
       setFailedItems: set('failedItems'), setFailedCount: set('failedCount'),
-      setSyncJobLabel: set('syncJobLabel'),
+      setSyncJobLabel: set('syncJobLabel'), setPlaylistJobId: set('playlistJobId'),
     };
   }, []);
-  const { setPlaylistItems, setCompletedItems, setFailedItems, setFailedCount, setSyncJobLabel } = setters;
+  const { setPlaylistItems, setCompletedItems, setFailedItems, setFailedCount, setSyncJobLabel, setPlaylistJobId } = setters;
   const [stats, setStats] = React.useState({});
   const [sysInfo, setSysInfo] = React.useState({});
   const [config, setConfig] = React.useState({});
@@ -461,6 +461,8 @@ function App() {
             isPaused={isPaused}
             syncJobLabel={syncJobLabel}
             syncPlan={syncPlan}
+            playlistJobId={playlistJobId}
+            setPlaylistJobId={setPlaylistJobId}
             onPause={() => API.post('/api/download/pause', {}).catch(() => {})}
             onResume={() => API.post('/api/download/resume', {}).catch(() => {})}
             onClearCompleted={() => setCompletedItems([])}
@@ -483,6 +485,7 @@ function App() {
             failedCount={failedCount}
             syncJobLabel={syncJobLabel}
             syncPlan={syncPlan}
+            playlistJobId={playlistJobId}
             onPause={() => API.post('/api/download/pause', {}).catch(() => {})}
             onResume={() => API.post('/api/download/resume', {}).catch(() => {})}
             onClearCompleted={() => setCompletedItems([])}

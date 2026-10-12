@@ -77,6 +77,12 @@ class _GeoBlockLogger:
             self.skipped += 1
             self._cb({"status": "item_skipped", "reason": "archive", "library_id": self._lid})
             return
+        if REMOVED_REASON in text:
+            self.skipped += 1
+            title = text.split("] ", 1)[-1].replace(" " + REMOVED_REASON, "")
+            self._cb({"status": "item_skipped", "reason": "removed", "title": title,
+                      "library_id": self._lid})
+            return
         m = _FILTERED_RE.search(text)
         if m:
             self.skipped += 1
@@ -832,8 +838,31 @@ def _apply_playlist_opts(ydl_opts: dict, opts: dict, url: str) -> None:
         # Playlists, channels and syncs only: a single pasted link is what the
         # user asked for, Short or live or not
         skip = _entry_filters(opts)
-        if skip:
-            ydl_opts["match_filter"] = yt_dlp.utils.match_filter_func(skip)
+        base = yt_dlp.utils.match_filter_func(skip) if skip else None
+        # The items ✕'d in the Queue: the job's own list, which grows while
+        # this runs (JobManager.skip), so it is read at every entry
+        removed = opts.get("skip_items")
+        if base or removed is not None:
+            ydl_opts["match_filter"] = _match_filter(base, removed)
+
+
+REMOVED_REASON = "was removed from the queue"
+
+
+def _match_filter(base: Callable | None, removed: list | None) -> Callable:
+    """yt-dlp's match_filter: an item removed from the queue is skipped
+    (before it is even extracted), then the skip filters apply."""
+    def match(info: dict, *, incomplete: bool = False):
+        if removed and is_removed(info, removed):
+            return f"{info.get('title') or info.get('id')} {REMOVED_REASON}"
+        return base(info, incomplete=incomplete) if base else None
+    return match
+
+
+def is_removed(info: dict, removed: list) -> bool:
+    """Whether a playlist entry is one of the removed items (by id or link)."""
+    keys = {info.get(k) for k in ("id", "url", "webpage_url", "original_url")} - {None, ""}
+    return any(k in keys for k in removed)
 
 
 def _entry_filters(opts: dict) -> str:

@@ -10,7 +10,7 @@ import threading
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import duckdb
 
@@ -687,6 +687,21 @@ def upsert_library_entry(entry: dict) -> None:
             f"INSERT INTO library ({', '.join(columns)}) VALUES ({', '.join('?' * len(columns))}) "
             f"ON CONFLICT (id) DO UPDATE SET {updates}",
             [values[c] for c in columns])
+
+
+def move_paths(mapper: Callable[[str], str | None]) -> int:
+    """A folder moved (folder_move): rewrite the download history's file
+    paths and the sync reports' folders that `mapper` maps to a new path.
+    Returns how many rows changed."""
+    changed = 0
+    with get_conn() as con:
+        for table, column in (("downloads", "file_path"), ("sync_reports", "folder")):
+            rows = con.execute(f"SELECT id, {column} FROM {table} WHERE {column} IS NOT NULL").fetchall()
+            updates = [(new, row_id) for row_id, old in rows if (new := mapper(old))]
+            if updates:
+                con.executemany(f"UPDATE {table} SET {column} = ? WHERE id = ?", updates)
+            changed += len(updates)
+    return changed
 
 
 def delete_library_entry(entry_id: str) -> None:

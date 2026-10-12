@@ -23,7 +23,8 @@ export const TOURS = {
       target: 'feed-url', title: 'Paste a link',
       text: 'A video, a whole playlist or a channel, from YouTube, SoundCloud, Bandcamp, Twitch, Vimeo or any of the '
         + '1000+ sites yt-dlp knows. ANALYZE reads it first and shows what you\'ll get. Type words instead of a link '
-        + 'and it searches YouTube: pick a result and it is analyzed.',
+        + 'and it searches YouTube: click a result and it is analyzed, or tick several and LIST them to download '
+        + 'together.',
       tip: 'Ctrl+V or dropping a link anywhere in the window does the same. Enter goes paste → analyze → download.',
       example: { kind: 'pairs', pairs: [
         ['youtube.com/watch?v=…', 'one video'],
@@ -161,7 +162,8 @@ export const TOURS = {
       target: 'queue-playlist', title: 'Playlist items',
       text: 'The items of the playlist being downloaded, in three tabs: PENDING, COMPLETED and FAILED. A failed '
         + 'item says why; ↻ RETRY downloads it again with the same options, RETRY ALL does every one.',
-      tip: '✕ on a pending item skips it. CLEAR ✕ empties a tab.',
+      tip: 'Before you download, untick what you don\'t want (ALL / NONE / INVERT). Once it runs, ✕ skips an item '
+        + 'for real. CLEAR ✕ empties a tab.',
       example: { kind: 'rows', rows: [
         { text: 'Track four', badge: 'PENDING' },
         { text: 'Track two', sub: 'Not available in your country', badge: '↻ RETRY', tone: 'red' },
@@ -324,6 +326,12 @@ export const TOURS = {
       target: 'vault-open', title: 'The real folder',
       text: 'OPEN IN EXPLORER shows this folder on your disk. ↻ REFRESH rescans it after you add or remove files '
         + 'outside MellowDLP.',
+    },
+    {
+      target: 'vault-move', title: 'Wrong folder?',
+      text: '⇄ MOVE puts this folder somewhere else. Its linked playlists, sync format and schedule, name, budget and '
+        + 'download history follow it, and so does its archive file: the next sync downloads nothing again.',
+      tip: 'Every folder card\'s ⋯ menu has it too (Move to…).',
     },
     {
       target: 'vault-back', title: 'Back',

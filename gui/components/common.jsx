@@ -126,19 +126,19 @@ export function EditableStat({ value, colorClass, format, onSave }) {
 export function SyncBanner({ plan, label }) {
   if (!plan && !label) return null;
   return (
-    <div className="sync-banner" data-tour="sync-plan">
-      <span className="sync-banner-spin">⟳</span>
+    <div className="sync-plan-bar" data-tour="sync-plan">
+      <span className="sync-plan-spin">⟳</span>
       {!plan ? (
-        <span>SYNC QUEUED: {label}<span className="sync-banner-note"> · the playlist is read when it starts</span></span>
+        <span>SYNC QUEUED: {label}<span className="sync-plan-note"> · the playlist is read when it starts</span></span>
       ) : (
         <>
-          <span className="sync-banner-name">SYNC — {plan.name}</span>
-          <span className="sync-banner-ok" title="The linked playlist(s) could be read">✓ PLAYLIST READ · {plan.total}</span>
-          <span className="sync-banner-ok" title="Recorded in the folder's archive: the sync skips these">✓ {plan.have} ALREADY IN FOLDER</span>
+          <span className="sync-plan-name">SYNC — {plan.name}</span>
+          <span className="sync-plan-ok" title="The linked playlist(s) could be read">✓ PLAYLIST READ · {plan.total}</span>
+          <span className="sync-plan-ok" title="Recorded in the folder's archive: the sync skips these">✓ {plan.have} ALREADY IN FOLDER</span>
           {plan.new > 0
-            ? <span className="sync-banner-new">↓ {plan.new} TO DOWNLOAD</span>
-            : <span className="sync-banner-ok">✓ UP TO DATE</span>}
-          {plan.failed > 0 && <span className="sync-banner-warn">⚠ {plan.failed} PLAYLIST(S) COULDN'T BE READ</span>}
+            ? <span className="sync-plan-new">↓ {plan.new} TO DOWNLOAD</span>
+            : <span className="sync-plan-ok">✓ UP TO DATE</span>}
+          {plan.failed > 0 && <span className="sync-plan-warn">⚠ {plan.failed} PLAYLIST(S) COULDN'T BE READ</span>}
         </>
       )}
     </div>

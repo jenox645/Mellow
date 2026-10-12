@@ -5,8 +5,9 @@ import { API, cancelShownDownload } from '../lib/api.js';
 import {
   estimateDownloadBytes, fmtBytes, fmtCount, fmtDuration, fmtEta, fmtSpeed, idxRanges, isLinkLike, timeAgo, videoInPlaylist,
 } from '../lib/util.js';
-import { SVG, Ico } from '../components/icons.jsx';
+import { SVG } from '../components/icons.jsx';
 import { FileActions, FolderInput, FormatToggles, Mascot, Pipeline, SyncBanner } from '../components/common.jsx';
+import { PendingList } from '../components/pending-list.jsx';
 import { VaultLinkPromptModal } from '../components/vault-modals.jsx';
 import { MASCOT_CHILLING } from '../lib/mascots.js';
 import { defaultToggles, togglesFrom } from '../lib/formats.js';
@@ -15,7 +16,7 @@ import {
   ANALYZE_SLOW_MS, AUDIO_FORMATS, AUDIO_QUALITIES, CONTAINERS, LOSSLESS_AUDIO, QUALITIES,
 } from '../lib/constants.js';
 
-export function FeedPage({ dlState, stats, sysInfo, refreshStats, showNotif, switchPage, config, setConfig, suggestedUrl, onSuggestedConsumed, onPlaylistDownload, playlistItems, setPlaylistItems, completedItems, failedItems, playlistTotalCount, playlistCompletedCount, isPaused, syncJobLabel, syncPlan, onPause, onResume, onClearCompleted, errorActions }) {
+export function FeedPage({ dlState, stats, sysInfo, refreshStats, showNotif, switchPage, config, setConfig, suggestedUrl, onSuggestedConsumed, onPlaylistDownload, playlistItems, setPlaylistItems, completedItems, failedItems, playlistTotalCount, playlistCompletedCount, isPaused, syncJobLabel, syncPlan, playlistJobId, setPlaylistJobId, onPause, onResume, onClearCompleted, errorActions }) {
   // Kept in sessionStorage: the Feed comes back as it was after switching pages
   const [url, setUrl] = useSessionState('feed_url', '');
   const [analyzing, setAnalyzing] = React.useState(false);
@@ -64,7 +65,6 @@ export function FeedPage({ dlState, stats, sysInfo, refreshStats, showNotif, swi
 
   const [vaultLinkPrompt, setVaultLinkPrompt] = React.useState(false);
   const [feedQTab, setFeedQTab] = React.useState('pending');
-  const [removingFeedItems, setRemovingFeedItems] = React.useState(new Set());
   const [importedUrls, setImportedUrls] = React.useState(null);
   const [importedFileName, setImportedFileName] = React.useState('');
 
@@ -79,6 +79,13 @@ export function FeedPage({ dlState, stats, sysInfo, refreshStats, showNotif, swi
   // ⏾ LATER: the next download waits for the Config start time
   const [scheduleLater, setScheduleLater] = React.useState(false);
   const scheduleStart = config.schedule_start || '02:00';
+  // A list (playlist, picked results, imported links) was queued: the unticked
+  // items leave the pending list, and ✕ skips in that job from now on
+  const onListQueued = React.useCallback((d) => {
+    setPlaylistItems && setPlaylistItems(prev => prev && prev.filter(i => i.selected !== false));
+    if (d.job_id && setPlaylistJobId) setPlaylistJobId(d.job_id);
+  }, [setPlaylistItems, setPlaylistJobId]);
+
   const onQueued = React.useCallback((d) => {
     if (d.status === 'scheduled') {
       setSubmitting(false);
@@ -121,6 +128,7 @@ export function FeedPage({ dlState, stats, sysInfo, refreshStats, showNotif, swi
     setAnalyzing(true);
     setInfo(null);
     setPlaylistItems && setPlaylistItems(null);
+    setPlaylistJobId && setPlaylistJobId(null);   // a new list: nothing of it is queued yet
     API.post('/api/info', { url: target })
       .then(data => {
         setInfo(inList && !data.is_playlist ? { ...data, from_list: { url: inList.playlist, mix: inList.mix } } : data);
@@ -233,6 +241,7 @@ export function FeedPage({ dlState, stats, sysInfo, refreshStats, showNotif, swi
               setImportedFileName(fname);
               const fakeItems = urls.map((u, i) => ({ idx: i + 1, title: u, url: u, selected: true }));
               setPlaylistItems && setPlaylistItems(fakeItems);
+              setPlaylistJobId && setPlaylistJobId(null);
               setInfo({ is_playlist: true, is_imported: true, title: fname, playlist_count: urls.length });
               showNotif('Imported', urls.length + ' URLs from ' + fname + (isArchive ? ' (archive format)' : ''), 'success');
             }
@@ -241,6 +250,18 @@ export function FeedPage({ dlState, stats, sysInfo, refreshStats, showNotif, swi
       })
       .catch(() => {});
   }, [showNotif, setPlaylistItems]);
+
+  // Several search results ticked: they become a list like imported links
+  // (DOWNLOAD takes the ticked ones with the options below)
+  const pickMany = React.useCallback((items) => {
+    const query = (searchResults && searchResults.query) || '';
+    setImportedUrls(items.map(i => i.url));
+    setImportedFileName('"' + query + '"');
+    setPlaylistItems && setPlaylistItems(items.map((it, n) => ({ ...it, idx: n + 1, selected: true })));
+    setPlaylistJobId && setPlaylistJobId(null);
+    setInfo({ is_playlist: true, is_imported: true, title: items.length + ' picked from "' + query + '"',
+      playlist_count: items.length, thumbnail: items[0] && items[0].thumbnail });
+  }, [searchResults, setPlaylistItems, setPlaylistJobId]);
 
   const startImportDownload = React.useCallback(() => {
     if (!importedUrls || !importedUrls.length) return;
@@ -265,8 +286,9 @@ export function FeedPage({ dlState, stats, sysInfo, refreshStats, showNotif, swi
       ...toggles,
       scheduled: scheduleLater,
       ...(downloadPath ? { output_dir: downloadPath } : {}),
-    }).then(onQueued).catch(e => { showNotif('Error', e.message, 'error'); setSubmitting(false); });
-  }, [importedUrls, playlistItems, importedFileName, mode, quality, container, audioFmt, audioQuality, toggles, downloadPath, onPlaylistDownload, showNotif, scheduleLater, onQueued]);
+    }).then(d => { onQueued(d); onListQueued(d); })
+      .catch(e => { showNotif('Error', e.message, 'error'); setSubmitting(false); });
+  }, [importedUrls, playlistItems, importedFileName, mode, quality, container, audioFmt, audioQuality, toggles, downloadPath, onPlaylistDownload, showNotif, scheduleLater, onQueued, onListQueued]);
 
   // Ref so handleDownload/handleUrlKeyDown can call latest startImportDownload without stale closure
   const startImportDownloadRef = React.useRef(null);
@@ -321,8 +343,9 @@ export function FeedPage({ dlState, stats, sysInfo, refreshStats, showNotif, swi
       ...(chosenChapters.length ? { chapters: chosenChapters } : {}),
       scheduled: scheduleLater,
       ...extra,
-    }).then(onQueued).catch(e => { showNotif('Error', e.message, 'error'); setSubmitting(false); });
-  }, [url, mode, quality, container, audioFmt, audioQuality, toggles, startTime, endTime, customFmt, downloadPath, playlistItems, info, showNotif, scheduleLater, onQueued, chosenChapters]);
+    }).then(d => { onQueued(d); if (info && info.is_playlist) onListQueued(d); })
+      .catch(e => { showNotif('Error', e.message, 'error'); setSubmitting(false); });
+  }, [url, mode, quality, container, audioFmt, audioQuality, toggles, startTime, endTime, customFmt, downloadPath, playlistItems, info, showNotif, scheduleLater, onQueued, onListQueued, chosenChapters]);
 
   // Keep ref in sync with latest startDownload (assigned during render, safe to read in callbacks)
   startDownloadRef.current = startDownload;
@@ -681,7 +704,8 @@ export function FeedPage({ dlState, stats, sysInfo, refreshStats, showNotif, swi
 
       {searchResults && (
         <SearchResults results={searchResults} info={info} onClear={() => setSearchResults(null)}
-          onPick={item => { setUrl(item.url); handleAnalyze(item.url); }} />
+          onPick={item => { setUrl(item.url); handleAnalyze(item.url); }}
+          onPickMany={pickMany} />
       )}
 
       {/* SYNC IN PROGRESS BANNER */}
@@ -764,7 +788,7 @@ export function FeedPage({ dlState, stats, sysInfo, refreshStats, showNotif, swi
             <span className="ptag">QUEUE</span>
             <span className="ptitle">WAITING — 待機中</span>
             <span className="psub">{feedQTab === 'pending' ? (playlistItems ? playlistItems.length : 0) + ' ITEMS' : (completedItems ? completedItems.length : 0) + ' DONE'}</span>
-            {url && <span style={{ marginLeft: 'auto', cursor: 'pointer', color: 'var(--t3)', fontSize: 13, padding: '0 4px' }} title="Refresh queue" onClick={() => { if (url.trim()) { API.post('/api/playlist-items', { url: url.trim() }).then(r => { if (r.items && setPlaylistItems) setPlaylistItems(r.items.map(i => ({ ...i, selected: true }))); }).catch(() => {}); } }}>↻</span>}
+            {url && <span style={{ marginLeft: 'auto', cursor: 'pointer', color: 'var(--t3)', fontSize: 13, padding: '0 4px' }} title="Refresh queue" onClick={() => { if (url.trim()) { API.post('/api/playlist-items', { url: url.trim() }).then(r => { if (r.items && setPlaylistItems) { setPlaylistItems(r.items.map(i => ({ ...i, selected: true }))); setPlaylistJobId && setPlaylistJobId(null); } }).catch(() => {}); } }}>↻</span>}
           </div>
           {((playlistItems && playlistItems.length > 0) || (completedItems && completedItems.length > 0)) && (
             <div className="q-tabs" style={{ display: 'flex', alignItems: 'center' }}>
@@ -782,49 +806,10 @@ export function FeedPage({ dlState, stats, sysInfo, refreshStats, showNotif, swi
           {feedQTab === 'pending' ? (
             playlistItems && playlistItems.length > 0 ? (
               <div>
-                <div className="queue-list-header">
-                  <span className="qlh-left">PENDING ITEMS — 待機中</span>
-                  <span className="qlh-right">{playlistItems.length} TRACKS{syncPlan ? '' : ' · CLICK ✕ TO REMOVE'}</span>
-                </div>
                 <SyncBanner plan={syncPlan} label={syncJobLabel} />
-                <div className="pl-queue-list" style={{ maxHeight: 216 }}>
-                  {playlistItems.slice(0, 12).map(item => (
-                    <div
-                      key={item.idx}
-                      className={'pl-queue-item' + (removingFeedItems.has(item.idx) ? ' completing' : '')}
-                      onAnimationEnd={removingFeedItems.has(item.idx) ? () => {
-                        setPlaylistItems(prev => prev ? prev.filter(x => x.idx !== item.idx) : prev);
-                        setRemovingFeedItems(prev => { const n = new Set(prev); n.delete(item.idx); return n; });
-                      } : undefined}
-                    >
-                      <span className="pl-queue-drag">⠿</span>
-                      <span className="pl-queue-idx">{item.idx}</span>
-                      {item.thumbnail
-                        ? <img src={item.thumbnail} className="pl-queue-thumb" alt="" onError={e => { e.target.style.display = 'none'; }} />
-                        : <div className="pl-queue-thumb-ph">▶</div>
-                      }
-                      <div className="pl-queue-info">
-                        <div className="pl-queue-title">{item.title || 'Unknown'}</div>
-                        {item.uploader && <div className="pl-queue-sub">{item.uploader}</div>}
-                      </div>
-                      <span className="pl-queue-dur">{item.duration ? fmtDuration(item.duration) : '—'}</span>
-                      <div className="pl-queue-st"><span className="q-st-badge queued">QUEUED</span></div>
-                      {!syncPlan && (
-                        <div className="pl-queue-remove" onClick={() => {
-                          setRemovingFeedItems(prev => new Set([...prev, item.idx]));
-                        }}>
-                          <Ico name="x" size={10} />
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                  {playlistItems.length > 12 && (
-                    <div style={{ padding: '6px 14px', fontFamily: 'Share Tech Mono', fontSize: 9, color: 'var(--t4)', textAlign: 'center' }}>
-                      +{playlistItems.length - 12} more ·{' '}
-                      <span style={{ color: 'var(--cyan)', cursor: 'pointer' }} onClick={() => switchPage('queue')}>VIEW ALL →</span>
-                    </div>
-                  )}
-                </div>
+                <PendingList items={playlistItems} setItems={setPlaylistItems} jobId={playlistJobId}
+                  showNotif={showNotif} maxHeight={300}
+                  skipHint={syncPlan ? '✕ SKIPS THIS TIME (THE NEXT SYNC TRIES AGAIN)' : null} />
               </div>
             ) : (syncPlan || syncJobLabel) ? (
               <SyncBanner plan={syncPlan} label={syncJobLabel} />
@@ -908,8 +893,16 @@ export function FeedPage({ dlState, stats, sysInfo, refreshStats, showNotif, swi
   );
 }
 
-// YouTube search results: pick one to analyze; the list stays for the next pick
-function SearchResults({ results, info, onPick, onClear }) {
+// YouTube search results: click one to analyze it (the list stays for the
+// next pick), or tick several and download them together
+function SearchResults({ results, info, onPick, onPickMany, onClear }) {
+  const [ticked, setTicked] = React.useState(() => new Set());
+  React.useEffect(() => { setTicked(new Set()); }, [results]);
+  const tick = (e, key) => {
+    e.stopPropagation();
+    setTicked(prev => { const next = new Set(prev); if (next.has(key)) next.delete(key); else next.add(key); return next; });
+  };
+  const chosen = results.items.filter(i => ticked.has(i.url));
   return (
     <div className="panel" style={{ marginBottom: 16 }}>
       <div className="panel-hud" /><div className="panel-hud-br" />
@@ -918,7 +911,12 @@ function SearchResults({ results, info, onPick, onClear }) {
         <span className="ptitle" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           "{results.query}"
         </span>
-        <span className="psub">{results.items.length} RESULTS</span>
+        <span className="psub">{chosen.length ? chosen.length + ' TICKED' : results.items.length + ' RESULTS'}</span>
+        {chosen.length > 0 && (
+          <button className="btn btn-primary btn-sm" style={{ marginLeft: 10, padding: '4px 10px', fontSize: 9 }}
+            data-tour="search-pick-many" title="Put the ticked videos in one list, then DOWNLOAD them with the options below"
+            onClick={() => onPickMany(chosen)}>LIST {chosen.length} →</button>
+        )}
         <span style={{ cursor: 'pointer', fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: 'var(--t3)', paddingLeft: 10 }}
           title="Close the results" onClick={onClear}>CLEAR ✕</span>
       </div>
@@ -929,7 +927,10 @@ function SearchResults({ results, info, onPick, onClear }) {
             <div key={item.url || item.idx} className={'pl-queue-item search-result' + (picked ? ' picked' : '')}
               title="Analyze this one" style={{ cursor: 'pointer' }}
               onClick={() => onPick(item)}>
-              <span className="pl-queue-idx">{item.idx}</span>
+              <span className={'pl-queue-check search-check' + (ticked.has(item.url) ? ' on' : '')} role="checkbox"
+                aria-checked={ticked.has(item.url)} title="Tick to download several" onClick={e => tick(e, item.url)}>
+                {ticked.has(item.url) ? '✓' : ''}
+              </span>
               {item.thumbnail
                 ? <img src={item.thumbnail} className="pl-queue-thumb" alt="" onError={e => { e.target.style.display = 'none'; }} />
                 : <div className="pl-queue-thumb-ph">▶</div>}

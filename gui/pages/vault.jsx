@@ -105,6 +105,7 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
   const cardMenuRef = useFitInWindow(cardMenuData);
   const [linkPlModal, setLinkPlModal] = React.useState(null);
   const [renameModal, setRenameModal] = React.useState(null);
+  const [moveModal, setMoveModal] = React.useState(null);   // {folder, into, moving}
   const [syncModal, setSyncModal] = React.useState(null);
   const [retagOpen, setRetagOpen] = React.useState(false);
   const [retagging, setRetagging] = React.useState(false);
@@ -174,9 +175,13 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
       .finally(() => setLoading(false));
   }, []);
 
+  // Reloaded when the folder changes on disk too: a sync (or a move) that
+  // finished while it was open refreshes the vault, and its counts with it
+  const openFolderMeta = vaultFolders.find(f => f.path === selectedFolder);
+  const openFolderStamp = openFolderMeta ? [openFolderMeta.item_count, openFolderMeta.size_bytes, openFolderMeta.modified_at].join('|') : '';
   React.useEffect(() => {
     if (selectedFolder) loadFolder(selectedFolder);
-  }, [selectedFolder, loadFolder]);
+  }, [selectedFolder, loadFolder, openFolderStamp]);
 
   // Load thumbnail mosaics for all vault folder cards
   React.useEffect(() => {
@@ -353,6 +358,51 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
     setRenameModal(null);
   }, [showNotif, onRefreshVault, refreshLibraryEntries]);
 
+  // Move a folder elsewhere (the wrong one was picked): choose where, then confirm
+  const pickMoveTarget = React.useCallback((folder) => {
+    setCardMenuData(null);
+    const parent = folder.path.replace(/[\\/][^\\/]+[\\/]?$/, '');
+    API.post('/api/browse-folder', { initial: parent })
+      .then(d => { if (d.path) setMoveModal({ folder, into: d.path }); })
+      .catch(() => {});
+  }, []);
+
+  const handleMove = React.useCallback(() => {
+    const { folder, into } = moveModal;
+    setMoveModal(m => ({ ...m, moving: true }));
+    API.post('/api/vault/move', { path: folder.path, into })
+      .then(d => {
+        showNotif('Folder Moved', folder.name + ' → ' + d.path, 'success');
+        setFolderMosaics(prev => { const next = { ...prev }; delete next[folder.path]; return next; });
+        if (selectedFolder === folder.path) setSelectedFolder(d.path);
+        onRefreshVault && onRefreshVault();
+        refreshLibraryEntries();
+        setMoveModal(null);
+      })
+      .catch(e => { showNotif('Not Moved', e.message, 'error'); setMoveModal(m => m && { ...m, moving: false }); });
+  }, [moveModal, showNotif, selectedFolder, setSelectedFolder, onRefreshVault, refreshLibraryEntries]);
+
+  const moveDialog = moveModal && (
+    <Modal title="MOVE FOLDER" onClose={() => !moveModal.moving && setMoveModal(null)}
+      footer={<>
+        <button className="btn btn-secondary btn-sm" disabled={moveModal.moving} onClick={() => setMoveModal(null)}>CANCEL</button>
+        <button className="btn btn-primary btn-sm" data-tour="vault-move-go" disabled={moveModal.moving} onClick={handleMove}>
+          {moveModal.moving ? 'MOVING…' : '⇄ MOVE'}
+        </button>
+      </>}>
+      <div className="move-folder-body">
+        <div><span className="move-folder-label">FOLDER</span>{moveModal.folder.path}</div>
+        <div><span className="move-folder-label">INTO</span>{moveModal.into}</div>
+        <p>
+          The folder and everything in it moves there. Its linked playlists, sync format and schedule, name,
+          budget and download history go with it, and its archive file too: the next sync won&apos;t download
+          what it already has.
+        </p>
+        <p className="move-folder-note">Another drive: the files are copied first, which takes a while for a big folder.</p>
+      </div>
+    </Modal>
+  );
+
   const handleWatchFolder = React.useCallback(() => {
     API.post('/api/browse-folder', {}).then(d => {
       if (!d.path) return;
@@ -519,6 +569,8 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
             <div className="vfc-menu-item" onClick={() => { setCardMenuData(null); setSyncModal(cardMenuData.folder); }}>Sync</div>
             <div className="vfc-menu-item" onClick={() => { setCardMenuData(null); API.post('/api/open-folder', { path: cardMenuData.folder.path }).catch(() => {}); }}>Open in Explorer</div>
             <div className="vfc-menu-item" onClick={() => { setCardMenuData(null); setRenameModal({ folder: cardMenuData.folder, name: cardMenuData.folder.name }); }}>Rename</div>
+            <div className="vfc-menu-item" onClick={() => pickMoveTarget(cardMenuData.folder)}
+              title="Move the folder somewhere else; its playlists, sync settings and history follow">Move to…</div>
             <div className="vfc-menu-item" onClick={() => {
               const f = cardMenuData.folder;
               setCardMenuData(null);
@@ -552,6 +604,7 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
         {dupModal && <DuplicatesModal onClose={() => setDupModal(false)} showNotif={showNotif} onRefreshVault={onRefreshVault} />}
 
         {syncModal && <SyncPlaylistModal folder={syncModal} onClose={() => setSyncModal(null)} showNotif={showNotif} onRefreshVault={onRefreshVault} isDownloading={isDownloading} onSyncStart={onSyncStart} />}
+        {moveDialog}
 
         {renameModal && (
           <RenameVaultModal
@@ -713,6 +766,11 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
           <button className="btn btn-secondary btn-sm" onClick={() => loadFolder(selectedFolder)}>↻ REFRESH</button>
           <button className="btn btn-secondary btn-sm" data-tour="vault-open" onClick={() => handleOpenFolder(selectedFolder)}>
             OPEN IN EXPLORER
+          </button>
+          <button className="btn btn-secondary btn-sm" data-tour="vault-move"
+            title="Move this folder somewhere else; its playlists, sync settings and history follow"
+            onClick={() => pickMoveTarget(selectedFolderMeta || { path: selectedFolder, name: folderName })}>
+            ⇄ MOVE
           </button>
         </div>
       </div>
@@ -950,6 +1008,7 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
       {/* Opened by SYNC OPTIONS; it was only mounted in the grid view, so the
           button in this view did nothing */}
       {syncModal && <SyncPlaylistModal folder={syncModal} onClose={() => setSyncModal(null)} showNotif={showNotif} onRefreshVault={onRefreshVault} isDownloading={isDownloading} onSyncStart={onSyncStart} />}
+      {moveDialog}
     </div>
   );
 }
