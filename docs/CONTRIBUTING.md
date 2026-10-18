@@ -91,6 +91,17 @@ python scripts/screenshots.py      # needs Pillow, ffmpeg and Playwright's Chrom
 
 1. Raise `APP_VERSION` in `mellow/version.py` (and the fallback `AppVersion` in `packaging/installer.iss`).
 2. Add a `## X.Y.Z` section at the top of [CHANGELOG.md](../CHANGELOG.md), as `- **Title**: what it does` lines. CI fails without it; the app shows it after updating, and the GitHub release starts with it.
-3. Merge the pull request. GitHub Actions builds the Windows installer, portable exe, Linux binary and AppImage, tests them, and publishes `vX.Y.Z` with `SHA256SUMS.txt`. Installed copies offer the update within hours.
+3. Merge the pull request. GitHub Actions runs the full test suite on the merged commit (`.github/workflows/validate.yml`, the same one CI runs), and only when it passes builds the Windows installer, portable exe, Linux binary and AppImage, smoke-tests them, and publishes `vX.Y.Z` with `SHA256SUMS.txt` and a build provenance for each file. Installed copies offer the update within hours.
 
-Pushing a tag `vX.Y.Z` that matches `APP_VERSION` does the same by hand; a `-suffix` tag makes a pre-release.
+Pushing a tag `vX.Y.Z` does the same by hand, but only for a commit that is already on `main`, whose `APP_VERSION` matches the tag, and that has no release yet; a `-suffix` tag makes a pre-release. A manual run of the Release workflow never publishes. A version is published only if it is above every stable release, checked when the run starts and again right before publishing (a newer release may come out while a run is testing and building). The rules are in `scripts/release_gate.py`, with their tests in `tests/test_release_gate.py`.
+
+If a release run fails:
+- **Tests or a build failed** (nothing was published): fix it in a pull request that also raises the patch version; merging publishes that version.
+- **A runner or network problem before the publish job**: use *Re-run failed jobs* on the same run. It tests, builds and publishes the same commit with every check.
+- **The publish job failed**: first look at the repository's Releases (drafts included) and tags.
+  - No release for the version: *Re-run failed jobs*. The publish step checks again that the tag is absent or on the tested commit, that no release has the tag and that no newer stable release appeared.
+  - A draft release for the version: the re-run refuses until a maintainer has looked at the draft and deleted it.
+  - A published release: it is out. Don't re-run; if it is incomplete or broken, publish a higher version.
+- **A newer version was published while the run was going**: the run refuses to publish the older one. That is intended; nothing to recover.
+- **A run was cancelled while it waited**: GitHub keeps one waiting run per queue, so a third publishing run cancels the one waiting. Re-run it; every check runs again.
+- **The release is out but broken**: publish a higher version with the fix. Installed copies never move to a lower version, so don't delete or replace a published release or its tag.
