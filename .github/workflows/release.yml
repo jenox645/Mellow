@@ -4,12 +4,17 @@ name: Release
 # - merge a change of APP_VERSION (mellow/version.py) into main: the release
 #   vX.Y.Z is built and published by itself, tag included. Installed copies
 #   then offer UPDATE & RESTART; nobody needs git or a local build;
-# - or push a tag matching APP_VERSION (git tag v2.1.0 && git push origin
-#   v2.1.0), e.g. to re-run a release that failed.
-# Builds the Windows installer and the Linux binary + AppImage, starts each
-# build with scripts/smoke_binary.py, and only then publishes the GitHub
-# release (with SHA256SUMS.txt and a signed build provenance for each file). A tag with a suffix (v2.1.0-rc1) becomes a
-# pre-release. The in-app "update available" check reads this release.
+# - or push a tag matching APP_VERSION on a commit that is already on main
+#   (a -suffix tag, v2.1.0-rc1, makes a pre-release). A tag off main, a tag
+#   that doesn't match APP_VERSION and a tag whose release exists are refused.
+# Never a version at or below the highest stable release, checked when the run
+# starts and again right before publishing (scripts/release_gate.py).
+# Every run first tests the exact commit it would release with the full suite
+# (validate.yml, the same one CI runs); only when that passes does it build the
+# Windows installer and the Linux binary + AppImage, start each build with
+# scripts/smoke_binary.py, and then publish the GitHub release (with
+# SHA256SUMS.txt and a signed build provenance for each file). The in-app
+# "update available" check reads this release.
 #
 # A pull request that touches the packaging runs the builds too, so a broken
 # installer shows up before the tag; it never publishes. It also checks the
@@ -37,10 +42,13 @@ on:
       - scripts/ffmpeg_e2e.py
       - scripts/smoke_binary.py
       - scripts/update_e2e.py
+      - scripts/release_gate.py
   workflow_dispatch:
 
+# Every run that may publish (pushes to main and tags) shares one queue, so two
+# of them never decide "not released yet" at the same time
 concurrency:
-  group: release-${{ github.ref }}
+  group: ${{ github.event_name == 'push' && 'release-publish' || format('release-{0}-{1}', github.event_name, github.ref) }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
@@ -54,51 +62,42 @@ jobs:
       tag: ${{ steps.v.outputs.tag }}
       publish: ${{ steps.v.outputs.publish }}
       build: ${{ steps.v.outputs.build }}
+      sha: ${{ steps.v.outputs.sha }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0  # main's history, to check a tagged commit is on it
+          persist-credentials: false
       - id: v
         name: Read APP_VERSION and decide what this run does
-        shell: bash
-        run: |
-          version=$(python3 -c "from mellow.version import APP_VERSION; print(APP_VERSION)")
-          tag="" publish=false build=true
-          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
-            tag="${GITHUB_REF#refs/tags/}"
-            if [[ "${tag%%-*}" != "v$version" ]]; then
-              echo "::error::Tag $tag doesn't match APP_VERSION $version in mellow/version.py"
-              exit 1
-            fi
-            publish=true
-          elif [[ "$GITHUB_EVENT_NAME" == push ]]; then
-            # main, with mellow/version.py changed: release it unless it already is
-            tag="v$version"
-            if git ls-remote --exit-code --tags origin "refs/tags/$tag" > /dev/null; then
-              echo "::notice::$tag already exists: nothing to release"
-              build=false
-            else
-              publish=true
-            fi
-          fi
-          if [[ "$publish" == true ]] && ! python3 -c "from mellow import changelog; import sys; sys.exit(0 if changelog.section('$version') else 1)"; then
-            echo "::error::CHANGELOG.md has no '## $version' section: add the release notes"
-            exit 1
-          fi
-          { echo "version=$version"; echo "tag=$tag"; echo "publish=$publish"; echo "build=$build"; } >> "$GITHUB_OUTPUT"
-          echo "APP_VERSION $version, tag '$tag', publish=$publish"
+        env:
+          GH_TOKEN: ${{ github.token }}
+        # The rules (and their tests, tests/test_release_gate.py) are in the script
+        run: python3 scripts/release_gate.py decide
 
-  windows:
+  # The full suite on the exact commit this run builds and would publish
+  validate:
     needs: version
     if: needs.version.outputs.build == 'true'
+    uses: ./.github/workflows/validate.yml
+    with:
+      sha: ${{ needs.version.outputs.sha }}
+
+  windows:
+    needs: [version, validate]
+    if: needs.version.outputs.build == 'true' && needs.validate.result == 'success' && needs.validate.outputs.sha == needs.version.outputs.sha
     runs-on: windows-latest
     timeout-minutes: 40
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.version.outputs.sha }}   # the validated commit
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.12'
           cache: pip
           cache-dependency-path: requirements*.txt
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '22'
           cache: npm
@@ -114,7 +113,7 @@ jobs:
         run: |
           python scripts/smoke_binary.py dist/MellowDLP.exe
           python scripts/smoke_binary.py dist/MellowDLP-app/MellowDLP.exe
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: windows
           path: |
@@ -124,18 +123,20 @@ jobs:
           retention-days: 14
 
   linux:
-    needs: version
-    if: needs.version.outputs.build == 'true'
+    needs: [version, validate]
+    if: needs.version.outputs.build == 'true' && needs.validate.result == 'success' && needs.validate.outputs.sha == needs.version.outputs.sha
     runs-on: ubuntu-22.04   # the oldest glibc we build on is the oldest one the binary runs on
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.version.outputs.sha }}   # the validated commit
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.12'
           cache: pip
           cache-dependency-path: requirements*.txt
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '22'
           cache: npm
@@ -147,7 +148,7 @@ jobs:
         run: |
           python3 scripts/smoke_binary.py dist/MellowDLP
           APPIMAGE_EXTRACT_AND_RUN=1 python3 scripts/smoke_binary.py dist/MellowDLP-*-x86_64.AppImage
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: linux
           path: |
@@ -163,13 +164,13 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 40
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.12'
           cache: pip
           cache-dependency-path: requirements*.txt
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '22'
           cache: npm
@@ -197,13 +198,13 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 40
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.12'
           cache: pip
           cache-dependency-path: requirements*.txt
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '22'
           cache: npm
@@ -237,8 +238,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.12'
           cache: pip
@@ -246,19 +247,35 @@ jobs:
       - run: pip install -r requirements.txt
       - run: python scripts/ffmpeg_e2e.py
 
+  # Only after the suite, both builds and their smoke tests passed for this commit
   publish:
-    if: needs.version.outputs.publish == 'true'
-    needs: [version, windows, linux]
+    if: >-
+      needs.version.outputs.publish == 'true'
+      && needs.validate.result == 'success'
+      && needs.validate.outputs.sha == needs.version.outputs.sha
+      && needs.windows.result == 'success'
+      && needs.linux.result == 'success'
+    needs: [version, validate, windows, linux]
     runs-on: ubuntu-latest
     permissions:
       contents: write
       id-token: write       # the Sigstore certificate that signs the provenance
       attestations: write   # where GitHub keeps it
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/download-artifact@v8
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Released commit is the tested one
+        env:
+          EXPECTED: ${{ needs.version.outputs.sha }}
+        run: '[[ "$(git rev-parse HEAD)" == "$EXPECTED" && "$GITHUB_SHA" == "$EXPECTED" ]] || { echo "::error::commit changed during the run"; exit 1; }'
+      # Only the two builds of this run, by name
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          path: artifacts
+          name: windows
+          path: artifacts/windows
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: linux
+          path: artifacts/linux
       - name: Name the files and write checksums
         env:
           VERSION: ${{ needs.version.outputs.version }}
@@ -275,7 +292,7 @@ jobs:
       # hand (gh attestation verify <file> --repo <owner>/<repo>). Before the
       # release exists, so no release goes out without it.
       - name: Sign the build provenance
-        uses: actions/attest-build-provenance@v4
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: release/*
       - name: Publish the release
@@ -284,9 +301,6 @@ jobs:
           TAG: ${{ needs.version.outputs.tag }}
           VERSION: ${{ needs.version.outputs.version }}
         run: |
-          prerelease=""
-          [[ "$TAG" == *-* ]] && prerelease="--prerelease"
-          # --target: a release from main creates its tag on the commit that was built
           # The CHANGELOG.md section, which file to download, then GitHub's list of merged PRs
           {
             python3 -c "from mellow import changelog; print(changelog.section('$VERSION'))"
@@ -294,5 +308,8 @@ jobs:
             sed -e "s|{version}|$VERSION|g" -e "s|{tag}|$TAG|g" -e "s|{repo}|$GITHUB_REPOSITORY|g" \
               .github/release-download.md
           } > notes.md
-          gh release create "$TAG" release/* --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
-            --title "MellowDLP $VERSION" --notes-file notes.md --generate-notes $prerelease
+          # Checks once more that the release doesn't exist and the tag is absent or on the
+          # tested commit, then gh release create (--target: a release from main creates
+          # its tag on the commit that was built)
+          python3 scripts/release_gate.py publish --tag "$TAG" --sha "$GITHUB_SHA" \
+            --title "MellowDLP $VERSION" --notes-file notes.md release/*
