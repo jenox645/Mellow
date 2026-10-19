@@ -92,8 +92,9 @@ def test_what_the_page_loads_itself_needs_the_cookie_and_its_own_page(app, tmp_p
 
 
 def test_the_app_s_files_need_no_sign_in(anon_client):
-    assert anon_client.get("/").status_code == 200
-    assert anon_client.get("/favicon.ico").status_code in (200, 404)
+    # 404 where static/ isn't built (the unit-test CI job): public either way
+    for path in ("/", "/favicon.ico", "/app.bundle.js", "/static/index.html"):
+        assert anon_client.get(path).status_code in (200, 404), path
 
 
 # ── signing in ──────────────────────────────────────────────────────────────────
