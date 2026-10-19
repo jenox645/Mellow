@@ -1,7 +1,7 @@
 // CONFIG page — storage, auth, network, database, behavior, danger zone.
 'use strict';
 
-import { API } from '../lib/api.js';
+import { API, authHeaders, download } from '../lib/api.js';
 import { fmtBytes } from '../lib/util.js';
 import { Toggle, Modal, Mascot } from '../components/common.jsx';
 import { MASCOT_FRUSTRATED } from '../lib/mascots.js';
@@ -162,7 +162,7 @@ export function ConfigPage({ config, setConfig, showNotif, installAppUpdate, onA
     const form = new FormData();
     form.append('file', file);
     setRestoring(true);
-    fetch('/api/backup/restore', { method: 'POST', body: form })
+    fetch('/api/backup/restore', { method: 'POST', body: form, headers: authHeaders() })
       .then(r => r.json())
       .then(d => {
         if (d.ok) {
@@ -666,7 +666,7 @@ export function ConfigPage({ config, setConfig, showNotif, installAppUpdate, onA
                   <div className="sl-sub">Zip of config + analytics DB; restore keeps .pre-restore copies</div>
                 </div>
                 <div className="settings-ctrl" style={{ display: 'flex', gap: 6 }}>
-                  <button className="btn btn-secondary btn-sm" onClick={() => { window.location.href = '/api/backup'; }}>
+                  <button className="btn btn-secondary btn-sm" onClick={() => download('/api/backup').catch(e => showNotif('Backup Failed', e.message, 'error'))}>
                     ⬇ BACKUP
                   </button>
                   <button className="btn btn-secondary btn-sm" disabled={restoring}

@@ -28,6 +28,7 @@ from . import (
     formats,
     jobs,
     scheduler,
+    session,
     ytdlp_update,
 )
 from . import backup as _backup
@@ -223,9 +224,43 @@ def _cross_site_guard() -> Response | None:
     a sidecar, or frame the app to trick you into clicking. Browsers say where
     a request comes from; a link you open or type says "none".
     """
-    if request.headers.get("Sec-Fetch-Site") == "cross-site":
+    # The launch page is a file the browser opened, so its link to /launch
+    # counts as coming from another site; the token it carries is the check
+    if request.headers.get("Sec-Fetch-Site") == "cross-site" and request.endpoint != "launch":
         return jsonify({"error": "Requests from other sites are not allowed"}), 403
     return None
+
+
+# ── Sign-in (session.py) ──────────────────────────────────────────────────────
+# Deny by default: every endpoint not listed here needs a signed-in window
+# (tests/test_access.py calls every route the app has without one).
+
+# The app's own files (no data in them), signing in and the second-launch check
+PUBLIC_ENDPOINTS = frozenset({"index", "static_files", "static_root", "launch", "instance_hello"})
+# Loaded by the page itself (EventSource, <video>, <img>), which can't add a
+# header: the session cookie plus the browser saying the app's own page asked
+BROWSER_LOADED_ENDPOINTS = frozenset({"api_progress", "api_vault_stream", "api_vault_thumb"})
+NOT_SIGNED_IN = ("Not signed in. Open MellowDLP from its icon (a second launch signs this "
+                 "window in again). Other programs can't use this API without signing in.")
+
+
+@app.before_request
+def _session_guard() -> Response | None:
+    endpoint = request.endpoint
+    if endpoint is None or endpoint in PUBLIC_ENDPOINTS:   # None: no such route (404/405)
+        return None
+    token = session.header_token(request.cookies.get(session.COOKIE))
+    if token is not None:
+        sent = request.headers.get(session.HEADER)
+        if sent is not None:
+            if session.same(sent, token):
+                return None
+        elif (endpoint in BROWSER_LOADED_ENDPOINTS and request.method == "GET"
+              # Browsers too old to say are let through on the cookie alone
+              and request.headers.get("Sec-Fetch-Site", "same-origin") == "same-origin"):
+            return None
+    # Where to get MellowDLP by hand, should signing in itself ever be broken
+    return jsonify({"error": NOT_SIGNED_IN, "signed_in": False, "download": APP_RELEASES_PAGE}), 401
 
 
 @app.after_request
@@ -259,6 +294,41 @@ def _api_write_guard() -> Response | None:
 
 
 # ── Static ────────────────────────────────────────────────────────────────────
+
+_LAUNCH_REFUSED_PAGE = (
+    '<!DOCTYPE html><html><head><meta charset="utf-8"><title>MellowDLP</title></head>'
+    '<body style="font-family:sans-serif;background:#07090F;color:#D8ECF5;padding:40px">'
+    "<h2>This link has already been used or has expired</h2>"
+    "<p>Open MellowDLP from its icon: it opens a new window for you.</p></body></html>")
+
+
+@app.route("/launch")
+def launch() -> Response:
+    """Sign a window in with a one-time launch token (session.py)."""
+    signed = session.redeem(request.args.get("t", ""))
+    if signed is None:
+        resp = Response(_LAUNCH_REFUSED_PAGE, 403, mimetype="text/html")
+    else:
+        sid, token = signed
+        resp = Response(session.signed_in_page(token), mimetype="text/html")
+        resp.set_cookie(session.COOKIE, sid, httponly=True, samesite="Strict", path="/")
+    resp.headers["Cache-Control"] = "no-store"
+    resp.headers["Referrer-Policy"] = "no-referrer"
+    return resp
+
+
+@app.route("/api/instance/hello")
+def instance_hello() -> Response:
+    """A second launch checks the copy on this port is ours: only it knows the secret."""
+    nonce = request.args.get("nonce", "")
+    if not 16 <= len(nonce) <= 128:
+        return jsonify({"error": "nonce required"}), 400
+    try:
+        proof = session.instance_proof(nonce)
+    except RuntimeError:
+        return jsonify({"error": "not started"}), 503
+    return jsonify({"proof": proof, "app_version": APP_VERSION})
+
 
 @app.route("/")
 def index() -> Response:

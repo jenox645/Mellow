@@ -1,7 +1,7 @@
 // ANALYTICS page — KPI cards, charts, sync health, history browser.
 'use strict';
 
-import { API } from '../lib/api.js';
+import { API, download } from '../lib/api.js';
 import {
   fmtBytes, fmtSpeed, fmtEta, fmtDate, fmtTimestamp, timeAgo, platformTagClass,
 } from '../lib/util.js';
@@ -303,7 +303,7 @@ export function AnalyticsPage({ stats, refreshStats, showNotif }) {
   const maxHour = Math.max(...hourly, 1);
 
   const handleExport = () => {
-    window.location.href = '/api/analytics/export';
+    download('/api/analytics/export').catch(e => showNotif('Export Failed', e.message, 'error'));
   };
 
   return (
