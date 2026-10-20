@@ -16,7 +16,8 @@ from urllib.request import ProxyHandler, build_opener
 from flaskwebgui import FlaskUI
 
 from mellow import applog, session, ytdlp_update
-from mellow.constants import LAUNCH_TOKEN_TTL_NO_WINDOW_SECS
+from mellow.config import load_config
+from mellow.constants import API_PORT_MIN, LAUNCH_TOKEN_TTL_NO_WINDOW_SECS
 
 log = logging.getLogger(__name__)
 
@@ -37,6 +38,23 @@ def _find_free_port() -> int:
         s.bind(("", 0))
         s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         return s.getsockname()[1]
+
+
+def _choose_port() -> int:
+    """Config's fixed port (api_port, for programs using the API) when it is
+    free, else any free one."""
+    try:
+        wanted = int(load_config().get("api_port") or 0)
+    except (TypeError, ValueError):
+        wanted = 0
+    if API_PORT_MIN <= wanted <= 65535:
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.bind(("127.0.0.1", wanted))
+            return wanted
+        except OSError as exc:
+            log.warning(f"fixed port {wanted} is taken ({exc}): using a free one this time")
+    return _find_free_port()
 
 
 def _running_instance() -> dict | None:
@@ -103,7 +121,7 @@ def main() -> None:
     ytdlp_update.activate_overlay()
     from mellow.server import init_app
     flask_app = init_app()
-    port = _find_free_port()
+    port = _choose_port()
     LEGACY_PORT_FILE.unlink(missing_ok=True)
     session.start_instance(port)
     atexit.register(_stop_instance)

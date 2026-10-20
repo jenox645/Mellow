@@ -240,7 +240,9 @@ MellowDLP is a personal project, not a company product, so here is what you can 
 - [SponsorBlock](https://sponsor.ajay.app/), only when that option is on.
 - Webhooks, only those you set up yourself.
 
-There are no accounts and no telemetry: your history and the Analytics page live in a database on your computer. The app's own server listens on `127.0.0.1` only, and refuses requests from web pages.
+There are no accounts and no telemetry: your history and the Analytics page live in a database on your computer. The app's own server listens on `127.0.0.1` only, refuses requests from web pages, and answers only the windows MellowDLP itself opened.
+
+**Other programs.** A script or launcher on your computer can add downloads and follow them only with an API key you make in Config → API ACCESS, which can do only what you tick, and nothing with your files, settings or history. See [docs/API.md](docs/API.md).
 
 **What you download is up to you.** Whether you may download something depends on what it is, the site's terms and the law where you live. MellowDLP (like yt-dlp) doesn't get around DRM.
 

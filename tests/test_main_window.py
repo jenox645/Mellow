@@ -153,3 +153,23 @@ def test_a_second_launch_opens_a_signed_in_window_on_the_running_copy():
         main.main()
     page.assert_called_once_with("http://127.0.0.1:5123", b"s" * 32, 5123)
     browser_open.assert_called_once_with(PAGE)
+
+
+# ── the port ────────────────────────────────────────────────────────────────────
+
+def test_a_fixed_port_is_used_when_free_and_skipped_when_taken():
+    import socket
+
+    from mellow.config import update_config
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        free = s.getsockname()[1]
+    update_config(lambda c: c.update(api_port=free))
+    assert main._choose_port() == free
+    with socket.socket() as taken:
+        taken.bind(("127.0.0.1", free))
+        taken.listen()
+        assert main._choose_port() != free
+    for bad in (0, 80, 70000, "x"):
+        update_config(lambda c, bad=bad: c.update(api_port=bad))
+        assert main._choose_port() >= 1024
