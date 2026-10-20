@@ -632,6 +632,19 @@ def record_sync_report(folder: str, status: str, report: dict, duration_seconds:
         """, [folder, folder, SYNC_REPORTS_KEEP])
 
 
+def recent_sync_outcomes(folder: str) -> list[tuple[str, float]]:
+    """(status, seconds since) of the folder's last syncs, newest first."""
+    try:
+        with get_conn() as con:
+            # The age is worked out by DuckDB, which also stamped finished_at
+            rows = con.execute(
+                "SELECT status, epoch(CAST(now() AS TIMESTAMP)) - epoch(finished_at) FROM sync_reports "
+                "WHERE folder = ? ORDER BY id DESC", [folder]).fetchall()
+    except Exception:
+        return []
+    return [(status, max(0.0, float(age or 0))) for status, age in rows]
+
+
 def get_sync_report(folder: str) -> dict | None:
     """The latest sync report for a folder, or None."""
     with get_conn() as con:
