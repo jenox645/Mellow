@@ -10,7 +10,7 @@ from typing import Any, Callable
 
 import yt_dlp
 
-from . import analytics, errors, music_tags
+from . import analytics, errors, music_tags, throttle
 from .constants import (
     AUDIO_FORMATS,
     FILENAME_MAX,
@@ -170,7 +170,9 @@ AUDIO_QUALITY_MAP: dict[str, str] = {
 
 def _make_progress_hook(progress_cb: Callable, library_id: str | None, speed_tracker: dict,
                         cancel_event: threading.Event, pause_event: threading.Event,
-                        save_sidecar: bool = True) -> Callable:
+                        save_sidecar: bool = True, rate_limit: float | None = None) -> Callable:
+    received = throttle.ByteCounter()
+
     def hook(d: dict) -> None:
         # Pause support: block here while paused
         while pause_event.is_set():
@@ -204,6 +206,12 @@ def _make_progress_hook(progress_cb: Callable, library_id: str | None, speed_tra
                 "current_item_title": current_title,
                 "current_item_thumb": current_thumb,
             })
+            if rate_limit:
+                # Every download's bytes count against the one limit
+                throttle.limiter.take(received.new_bytes(d.get("filename", ""), d.get("downloaded_bytes")),
+                                      rate_limit, cancel_event.is_set)
+                if cancel_event.is_set():
+                    raise yt_dlp.utils.DownloadCancelled()
         elif status == "finished":
             info_dict = d.get("info_dict") or {}
             filename = d.get("filename", "")
@@ -1075,7 +1083,7 @@ def _download_video(
                                                 "message": message, "library_id": library_id}))
     ydl_opts["progress_hooks"] = [_make_progress_hook(
         progress_cb, library_id, speed_tracker, cancel_event, pause_event,
-        save_sidecar=not embed_thumb)]
+        save_sidecar=not embed_thumb, rate_limit=ydl_opts.get("ratelimit"))]
     ydl_opts["post_hooks"] = [_make_saved_hook(progress_cb, library_id)]
     logger: _GeoBlockLogger | None = None
     if ydl_opts.get("ignoreerrors"):
