@@ -478,6 +478,13 @@ def delete_history(
     return 0
 
 
+def is_recorded(file_path: str) -> bool:
+    """Whether the history has a successful download saved as `file_path`."""
+    with get_conn() as con:
+        return con.execute("SELECT 1 FROM downloads WHERE file_path = ? AND status = 'success' LIMIT 1",
+                           [file_path]).fetchone() is not None
+
+
 def find_previous_download(urls: list[str], video_id: str | None = None) -> dict | None:
     """Latest successful download of the same video, or None.
 
