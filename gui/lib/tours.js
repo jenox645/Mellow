@@ -517,8 +517,8 @@ export const TOURS = {
     },
     {
       target: 'config-danger', title: 'Danger zone',
-      text: 'PURGE deletes the whole download history (the analytics and the "already downloaded" notes). '
-        + 'Your files stay on disk.',
+      text: 'PURGE HISTORY deletes the whole download history (the analytics and the "already downloaded" notes). '
+        + 'Your files, vault folders and linked playlists stay.',
       tip: 'Make a BACKUP first if you might want it back.',
     },
   ],

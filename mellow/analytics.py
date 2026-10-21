@@ -488,6 +488,13 @@ def sources_of(file_path: str) -> list[tuple[str, str | None]]:
         return []
 
 
+def is_recorded(file_path: str) -> bool:
+    """Whether the history has a successful download saved as `file_path`."""
+    with get_conn() as con:
+        return con.execute("SELECT 1 FROM downloads WHERE file_path = ? AND status = 'success' LIMIT 1",
+                           [file_path]).fetchone() is not None
+
+
 def find_previous_download(urls: list[str], video_id: str | None = None) -> dict | None:
     """Latest successful download of the same video, or None.
 
@@ -594,12 +601,6 @@ def export_csv() -> str:
     return buf.getvalue()
 
 
-def clear_library() -> None:
-    with get_conn() as con:
-        con.execute("DELETE FROM library")
-        con.execute("DELETE FROM sync_log")
-
-
 def vacuum() -> None:
     with get_conn() as con:
         con.execute("VACUUM")
@@ -640,6 +641,19 @@ def record_sync_report(folder: str, status: str, report: dict, duration_seconds:
             DELETE FROM sync_reports WHERE folder = ? AND id NOT IN (
                 SELECT id FROM sync_reports WHERE folder = ? ORDER BY id DESC LIMIT ?)
         """, [folder, folder, SYNC_REPORTS_KEEP])
+
+
+def recent_sync_outcomes(folder: str) -> list[tuple[str, float]]:
+    """(status, seconds since) of the folder's last syncs, newest first."""
+    try:
+        with get_conn() as con:
+            # The age is worked out by DuckDB, which also stamped finished_at
+            rows = con.execute(
+                "SELECT status, epoch(CAST(now() AS TIMESTAMP)) - epoch(finished_at) FROM sync_reports "
+                "WHERE folder = ? ORDER BY id DESC", [folder]).fetchall()
+    except Exception:
+        return []
+    return [(status, max(0.0, float(age or 0))) for status, age in rows]
 
 
 def get_sync_report(folder: str) -> dict | None:
