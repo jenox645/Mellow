@@ -45,7 +45,11 @@ _FORMAT_PART_RE = _re.compile(r"\.f(\d+[\w-]*|(hls|dash|http)-[\w.=-]+)$", _re.I
 
 
 def is_format_part(path: Path) -> bool:
-    return bool(_FORMAT_PART_RE.search(path.stem))
+    return _is_part_name(path.name)
+
+
+def _is_part_name(name: str) -> bool:
+    return bool(_FORMAT_PART_RE.search(name.rpartition(".")[0]))
 
 
 def clean_stale_parts(folder: str, max_age_secs: float) -> int:
@@ -74,9 +78,9 @@ def is_media(path: Path) -> bool:
 
 
 def _is_media_name(name: str) -> bool:
-    stem, dot, ext = name.rpartition(".")
+    _, dot, ext = name.rpartition(".")
     return (bool(dot) and ("." + ext).lower() in MEDIA_EXTS and not name.startswith(".")
-            and not _FORMAT_PART_RE.search(stem))
+            and not _is_part_name(name))
 
 
 def _entries(path: str | Path) -> list[os.DirEntry]:

@@ -103,3 +103,12 @@ def test_a_card_shows_the_first_media_files_that_have_a_thumbnail(tmp_path):
     previews = vault.get_folder_previews(str(root))
     assert previews == [f"/api/vault/thumb?path={quote(str(root / (n + '.jpg')))}"
                         for n in names[:THUMB_PREVIEW_LIMIT]]
+
+
+@pytest.mark.parametrize("name", [
+    "a.mp4", "A.MP4", "Title.f399.mp4", "Title.f251.webm", "Title.f140.m4a", "Title.fhls-720p.mp4",
+    "Ferrari.f40.mp3", "Cars.f1.flac", ".hidden.mp4", "noext", "a.jpg", "a.", "x.f1.y.mp4",
+])
+def test_the_fast_name_check_agrees_with_is_media(name):
+    # The vault's folder reads use the name check; everything else is_media()
+    assert vault._is_media_name(name) == vault.is_media(Path(name))
