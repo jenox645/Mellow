@@ -1,3 +1,5 @@
+from unittest.mock import MagicMock
+
 import pytest
 
 from mellow import downloader
@@ -297,3 +299,47 @@ def test_a_single_link_gets_no_queue_filter():
     ydl_opts = {}
     downloader._apply_playlist_opts(ydl_opts, {'skip_items': []}, 'https://youtu.be/x')
     assert 'match_filter' not in ydl_opts
+
+
+# ── two videos, one title (_UniqueNamePP) ───────────────────────────────────────
+
+def test_the_name_ends_with_the_duplicate_field_unless_split_into_chapters():
+    assert downloader._output_template({}, []) == "%(title)s%(mellow_dup|)s.%(ext)s"
+    assert downloader._output_template({"filename_template": "%(uploader)s/%(title)s.%(ext)s"}, []) \
+        == "%(uploader)s/%(title)s%(mellow_dup|)s.%(ext)s"
+    # A template that doesn't end in the extension is left as the user wrote it
+    assert downloader._output_template({"filename_template": "%(title)s - %(id)s"}, []) == "%(title)s - %(id)s"
+    chapters = [{"index": 1, "title": "A", "start": 0, "end": 1}]
+    assert "mellow_dup" not in downloader._output_template({}, chapters)
+
+
+def test_a_name_is_taken_only_by_another_video_s_file(tmp_path):
+    from mellow import analytics
+    planned = tmp_path / "Intro.webm"               # what yt-dlp downloads; audio becomes .mp3
+    info = {"id": "bbbbbbbbbbb", "webpage_url": "https://www.youtube.com/watch?v=bbbbbbbbbbb"}
+    assert not downloader._name_taken_by_another(planned, info)          # nothing there
+    (tmp_path / "Intro.mp3").write_bytes(b"x")
+    assert downloader._name_taken_by_another(planned, info)              # unknown file: not ours
+    analytics.record_download({"url": "https://www.youtube.com/watch?v=aaaaaaaaaaa", "title": "Intro",
+                               "status": "success", "file_path": str(tmp_path / "Intro.mp3"),
+                               "video_id": "aaaaaaaaaaa"})
+    assert downloader._name_taken_by_another(planned, info)              # another video's
+    assert not downloader._name_taken_by_another(planned, {**info, "id": "aaaaaaaaaaa"})   # this one's
+    # Known by its link only (history from before item ids were recorded)
+    analytics.record_download({"url": "https://www.youtube.com/watch?v=ccccccccccc", "title": "Outro",
+                               "status": "success", "file_path": str(tmp_path / "Outro.mp4")})
+    (tmp_path / "Outro.mp4").write_bytes(b"x")
+    assert not downloader._name_taken_by_another(tmp_path / "Outro.mp4", {"id": "ccccccccccc"})
+
+
+def test_the_step_names_a_second_video_with_its_id(tmp_path):
+    (tmp_path / "Intro.mp3").write_bytes(b"x")
+    ydl = MagicMock()
+    ydl.prepare_filename.return_value = str(tmp_path / "Intro.webm")
+    pp = downloader._UniqueNamePP(ydl)
+    _, info = pp.run({"id": "x" * 40})
+    assert info["mellow_dup"] == " [" + "x" * downloader.DUP_ID_MAX_CHARS + "]"
+    # Decided once per item: running again doesn't add a second id
+    assert pp.run(info)[1]["mellow_dup"] == info["mellow_dup"]
+    _, fresh = pp.run({"id": "y"} | {"mellow_dup": None})
+    assert fresh["mellow_dup"] == " [y]"

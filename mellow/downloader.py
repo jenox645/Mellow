@@ -16,6 +16,7 @@ from .constants import (
     FILENAME_MAX,
     LOUDNORM_FILTER,
     MAX_CHOSEN_CHAPTERS,
+    MEDIA_EXTS,
     NAME_FIELD_MIN,
     NAME_FIELD_RESERVE,
     NAME_SUFFIX_RESERVE,
@@ -135,6 +136,11 @@ NO_FFMPEG_ERROR_HINT = ("Note: ffmpeg isn't installed. Sites that serve video an
 
 # Output name when no filename template is set
 _DEFAULT_TEMPLATE = "%(title)s.%(ext)s"
+# Ends every file name (before the extension): empty, or " [<id>]" when another
+# video's file already has the name (_UniqueNamePP). Two "Intro" videos in a
+# playlist overwrote each other, and the archive then skipped both for good.
+DUP_FIELD = "mellow_dup"
+DUP_ID_MAX_CHARS = 20   # within NAME_FIELD_RESERVE, which _fit_template keeps for it
 
 
 def _single_file_format(quality: str) -> str:
@@ -338,6 +344,42 @@ _AUDIO_ENCODERS = {
     "mp3": "libmp3lame", "m4a": "aac", "aac": "aac", "opus": "libopus",
     "ogg": "libvorbis", "flac": "flac", "wav": "pcm_s16le",
 }
+
+
+class _UniqueNamePP(yt_dlp.postprocessor.PostProcessor):
+    """Gives a video a file name of its own when another video's file has its
+    name ("Intro.mp3" from two different videos): it gets " [<id>]".
+
+    Runs just before yt-dlp names the file (when="video"). A file the history
+    doesn't know counts as another video's: a second file is better than an
+    overwritten one. The same video downloaded again keeps its name, and yt-dlp
+    finds it already there.
+    """
+
+    def run(self, info):
+        if info.get(DUP_FIELD) is None:
+            info[DUP_FIELD] = ""
+            vid = str(info.get("id") or "")
+            if vid and _name_taken_by_another(Path(self._downloader.prepare_filename(info)), info):
+                info[DUP_FIELD] = f" [{vid[:DUP_ID_MAX_CHARS]}]"
+                self.to_screen(f"another video already has this name: saving as ...{info[DUP_FIELD]}")
+        return [], info
+
+
+def _name_taken_by_another(path: Path, info: dict) -> bool:
+    """Whether a media file named like `path` (any media extension: audio is
+    converted, video merged) is there and isn't this video's."""
+    stem = path.name[:-len(path.suffix)] if path.suffix else path.name
+    vid = str(info.get("id") or "")
+    urls = {u for u in (info.get("webpage_url"), info.get("original_url")) if u}
+    for ext in MEDIA_EXTS:
+        existing = path.parent / (stem + ext)
+        if not existing.is_file():
+            continue
+        sources = analytics.sources_of(str(existing))
+        if not any(video_id == vid or url in urls or (vid and vid in url) for url, video_id in sources):
+            return True
+    return False
 
 
 class _ExtractAudioNormalized(yt_dlp.postprocessor.FFmpegExtractAudioPP):
@@ -669,6 +711,8 @@ def _output_template(opts: dict, chapters: list[dict]) -> str:
     """The file name template, relative to the output folder."""
     template = _opt_str(opts, "filename_template") or _DEFAULT_TEMPLATE
     if not chapters:
+        if template.endswith(".%(ext)s"):
+            return template[:-len(".%(ext)s")] + f"%({DUP_FIELD}|)s.%(ext)s"
         return template
     # One file per chapter: "<name> - 03 Chapter title.ext" (the same name for
     # every section would have each overwrite the last)
@@ -962,6 +1006,8 @@ def _run_ydl(url: str, ydl_opts: dict, *, normalize_audio: bool, embed_thumb: bo
         if tag_music:
             # Album, track and artist for FFmpegMetadata, decided per item
             ydl.add_post_processor(music_tags.MusicTagsPP(ydl), when="pre_process")
+        if DUP_FIELD in str(ydl.params.get("outtmpl")):
+            ydl.add_post_processor(_UniqueNamePP(ydl), when="video")
         if embed_thumb:
             # Added last so it runs after audio extraction and metadata
             ydl.add_post_processor(

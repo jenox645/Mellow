@@ -248,6 +248,59 @@ def test_a_sync_drops_parts_nobody_finished_for_a_week(tmp_dir):
     assert sorted(os.listdir(tmp_dir)) == ['Fresh [bbbbbbbbbbb].f399.mp4', 'Song.mp4', 'notes.f399.txt']
 
 
+def test_a_title_that_looks_like_a_part_is_a_file(tmp_dir):
+    """"Ferrari.f40.mp3" or "Cars.f1.flac" were hidden as yt-dlp parts, then
+    deleted a week later. yt-dlp only leaves parts as mp4, webm or m4a."""
+    names = ('Ferrari.f40.mp3', 'Cars.f1.flac', 'Ferrari F40.f40.opus', 'Broken [aaaaaaaaaaa].f399.mp4')
+    _touch(tmp_dir, *names)
+    assert [f['name'] for f in vault.list_folder_files(tmp_dir)] == ['Cars.f1.flac', 'Ferrari F40.f40.opus',
+                                                                     'Ferrari.f40.mp3']
+    week_old = os.path.getmtime(Path(tmp_dir) / names[0]) - 8 * 86400
+    for name in names:
+        os.utime(Path(tmp_dir) / name, (week_old, week_old))
+    vault.clean_stale_parts(tmp_dir, 7 * 86400)
+    assert sorted(os.listdir(tmp_dir)) == sorted(names[:3])
+
+
+def test_a_downloaded_file_named_like_a_part_is_never_deleted(tmp_dir):
+    """A video titled "Turbo.f150" saved as "Turbo.f150.mp4": the history knows it."""
+    from mellow import analytics
+    _touch(tmp_dir, 'Turbo.f150.mp4', 'Left [bbbbbbbbbbb].f137.mp4')
+    analytics.record_download({'url': 'https://youtu.be/ccccccccccc', 'title': 'Turbo.f150', 'status': 'success',
+                               'file_path': str(Path(tmp_dir) / 'Turbo.f150.mp4')})
+    week_old = os.path.getmtime(Path(tmp_dir) / 'Turbo.f150.mp4') - 8 * 86400
+    for name in os.listdir(tmp_dir):
+        os.utime(Path(tmp_dir) / name, (week_old, week_old))
+    assert vault.clean_stale_parts(tmp_dir, 7 * 86400) == 1
+    assert os.listdir(tmp_dir) == ['Turbo.f150.mp4']
+
+
+def test_pruning_the_archive_keeps_files_named_by_their_title(tmp_dir):
+    """GENERATE ARCHIVE FILE (prune) dropped the entry of every file without an
+    [id] in its name (the default "%(title)s" template): the next sync
+    downloaded the whole playlist again."""
+    from mellow import analytics
+    _touch(tmp_dir, 'Some Song.mp3', 'Tagged [ddddddddddd].mp3')
+    analytics.record_download({'url': 'https://www.youtube.com/watch?v=ccccccccccc', 'title': 'Some Song',
+                               'status': 'success', 'file_path': str(Path(tmp_dir) / 'Some Song.mp3')})
+    (Path(tmp_dir) / 'mellow_archive.txt').write_text(
+        'youtube ccccccccccc\nyoutube ddddddddddd\nyoutube eeeeeeeeeee\n', encoding='utf-8')
+    result = vault.generate_archive(tmp_dir, prune=True)
+    lines = set((Path(tmp_dir) / 'mellow_archive.txt').read_text().split('\n')) - {''}
+    assert lines == {'youtube ccccccccccc', 'youtube ddddddddddd'}       # the gone one is pruned
+    assert result['pruned'] == 1
+
+
+def test_a_title_named_file_is_backfilled_into_a_new_archive(tmp_dir):
+    from mellow import analytics
+    _touch(tmp_dir, 'Some Song.mp3')
+    analytics.record_download({'url': 'https://www.youtube.com/playlist?list=PLx', 'video_id': 'ccccccccccc',
+                               'title': 'Some Song', 'status': 'success',
+                               'file_path': str(Path(tmp_dir) / 'Some Song.mp3')})
+    vault.generate_archive(tmp_dir)
+    assert 'youtube ccccccccccc' in (Path(tmp_dir) / 'mellow_archive.txt').read_text()
+
+
 def test_file_thumbnails_come_from_sidecars_then_history(tmp_dir):
     from mellow import analytics
     analytics.init_db()
