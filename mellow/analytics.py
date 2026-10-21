@@ -478,6 +478,16 @@ def delete_history(
     return 0
 
 
+def sources_of(file_path: str) -> list[tuple[str, str | None]]:
+    """(source URL, item id) of every download the history records as `file_path`."""
+    try:
+        with get_conn() as con:
+            return [(url or "", vid) for url, vid in con.execute(
+                "SELECT url, video_id FROM downloads WHERE file_path = ?", [file_path]).fetchall()]
+    except Exception:
+        return []
+
+
 def find_previous_download(urls: list[str], video_id: str | None = None) -> dict | None:
     """Latest successful download of the same video, or None.
 
