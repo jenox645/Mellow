@@ -42,6 +42,14 @@ export function fmtTimestamp(ts) {
   try { return new Date(ts).toLocaleString(); } catch { return ts; }
 }
 
+// A wait, in the unit it is best read in: "45 MIN", "3 H", "2 D" (rounded up)
+export function fmtWait(secs) {
+  const s = Math.max(0, Number(secs) || 0);
+  if (s < 3600) return Math.max(1, Math.ceil(s / 60)) + ' MIN';
+  if (s < 86400) return Math.ceil(s / 3600) + ' H';
+  return Math.ceil(s / 86400) + ' D';
+}
+
 export function timeAgo(ts) {
   if (!ts) return '';
   try {

@@ -186,7 +186,20 @@ def build_folder_list(base_path: str, cfg: dict) -> list[dict]:
         f["playlist_count"] = len(vault_playlists.get(f["path"]) or [])
         if f["playlist_count"] and f["path"] in vault_sync_times:
             f["last_synced"] = vault_sync_times[f["path"]]
+        if f["playlist_count"]:
+            _add_sync_trouble(f, cfg)
     return [f for f in all_folders if f["path"] not in vault_hidden]
+
+
+def _add_sync_trouble(folder: dict, cfg: dict) -> None:
+    """The card says when a folder's syncs keep failing, and when auto-sync tries again."""
+    from . import scheduler
+    interval = scheduler.interval_for(cfg, folder["path"]) or 0
+    wait, failures = scheduler.hold_off(folder["path"], interval)
+    if failures:
+        folder["sync_failures"] = failures
+        if cfg.get("auto_sync_enabled") and interval:
+            folder["sync_retry_in"] = int(wait)
 
 
 # ── Folder file listing ───────────────────────────────────────────────────────

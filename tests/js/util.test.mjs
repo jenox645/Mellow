@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  estimateDownloadBytes, fmtBytes, fmtCount, fmtDuration, idxRanges, isLinkLike, matchFolders, parseClock,
+  estimateDownloadBytes, fmtBytes, fmtCount, fmtDuration, fmtWait, idxRanges, isLinkLike, matchFolders, parseClock,
   splitFolder, stepHistory, videoInPlaylist,
 } from '../../gui/lib/util.js';
 import { defaultToggles, togglesFor, togglesFrom } from '../../gui/lib/formats.js';
@@ -103,4 +103,13 @@ test('videoInPlaylist finds a video opened from a playlist or a Mix', () => {
   ]) {
     assert.equal(videoInPlaylist(other), null, String(other));
   }
+});
+
+test('fmtWait says how long until auto-sync tries again', () => {
+  assert.equal(fmtWait(20), '1 MIN');
+  assert.equal(fmtWait(45 * 60), '45 MIN');
+  assert.equal(fmtWait(3600), '1 H');
+  assert.equal(fmtWait(3 * 3600 - 1), '3 H');
+  assert.equal(fmtWait(26 * 3600), '2 D');
+  assert.equal(fmtWait(null), '1 MIN');
 });
