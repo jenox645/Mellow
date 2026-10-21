@@ -7,9 +7,10 @@ import json
 import re
 import time
 from unittest.mock import patch
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
 
 import pytest
+from conftest import signed_in
 
 pytestmark = pytest.mark.browser
 expect = pytest.importorskip("playwright.sync_api").expect
@@ -43,7 +44,7 @@ def _wait_for_file(folder, prefix, timeout=DOWNLOAD_TIMEOUT_MS / 1000):
 
 
 def _get(app_url, path):
-    with urlopen(app_url + path) as resp:
+    with urlopen(Request(app_url + path, headers=signed_in())) as resp:
         return json.loads(resp.read())
 
 

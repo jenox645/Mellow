@@ -36,7 +36,7 @@ Both run `python build_setup.py`, which creates `.venv`, installs the pinned dep
 ```bash
 python build_setup.py --frontend-only
 python main.py               # in a window
-python main.py --no-window   # just the server; open the printed URL in any browser
+python main.py --no-window   # just the server; open the printed sign-in link (once, within 10 min) in any browser
 ```
 On Linux, `python3-tk` gives you the native BROWSE dialogs, and `xclip` the "copied a link?" suggestion.
 

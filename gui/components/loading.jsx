@@ -1,6 +1,7 @@
 // Splash screen — short floor, click to skip, waits for the server.
 'use strict';
 
+import { authHeaders } from '../lib/api.js';
 import { LOADING_MIN_MS } from '../lib/constants.js';
 import {
   MASCOT_DJ, MASCOT_VIBING, MASCOT_CHILLING, MASCOT_TIRED,
@@ -16,6 +17,7 @@ export function LoadingScreen({ onReady }) {
   const [text, setText] = React.useState('');
   const [attempts, setAttempts] = React.useState(0);
   const [appVersion, setAppVersion] = React.useState('');
+  const [signedOut, setSignedOut] = React.useState(null);   // the 401 answer, once refused
   const serverReadyRef = React.useRef(false);
   const minElapsedRef = React.useRef(false);
   const TARGET = 'WELCOME, ADMINISTRATOR';
@@ -49,14 +51,22 @@ export function LoadingScreen({ onReady }) {
   // Server readiness check
   React.useEffect(() => {
     const tryConnect = () => {
-      fetch('/api/system')
-        .then(r => r.json())
+      fetch('/api/system', { headers: authHeaders() })
+        .then(r => {
+          // Not a window MellowDLP opened (or the app restarted since): no point retrying
+          if (r.status === 401) {
+            r.json().catch(() => ({})).then(d => setSignedOut(d || {}));
+            return Promise.reject(null);
+          }
+          return r.json();
+        })
         .then(d => {
           if (d && d.app_version) setAppVersion(d.app_version);
           serverReadyRef.current = true;
           tryReady();
         })
-        .catch(() => {
+        .catch((e) => {
+          if (e === null) return;
           setAttempts(a => {
             const next = a + 1;
             if (next < 5) setTimeout(tryConnect, 1200);
@@ -77,6 +87,26 @@ export function LoadingScreen({ onReady }) {
     minElapsedRef.current = true;
     tryReady();
   }, [tryReady]);
+
+  if (signedOut) {
+    return (
+      <div className="loading-screen">
+        <div className="loading-title">NOT SIGNED IN</div>
+        <div className="loading-sub" style={{ maxWidth: 520, textAlign: 'center', lineHeight: 1.8 }}>
+          This page wasn't opened by MellowDLP, or MellowDLP has restarted since.
+          Open MellowDLP from its icon: it opens a signed-in window.
+        </div>
+        {signedOut.download && (
+          <div className="loading-sub" style={{ maxWidth: 520, textAlign: 'center', lineHeight: 1.8 }}>
+            Still not working? Get the latest MellowDLP:{' '}
+            <a href={signedOut.download} target="_blank" rel="noreferrer" style={{ color: 'var(--cyan)' }}>
+              {signedOut.download.replace(/^https:\/\//, '')}
+            </a>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="loading-screen" onClick={skip} style={{ cursor: 'pointer' }} title="Click to skip">

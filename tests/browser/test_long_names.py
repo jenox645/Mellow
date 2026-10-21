@@ -4,7 +4,7 @@ import json
 from urllib.request import Request, urlopen
 
 import pytest
-from conftest import LONG_TITLE
+from conftest import LONG_TITLE, signed_in
 
 pytestmark = pytest.mark.browser
 DOWNLOAD_TIMEOUT_SECS = 60
@@ -12,7 +12,7 @@ DOWNLOAD_TIMEOUT_SECS = 60
 
 def _api(app_url, path, body=None):
     req = Request(app_url + path, data=None if body is None else json.dumps(body).encode(),
-                  headers={"Content-Type": "application/json"}, method="GET" if body is None else "POST")
+                  headers={"Content-Type": "application/json", **signed_in()}, method="GET" if body is None else "POST")
     with urlopen(req, timeout=30) as resp:
         return json.loads(resp.read())
 

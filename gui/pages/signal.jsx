@@ -249,31 +249,27 @@ export function SignalApiPage() {
         </div>
         {docsOpen && (
           <div className="schema-block" style={{ fontSize: 10, lineHeight: 1.8 }}>
+            <div style={{ color: 'var(--t3)', marginBottom: 6 }}>
+              For programs on this computer. Every request sends <span style={{ color: 'var(--t1)' }}>Authorization: Bearer &lt;key&gt;</span>;
+              make a key, and choose what it may do, in Config → API ACCESS.
+            </div>
             {[
-              ['GET',  '/api/status',        'System status + yt-dlp version'],
-              ['GET',  '/api/stats',          'Download statistics'],
-              ['GET',  '/api/queue/status',   'Current job queue'],
-              ['POST', '/api/download',       'Start download  {url, mode, quality, container, audio_format, ...}'],
-              ['POST', '/api/cancel',         'Cancel active download'],
-              ['POST', '/api/download/pause', 'Pause active download'],
-              ['POST', '/api/download/resume','Resume paused download'],
-              ['GET',  '/api/vault',          'Vault folder list'],
-              ['POST', '/api/vault/sync',     'Sync vault folder  {path, quality, container, sync_audio, audio_format}'],
-              ['GET',  '/api/history',        'Download history  ?limit=50&offset=0&search='],
-              ['GET',  '/api/progress',       'SSE event stream (text/event-stream)'],
-              ['POST', '/api/queue/{id}/reorder', 'Move a queued job  {index}'],
-              ['GET',  '/api/vault/stream',   'Range-aware media streaming  ?path='],
-              ['GET',  '/api/vault/duplicates', 'Cross-folder duplicate scan'],
-              ['GET',  '/api/analytics/wrapped', 'Year in review  ?year=2026'],
-              ['GET',  '/api/backup',         'Download config+DB backup zip'],
-              ['POST', '/api/backup/restore', 'Restore from a backup zip (multipart)'],
-            ].map(([method, path, desc]) => (
+              ['GET',  '/api/v1/status',    'any key',          'App and yt-dlp versions, queued and active downloads'],
+              ['POST', '/api/v1/downloads', 'downloads:create', 'Queue a download  {url, mode?, quality?, container?, audio_format?, audio_quality?}'],
+              ['GET',  '/api/v1/queue',     'queue:read',       'The queue: each job\'s link, label and status'],
+              ['GET',  '/api/v1/events',    'events:read',      'Progress as server-sent events (text/event-stream)'],
+            ].map(([method, path, scope, desc]) => (
               <div key={path} style={{ display: 'flex', gap: 8, padding: '2px 0' }}>
                 <span style={{ color: method === 'GET' ? 'var(--cyan)' : 'var(--amber)', minWidth: 36 }}>{method}</span>
-                <span style={{ color: 'var(--t1)', minWidth: 220 }}>{path}</span>
+                <span style={{ color: 'var(--t1)', minWidth: 150 }}>{path}</span>
+                <span style={{ color: 'var(--purple)', minWidth: 110 }}>{scope}</span>
                 <span style={{ color: 'var(--t4)' }}>{desc}</span>
               </div>
             ))}
+            <div style={{ marginTop: 6, color: 'var(--t4)' }}>
+              Downloads go to the download folder with your Config defaults. Settings, files, history and
+              backups are for MellowDLP's own window only.
+            </div>
             <div style={{ marginTop: 8, color: 'var(--t3)' }}>
               Base URL: <span style={{ color: 'var(--cyan)' }}>{window.location.origin}</span>
               <button className="btn btn-secondary btn-sm" style={{ marginLeft: 12 }}
