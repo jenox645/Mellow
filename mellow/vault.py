@@ -42,10 +42,18 @@ log = logging.getLogger(__name__)
 # playlist run (ignoreerrors): it isn't the media file, and the video one has
 # no sound. The next sync finishes it from the part.
 _FORMAT_PART_RE = _re.compile(r"\.f(\d+[\w-]*|(hls|dash|http)-[\w.=-]+)$", _re.IGNORECASE)
+# The stream files yt-dlp merges: a "Ferrari.f40.mp3" or "Cars.f1.flac" is a
+# title, not a part (it was hidden, then deleted as a stale part)
+_FORMAT_PART_EXTS = frozenset({".mp4", ".webm", ".m4a"})
 
 
 def is_format_part(path: Path) -> bool:
-    return bool(_FORMAT_PART_RE.search(path.stem))
+    return _is_part_name(path.name)
+
+
+def _is_part_name(name: str) -> bool:
+    stem, _, ext = name.rpartition(".")
+    return ("." + ext).lower() in _FORMAT_PART_EXTS and bool(_FORMAT_PART_RE.search(stem))
 
 
 def clean_stale_parts(folder: str, max_age_secs: float) -> int:
@@ -55,9 +63,11 @@ def clean_stale_parts(folder: str, max_age_secs: float) -> int:
     sync finishes the item from it. Returns how many were removed."""
     removed = 0
     cutoff = time.time() - max_age_secs
+    # A finished download whose title looks like a part is a file, not a part
+    downloaded = {name for name, _url, _id in _history_in(Path(folder))}
     try:
         for f in Path(folder).iterdir():
-            if f.is_file() and f.suffix.lower() in MEDIA_EXTS and is_format_part(f) \
+            if f.is_file() and is_format_part(f) and f.name not in downloaded \
                     and f.stat().st_mtime < cutoff:
                 f.unlink()
                 removed += 1
@@ -70,8 +80,24 @@ def clean_stale_parts(folder: str, max_age_secs: float) -> int:
 
 def is_media(path: Path) -> bool:
     """A finished media file: a media extension, not hidden, not a yt-dlp part."""
-    return (path.suffix.lower() in MEDIA_EXTS and not path.name.startswith(".")
-            and not is_format_part(path))
+    return _is_media_name(path.name)
+
+
+def _is_media_name(name: str) -> bool:
+    _, dot, ext = name.rpartition(".")
+    return (bool(dot) and ("." + ext).lower() in MEDIA_EXTS and not name.startswith(".")
+            and not _is_part_name(name))
+
+
+def _entries(path: str | Path) -> list[os.DirEntry]:
+    """One folder's entries in name order (as Path sorting has them), [] when
+    unreadable. A DirEntry knows whether it is a file, and on Windows its
+    size too, without another call per file: the vault reads big folders."""
+    try:
+        with os.scandir(path) as it:
+            return sorted(it, key=lambda e: os.path.normcase(e.name))
+    except OSError:
+        return []
 
 
 # Matches yt-dlp's YouTube ID embedded in filenames: [dQw4w9WgXcW]
@@ -106,17 +132,20 @@ _MPC_PATHS = [
 # ── Vault folder list ─────────────────────────────────────────────────────────
 
 def get_folder_media_stats(path: str) -> dict:
-    p = Path(path)
-    if not p.is_dir():
-        return {"item_count": 0, "size_bytes": 0}
+    """Media files in a folder and its subfolders (symlinked folders aren't
+    followed, like Path.walk; an unreadable subfolder is left out)."""
     total, count = 0, 0
-    try:
-        for entry in p.rglob("*"):
-            if entry.is_file() and is_media(entry):
-                total += entry.stat().st_size
-                count += 1
-    except OSError:
-        pass
+    pending = [path]
+    while pending:
+        for entry in _entries(pending.pop()):
+            try:
+                if entry.is_dir(follow_symlinks=False):
+                    pending.append(entry.path)
+                elif _is_media_name(entry.name) and entry.is_file():
+                    total += entry.stat().st_size
+                    count += 1
+            except OSError:
+                pass
     return {"item_count": count, "size_bytes": total}
 
 
@@ -181,7 +210,20 @@ def build_folder_list(base_path: str, cfg: dict) -> list[dict]:
         f["playlist_count"] = len(vault_playlists.get(f["path"]) or [])
         if f["playlist_count"] and f["path"] in vault_sync_times:
             f["last_synced"] = vault_sync_times[f["path"]]
+        if f["playlist_count"]:
+            _add_sync_trouble(f, cfg)
     return [f for f in all_folders if f["path"] not in vault_hidden]
+
+
+def _add_sync_trouble(folder: dict, cfg: dict) -> None:
+    """The card says when a folder's syncs keep failing, and when auto-sync tries again."""
+    from . import scheduler
+    interval = scheduler.interval_for(cfg, folder["path"]) or 0
+    wait, failures = scheduler.hold_off(folder["path"], interval)
+    if failures:
+        folder["sync_failures"] = failures
+        if cfg.get("auto_sync_enabled") and interval:
+            folder["sync_retry_in"] = int(wait)
 
 
 # ── Folder file listing ───────────────────────────────────────────────────────
@@ -189,23 +231,22 @@ def build_folder_list(base_path: str, cfg: dict) -> list[dict]:
 def list_folder_files(path: str) -> list[dict]:
     root = Path(path)
     files = []
-    try:
-        for f in sorted(root.iterdir()):
-            if f.is_file() and is_media(f):
-                try:
-                    stat = f.stat()
-                    files.append({
-                        "name": f.name,
-                        "path": str(f),
-                        "size_bytes": stat.st_size,
-                        "modified": stat.st_mtime,
-                        "created": stat.st_ctime,
-                        "ext": f.suffix.lower().lstrip("."),
-                    })
-                except OSError:
-                    pass
-    except PermissionError:
-        pass
+    for entry in _entries(root):
+        try:
+            if not (_is_media_name(entry.name) and entry.is_file()):
+                continue
+            stat = entry.stat()
+        except OSError:
+            continue
+        f = root / entry.name
+        files.append({
+            "name": f.name,
+            "path": str(f),
+            "size_bytes": stat.st_size,
+            "modified": stat.st_mtime,
+            "created": stat.st_ctime,
+            "ext": f.suffix.lower().lstrip("."),
+        })
     return files
 
 
@@ -313,22 +354,21 @@ def get_folder_previews(path: str) -> list[str]:
     """Return up to THUMB_PREVIEW_LIMIT thumbnail URLs for a folder."""
     root = Path(path)
     thumb_urls: list[str] = []
-    try:
-        all_files = list(root.iterdir())
-        img_map = {
-            f.stem.lower(): f
-            for f in all_files
-            if f.is_file() and f.suffix.lower() in IMAGE_EXTS
-        }
-        for f in sorted(all_files):
-            if f.is_file() and is_media(f):
-                match = img_map.get(f.stem.lower())
-                if match:
-                    thumb_urls.append(f"/api/vault/thumb?path={quote(str(match))}")
-                if len(thumb_urls) >= THUMB_PREVIEW_LIMIT:
-                    break
-    except PermissionError:
-        pass
+    files = []
+    for entry in _entries(root):
+        try:
+            if entry.is_file():
+                files.append(Path(entry.name))
+        except OSError:
+            pass
+    img_map = {f.stem.lower(): f for f in files if f.suffix.lower() in IMAGE_EXTS}
+    for f in files:
+        if is_media(f):
+            match = img_map.get(f.stem.lower())
+            if match:
+                thumb_urls.append(f"/api/vault/thumb?path={quote(str(root / match))}")
+            if len(thumb_urls) >= THUMB_PREVIEW_LIMIT:
+                break
     return thumb_urls
 
 
@@ -593,10 +633,12 @@ def _history_ids_in(folder: Path) -> dict[str, str]:
     """YouTube id -> file name, for files in `folder` that the download
     history knows the source URL of."""
     ids: dict[str, str] = {}
-    for name, url, _ in _history_in(folder):
+    for name, url, video_id in _history_in(folder):
         m = _YT_URL_ID_RE.search(url)
         if m:
             ids.setdefault(m.group(1), name)
+        elif video_id and "youtu" in url:     # an item recorded with its playlist's link
+            ids.setdefault(video_id, name)
     return ids
 
 
@@ -770,6 +812,10 @@ def generate_archive(folder: str, prune: bool = False) -> dict:
                     disk_yt_ids.add(m.group(1))
     except PermissionError:
         pass
+    # Files named by their title ("%(title)s", the default): the history knows
+    # which video each one is. Without them, pruning dropped every such entry
+    # and the next sync downloaded the whole playlist again
+    disk_yt_ids |= set(_history_ids_in(p))
 
     # Keep or prune existing YouTube entries; backfill new ones
     pruned = 0

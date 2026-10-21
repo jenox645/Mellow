@@ -16,6 +16,7 @@ from .constants import (
     FILENAME_MAX,
     LOUDNORM_FILTER,
     MAX_CHOSEN_CHAPTERS,
+    MEDIA_EXTS,
     NAME_FIELD_MIN,
     NAME_FIELD_RESERVE,
     NAME_SUFFIX_RESERVE,
@@ -135,6 +136,11 @@ NO_FFMPEG_ERROR_HINT = ("Note: ffmpeg isn't installed. Sites that serve video an
 
 # Output name when no filename template is set
 _DEFAULT_TEMPLATE = "%(title)s.%(ext)s"
+# Ends every file name (before the extension): empty, or " [<id>]" when another
+# video's file already has the name (_UniqueNamePP). Two "Intro" videos in a
+# playlist overwrote each other, and the archive then skipped both for good.
+DUP_FIELD = "mellow_dup"
+DUP_ID_MAX_CHARS = 20   # within NAME_FIELD_RESERVE, which _fit_template keeps for it
 
 
 def _single_file_format(quality: str) -> str:
@@ -346,6 +352,42 @@ _AUDIO_ENCODERS = {
     "mp3": "libmp3lame", "m4a": "aac", "aac": "aac", "opus": "libopus",
     "ogg": "libvorbis", "flac": "flac", "wav": "pcm_s16le",
 }
+
+
+class _UniqueNamePP(yt_dlp.postprocessor.PostProcessor):
+    """Gives a video a file name of its own when another video's file has its
+    name ("Intro.mp3" from two different videos): it gets " [<id>]".
+
+    Runs just before yt-dlp names the file (when="video"). A file the history
+    doesn't know counts as another video's: a second file is better than an
+    overwritten one. The same video downloaded again keeps its name, and yt-dlp
+    finds it already there.
+    """
+
+    def run(self, info):
+        if info.get(DUP_FIELD) is None:
+            info[DUP_FIELD] = ""
+            vid = str(info.get("id") or "")
+            if vid and _name_taken_by_another(Path(self._downloader.prepare_filename(info)), info):
+                info[DUP_FIELD] = f" [{vid[:DUP_ID_MAX_CHARS]}]"
+                self.to_screen(f"another video already has this name: saving as ...{info[DUP_FIELD]}")
+        return [], info
+
+
+def _name_taken_by_another(path: Path, info: dict) -> bool:
+    """Whether a media file named like `path` (any media extension: audio is
+    converted, video merged) is there and isn't this video's."""
+    stem = path.name[:-len(path.suffix)] if path.suffix else path.name
+    vid = str(info.get("id") or "")
+    urls = {u for u in (info.get("webpage_url"), info.get("original_url")) if u}
+    for ext in MEDIA_EXTS:
+        existing = path.parent / (stem + ext)
+        if not existing.is_file():
+            continue
+        sources = analytics.sources_of(str(existing))
+        if not any(video_id == vid or url in urls or (vid and vid in url) for url, video_id in sources):
+            return True
+    return False
 
 
 class _ExtractAudioNormalized(yt_dlp.postprocessor.FFmpegExtractAudioPP):
@@ -651,6 +693,12 @@ def _build_ydl_opts(url: str, out_dir: Path, opts: dict, *, ffmpeg: str | None,
         fmt, pps, warning = _no_ffmpeg_format(opts, want_audio, trimmed, warn)
     ydl_opts["format"] = fmt
     ydl_opts["postprocessors"] = pps
+    if ffmpeg and want_audio:
+        # The extension the converted file ends with ("aac" → .m4a): yt-dlp
+        # then finds an earlier download's "Song.mp3" already there instead
+        # of downloading and converting it again (a resumed or re-run job).
+        # Its command line sets this for -x; its Python API doesn't
+        ydl_opts["final_ext"] = yt_dlp.postprocessor.ffmpeg.ACODECS[_audio_codec(opts)][0]
     log.debug(f"ydl format={fmt} postprocessors={pps}")
     if embed_thumb:
         # yt-dlp only embeds a thumbnail it wrote to disk itself. Kept after
@@ -677,6 +725,8 @@ def _output_template(opts: dict, chapters: list[dict]) -> str:
     """The file name template, relative to the output folder."""
     template = _opt_str(opts, "filename_template") or _DEFAULT_TEMPLATE
     if not chapters:
+        if template.endswith(".%(ext)s"):
+            return template[:-len(".%(ext)s")] + f"%({DUP_FIELD}|)s.%(ext)s"
         return template
     # One file per chapter: "<name> - 03 Chapter title.ext" (the same name for
     # every section would have each overwrite the last)
@@ -754,12 +804,16 @@ def _ffmpeg_format(opts: dict, want_audio: bool, embed_subs: bool, trimmed: bool
     if want_audio:
         pps.insert(0, {
             "key": "FFmpegExtractAudio",
-            "preferredcodec": AUDIO_FORMAT_MAP.get(_opt_str(opts, "audio_format", "mp3").lower(), "mp3"),
+            "preferredcodec": _audio_codec(opts),
             "preferredquality": AUDIO_QUALITY_MAP.get(_opt_str(opts, "audio_quality", "best").lower(), "0"),
         })
         return "bestaudio/best", pps, None, warning
     fmt, merge = _merged_format(_opt_str(opts, "quality", "best"), _opt_str(opts, "container", "mp4").lower())
     return _opt_str(opts, "custom_format") or fmt, pps, merge, warning
+
+
+def _audio_codec(opts: dict) -> str:
+    return AUDIO_FORMAT_MAP.get(_opt_str(opts, "audio_format", "mp3").lower(), "mp3")
 
 
 def _no_ffmpeg_format(opts: dict, want_audio: bool, trimmed: bool,
@@ -944,6 +998,7 @@ def _playlist_records(info: dict, base: dict, item_stats: dict, wanted_ext: str,
         per_item = item_stats.get(entry.get("id"), {})
         rows.append({
             **base,
+            "_found_there": not req[0].get("__real_download"),
             "url": entry.get("webpage_url") or entry.get("url", ""),
             "video_id": entry.get("id"),
             "title": entry.get("title"),
@@ -970,6 +1025,8 @@ def _run_ydl(url: str, ydl_opts: dict, *, normalize_audio: bool, embed_thumb: bo
         if tag_music:
             # Album, track and artist for FFmpegMetadata, decided per item
             ydl.add_post_processor(music_tags.MusicTagsPP(ydl), when="pre_process")
+        if DUP_FIELD in str(ydl.params.get("outtmpl")):
+            ydl.add_post_processor(_UniqueNamePP(ydl), when="video")
         if embed_thumb:
             # Added last so it runs after audio extraction and metadata
             ydl.add_post_processor(
@@ -1020,6 +1077,9 @@ def _single_records(info: dict | None, base: dict, saved: dict, wanted_ext: str,
         section = part.get("section_title")
         rows.append({
             **base,
+            # yt-dlp found the file already there: it sets __real_download on
+            # every path that downloads, and leaves it unset or False otherwise
+            "_found_there": not part.get("__real_download"),
             "title": f"{saved['title']} — {section}" if section else saved["title"],
             "video_id": (info or {}).get("id"),
             "uploader": saved["uploader"],
@@ -1114,6 +1174,8 @@ def _download_video(
         })
         for row in _history_rows(info, base, saved, wanted_ext, speed_tracker,
                                  int(time.monotonic() - t_start)):
+            if row.pop("_found_there", False) and analytics.is_recorded(row["file_path"]):
+                continue   # an earlier download's file, already in the history: not a new download
             _record(row)
         return "success"
 

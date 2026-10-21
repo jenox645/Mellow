@@ -20,8 +20,14 @@ import time
 from datetime import datetime
 from typing import Callable
 
+from . import analytics
 from .config import load_config
-from .constants import SCHEDULER_TICK_SECS, SYNC_INTERVALS, SYNC_RETRY_BACKOFF_SECS
+from .constants import (
+    SCHEDULER_TICK_SECS,
+    SYNC_INTERVALS,
+    SYNC_RETRY_BACKOFF_MAX_SECS,
+    SYNC_RETRY_BACKOFF_SECS,
+)
 
 log = logging.getLogger(__name__)
 
@@ -42,24 +48,52 @@ def _parse_sync_time(stamp: str | None) -> float | None:
         return None
 
 
+def interval_for(cfg: dict, path: str) -> int | None:
+    """The folder's auto-sync interval in seconds, or None when it doesn't auto-sync."""
+    key = cfg.get("vault_sync_schedule", {}).get(path, SCHEDULE_INHERIT)
+    if key == SCHEDULE_INHERIT:
+        key = cfg.get("auto_sync_default_interval", DEFAULT_INTERVAL_KEY)
+    if key == SCHEDULE_OFF:
+        return None
+    return SYNC_INTERVALS.get(key)
+
+
+def hold_off(folder: str, interval: int) -> tuple[float, int]:
+    """(seconds this folder's auto-sync still waits, consecutive failures), from
+    its last sync reports, which survive restarts and follow folder moves.
+
+    Cancelled by the user: not before its next turn. Failed N times in a row:
+    SYNC_RETRY_BACKOFF_SECS doubled each time, up to SYNC_RETRY_BACKOFF_MAX_SECS
+    (a folder whose playlist is gone used to be retried every hour, forever).
+    """
+    outcomes = analytics.recent_sync_outcomes(folder)
+    if not outcomes:
+        return 0.0, 0
+    status, age = outcomes[0]
+    if status == "cancelled":
+        return max(0.0, interval - age), 0
+    failures = 0
+    for outcome, _age in outcomes:
+        if outcome != "failed":
+            break
+        failures += 1
+    if not failures:
+        return 0.0, 0
+    wait = min(SYNC_RETRY_BACKOFF_SECS * 2 ** (failures - 1), SYNC_RETRY_BACKOFF_MAX_SECS)
+    return max(0.0, wait - age), failures
+
+
 def due_folders(cfg: dict, now: float | None = None) -> list[str]:
     """Folders with linked playlists whose last sync is older than their interval."""
     if not cfg.get("auto_sync_enabled", False):
         return []
     now = now if now is not None else time.time()
-    default_key = cfg.get("auto_sync_default_interval", DEFAULT_INTERVAL_KEY)
-    schedule: dict = cfg.get("vault_sync_schedule", {})
     sync_times: dict = cfg.get("vault_sync_times", {})
     due: list[str] = []
     for path, urls in cfg.get("vault_playlists", {}).items():
         if not urls:
             continue
-        key = schedule.get(path, SCHEDULE_INHERIT)
-        if key == SCHEDULE_INHERIT:
-            key = default_key
-        if key == SCHEDULE_OFF:
-            continue
-        interval = SYNC_INTERVALS.get(key)
+        interval = interval_for(cfg, path)
         if not interval:
             continue
         last = _parse_sync_time(sync_times.get(path))
@@ -79,10 +113,13 @@ def tick(sync_fn: Callable[[str], bool],
     """
     now = now if now is not None else time.time()
     queued: list[str] = []
-    for path in due_folders(load_config(), now):
+    cfg = load_config()
+    for path in due_folders(cfg, now):
         if is_syncing_fn(path):
             continue
         if now - _last_attempt.get(path, float("-inf")) < SYNC_RETRY_BACKOFF_SECS:
+            continue
+        if hold_off(path, interval_for(cfg, path) or 0)[0] > 0:
             continue
         if sync_fn(path):
             _last_attempt[path] = now

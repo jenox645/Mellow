@@ -62,3 +62,18 @@ def test_only_cancelled_downloads_have_no_success_rate(client):
     analytics.record_download({'url': 'https://example.com/v', 'title': 'v', 'platform': 'Other',
                                'format': 'video', 'status': 'cancelled'})
     assert analytics.get_stats('30d')['success_rate'] is None
+
+
+def test_purging_the_history_keeps_the_library(client):
+    """PURGE wiped the library too (folders linked to playlists and their sync
+    settings) while saying it deleted download records."""
+    from mellow import analytics, config
+    analytics.record_download({'url': 'https://youtu.be/aaaaaaaaaaa', 'title': 'Song', 'status': 'success'})
+    analytics.upsert_library_entry({'id': 'e1', 'name': 'Chill', 'url': 'https://x/pl', 'folder': '/m',
+                                    'folder_name': 'Chill'})
+    config.update_config(lambda c: c.update(stat_overrides={'total_downloads': 99}))
+    r = client.delete('/api/history', json={'all': True})
+    assert r.get_json() == {'deleted': 1}
+    assert analytics.get_history() == []
+    assert [e['id'] for e in analytics.get_library_entries()] == ['e1']
+    assert config.load_config()['stat_overrides'] == {}

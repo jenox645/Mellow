@@ -793,11 +793,11 @@ export function ConfigPage({ config, setConfig, showNotif, installAppUpdate, onA
             <div className="cfg-body">
               <div className="settings-row">
                 <div className="settings-label">
-                  <div className="sl-name">Purge Database Records</div>
-                  <div className="sl-sub">Delete all download history from DuckDB</div>
+                  <div className="sl-name">Purge Download History</div>
+                  <div className="sl-sub">Delete every download record and the stats built on them; the library stays</div>
                 </div>
                 <div className="settings-ctrl">
-                  <button className="btn btn-danger btn-sm" onClick={() => setDangerModal('purge')}>PURGE RECORDS</button>
+                  <button className="btn btn-danger btn-sm" onClick={() => setDangerModal('purge')}>PURGE HISTORY</button>
                 </div>
               </div>
             </div>
@@ -807,20 +807,22 @@ export function ConfigPage({ config, setConfig, showNotif, installAppUpdate, onA
 
       {dangerModal === 'purge' && (
         <Modal
-          title="PURGE DATABASE RECORDS"
+          title="PURGE DOWNLOAD HISTORY"
           onClose={() => setDangerModal(null)}
           footer={
             <>
               <button className="btn btn-secondary btn-sm" onClick={() => setDangerModal(null)}>CANCEL</button>
-              <button className="btn btn-danger btn-sm" onClick={doPurge}>PURGE ALL RECORDS</button>
+              <button className="btn btn-danger btn-sm" onClick={doPurge}>PURGE HISTORY</button>
             </>
           }
         >
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14 }}>
             <Mascot src={MASCOT_FRUSTRATED} className="error-mascot" wrapClass="error-mascot" style={{ width: 80 }} />
             <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 10, color: 'var(--t2)', textAlign: 'center', lineHeight: 1.8 }}>
-              This will permanently delete all download records from DuckDB.<br />
-              <span style={{ color: 'var(--red)' }}>This action cannot be undone.</span>
+              This permanently deletes every download record: the History list, the Analytics numbers and
+              the "already downloaded" notes.<br />
+              Your files, vault folders, linked playlists and their sync settings stay as they are.<br />
+              <span style={{ color: 'var(--red)' }}>This cannot be undone.</span>
             </div>
           </div>
         </Modal>

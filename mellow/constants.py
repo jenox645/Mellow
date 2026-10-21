@@ -59,7 +59,8 @@ SYNC_INTERVALS: dict[str, int] = {   # interval key → seconds
     "daily": 24 * 3600,
     "weekly": 7 * 24 * 3600,
 }
-SYNC_RETRY_BACKOFF_SECS: int = 3600  # wait before re-queuing a failed/cancelled auto-sync
+SYNC_RETRY_BACKOFF_SECS: int = 3600  # first wait before auto-sync retries a failed folder (doubles each time)
+SYNC_RETRY_BACKOFF_MAX_SECS: int = 24 * 3600   # ...up to this
 
 # ── History / API limits ──────────────────────────────────────────────────────
 HISTORY_MAX_LIMIT: int = 500

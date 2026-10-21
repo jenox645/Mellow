@@ -2,7 +2,7 @@
 'use strict';
 
 import { API } from '../lib/api.js';
-import { fmtBytes, fmtDate, timeAgo } from '../lib/util.js';
+import { fmtBytes, fmtDate, fmtWait, timeAgo } from '../lib/util.js';
 import { Ico } from '../components/icons.jsx';
 import { TAGGABLE_AUDIO } from '../lib/constants.js';
 import { Modal, Mascot, useFitInWindow } from '../components/common.jsx';
@@ -540,6 +540,12 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
                     )}
                     {folder.last_synced && (
                       <div className="vfc-synced">SYNCED {timeAgo(folder.last_synced)}</div>
+                    )}
+                    {folder.sync_failures > 0 && (
+                      <div className="vfc-sync-failed" title="Open the folder to see the last sync's report">
+                        ⚠ {folder.sync_failures > 1 ? 'LAST ' + folder.sync_failures + ' SYNCS FAILED' : 'LAST SYNC FAILED'}
+                        {folder.sync_retry_in > 0 ? ' · RETRY IN ' + fmtWait(folder.sync_retry_in) : ''}
+                      </div>
                     )}
                   </div>
                 </div>
