@@ -8,6 +8,17 @@ Each release is a `## X.Y.Z` heading followed by `- **Title**: what it does`
 lines. A pull request that raises `APP_VERSION` adds its section here: CI
 fails without one.
 
+## 2.13.0
+- **Only your MellowDLP window can use MellowDLP**: the app now signs in the window it opens, and anything else on your computer that talks to it (another program, a web page in your browser) is turned away. You don't have to do anything: opening MellowDLP signs you in. Starting it a second time brings up the running copy, as before.
+- **API keys for your scripts**: a program that added downloads through MellowDLP needs a key now. Make one in Config → API ACCESS, tick only what it may do (add downloads, read the queue, follow progress) and revoke it any time. A fixed port in the same panel lets your script always find the app. The new `/api/v1` and how to move an old script over are in docs/API.md.
+- **The speed limit holds**: Rate Limit in Config was applied to each connection, so a video downloaded in several pieces at once, or two downloads side by side, used several times the limit you set. It is now one limit for all downloads together.
+- **Two videos with the same title keep both**: a second video called like one already in the folder (an "Intro", a live version) overwrote it or was skipped, and the lost one never came back. It is now saved next to it with its id in the name.
+- **Titles that look like download leftovers stay**: a song called e.g. "Ferrari.f40" was taken for a half-finished download, hidden in the vault and deleted a week later. It's a song again, and files the download history knows are never cleared as leftovers.
+- **Purging the history keeps your library**: PURGE HISTORY in Config also forgot every folder linked to a playlist and its sync settings. It now clears the download history only.
+- **No downloading twice**: downloading something already in the folder fetched and converted it again (audio) and added a second history entry. It is now found already there.
+- **Auto-sync backs off a failing folder**: a folder whose sync kept failing was retried every hour, forever, and a cancelled sync started again at the next check. Failures now wait longer each time (up to a day), a cancel waits for the folder's next turn, and the folder card says how many syncs failed and when it will try again.
+- **A faster Vault**: big folders open and count quicker, most of all on Windows.
+
 ## 2.12.0
 - **Pick what to download**: an analyzed playlist lists its items with checkboxes: untick the ones you don't want, or use ALL / NONE / INVERT. The list shows how many are ticked and how long they last together.
 - **Several search results at once**: tick results in a YouTube search and LIST them: they become one list you download together, with the format and options you choose.

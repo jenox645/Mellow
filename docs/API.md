@@ -31,7 +31,7 @@ Send the key with every request:
 ### `GET /api/v1/status`
 
 ```json
-{"app_version": "2.14.0", "ytdlp_version": "2026.08.19", "queued": 1, "active": 0}
+{"app_version": "2.13.0", "ytdlp_version": "2026.08.19", "queued": 1, "active": 0}
 ```
 
 ### `POST /api/v1/downloads` (`downloads:create`)
@@ -87,9 +87,9 @@ Fields: `job_id`, `job_type`, `job_label`, `pct`, `speed`, `eta`, `title`, `curr
 | `403` | The key exists but may not do this (its scopes) |
 | `400` | A field is missing, unknown or not one of the allowed values |
 
-## Coming from MellowDLP 2.13 or earlier
+## Coming from MellowDLP 2.12 or earlier
 
-Before 2.14, every route under `/api/` answered any program on the computer. Now only MellowDLP's own
+Before 2.13, every route under `/api/` answered any program on the computer. Now only MellowDLP's own
 window can use them: a program gets `401 Not signed in`. To move an integration over:
 
 | Before | Now |
