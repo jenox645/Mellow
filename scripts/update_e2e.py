@@ -34,30 +34,36 @@ from urllib.request import Request, urlopen
 import psutil
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from smoke_binary import _NEW_GROUP, _stop  # noqa: E402
+from smoke_binary import _NEW_GROUP, _stop, app_env, running_apps, sign_in  # noqa: E402
 
 START_TIMEOUT_SECS = 90
 UPDATE_TIMEOUT_SECS = 600      # download (~40 MB) + install + first start
 
 
-def _api(base: str, path: str, body: dict | None = None) -> dict:
+def _api(base: str, path: str, headers: dict, body: dict | None = None) -> dict:
     req = Request(base + path, data=None if body is None else json.dumps(body).encode(),
-                  headers={"Content-Type": "application/json"}, method="GET" if body is None else "POST")
+                  headers={"Content-Type": "application/json", **headers},
+                  method="GET" if body is None else "POST")
     with urlopen(req, timeout=30) as resp:
         return json.loads(resp.read())
 
 
-def _wait_for_server(port_file: Path, not_port: str | None, deadline: float) -> str:
-    """The base URL of the copy that wrote the port file (another than `not_port`)."""
+def _wait_for_server(env: dict, not_port: str | None, deadline: float) -> tuple[str, dict]:
+    """(base URL, sign-in headers) of a copy started with `env` (another than `not_port`).
+
+    The copy that updated itself may leave its instance file behind, and the
+    new one may be a release from before sign-in (a port file only).
+    """
     while time.monotonic() < deadline:
-        try:
-            port = port_file.read_text().strip()
-            if port and port != not_port:
-                base = f"http://127.0.0.1:{port}"
-                _api(base, "/api/system")
-                return base
-        except (OSError, ValueError):
-            pass
+        for base, info in running_apps(env):
+            if base.rsplit(":", 1)[1] == not_port:
+                continue
+            try:
+                headers = sign_in(base, info)
+                _api(base, "/api/system", headers)
+                return base, headers
+            except (OSError, ValueError, IndexError):
+                pass
         time.sleep(1)
     raise SystemExit("FAILED: no MellowDLP answered in time")
 
@@ -90,22 +96,21 @@ def _serve_feed(folder: Path, version: str) -> str:
 def main(app: str, expected_kind: str, feed: tuple[Path, str] | None = None) -> int:
     exe = Path(app).resolve()
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as home:
-        env = {**os.environ, "HOME": home, "USERPROFILE": home}
+        env = app_env(home)
         if feed:
             env["MELLOW_UPDATE_FEED"] = _serve_feed(*feed)
             print("  release feed:", env["MELLOW_UPDATE_FEED"])
-        port_file = Path(home) / ".mellow_dlp.port"
         proc = subprocess.Popen([str(exe), "--no-window"], env=env, **_NEW_GROUP)
         try:
-            base = _wait_for_server(port_file, None, time.monotonic() + START_TIMEOUT_SECS)
-            before = _api(base, "/api/system")["app_version"]
-            offer = _api(base, "/api/check-app-update")
+            base, headers = _wait_for_server(env, None, time.monotonic() + START_TIMEOUT_SECS)
+            before = _api(base, "/api/system", headers)["app_version"]
+            offer = _api(base, "/api/check-app-update", headers)
             print(f"  running {before}; offered: {json.dumps(offer)[:400]}")
             if not (offer.get("update_available") and offer.get("can_install")
                     and offer.get("install_kind") == expected_kind):
                 print(f"FAILED: expected an installable {expected_kind} update")
                 return 1
-            print("  install:", _api(base, "/api/app-update/install", {}))
+            print("  install:", _api(base, "/api/app-update/install", headers, {}))
             old_port = base.rsplit(":", 1)[1]
             try:
                 proc.wait(timeout=UPDATE_TIMEOUT_SECS)
@@ -113,8 +118,8 @@ def main(app: str, expected_kind: str, feed: tuple[Path, str] | None = None) -> 
                 print("FAILED: the old copy never exited")
                 return 1
             print(f"  old copy exited ({proc.returncode})")
-            base = _wait_for_server(port_file, old_port, time.monotonic() + START_TIMEOUT_SECS)
-            after = _api(base, "/api/system")["app_version"]
+            base, headers = _wait_for_server(env, old_port, time.monotonic() + START_TIMEOUT_SECS)
+            after = _api(base, "/api/system", headers)["app_version"]
             print(f"  now running {after}")
             _stop_port_owner(int(base.rsplit(":", 1)[1]))
             if after != offer["latest"]:

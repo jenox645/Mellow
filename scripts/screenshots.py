@@ -355,7 +355,7 @@ def social_preview(browser):
 def main():
     from playwright.sync_api import sync_playwright
 
-    from mellow import jobs, server
+    from mellow import jobs, server, session
 
     build_vault()
     build_history()
@@ -363,6 +363,7 @@ def main():
     site = HOME / "site"
     covers_for_site(site)
     url, stop = serve(server.init_app())
+    session.start_instance(int(url.rsplit(":", 1)[1]), publish=False)
     OUT.mkdir(parents=True, exist_ok=True)
     print(f"demo home {HOME}, app {url}")
 
@@ -381,7 +382,7 @@ def main():
             body=json.dumps(site_info(r.request.post_data_json["url"]))))
         page.route("**/api/download", lambda r: r.fulfill(
             status=200, content_type="application/json", body=json.dumps({"status": "queued", "job_id": "demo-rain"})))
-        page.goto(url)
+        page.goto(f"{url}/launch?t={session.launch_token()}")   # signed in, as the app's window is
         page.locator(".nav-item").first.wait_for()
         page.wait_for_timeout(1500)
         box = page.get_by_placeholder("Paste a link")

@@ -52,6 +52,16 @@ SYNC_PLAN_HAVE_LIST_MAX: int = 500
 SSE_QUEUE_MAXSIZE: int = 500         # per-subscriber event buffer
 SSE_PING_INTERVAL_SECS: int = 25     # keepalive ping cadence
 
+# ── Sign-in (session.py) ──────────────────────────────────────────────────────
+LAUNCH_TOKEN_TTL_SECS: int = 60            # a window opens its launch page well within this
+LAUNCH_TOKEN_TTL_NO_WINDOW_SECS: int = 600  # --no-window prints a link for you to open
+LAUNCH_PAGE_KEEP_SECS: int = 600           # launch pages older than this are removed
+SESSIONS_KEEP: int = 50                    # signed-in windows remembered (oldest dropped)
+API_KEYS_MAX: int = 20                     # API keys one install may hold
+API_KEY_LAST_USED_EVERY_SECS: int = 60     # a key's "last used" is saved at most this often
+API_URL_MAX_CHARS: int = 2048              # the longest link /api/v1/downloads takes
+API_PORT_MIN: int = 1024                   # Config's fixed port: an unprivileged one
+
 # ── Scheduler (vault auto-sync) ───────────────────────────────────────────────
 SCHEDULER_TICK_SECS: int = 300       # how often the auto-sync loop wakes up
 SYNC_INTERVALS: dict[str, int] = {   # interval key → seconds

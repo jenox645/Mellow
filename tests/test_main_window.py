@@ -1,19 +1,27 @@
 """main.py: the window, or the default browser when there's no Chromium-based one."""
+import json
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 import main
+
+PAGE = 'file:///home/u/.local/share/mellowdlp/launch-0123.html'
 
 
 def _run(browser_path):
     flask_app = MagicMock()
-    ui = MagicMock(browser_path=browser_path)
+    ui = MagicMock(browser_path=browser_path,
+                   browser_command=['/usr/bin/chromium', '--new-window', '--app=http://127.0.0.1:5123'])
     with patch('main.FlaskUI', return_value=ui), \
+            patch('main._launch_page_uri', return_value=PAGE) as page, \
             patch('main.threading.Timer') as timer, \
             patch('main.webbrowser.open') as browser_open:
         main._run_window(flask_app, 5123)
         if timer.called:
             delay, fn, args = timer.call_args.args
             fn(*args)
+    page.assert_called_once_with('http://127.0.0.1:5123')
     return flask_app, ui, browser_open
 
 
@@ -22,13 +30,15 @@ def test_opens_an_app_window_with_a_chromium_based_browser():
     ui.run.assert_called_once()
     flask_app.run.assert_not_called()
     browser_open.assert_not_called()
+    # The window opens the owner-only launch page: no sign-in token on its command line
+    assert ui.browser_command == ['/usr/bin/chromium', '--new-window', f'--app={PAGE}']
 
 
 def test_without_one_it_serves_and_opens_the_default_browser():
     flask_app, ui, browser_open = _run(None)
     ui.run.assert_not_called()
     flask_app.run.assert_called_once_with(host='127.0.0.1', port=5123, threaded=True)
-    browser_open.assert_called_once_with('http://127.0.0.1:5123')
+    browser_open.assert_called_once_with(PAGE)
 
 
 def _watch(pages, active=False):
@@ -51,7 +61,7 @@ def _watch(pages, active=False):
 
     with patch('mellow.server.open_pages', side_effect=open_pages), \
             patch('mellow.jobs.manager.has_active', return_value=active), \
-            patch('main._remove_port_file'), \
+            patch('main._stop_instance'), \
             patch('main.os._exit', side_effect=StopWatchingError) as exit_:
         try:
             main._watch_pages(sleep=sleep, clock=lambda: clock['t'])
@@ -79,3 +89,87 @@ def test_a_browser_that_wont_open_says_where_to_go(capsys):
     with patch('main.webbrowser.open', return_value=False):
         main._open_in_browser('http://127.0.0.1:5123')
     assert 'http://127.0.0.1:5123' in capsys.readouterr().out
+
+
+# ── a second launch ─────────────────────────────────────────────────────────────
+
+class _Answer:
+    def __init__(self, body):
+        self.body = body
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def read(self):
+        return json.dumps(self.body).encode()
+
+
+def _probe(answer):
+    """main._running_instance() against a server answering `answer(nonce)`."""
+    from mellow import session
+    session.start_instance(5123)
+    opener = MagicMock()
+    opener.open.side_effect = lambda url, timeout: _Answer(answer(url.split("nonce=")[1]))
+    with patch('main.build_opener', return_value=opener) as build:
+        found = main._running_instance()
+    # Asked directly, never through a proxy from the environment
+    assert build.call_args.args[0].proxies == {}
+    return found
+
+
+def test_a_second_launch_finds_the_running_copy_by_its_proof(isolated_user_files):
+    from mellow import session
+    found = _probe(lambda nonce: {"proof": session.instance_proof(nonce)})
+    assert found["url"] == 'http://127.0.0.1:5123'
+
+
+def test_a_program_squatting_the_port_is_not_mistaken_for_it(isolated_user_files):
+    """After a crash another program may answer on the old port; it doesn't know the secret."""
+    assert _probe(lambda nonce: {"proof": "0" * 64, "app_version": "2.12.0"}) is None
+    assert _probe(lambda nonce: {"app_version": "2.12.0"}) is None
+
+
+def test_nothing_running_means_a_new_copy(isolated_user_files):
+    assert main._running_instance() is None                      # no instance file
+    from mellow import session
+    session.start_instance(5123)
+    opener = MagicMock()
+    opener.open.side_effect = OSError("connection refused")
+    with patch('main.build_opener', return_value=opener):
+        assert main._running_instance() is None
+
+
+def test_a_second_launch_opens_a_signed_in_window_on_the_running_copy():
+    running = {"port": 5123, "secret": b"s" * 32, "url": "http://127.0.0.1:5123"}
+    with patch('main.applog.setup'), \
+            patch.object(main.sys, 'excepthook', main.sys.excepthook), \
+            patch('main._running_instance', return_value=running), \
+            patch('main._launch_page_uri', return_value=PAGE) as page, \
+            patch('main.webbrowser.open', return_value=True) as browser_open, \
+            pytest.raises(SystemExit):
+        main.main()
+    page.assert_called_once_with("http://127.0.0.1:5123", b"s" * 32, 5123)
+    browser_open.assert_called_once_with(PAGE)
+
+
+# ── the port ────────────────────────────────────────────────────────────────────
+
+def test_a_fixed_port_is_used_when_free_and_skipped_when_taken():
+    import socket
+
+    from mellow.config import update_config
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        free = s.getsockname()[1]
+    update_config(lambda c: c.update(api_port=free))
+    assert main._choose_port() == free
+    with socket.socket() as taken:
+        taken.bind(("127.0.0.1", free))
+        taken.listen()
+        assert main._choose_port() != free
+    for bad in (0, 80, 70000, "x"):
+        update_config(lambda c, bad=bad: c.update(api_port=bad))
+        assert main._choose_port() >= 1024

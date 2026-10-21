@@ -38,6 +38,13 @@ CLIPS = {            # name: (seconds, test pattern)
 }
 
 
+def signed_in() -> dict:
+    """The headers the app's own page sends with an API call (session.py)."""
+    from mellow import session
+    sid, token = session.new_session()
+    return {"Cookie": f"{session.COOKIE}={sid}", session.HEADER: token}
+
+
 def _serve(app: Flask) -> tuple[str, callable]:
     server = make_server("127.0.0.1", 0, app, threaded=True)
     server.daemon_threads = True
@@ -163,8 +170,9 @@ def media_site(tmp_path_factory):
 def app_url():
     if not (ROOT / "static" / "app.bundle.js").exists():
         pytest.fail("static/ isn't built: run `python build_setup.py --frontend-only` first")
-    from mellow import server
+    from mellow import server, session
     url, stop = _serve(server.init_app())
+    session.start_instance(int(url.rsplit(":", 1)[1]), publish=False)
     yield url
     stop()
 
@@ -201,7 +209,9 @@ def page(browser, app_url, downloads):
     page.on("pageerror", lambda e: problems.append(f"page error: {e}"))
     page.on("request", lambda r: r.url.startswith(("http://127.0.0.1", "data:", "blob:"))
             or problems.append(f"external request: {r.url}"))
-    page.goto(app_url)
+    # Signed in as MellowDLP signs its own window in (session.py)
+    from mellow import session
+    page.goto(f"{app_url}/launch?t={session.launch_token()}")
     page.locator(".nav-item").first.wait_for()
     yield page
     context.close()

@@ -2,9 +2,10 @@
 
     python scripts/smoke_binary.py dist/MellowDLP     (or dist/MellowDLP/MellowDLP.exe)
 
-Runs it with --no-window and a throwaway home folder, waits for the port
-file, then checks /api/system (version, yt-dlp importable inside the
-bundle), the page, the bundled fonts and React. Exits non-zero on the first
+Runs it with --no-window and a throwaway home folder, waits for its
+instance file, signs in with it (as the app signs its own window in), then
+checks /api/system (version, yt-dlp importable inside the bundle), the page,
+the bundled fonts and React. Exits non-zero on the first
 failure. Used by CI after every build and by the release workflow before it
 publishes anything.
 """
@@ -18,9 +19,10 @@ import sys
 import tempfile
 import time
 from pathlib import Path
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from mellow import datadir, session  # noqa: E402
 from mellow.version import APP_VERSION  # noqa: E402
 
 # The app log holds non-ASCII; a Windows console would choke on it (cp1252)
@@ -32,19 +34,49 @@ START_TIMEOUT_SECS = 90     # a one-file build unpacks itself first
 REQUEST_TIMEOUT_SECS = 15
 
 
-def _get(url: str) -> bytes:
-    with urlopen(url, timeout=REQUEST_TIMEOUT_SECS) as resp:
+def app_env(home: str) -> dict:
+    """The environment to start the app with: every per-user folder in `home`."""
+    return {**os.environ, "HOME": home, "USERPROFILE": home,
+            "LOCALAPPDATA": str(Path(home) / "AppData" / "Local"),
+            "XDG_DATA_HOME": str(Path(home) / ".local" / "share")}
+
+
+def running_apps(env: dict) -> list[tuple[str, dict | None]]:
+    """(base URL, instance info) of each copy started with `env` that left its address.
+
+    A version from before sign-in wrote only ~/.mellow_dlp.port (info None):
+    the update check starts from, or ends on, such a release.
+    """
+    found = []
+    info = session.read_instance(datadir.data_dir(env) / session.INSTANCE_FILE_NAME)
+    if info:
+        found.append((f"http://127.0.0.1:{info['port']}", info))
+    try:
+        port = int((Path(env["HOME"]) / ".mellow_dlp.port").read_text().strip())
+        found.append((f"http://127.0.0.1:{port}", None))
+    except (OSError, ValueError):
+        pass
+    return found
+
+
+def sign_in(base: str, info: dict | None) -> dict:
+    """The headers a signed-in window sends (none for a version without sign-in)."""
+    return session.sign_in(base, info["secret"], info["port"]) if info else {}
+
+
+def _get(url: str, headers: dict | None = None) -> bytes:
+    with urlopen(Request(url, headers=headers or {}), timeout=REQUEST_TIMEOUT_SECS) as resp:
         if resp.status != 200:
             raise AssertionError(f"{url} → HTTP {resp.status}")
         return resp.read()
 
 
-def _check(base: str) -> None:
-    system = json.loads(_get(base + "/api/system"))
+def _check(base: str, headers: dict) -> None:
+    system = json.loads(_get(base + "/api/system", headers))
     print(f"  /api/system: app {system.get('app_version')}, yt-dlp {system.get('ytdlp_version')}")
     assert system.get("app_version") == APP_VERSION, f"app_version {system.get('app_version')} != {APP_VERSION}"
     assert system.get("ytdlp_version") not in (None, "", "unknown"), "yt-dlp isn't importable in the build"
-    notes = json.loads(_get(base + "/api/whats-new?all=1")).get("entries") or []
+    notes = json.loads(_get(base + "/api/whats-new?all=1", headers)).get("entries") or []
     assert notes and notes[0]["version"] == APP_VERSION, "CHANGELOG.md isn't in the build (What's new)"
     print(f"  What's new: {len(notes)} releases, newest {notes[0]['version']}")
 
@@ -87,27 +119,26 @@ def main(binary: str) -> int:
         print(f"no such file: {exe}")
         return 1
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as home:
-        env = {**os.environ, "HOME": home, "USERPROFILE": home}
-        port_file = Path(home) / ".mellow_dlp.port"
+        env = app_env(home)
         # Its own process group: a one-file build (and an AppImage) runs the
         # app as a child that outlives the launcher's terminate()
         proc = subprocess.Popen([str(exe), "--no-window"], env=env, **_NEW_GROUP)
         try:
             deadline = time.monotonic() + START_TIMEOUT_SECS
-            while not port_file.exists():
+            while not (found := running_apps(env)):
                 if proc.poll() is not None:
                     print(f"exited with code {proc.returncode} before it served anything")
                     return 1
                 if time.monotonic() > deadline:
-                    print(f"no port file after {START_TIMEOUT_SECS}s")
+                    print(f"no instance file after {START_TIMEOUT_SECS}s")
                     return 1
                 time.sleep(0.5)
-            base = f"http://127.0.0.1:{port_file.read_text().strip()}"
+            base, info = found[0]
             print(f"  serving at {base}")
-            # The port file is written just before the server binds
+            # The instance file is written just before the server binds
             for attempt in range(20):
                 try:
-                    _check(base)
+                    _check(base, sign_in(base, info))
                     break
                 except (ConnectionError, OSError) as exc:
                     if attempt == 19:

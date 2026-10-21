@@ -17,6 +17,7 @@ from flask import Flask, Response, jsonify, request, send_file, send_from_direct
 
 from . import (
     analytics,
+    api_keys,
     app_update,
     applog,
     changelog,
@@ -28,6 +29,7 @@ from . import (
     formats,
     jobs,
     scheduler,
+    session,
     ytdlp_update,
 )
 from . import backup as _backup
@@ -43,7 +45,9 @@ from .config import (
     update_config,
 )
 from .constants import (
+    API_URL_MAX_CHARS,
     APP_RELEASES_PAGE,
+    AUDIO_FORMATS,
     HISTORY_DEFAULT_LIMIT,
     HISTORY_MAX_LIMIT,
     LOW_DISK_WARN_BYTES,
@@ -52,6 +56,7 @@ from .constants import (
     SSE_PING_INTERVAL_SECS,
     SSE_QUEUE_MAXSIZE,
     THUMB_CACHE_SECS,
+    VIDEO_CONTAINERS,
     WEBHOOK_TIMEOUT_SECS,
 )
 from .ffmpeg_locate import find_ffmpeg
@@ -68,20 +73,24 @@ app = Flask(__name__, static_folder=None)
 # to exactly one consumer, so a second EventSource (Signal page live stream,
 # or a stale generator after reconnect) silently ate half the UI's events.
 _sse_subscribers: list[queue.Queue] = []
+# Programs following /api/v1/events: not pages (open_pages), and they get a
+# filtered copy of each event (_v1_event)
+_sse_external: list[queue.Queue] = []
 _sse_lock = threading.Lock()
 
 
-def _sse_subscribe() -> queue.Queue:
+def _sse_subscribe(external: bool = False) -> queue.Queue:
     q: queue.Queue = queue.Queue(maxsize=SSE_QUEUE_MAXSIZE)
     with _sse_lock:
-        _sse_subscribers.append(q)
+        (_sse_external if external else _sse_subscribers).append(q)
     return q
 
 
 def _sse_unsubscribe(q: queue.Queue) -> None:
     with _sse_lock:
-        if q in _sse_subscribers:
-            _sse_subscribers.remove(q)
+        for subs in (_sse_subscribers, _sse_external):
+            if q in subs:
+                subs.remove(q)
 
 
 def open_pages() -> int:
@@ -115,21 +124,39 @@ def _fire_webhooks(event_type: str, payload: dict) -> None:
 
 
 def _push_progress(event: dict) -> None:
+    external = _v1_event(event)
     with _sse_lock:
-        subs = list(_sse_subscribers)
-    for q in subs:
+        deliveries = [(q, event) for q in _sse_subscribers]
+        if external is not None:
+            deliveries += [(q, external) for q in _sse_external]
+    for q, item in deliveries:
         try:
-            q.put_nowait(event)
+            q.put_nowait(item)
         except queue.Full:
             # Stalled client: drop oldest so live consumers aren't blocked
             try:
                 q.get_nowait()
-                q.put_nowait(event)
+                q.put_nowait(item)
             except (queue.Empty, queue.Full):
                 pass
     status = event.get("status")
     if status in ("complete", "error"):
         threading.Thread(target=_fire_webhooks, args=(status, event), daemon=True).start()
+
+
+# What /api/v1/events passes on: the progress of jobs, never file paths,
+# thumbnails or raw error text (which can name local files)
+_V1_EVENT_STATUSES = frozenset({"starting", "downloading", "processing", "item_done", "item_failed",
+                                "warning", "complete", "error", "cancelled", "paused", "resumed",
+                                "queue_done"})
+_V1_EVENT_KEYS = ("status", "job_id", "job_type", "job_label", "pct", "speed", "eta", "title",
+                  "current_item_title", "playlist_index", "video_id", "reason", "code", "hint")
+
+
+def _v1_event(event: dict) -> dict | None:
+    if event.get("status") not in _V1_EVENT_STATUSES:
+        return None
+    return {k: event[k] for k in _V1_EVENT_KEYS if k in event}
 
 
 def _queue_finished(done: list[dict]) -> None:
@@ -223,8 +250,66 @@ def _cross_site_guard() -> Response | None:
     a sidecar, or frame the app to trick you into clicking. Browsers say where
     a request comes from; a link you open or type says "none".
     """
-    if request.headers.get("Sec-Fetch-Site") == "cross-site":
+    # The launch page is a file the browser opened, so its link to /launch
+    # counts as coming from another site; the token it carries is the check
+    if request.headers.get("Sec-Fetch-Site") == "cross-site" and request.endpoint != "launch":
         return jsonify({"error": "Requests from other sites are not allowed"}), 403
+    return None
+
+
+# ── Sign-in (session.py) ──────────────────────────────────────────────────────
+# Deny by default: every endpoint not listed here needs a signed-in window
+# (tests/test_access.py calls every route the app has without one).
+
+# The app's own files (no data in them), signing in and the second-launch check
+PUBLIC_ENDPOINTS = frozenset({"index", "static_files", "static_root", "launch", "instance_hello"})
+# Loaded by the page itself (EventSource, <video>, <img>), which can't add a
+# header: the session cookie plus the browser saying the app's own page asked
+BROWSER_LOADED_ENDPOINTS = frozenset({"api_progress", "api_vault_stream", "api_vault_thumb"})
+NOT_SIGNED_IN = ("Not signed in. Open MellowDLP from its icon (a second launch signs this "
+                 "window in again). Other programs use /api/v1 with an API key "
+                 "(Config → API access).")
+# The API for other programs: an API key (api_keys.py) with this scope, and
+# nothing else. None: any valid key
+API_V1_SCOPES: dict[str, str | None] = {
+    "api_v1_status": None,
+    "api_v1_downloads": "downloads:create",
+    "api_v1_queue": "queue:read",
+    "api_v1_events": "events:read",
+}
+NO_API_KEY = ("This needs an API key: send 'Authorization: Bearer mlw_…'. Make one in MellowDLP's "
+              "Config → API access.")
+
+
+@app.before_request
+def _session_guard() -> Response | None:
+    endpoint = request.endpoint
+    if endpoint is None or endpoint in PUBLIC_ENDPOINTS:   # None: no such route (404/405)
+        return None
+    if endpoint in API_V1_SCOPES:
+        return _api_key_guard(API_V1_SCOPES[endpoint])
+    token = session.header_token(request.cookies.get(session.COOKIE))
+    if token is not None:
+        sent = request.headers.get(session.HEADER)
+        if sent is not None:
+            if session.same(sent, token):
+                return None
+        elif (endpoint in BROWSER_LOADED_ENDPOINTS and request.method == "GET"
+              # Browsers too old to say are let through on the cookie alone
+              and request.headers.get("Sec-Fetch-Site", "same-origin") == "same-origin"):
+            return None
+    # Where to get MellowDLP by hand, should signing in itself ever be broken
+    return jsonify({"error": NOT_SIGNED_IN, "signed_in": False, "download": APP_RELEASES_PAGE}), 401
+
+
+def _api_key_guard(scope: str | None) -> Response | None:
+    """/api/v1: a valid key with `scope`; never a session (a window has the full API)."""
+    auth = request.headers.get("Authorization", "")
+    key = api_keys.check(auth[7:].strip()) if auth[:7].lower() == "bearer " else None
+    if key is None:
+        return jsonify({"error": NO_API_KEY}), 401
+    if scope is not None and scope not in key["scopes"]:
+        return jsonify({"error": f"This key may not {api_keys.SCOPES[scope].lower()} ({scope})."}), 403
     return None
 
 
@@ -259,6 +344,41 @@ def _api_write_guard() -> Response | None:
 
 
 # ── Static ────────────────────────────────────────────────────────────────────
+
+_LAUNCH_REFUSED_PAGE = (
+    '<!DOCTYPE html><html><head><meta charset="utf-8"><title>MellowDLP</title></head>'
+    '<body style="font-family:sans-serif;background:#07090F;color:#D8ECF5;padding:40px">'
+    "<h2>This link has already been used or has expired</h2>"
+    "<p>Open MellowDLP from its icon: it opens a new window for you.</p></body></html>")
+
+
+@app.route("/launch")
+def launch() -> Response:
+    """Sign a window in with a one-time launch token (session.py)."""
+    signed = session.redeem(request.args.get("t", ""))
+    if signed is None:
+        resp = Response(_LAUNCH_REFUSED_PAGE, 403, mimetype="text/html")
+    else:
+        sid, token = signed
+        resp = Response(session.signed_in_page(token), mimetype="text/html")
+        resp.set_cookie(session.COOKIE, sid, httponly=True, samesite="Strict", path="/")
+    resp.headers["Cache-Control"] = "no-store"
+    resp.headers["Referrer-Policy"] = "no-referrer"
+    return resp
+
+
+@app.route("/api/instance/hello")
+def instance_hello() -> Response:
+    """A second launch checks the copy on this port is ours: only it knows the secret."""
+    nonce = request.args.get("nonce", "")
+    if not 16 <= len(nonce) <= 128:
+        return jsonify({"error": "nonce required"}), 400
+    try:
+        proof = session.instance_proof(nonce)
+    except RuntimeError:
+        return jsonify({"error": "not started"}), 503
+    return jsonify({"proof": proof, "app_version": APP_VERSION})
+
 
 @app.route("/")
 def index() -> Response:
@@ -508,7 +628,30 @@ def api_download() -> Response:
     cfg = load_config()
     output_dir = data.get("output_dir") or download_root(cfg)
     log.info(f"download queued: {url} -> {output_dir}")
-    opts = {
+    opts = _download_opts(data, cfg)
+    # "Later": held until the Config start time (see jobs.next_time_of_day)
+    not_before = jobs.next_time_of_day(cfg.get("schedule_start", "")) if data.get("scheduled") else None
+    multi_urls = data.get("multi_urls")
+    if multi_urls and isinstance(multi_urls, list) and len(multi_urls) > 1:
+        job = _enqueue_job(multi_urls[0], output_dir, opts, job_type="feed",
+                           label=multi_urls[0], multi_urls=multi_urls, not_before=not_before)
+    else:
+        job = _enqueue_job(url, output_dir, opts, job_type="feed", label=url, not_before=not_before)
+    resp = {"status": "scheduled" if not_before else "started", "job_id": job["id"],
+            "not_before": not_before}
+    if data.get("output_dir"):
+        # A folder picked in the Feed's SAVE TO: offered again with ↑/↓
+        resp["recent_output_dirs"] = remember_output_dir(data["output_dir"])
+    free = _free_bytes_near(output_dir)
+    if free is not None and free < LOW_DISK_WARN_BYTES:
+        # Queued anyway; the user decides whether it will fit
+        resp["disk_warning"] = f"Only {free / 1024 ** 3:.1f} GB free on the download drive."
+    return jsonify(resp)
+
+
+def _download_opts(data: dict, cfg: dict) -> dict:
+    """A download's options from a request (the Feed's, or /api/v1's narrower one)."""
+    return {
         "mode": data.get("mode", "video"),
         "quality": data.get("quality", "best"),
         "container": data.get("container", "mp4"),
@@ -531,24 +674,6 @@ def api_download() -> Response:
         "filename_template": data.get("filename_template", "") or cfg.get("filename_template", ""),
         **download_settings(cfg),
     }
-    # "Later": held until the Config start time (see jobs.next_time_of_day)
-    not_before = jobs.next_time_of_day(cfg.get("schedule_start", "")) if data.get("scheduled") else None
-    multi_urls = data.get("multi_urls")
-    if multi_urls and isinstance(multi_urls, list) and len(multi_urls) > 1:
-        job = _enqueue_job(multi_urls[0], output_dir, opts, job_type="feed",
-                           label=multi_urls[0], multi_urls=multi_urls, not_before=not_before)
-    else:
-        job = _enqueue_job(url, output_dir, opts, job_type="feed", label=url, not_before=not_before)
-    resp = {"status": "scheduled" if not_before else "started", "job_id": job["id"],
-            "not_before": not_before}
-    if data.get("output_dir"):
-        # A folder picked in the Feed's SAVE TO: offered again with ↑/↓
-        resp["recent_output_dirs"] = remember_output_dir(data["output_dir"])
-    free = _free_bytes_near(output_dir)
-    if free is not None and free < LOW_DISK_WARN_BYTES:
-        # Queued anyway; the user decides whether it will fit
-        resp["disk_warning"] = f"Only {free / 1024 ** 3:.1f} GB free on the download drive."
-    return jsonify(resp)
 
 
 def _free_bytes_near(path: str) -> int | None:
@@ -1317,6 +1442,121 @@ def api_library_sync(entry_id: str) -> Response:
     job = _enqueue_job(entry["url"], output_dir, opts, entry_id,
                        job_type="sync", label=f"Library sync — {entry.get('name','')}")
     return jsonify({"status": "started", "library_id": entry_id, "job_id": job["id"]})
+
+
+# ── API keys (signed-in windows manage them) ──────────────────────────────────
+
+@app.route("/api/keys", methods=["GET"])
+def api_keys_list() -> Response:
+    return jsonify({"keys": api_keys.list_keys(), "scopes": api_keys.SCOPES})
+
+
+@app.route("/api/keys", methods=["POST"])
+def api_keys_create() -> Response:
+    data = request.get_json(force=True) or {}
+    try:
+        text, key = api_keys.create(data.get("name", ""), data.get("scopes") or [])
+    except api_keys.ApiKeyError as exc:
+        return jsonify({"error": str(exc)}), 400
+    log.info(f"API key {key['id']} made: {key['name']} {key['scopes']}")
+    # The key itself is answered this once and never stored
+    return jsonify({"key": text, **key})
+
+
+@app.route("/api/keys/<key_id>", methods=["DELETE"])
+def api_keys_revoke(key_id: str) -> Response:
+    if not api_keys.revoke(key_id):
+        return jsonify({"error": "No such key"}), 404
+    log.info(f"API key {key_id} revoked")
+    return jsonify({"ok": True})
+
+
+# ── /api/v1: the API for other programs (an API key with a scope) ────────────
+# Downloads go to the download folder with the Feed's defaults; nothing here
+# takes a path, a file name template or a setting.
+
+_V1_DOWNLOAD_FIELDS = ("url", "mode", "quality", "container", "audio_format", "audio_quality")
+
+
+def _v1_choice(data: dict, key: str, allowed, default: str) -> str:
+    value = str(data.get(key) or default)
+    if value not in allowed:
+        raise ValueError(f"{key} must be one of: {', '.join(allowed)}")
+    return value
+
+
+@app.route("/api/v1/status")
+def api_v1_status() -> Response:
+    try:
+        import yt_dlp
+        ytdlp_version = yt_dlp.version.__version__
+    except Exception:
+        ytdlp_version = "unknown"
+    st = jobs.manager.status()
+    return jsonify({"app_version": APP_VERSION, "ytdlp_version": ytdlp_version,
+                    "queued": st["queued"], "active": st["active"]})
+
+
+@app.route("/api/v1/downloads", methods=["POST"])
+def api_v1_downloads() -> Response:
+    """Queue a download: {url, mode?, quality?, container?, audio_format?, audio_quality?}."""
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"error": "Send a JSON object: {\"url\": \"https://…\"}"}), 400
+    unknown = sorted(set(data) - set(_V1_DOWNLOAD_FIELDS))
+    if unknown:
+        return jsonify({"error": f"Unknown field(s) {', '.join(unknown)}; "
+                                 f"this API takes {', '.join(_V1_DOWNLOAD_FIELDS)}"}), 400
+    url = str(data.get("url") or "").strip()
+    parsed = urlparse(url)
+    if (parsed.scheme not in ("http", "https") or not parsed.netloc or len(url) > API_URL_MAX_CHARS
+            or any(c.isspace() for c in url)):
+        return jsonify({"error": "url must be one http(s) link"}), 400
+    cfg = load_config()
+    try:
+        chosen = {
+            "url": url,
+            "mode": _v1_choice(data, "mode", ("video", "audio"), cfg.get("default_mode", "video")),
+            "quality": _v1_choice(data, "quality", tuple(downloader.QUALITY_MAP),
+                                  cfg.get("default_quality", "best")),
+            "container": _v1_choice(data, "container", VIDEO_CONTAINERS, cfg.get("default_container", "mp4")),
+            "audio_format": _v1_choice(data, "audio_format", AUDIO_FORMATS,
+                                       cfg.get("default_audio_format", "mp3")),
+            "audio_quality": _v1_choice(data, "audio_quality", tuple(downloader.AUDIO_QUALITY_MAP),
+                                        cfg.get("default_audio_quality", "best")),
+        }
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    job = _enqueue_job(url, download_root(cfg), _download_opts(chosen, cfg), job_type="feed",
+                       label=url)
+    log.info(f"download queued through the API: {url}")
+    return jsonify({"job_id": job["id"], "status": "queued"}), 201
+
+
+@app.route("/api/v1/queue")
+def api_v1_queue() -> Response:
+    """The queue: what each job is and how it's doing, never where it saves."""
+    st = jobs.manager.status()
+    keep = ("id", "type", "label", "url", "status", "queue_position", "not_before", "counts")
+    return jsonify({"jobs": [{k: j[k] for k in keep if k in j} for j in st["jobs"]],
+                    "queued": st["queued"], "active": st["active"]})
+
+
+@app.route("/api/v1/events")
+def api_v1_events() -> Response:
+    """Download progress as server-sent events (_v1_event: no paths)."""
+    def generate():
+        q = _sse_subscribe(external=True)
+        try:
+            while True:
+                try:
+                    yield f"data: {json.dumps(q.get(timeout=SSE_PING_INTERVAL_SECS))}\n\n"
+                except queue.Empty:
+                    yield 'data: {"status":"ping"}\n\n'
+        finally:
+            _sse_unsubscribe(q)
+    return Response(generate(), mimetype="text/event-stream",
+                    headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
 # ── App init ──────────────────────────────────────────────────────────────────
