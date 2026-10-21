@@ -48,7 +48,12 @@ _FORMAT_PART_EXTS = frozenset({".mp4", ".webm", ".m4a"})
 
 
 def is_format_part(path: Path) -> bool:
-    return path.suffix.lower() in _FORMAT_PART_EXTS and bool(_FORMAT_PART_RE.search(path.stem))
+    return _is_part_name(path.name)
+
+
+def _is_part_name(name: str) -> bool:
+    stem, _, ext = name.rpartition(".")
+    return ("." + ext).lower() in _FORMAT_PART_EXTS and bool(_FORMAT_PART_RE.search(stem))
 
 
 def clean_stale_parts(folder: str, max_age_secs: float) -> int:
@@ -75,8 +80,24 @@ def clean_stale_parts(folder: str, max_age_secs: float) -> int:
 
 def is_media(path: Path) -> bool:
     """A finished media file: a media extension, not hidden, not a yt-dlp part."""
-    return (path.suffix.lower() in MEDIA_EXTS and not path.name.startswith(".")
-            and not is_format_part(path))
+    return _is_media_name(path.name)
+
+
+def _is_media_name(name: str) -> bool:
+    _, dot, ext = name.rpartition(".")
+    return (bool(dot) and ("." + ext).lower() in MEDIA_EXTS and not name.startswith(".")
+            and not _is_part_name(name))
+
+
+def _entries(path: str | Path) -> list[os.DirEntry]:
+    """One folder's entries in name order (as Path sorting has them), [] when
+    unreadable. A DirEntry knows whether it is a file, and on Windows its
+    size too, without another call per file: the vault reads big folders."""
+    try:
+        with os.scandir(path) as it:
+            return sorted(it, key=lambda e: os.path.normcase(e.name))
+    except OSError:
+        return []
 
 
 # Matches yt-dlp's YouTube ID embedded in filenames: [dQw4w9WgXcW]
@@ -111,17 +132,20 @@ _MPC_PATHS = [
 # ── Vault folder list ─────────────────────────────────────────────────────────
 
 def get_folder_media_stats(path: str) -> dict:
-    p = Path(path)
-    if not p.is_dir():
-        return {"item_count": 0, "size_bytes": 0}
+    """Media files in a folder and its subfolders (symlinked folders aren't
+    followed, like Path.walk; an unreadable subfolder is left out)."""
     total, count = 0, 0
-    try:
-        for entry in p.rglob("*"):
-            if entry.is_file() and is_media(entry):
-                total += entry.stat().st_size
-                count += 1
-    except OSError:
-        pass
+    pending = [path]
+    while pending:
+        for entry in _entries(pending.pop()):
+            try:
+                if entry.is_dir(follow_symlinks=False):
+                    pending.append(entry.path)
+                elif _is_media_name(entry.name) and entry.is_file():
+                    total += entry.stat().st_size
+                    count += 1
+            except OSError:
+                pass
     return {"item_count": count, "size_bytes": total}
 
 
@@ -207,23 +231,22 @@ def _add_sync_trouble(folder: dict, cfg: dict) -> None:
 def list_folder_files(path: str) -> list[dict]:
     root = Path(path)
     files = []
-    try:
-        for f in sorted(root.iterdir()):
-            if f.is_file() and is_media(f):
-                try:
-                    stat = f.stat()
-                    files.append({
-                        "name": f.name,
-                        "path": str(f),
-                        "size_bytes": stat.st_size,
-                        "modified": stat.st_mtime,
-                        "created": stat.st_ctime,
-                        "ext": f.suffix.lower().lstrip("."),
-                    })
-                except OSError:
-                    pass
-    except PermissionError:
-        pass
+    for entry in _entries(root):
+        try:
+            if not (_is_media_name(entry.name) and entry.is_file()):
+                continue
+            stat = entry.stat()
+        except OSError:
+            continue
+        f = root / entry.name
+        files.append({
+            "name": f.name,
+            "path": str(f),
+            "size_bytes": stat.st_size,
+            "modified": stat.st_mtime,
+            "created": stat.st_ctime,
+            "ext": f.suffix.lower().lstrip("."),
+        })
     return files
 
 
@@ -331,22 +354,21 @@ def get_folder_previews(path: str) -> list[str]:
     """Return up to THUMB_PREVIEW_LIMIT thumbnail URLs for a folder."""
     root = Path(path)
     thumb_urls: list[str] = []
-    try:
-        all_files = list(root.iterdir())
-        img_map = {
-            f.stem.lower(): f
-            for f in all_files
-            if f.is_file() and f.suffix.lower() in IMAGE_EXTS
-        }
-        for f in sorted(all_files):
-            if f.is_file() and is_media(f):
-                match = img_map.get(f.stem.lower())
-                if match:
-                    thumb_urls.append(f"/api/vault/thumb?path={quote(str(match))}")
-                if len(thumb_urls) >= THUMB_PREVIEW_LIMIT:
-                    break
-    except PermissionError:
-        pass
+    files = []
+    for entry in _entries(root):
+        try:
+            if entry.is_file():
+                files.append(Path(entry.name))
+        except OSError:
+            pass
+    img_map = {f.stem.lower(): f for f in files if f.suffix.lower() in IMAGE_EXTS}
+    for f in files:
+        if is_media(f):
+            match = img_map.get(f.stem.lower())
+            if match:
+                thumb_urls.append(f"/api/vault/thumb?path={quote(str(root / match))}")
+            if len(thumb_urls) >= THUMB_PREVIEW_LIMIT:
+                break
     return thumb_urls
 
 
