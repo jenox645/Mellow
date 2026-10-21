@@ -42,10 +42,13 @@ log = logging.getLogger(__name__)
 # playlist run (ignoreerrors): it isn't the media file, and the video one has
 # no sound. The next sync finishes it from the part.
 _FORMAT_PART_RE = _re.compile(r"\.f(\d+[\w-]*|(hls|dash|http)-[\w.=-]+)$", _re.IGNORECASE)
+# The stream files yt-dlp merges: a "Ferrari.f40.mp3" or "Cars.f1.flac" is a
+# title, not a part (it was hidden, then deleted as a stale part)
+_FORMAT_PART_EXTS = frozenset({".mp4", ".webm", ".m4a"})
 
 
 def is_format_part(path: Path) -> bool:
-    return bool(_FORMAT_PART_RE.search(path.stem))
+    return path.suffix.lower() in _FORMAT_PART_EXTS and bool(_FORMAT_PART_RE.search(path.stem))
 
 
 def clean_stale_parts(folder: str, max_age_secs: float) -> int:
@@ -55,9 +58,11 @@ def clean_stale_parts(folder: str, max_age_secs: float) -> int:
     sync finishes the item from it. Returns how many were removed."""
     removed = 0
     cutoff = time.time() - max_age_secs
+    # A finished download whose title looks like a part is a file, not a part
+    downloaded = {name for name, _url, _id in _history_in(Path(folder))}
     try:
         for f in Path(folder).iterdir():
-            if f.is_file() and f.suffix.lower() in MEDIA_EXTS and is_format_part(f) \
+            if f.is_file() and is_format_part(f) and f.name not in downloaded \
                     and f.stat().st_mtime < cutoff:
                 f.unlink()
                 removed += 1
@@ -593,10 +598,12 @@ def _history_ids_in(folder: Path) -> dict[str, str]:
     """YouTube id -> file name, for files in `folder` that the download
     history knows the source URL of."""
     ids: dict[str, str] = {}
-    for name, url, _ in _history_in(folder):
+    for name, url, video_id in _history_in(folder):
         m = _YT_URL_ID_RE.search(url)
         if m:
             ids.setdefault(m.group(1), name)
+        elif video_id and "youtu" in url:     # an item recorded with its playlist's link
+            ids.setdefault(video_id, name)
     return ids
 
 
@@ -770,6 +777,10 @@ def generate_archive(folder: str, prune: bool = False) -> dict:
                     disk_yt_ids.add(m.group(1))
     except PermissionError:
         pass
+    # Files named by their title ("%(title)s", the default): the history knows
+    # which video each one is. Without them, pruning dropped every such entry
+    # and the next sync downloaded the whole playlist again
+    disk_yt_ids |= set(_history_ids_in(p))
 
     # Keep or prune existing YouTube entries; backfill new ones
     pruned = 0
