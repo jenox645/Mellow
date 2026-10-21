@@ -14,6 +14,8 @@ import time
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from mellow import downloader, ffmpeg_locate, vault
 from mellow.constants import SPONSORBLOCK_REMOVE_CATEGORIES
 
@@ -374,3 +376,27 @@ def test_audio_downloads_never_fetch_subtitles(tmp_dir):
 def test_every_download_reports_its_saved_files(tmp_dir):
     ydl_opts, _, _ = _opts_for(tmp_dir, {'mode': 'audio'})
     assert len(ydl_opts['post_hooks']) == 1
+
+
+@pytest.mark.parametrize('audio_format, ext', [('mp3', 'mp3'), ('aac', 'm4a'), ('opus', 'opus'), ('flac', 'flac')])
+def test_audio_downloads_tell_yt_dlp_the_extension_they_end_with(tmp_dir, audio_format, ext):
+    """So an earlier download's converted file counts as already there (a
+    resumed or re-run job downloaded and converted everything again)."""
+    ydl_opts, _, _ = _opts_for(tmp_dir, {'mode': 'audio', 'audio_format': audio_format})
+    assert ydl_opts['final_ext'] == ext
+    video_opts, _, _ = _opts_for(tmp_dir, {'mode': 'video'})
+    assert 'final_ext' not in video_opts
+
+
+def test_a_file_found_already_there_is_not_recorded_twice(tmp_dir):
+    from mellow import analytics
+    song = Path(tmp_dir) / 'T.mp3'
+    song.write_bytes(b'x')
+    info = {'title': 'T', 'id': 'abc', 'requested_downloads': [{'filepath': str(song)}]}  # no __real_download
+    _opts_for(tmp_dir, {'mode': 'audio'}, info=info)
+    assert len(analytics.get_history()) == 1          # not known yet: recorded
+    _opts_for(tmp_dir, {'mode': 'audio'}, info=info)
+    assert len(analytics.get_history()) == 1          # known and only found again: not a new download
+    downloaded = {**info, 'requested_downloads': [{'filepath': str(song), '__real_download': True}]}
+    _opts_for(tmp_dir, {'mode': 'audio'}, info=downloaded)
+    assert len(analytics.get_history()) == 2          # really downloaded again: recorded
