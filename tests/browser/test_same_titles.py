@@ -6,7 +6,7 @@ import subprocess
 from urllib.request import Request, urlopen
 
 import pytest
-from conftest import CLIPS
+from conftest import CLIPS, signed_in
 
 pytestmark = pytest.mark.browser
 DOWNLOAD_TIMEOUT_SECS = 60
@@ -16,7 +16,7 @@ def _download(app_url, url, mode):
     from mellow import jobs
     body = {"url": url, "mode": mode, "quality": "best", "container": "mp4", "audio_format": "mp3"}
     req = Request(app_url + "/api/download", data=json.dumps(body).encode(),
-                  headers={"Content-Type": "application/json"}, method="POST")
+                  headers={"Content-Type": "application/json", **signed_in()}, method="POST")
     with urlopen(req, timeout=30):
         pass
     assert jobs.manager.wait_idle(DOWNLOAD_TIMEOUT_SECS)

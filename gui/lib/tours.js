@@ -496,6 +496,12 @@ export const TOURS = {
       tip: 'Your media files aren\'t in the zip; the archive files in each folder are their backup.',
     },
     {
+      target: 'config-api', title: 'API access',
+      text: 'Other programs on this computer (a script, a launcher, home automation) can add downloads and follow '
+        + 'them through /api/v1 with a key you make here. Each key does only what you tick, and REVOKE stops it.',
+      tip: 'The key is shown once. Set a Fixed Port so the program always finds MellowDLP at the same address.',
+    },
+    {
       target: 'config-ffmpeg', title: 'FFmpeg',
       text: 'The tool that merges video and audio, converts to MP3 and others, trims clips and embeds cover art. '
         + 'Missing? GET FFMPEG downloads it, checks it and uses it right away.',

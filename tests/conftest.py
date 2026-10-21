@@ -52,7 +52,7 @@ def isolated_user_files(tmp_path, request):
     Without this a test run reads and writes the developer's real
     ~/.mellow_dlp.json, ~/.mellow_dlp.duckdb and ~/.mellow_dlp_queue.json.
     """
-    from mellow import analytics, downloader, ffmpeg_locate, jobs
+    from mellow import analytics, downloader, ffmpeg_locate, jobs, session
 
     cfg_path = tmp_path / 'config.json'
     # find_ffmpeg() caches its answer and extends PATH; neither may leak from
@@ -63,6 +63,7 @@ def isolated_user_files(tmp_path, request):
             patch('mellow.jobs.QUEUE_STATE_PATH', tmp_path / 'queue.json'), \
             patch('mellow.ytdlp_update.OVERLAY_PATH', tmp_path / 'ytdlp.zip'), \
             patch('mellow.ffmpeg_locate.MANAGED_DIR', tmp_path / 'ffmpeg'), \
+            patch('mellow.datadir.data_dir', lambda: tmp_path / 'data'), \
             patch('mellow.power.keeper', RecordingKeeper()), \
             patch('mellow.jobs._sync_plan', _no_sync_plan(request)), \
             patch.dict('os.environ', {}), \
@@ -78,6 +79,7 @@ def isolated_user_files(tmp_path, request):
         jobs.manager.wait_idle(timeout=10)
         downloader.resume()
         analytics.reset_connections()
+        session.end_sessions()
 
 
 @pytest.fixture
@@ -89,6 +91,20 @@ def app(isolated_user_files):
 
 @pytest.fixture
 def client(app):
+    """A signed-in window, as the app's own page is (session.py)."""
+    from mellow import session
+    sid, token = session.new_session()
+    c = app.test_client()
+    # The client's cookies are per host name; some tests ask for 127.0.0.1 or [::1]
+    for host in ('localhost', '127.0.0.1', '::1'):
+        c.set_cookie(session.COOKIE, sid, domain=host)
+    c.environ_base['HTTP_' + session.HEADER.upper().replace('-', '_')] = token
+    return c
+
+
+@pytest.fixture
+def anon_client(app):
+    """Anyone else on this machine: no session."""
     return app.test_client()
 
 

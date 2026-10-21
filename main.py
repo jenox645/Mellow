@@ -4,17 +4,20 @@ import atexit
 import json
 import logging
 import os
+import secrets
 import socket
 import sys
 import threading
 import time
 import webbrowser
 from pathlib import Path
-from urllib.request import urlopen
+from urllib.request import ProxyHandler, build_opener
 
 from flaskwebgui import FlaskUI
 
-from mellow import applog, ytdlp_update
+from mellow import applog, session, ytdlp_update
+from mellow.config import load_config
+from mellow.constants import API_PORT_MIN, LAUNCH_TOKEN_TTL_NO_WINDOW_SECS
 
 log = logging.getLogger(__name__)
 
@@ -26,8 +29,8 @@ PAGE_WATCH_INTERVAL_SECS = 2
 PAGE_GONE_EXIT_SECS = 30        # a reload or a short network hiccup reconnects well before
 FIRST_PAGE_TIMEOUT_SECS = 120
 
-# Written on startup with the live port; lets a second launch find us
-PORT_FILE = Path.home() / ".mellow_dlp.port"
+# Where versions before sign-in wrote their port; removed at start
+LEGACY_PORT_FILE = Path.home() / ".mellow_dlp.port"
 
 
 def _find_free_port() -> int:
@@ -37,40 +40,56 @@ def _find_free_port() -> int:
         return s.getsockname()[1]
 
 
-def _running_instance_url() -> str | None:
-    """URL of an already-running MellowDLP, or None.
+def _choose_port() -> int:
+    """Config's fixed port (api_port, for programs using the API) when it is
+    free, else any free one."""
+    try:
+        wanted = int(load_config().get("api_port") or 0)
+    except (TypeError, ValueError):
+        wanted = 0
+    if API_PORT_MIN <= wanted <= 65535:
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.bind(("127.0.0.1", wanted))
+            return wanted
+        except OSError as exc:
+            log.warning(f"fixed port {wanted} is taken ({exc}): using a free one this time")
+    return _find_free_port()
 
-    The port file may be stale (crash, reboot) — only trust it if the
-    server there answers /api/system with our app_version marker.
+
+def _running_instance() -> dict | None:
+    """The copy this account already runs ({port, secret, url}), or None.
+
+    The instance file may be stale (crash, reboot), and after a crash another
+    program may have taken its port: only a server that proves it knows the
+    secret (session.instance_proof) is ours. Asked directly, never through a
+    proxy.
     """
-    try:
-        port = int(PORT_FILE.read_text(encoding="utf-8").strip())
-    except (OSError, ValueError):
+    info = session.read_instance()
+    if info is None:
         return None
-    url = f"http://127.0.0.1:{port}"
+    url = f"http://127.0.0.1:{info['port']}"
+    nonce = secrets.token_urlsafe(24)
     try:
-        with urlopen(f"{url}/api/system", timeout=INSTANCE_PROBE_TIMEOUT_SECS) as resp:
-            payload = json.loads(resp.read().decode())
-        if "app_version" in payload:
-            return url
+        opener = build_opener(ProxyHandler({}))
+        with opener.open(f"{url}/api/instance/hello?nonce={nonce}",
+                         timeout=INSTANCE_PROBE_TIMEOUT_SECS) as resp:
+            proof = str(json.loads(resp.read().decode()).get("proof", ""))
     except Exception:
-        pass
-    return None
+        return None
+    if not session.same(proof, session.instance_proof(nonce, info["secret"], info["port"])):
+        log.warning(f"port {info['port']} answers but isn't this MellowDLP: starting a new one")
+        return None
+    return {**info, "url": url}
 
 
-def _write_port_file(port: int) -> None:
-    try:
-        PORT_FILE.write_text(str(port), encoding="utf-8")
-        atexit.register(_remove_port_file)
-    except OSError:
-        pass
+def _launch_page_uri(url: str, secret: bytes | None = None, port: int | None = None) -> str:
+    """file:// URI of an owner-only page that signs a window in to `url` (session.py)."""
+    return session.launch_page(url, session.launch_token(secret, port)).as_uri()
 
 
-def _remove_port_file() -> None:
-    try:
-        PORT_FILE.unlink(missing_ok=True)
-    except OSError:
-        pass
+def _stop_instance() -> None:
+    session.stop_instance()
 
 
 def main() -> None:
@@ -85,10 +104,10 @@ def main() -> None:
     sys.excepthook = _log_crash
     # Single-instance guard: a second launch opens the existing UI instead of
     # spawning a duplicate server + window.
-    existing = _running_instance_url()
+    existing = _running_instance()
     if existing:
-        log.info(f"already running at {existing}, opening it")
-        webbrowser.open(existing)
+        log.info(f"already running at {existing['url']}, opening a window on it")
+        _open_in_browser(_launch_page_uri(existing["url"], existing["secret"], existing["port"]))
         sys.exit(0)
 
     static_dir = Path(__file__).parent / "static"
@@ -102,13 +121,19 @@ def main() -> None:
     ytdlp_update.activate_overlay()
     from mellow.server import init_app
     flask_app = init_app()
-    port = _find_free_port()
-    _write_port_file(port)
+    port = _choose_port()
+    LEGACY_PORT_FILE.unlink(missing_ok=True)
+    session.start_instance(port)
+    atexit.register(_stop_instance)
 
     if "--no-window" in sys.argv:
-        # Just the server, for your own browser (and the build's smoke test)
+        # Just the server, for your own browser (and the build's smoke test).
+        # The sign-in link goes to this terminal only, never to the log file
         log.info(f"serving without a window at http://127.0.0.1:{port}")
-        print(f"MellowDLP: http://127.0.0.1:{port}", flush=True)
+        token = session.launch_token(ttl=LAUNCH_TOKEN_TTL_NO_WINDOW_SECS)
+        print(f"MellowDLP: http://127.0.0.1:{port}\n"
+              f"Open this link to sign in (once, within {LAUNCH_TOKEN_TTL_NO_WINDOW_SECS // 60} min): "
+              f"http://127.0.0.1:{port}/launch?t={token}", flush=True)
         flask_app.run(host="127.0.0.1", port=port, threaded=True)
         return
     _run_window(flask_app, port)
@@ -123,15 +148,20 @@ def _run_window(flask_app, port: int) -> None:
         width=WINDOW_WIDTH,
         height=WINDOW_HEIGHT,
     )
+    url = f"http://127.0.0.1:{port}"
+    # The window opens the launch page, not the URL: the sign-in token must
+    # not be on the browser's command line, which other accounts can read
+    page = _launch_page_uri(url)
     if not ui.browser_path:
         # Without one (a Firefox-only Linux) flaskwebgui would leave a server
         # with no window: open the default browser instead
-        url = f"http://127.0.0.1:{port}"
         log.warning(f"no Chromium-based browser found: opening {url} in the default browser")
-        threading.Timer(BROWSER_OPEN_DELAY_SECS, _open_in_browser, (url,)).start()
+        threading.Timer(BROWSER_OPEN_DELAY_SECS, _open_in_browser, (page,)).start()
         threading.Thread(target=_watch_pages, daemon=True).start()
         flask_app.run(host="127.0.0.1", port=port, threaded=True)
         return
+    ui.browser_command = [f"--app={page}" if arg.startswith("--app=") else arg
+                          for arg in ui.browser_command]
     ui.run()
 
 
@@ -166,7 +196,7 @@ def _watch_pages(sleep=time.sleep, clock=time.monotonic) -> None:
         if now - gone_since >= PAGE_GONE_EXIT_SECS:
             log.info("the MellowDLP tab was closed: quitting")
             break
-    _remove_port_file()
+    _stop_instance()
     os._exit(0)
 
 

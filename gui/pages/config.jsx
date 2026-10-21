@@ -1,9 +1,10 @@
 // CONFIG page — storage, auth, network, database, behavior, danger zone.
 'use strict';
 
-import { API } from '../lib/api.js';
+import { API, authHeaders, download } from '../lib/api.js';
 import { fmtBytes } from '../lib/util.js';
 import { Toggle, Modal, Mascot } from '../components/common.jsx';
+import { ApiAccessPanel } from '../components/api-access.jsx';
 import { MASCOT_FRUSTRATED } from '../lib/mascots.js';
 import {
   AUDIO_FORMATS, AUDIO_QUALITIES, CONTAINERS, QUALITIES, TEMPLATE_PREVIEW_DEBOUNCE_MS,
@@ -37,8 +38,9 @@ export function ConfigPage({ config, setConfig, showNotif, installAppUpdate, onA
     'default_mode', 'default_quality', 'default_container', 'default_audio_format', 'default_audio_quality',
     'download_workers', 'schedule_start', 'on_queue_done', 'keep_awake', 'auto_sync_enabled', 'auto_sync_default_interval',
     'update_check_on_launch', 'clipboard_watch', 'completion_sound', 'desktop_notifications',
+    'api_port',
   ];
-  const NUMERIC_DEFAULTS = { concurrent_fragments: 4, sleep_interval: 0, retries: 3, download_workers: 1 };
+  const NUMERIC_DEFAULTS = { concurrent_fragments: 4, sleep_interval: 0, retries: 3, download_workers: 1, api_port: 0 };
 
   const handleSave = () => {
     const toSave = {};
@@ -162,7 +164,7 @@ export function ConfigPage({ config, setConfig, showNotif, installAppUpdate, onA
     const form = new FormData();
     form.append('file', file);
     setRestoring(true);
-    fetch('/api/backup/restore', { method: 'POST', body: form })
+    fetch('/api/backup/restore', { method: 'POST', body: form, headers: authHeaders() })
       .then(r => r.json())
       .then(d => {
         if (d.ok) {
@@ -666,7 +668,7 @@ export function ConfigPage({ config, setConfig, showNotif, installAppUpdate, onA
                   <div className="sl-sub">Zip of config + analytics DB; restore keeps .pre-restore copies</div>
                 </div>
                 <div className="settings-ctrl" style={{ display: 'flex', gap: 6 }}>
-                  <button className="btn btn-secondary btn-sm" onClick={() => { window.location.href = '/api/backup'; }}>
+                  <button className="btn btn-secondary btn-sm" onClick={() => download('/api/backup').catch(e => showNotif('Backup Failed', e.message, 'error'))}>
                     ⬇ BACKUP
                   </button>
                   <button className="btn btn-secondary btn-sm" disabled={restoring}
@@ -783,6 +785,8 @@ export function ConfigPage({ config, setConfig, showNotif, installAppUpdate, onA
               </div>
             </div>
           </div>
+
+          <ApiAccessPanel local={local} set={set} showNotif={showNotif} />
 
           {/* DANGER ZONE */}
           <div className="cfg-panel cfg-danger" data-tour="config-danger">

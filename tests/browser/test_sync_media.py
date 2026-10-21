@@ -12,7 +12,7 @@ from urllib.parse import quote
 from urllib.request import Request, urlopen
 
 import pytest
-from conftest import DASH_AUDIO_REFUSED, DASH_CLIPS
+from conftest import DASH_AUDIO_REFUSED, DASH_CLIPS, signed_in
 
 pytestmark = pytest.mark.browser
 SYNC_TIMEOUT_SECS = 120
@@ -20,7 +20,7 @@ SYNC_TIMEOUT_SECS = 120
 
 def _api(app_url, path, body=None):
     req = Request(app_url + path, data=None if body is None else json.dumps(body).encode(),
-                  headers={"Content-Type": "application/json"}, method="GET" if body is None else "POST")
+                  headers={"Content-Type": "application/json", **signed_in()}, method="GET" if body is None else "POST")
     with urlopen(req, timeout=30) as resp:
         return json.loads(resp.read())
 
