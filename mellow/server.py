@@ -730,7 +730,8 @@ def api_history_delete() -> Response:
         delete_all=delete_all,
     )
     if delete_all:
-        analytics.clear_library()
+        # The history and the stats built on it. The library (folders linked to
+        # playlists, their sync settings and log) isn't history: it stays
         update_config(lambda cfg: cfg.__setitem__("stat_overrides", {}))
     return jsonify({"deleted": count})
 

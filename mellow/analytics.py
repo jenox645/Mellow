@@ -594,12 +594,6 @@ def export_csv() -> str:
     return buf.getvalue()
 
 
-def clear_library() -> None:
-    with get_conn() as con:
-        con.execute("DELETE FROM library")
-        con.execute("DELETE FROM sync_log")
-
-
 def vacuum() -> None:
     with get_conn() as con:
         con.execute("VACUUM")
