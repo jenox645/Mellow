@@ -140,6 +140,12 @@ def media_site(tmp_path_factory):
         return (f"<html><head><title>{LONG_TITLE}</title></head><body>"
                 f'<video src="/{name}.mp4"></video></body></html>')
 
+    @site.route("/intro/<name>")
+    def intro(name):
+        """Every clip under one title: different videos, the same file name."""
+        return ('<html><head><title>Intro</title></head><body>'
+                f'<video src="/{name}.mp4"></video></body></html>')
+
     @site.route("/dash/<name>/<path:file>")
     def dash(name, file):
         if name not in DASH_CLIPS:

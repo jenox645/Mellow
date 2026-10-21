@@ -42,8 +42,9 @@ def test_embed_thumbnail_makes_ytdlp_write_and_keep_the_thumbnail(tmp_dir):
     assert ydl_opts['writethumbnail'] is True
     # No stray "<playlist name>.jpg" next to the items
     assert ydl_opts['outtmpl']['pl_thumbnail'] == ''
-    # The default name: the title (cut to fit a file name) and the extension
-    assert re.search(r'%\(title\)\.\d+[Bs]\.%\(ext\)s$', ydl_opts['outtmpl']['default'])
+    # The default name: the title (cut to fit a file name), " [id]" when another
+    # video's file has that name, and the extension
+    assert re.search(r'%\(title\)\.\d+[Bs]%\(mellow_dup\|\)s\.%\(ext\)s$', ydl_opts['outtmpl']['default'])
     assert {'key': 'FFmpegThumbnailsConvertor', 'format': 'jpg', 'when': 'before_dl'} \
         in ydl_opts['postprocessors']
     (pp,), kwargs = ydl.add_post_processor.call_args
