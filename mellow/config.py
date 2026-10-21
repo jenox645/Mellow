@@ -58,6 +58,7 @@ _DEFAULTS: dict = {
     "default_container": "mp4",
     "default_audio_format": "mp3",
     "default_audio_quality": "best",  # best | 320 | 256 | 192 | 128 (kbps)
+    "api_port": 0,  # 0 = a free port each start; else this one when free (main.py)
     # Behavior
     "download_workers": 1,            # concurrent downloads (1 = sequential)
     "schedule_start": "02:00",        # when a download queued "for later" starts (HH:MM, local)

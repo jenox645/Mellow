@@ -38,6 +38,9 @@ def test_every_route_is_either_public_or_needs_a_signed_in_window():
     # A public endpoint that isn't a route any more would hide a typo
     assert server.PUBLIC_ENDPOINTS <= endpoints
     assert server.BROWSER_LOADED_ENDPOINTS <= endpoints
+    assert set(server.API_V1_SCOPES) <= endpoints
+    assert {u for m, u, e in ROUTES if e in server.API_V1_SCOPES} == {
+        u for m, u, e in ROUTES if u.startswith("/api/v1/")}
     # Nothing under /api/ is public but the second-launch check
     public_api = {u for m, u, e in ROUTES if e in server.PUBLIC_ENDPOINTS and u.startswith("/api/")}
     assert public_api == {"/api/instance/hello"}
@@ -48,6 +51,9 @@ def test_every_route_is_either_public_or_needs_a_signed_in_window():
 def test_without_signing_in_every_route_is_refused(anon_client, method, url, endpoint):
     r = anon_client.open(url, method=method, json={} if method != "GET" else None)
     assert r.status_code == 401, (method, url)
+    if endpoint in server.API_V1_SCOPES:      # the API for programs: a key, not a window
+        assert "API key" in r.get_json()["error"]
+        return
     assert r.get_json()["signed_in"] is False
     assert "Open MellowDLP from its icon" in r.get_json()["error"]
     # If signing in is what's broken, the way out is a manual download
