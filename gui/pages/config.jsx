@@ -448,7 +448,7 @@ export function ConfigPage({ config, setConfig, showNotif, installAppUpdate, onA
             <div className="cfg-body">
               {[
                 { key: 'concurrent_fragments', label: 'Concurrent Fragments', sub: 'Parallel fragment downloads', type: 'number', min: 1, max: 16 },
-                { key: 'rate_limit', label: 'Rate Limit', sub: '5M = 5MB/s · empty = unlimited', type: 'text', placeholder: '5M' },
+                { key: 'rate_limit', label: 'Rate Limit', sub: 'All downloads together · 5M = 5MB/s · empty = unlimited', type: 'text', placeholder: '5M' },
                 { key: 'proxy', label: 'Proxy', sub: 'http://host:port or socks5://host:port', type: 'text', placeholder: 'http://...' },
                 { key: 'external_downloader', label: 'External Downloader', sub: 'aria2c for parallel (must be installed)', type: 'text', placeholder: 'aria2c' },
                 { key: 'sleep_interval', label: 'Sleep Interval (s)', sub: 'Delay between playlist items', type: 'number', min: 0, max: 60 },

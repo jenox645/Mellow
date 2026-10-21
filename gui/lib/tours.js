@@ -478,7 +478,7 @@ export const TOURS = {
       text: 'Proxy (to reach videos blocked in your country), a speed limit so downloads don\'t take all your '
         + 'bandwidth, retries, a pause between playlist items, and more parallel pieces for faster downloads.',
       tip: 'Analyze or downloads hang for minutes? Turn on Force IPv4.',
-      example: { kind: 'pairs', pairs: [['Rate Limit 5M', 'at most 5 MB/s'], ['Proxy socks5://host:1080', 'through that server']] },
+      example: { kind: 'pairs', pairs: [['Rate Limit 5M', 'at most 5 MB/s, all downloads together'], ['Proxy socks5://host:1080', 'through that server']] },
     },
     {
       target: 'config-behavior', title: 'Behavior',

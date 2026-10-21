@@ -66,6 +66,9 @@ SYNC_RETRY_BACKOFF_MAX_SECS: int = 24 * 3600   # ...up to this
 HISTORY_MAX_LIMIT: int = 500
 HISTORY_DEFAULT_LIMIT: int = 50
 PAUSE_POLL_SECS: float = 0.2         # progress-hook pause loop cadence
+# Rate Limit is the whole app's: all downloads together may run this far
+# ahead of it (in seconds of the limit) before their threads wait
+RATE_LIMIT_BURST_SECS: float = 0.5
 
 # ── SponsorBlock ──────────────────────────────────────────────────────────────
 MAX_CHOSEN_CHAPTERS: int = 200       # chapters one download may pick
