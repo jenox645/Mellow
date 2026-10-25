@@ -25,18 +25,19 @@ def test_make_use_and_revoke_a_key(page, app_url):
     panel = page.locator("[data-tour=config-api]")
     panel.scroll_into_view_if_needed()
     panel.get_by_placeholder("What will use it").fill("Home script")
-    panel.get_by_text("MAKE KEY").click()
+    panel.get_by_role("button", name="MAKE KEY").click()
 
     key = page.get_by_test_id("new-api-key").inner_text()
     assert key.startswith("mlw_")
     status, body = _status(app_url, key)
     assert status == 200 and body["app_version"]
 
-    page.get_by_text("DONE").click()
+    # By role: the new key is random text and can hold "DONE" itself
+    page.get_by_role("button", name="DONE").click()
     expect(page.get_by_test_id("new-api-key")).to_have_count(0)
     expect(panel.get_by_text("Home script")).to_be_visible()      # listed, the key itself never again
     assert key not in page.content()
 
-    panel.get_by_text("REVOKE").click()
+    panel.get_by_role("button", name="REVOKE").click()
     expect(panel.get_by_text("Home script")).to_have_count(0)
     assert _status(app_url, key)[0] == 401
