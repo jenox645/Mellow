@@ -719,6 +719,8 @@ export function ConfigPage({ config, setConfig, showNotif, installAppUpdate, onA
                 </div>
                 <div className="settings-ctrl" style={{ display: 'flex', gap: 6 }}>
                   <button className="btn btn-secondary btn-sm" onClick={showWhatsNew}>WHAT'S NEW</button>
+                  <button className="btn btn-secondary btn-sm" title="The project on GitHub: releases, source and issues (opens in your browser)"
+                    onClick={() => API.post('/api/open-release', { page: 'repo' }).catch(() => {})}>GITHUB</button>
                   <button className="btn btn-secondary btn-sm" onClick={checkAppUpdate} disabled={checkingApp}>{checkingApp ? '...' : 'CHECK'}</button>
                   {appUpdate && appUpdate.update_available && (appUpdate.can_install
                     ? <button className="btn btn-amber btn-sm" onClick={() => installAppUpdate()}
