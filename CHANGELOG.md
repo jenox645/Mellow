@@ -8,6 +8,16 @@ Each release is a `## X.Y.Z` heading followed by `- **Title**: what it does`
 lines. A pull request that raises `APP_VERSION` adds its section here: CI
 fails without one.
 
+## 2.14.0
+- **YouTube works with Node.js**: YouTube hides its video links behind a small puzzle that needs a JavaScript runtime to solve. yt-dlp only looked for Deno, so with Node.js (or Bun, or QuickJS) installed it had none, and YouTube offered fewer formats or none at all. MellowDLP now uses whichever one is installed. Config → JavaScript Runtime says which one it found; without one, GET NODE.JS opens its download page.
+- **A list view in the Vault**: ☰ LIST, next to SM / MD / LG in an open folder, shows one line per file (name, type, size, date), so a big folder fits on a screen. SM cards are smaller too.
+- **Select files like in a file explorer**: drag a rectangle over files, Ctrl+click to add one, Shift+click for a range, Ctrl+A for all, Esc to let go. ▶ PLAY plays them together; DELETE (or the Delete key) removes them, and now always asks first.
+- **▶ PLAY ALL**: plays every file shown in a folder, in the order shown (search and sort apply), even a folder of hundreds of songs.
+- **RANDOMIZE takes a number**: type how many files to pick instead of clicking + up to it.
+- **Sync options stay with the folder**: format and options picked in a folder's SYNC OPTIONS were lost if you closed the dialog without syncing, and the next sync used the ones the playlist was first downloaded with. They're now saved as you pick them, for SYNC NOW, SYNC ALL and auto-sync alike.
+- **Easier to read**: the small grey-blue labels and notes were too faint on the dark background. They're brighter now, in the same colours.
+- **GitHub in the app**: Config → MellowDLP Version has a GITHUB button that opens the project page.
+
 ## 2.13.0
 - **Only your MellowDLP window can use MellowDLP**: the app now signs in the window it opens, and anything else on your computer that talks to it (another program, a web page in your browser) is turned away. You don't have to do anything: opening MellowDLP signs you in. Starting it a second time brings up the running copy, as before.
 - **API keys for your scripts**: a program that added downloads through MellowDLP needs a key now. Make one in Config → API ACCESS, tick only what it may do (add downloads, read the queue, follow progress) and revoke it any time. A fixed port in the same panel lets your script always find the app. The new `/api/v1` and how to move an old script over are in docs/API.md.
