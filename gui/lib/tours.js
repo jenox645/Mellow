@@ -522,6 +522,12 @@ export const TOURS = {
         + '"Sign in to confirm", "Unable to extract"), CHECK, UPDATE and restart MellowDLP.',
     },
     {
+      target: 'config-js', title: 'JavaScript runtime',
+      text: 'YouTube hides its video links behind a small JavaScript puzzle; yt-dlp solves it with a JavaScript '
+        + 'runtime installed on this computer (Node.js, Deno, QuickJS or Bun). Without one, YouTube may offer fewer '
+        + 'formats or none. GET NODE.JS opens its download page; after installing it, restart MellowDLP and it is used by itself.',
+    },
+    {
       target: 'config-log', title: 'Log file',
       text: 'What MellowDLP did, step by step. OPEN LOG shows it: useful when something fails without a clear reason, '
         + 'or to attach to a bug report.',

@@ -121,6 +121,8 @@ def main() -> None:
     ytdlp_update.activate_overlay()
     from mellow.server import init_app
     flask_app = init_app()
+    from mellow import js_runtime
+    threading.Thread(target=js_runtime.log_found, daemon=True).start()
     port = _choose_port()
     LEGACY_PORT_FILE.unlink(missing_ok=True)
     session.start_instance(port)

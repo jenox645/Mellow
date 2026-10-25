@@ -28,6 +28,7 @@ from . import (
     folder_move,
     formats,
     jobs,
+    js_runtime,
     scheduler,
     session,
     ytdlp_update,
@@ -54,6 +55,7 @@ from .constants import (
     LOW_DISK_WARN_BYTES,
     MEDIA_EXTS,
     MEDIA_MIME,
+    NODEJS_DOWNLOAD_PAGE,
     SSE_PING_INTERVAL_SECS,
     SSE_QUEUE_MAXSIZE,
     THUMB_CACHE_SECS,
@@ -467,6 +469,8 @@ def api_system() -> Response:
         "ffmpeg_install_note": ffmpeg_install.unavailable_reason(),
         "ffmpeg_installed_by_app": ffmpeg_install.installed_here(ffmpeg_path),
         "ytdlp_version": ytdlp_version,
+        # What solves YouTube's player challenges (Config's JavaScript row)
+        "js_runtime": js_runtime.found(),
         "python_version": sys.version.split()[0],
         "app_version": APP_VERSION,
         "db_size_bytes": analytics.get_db_size(),
@@ -534,10 +538,11 @@ def api_app_update_install() -> Response:
 
 @app.route("/api/open-release", methods=["POST"])
 def api_open_release() -> Response:
-    """Open the latest release page, or the project's page with `page: "repo"`
-    (fixed URLs: this can't open arbitrary pages)."""
+    """Open the latest release page, the project's page (`page: "repo"`) or
+    Node.js' download page (`page: "nodejs"`): fixed URLs, this can't open
+    arbitrary pages."""
     page = (request.get_json(force=True, silent=True) or {}).get("page", "release")
-    url = {"release": APP_RELEASES_PAGE, "repo": APP_REPO_PAGE}.get(page)
+    url = {"release": APP_RELEASES_PAGE, "repo": APP_REPO_PAGE, "nodejs": NODEJS_DOWNLOAD_PAGE}.get(page)
     if url is None:
         return jsonify({"error": "unknown page"}), 400
     threading.Thread(target=desktop.open_url, args=(url,), daemon=True).start()

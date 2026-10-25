@@ -10,7 +10,7 @@ from typing import Any, Callable
 
 import yt_dlp
 
-from . import analytics, errors, music_tags, throttle
+from . import analytics, errors, js_runtime, music_tags, throttle
 from .constants import (
     AUDIO_FORMATS,
     FILENAME_MAX,
@@ -1205,7 +1205,9 @@ def _download_video(
 
 def _apply_network_opts(ydl_opts: dict, opts: dict) -> None:
     """Proxy and IP family — applied to analyze, playlist listing and
-    downloads alike, so a proxy isn't bypassed just for the first request."""
+    downloads alike, so a proxy isn't bypassed just for the first request.
+    Also the JavaScript engines YouTube's player challenges need (js_runtime)."""
+    ydl_opts.setdefault("js_runtimes", js_runtime.ytdlp_opts())
     proxy = str(opts.get("proxy") or "").strip()
     if proxy:
         ydl_opts["proxy"] = proxy
