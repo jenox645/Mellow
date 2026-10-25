@@ -506,3 +506,61 @@ def test_a_folder_picked_by_mistake_moves_with_its_playlist(page, media_site, do
     assert config.load_config()["vault_playlists"] == {str(moved): [url]}
     page.locator("[data-tour=vault-sync]").click()
     _notification(page, "Up To Date")
+
+
+def _open_folder(page, name):
+    page.locator(".nav-item", has_text="VAULT").click()
+    page.get_by_title("Refresh vault").click()
+    page.locator(".vault-folder-card", has_text=name).click()
+    page.locator(".vault-breadcrumb").wait_for()
+
+
+def test_sync_options_picked_in_the_dialog_stay_with_the_folder(page, media_site, downloads):
+    """A tester picked AUDIO / WAV in SYNC OPTIONS, left the dialog and pressed
+    the folder's SYNC NOW: the sync came down as video, with the options the
+    playlist was first downloaded with from the Feed."""
+    from mellow import analytics, config, jobs
+    folder = downloads / "Fallout Radio"
+    folder.mkdir()
+    url = f"{media_site}/playlist"
+    config.update_config(lambda c: c.update(vault_playlists={str(folder): [url]}))
+    analytics.upsert_library_entry({"id": "radio", "name": "Fallout Radio", "url": url, "folder": str(downloads),
+                                    "folder_name": "Fallout Radio", "mode": "VIDEO", "quality": "1080p",
+                                    "container": "mp4"})
+    _open_folder(page, "Fallout Radio")
+    page.get_by_role("button", name="SYNC OPTIONS").click()
+    dialog = page.locator(".modal-box")
+    dialog.locator(".opts-tab", has_text="AUDIO ONLY").click()
+    dialog.get_by_text("WAV", exact=True).click()
+    expect(dialog).to_contain_text("saved for this folder")
+    dialog.get_by_role("button", name="CLOSE").click()
+    page.locator("[data-tour=vault-sync]").click()
+    _notification(page, "Sync Complete")
+    assert jobs.manager.wait_idle(DOWNLOAD_TIMEOUT_MS / 1000)
+    media = sorted(p.suffix for p in folder.iterdir() if p.suffix in (".wav", ".mp4", ".mkv"))
+    assert media == [".wav"] * 3
+
+
+def test_type_how_many_to_randomize_and_play_the_whole_folder(page, downloads, monkeypatch):
+    from mellow import vault
+    played = []
+    monkeypatch.setattr(vault, "launch_playlist", lambda paths, open_fn: played.append(paths) or "vlc_direct")
+    folder = downloads / "Mixtape"
+    folder.mkdir()
+    for name in ("b song", "a song", "c song", "d song"):
+        (folder / f"{name}.mp3").write_bytes(b"\0" * 64)
+    _open_folder(page, "Mixtape")
+    count = page.get_by_label("How many files to pick")
+    count.fill("3")
+    page.get_by_role("button", name="PICK").click()
+    expect(page.locator(".randomizer-bar")).to_contain_text("3 selected")
+    count.fill("40")                       # more than the folder has: the whole folder
+    expect(count).to_have_value("4")
+    page.locator("[data-tour=vault-play-all]").click()
+    _notification(page, "Playing")
+    assert [p.rsplit("/", 1)[-1].rsplit("\\", 1)[-1] for p in played[0]] == \
+        ["a song.mp3", "b song.mp3", "c song.mp3", "d song.mp3"]
+    page.locator(".vault-lib-search").fill("c ")
+    page.locator("[data-tour=vault-play-all]").click()
+    expect(page.locator(".notif", has_text="1 files opened")).to_have_count(1, timeout=10_000)
+    assert [p.rsplit("/", 1)[-1] for p in played[1]] == ["c song.mp3"]

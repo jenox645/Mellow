@@ -295,9 +295,14 @@ export const TOURS = {
     },
     {
       target: 'vault-random', title: 'Randomize',
-      text: 'Pick a number, PICK, and MellowDLP chooses that many files at random; ▶ PLAY opens them in your player '
-        + 'as a playlist.',
+      text: 'Pick a number (type it, or − / +), PICK, and MellowDLP chooses that many files at random; ▶ PLAY '
+        + 'opens them in your player as a playlist.',
       tip: 'Can\'t decide what to watch tonight? Pick 3.',
+    },
+    {
+      target: 'vault-play-all', title: 'Play everything',
+      text: '▶ PLAY ALL opens every file shown here in your player as one playlist, in the order you see: '
+        + 'search first to play only some, sort by date to play the newest first.',
     },
     {
       target: 'vault-select', title: 'Several at once',

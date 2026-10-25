@@ -23,7 +23,8 @@
       --red:#FF3B61;--red2:rgba(255,59,97,0.14);
       --green:#00FF94;--green2:rgba(0,255,148,0.12);
       --purple:#C084FC;
-      --t1:#D8ECF5;--t2:#8AABB8;--t3:#3D6070;--t4:#1E3A48;
+      /* Text: t3 and t4 keep 4.5:1 against every background (small text stays readable) */
+      --t1:#D8ECF5;--t2:#8AABB8;--t3:#709DB1;--t4:#5A8EA5;
       --border:rgba(0,216,255,0.1);--border2:rgba(0,216,255,0.35);
     }
     html,body{height:100%;background:var(--bg);color:var(--t1);font-family:'Exo 2',sans-serif;font-size:13px;overflow:hidden}
@@ -640,7 +641,9 @@
     .rand-stepper{display:flex;align-items:center;background:var(--bg3);border:1px solid var(--border)}
     .rand-step-btn{width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:14px;font-family:'Share Tech Mono',monospace;color:var(--t2);background:none;border:none;cursor:pointer;transition:color 0.12s,background 0.12s;line-height:1}
     .rand-step-btn:hover{color:var(--cyan);background:var(--bg2)}
-    .rand-step-val{min-width:28px;text-align:center;font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--t1);padding:0 4px;border-left:1px solid var(--border);border-right:1px solid var(--border)}
+    .rand-step-val{width:44px;height:22px;text-align:center;font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--t1);padding:0 4px;background:none;border:none;border-left:1px solid var(--border);border-right:1px solid var(--border);outline:none;-moz-appearance:textfield;appearance:textfield}
+    .rand-step-val:focus{background:var(--bg2);color:var(--cyan)}
+    .rand-step-val::-webkit-inner-spin-button,.rand-step-val::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
     .rand-selected{outline:2px solid var(--amber);outline-offset:2px}
     .file-selected{outline:2px solid var(--cyan);outline-offset:2px}
 
