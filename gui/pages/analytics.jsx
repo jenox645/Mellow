@@ -35,13 +35,13 @@ function WrappedModal({ onClose }) {
       </>
     }>
       {!data ? (
-        <div style={{ padding: 24, textAlign: 'center', fontFamily: 'Share Tech Mono, monospace', fontSize: 10, color: 'var(--t3)' }}>CRUNCHING THE NUMBERS...</div>
+        <div style={{ padding: 24, textAlign: 'center', fontFamily: 'Share Tech Mono, monospace', fontSize: 11, color: 'var(--t3)' }}>CRUNCHING THE NUMBERS...</div>
       ) : data.error ? (
-        <div style={{ padding: 24, textAlign: 'center', fontFamily: 'Share Tech Mono, monospace', fontSize: 10, color: 'var(--t3)' }}>
+        <div style={{ padding: 24, textAlign: 'center', fontFamily: 'Share Tech Mono, monospace', fontSize: 11, color: 'var(--t3)' }}>
           COULDN'T LOAD {year}. TRY AGAIN IN A MOMENT.
         </div>
       ) : !data.total_downloads ? (
-        <div style={{ padding: 24, textAlign: 'center', fontFamily: 'Share Tech Mono, monospace', fontSize: 10, color: 'var(--t3)' }}>
+        <div style={{ padding: 24, textAlign: 'center', fontFamily: 'Share Tech Mono, monospace', fontSize: 11, color: 'var(--t3)' }}>
           NOTHING DOWNLOADED IN {year} — A QUIET YEAR.
         </div>
       ) : (
@@ -68,9 +68,9 @@ function WrappedModal({ onClose }) {
           </div>
           {(data.top_uploaders || []).length > 0 && (
             <div style={{ marginBottom: 10 }}>
-              <div style={{ fontSize: 9, color: 'var(--amber)', letterSpacing: '0.1em', marginBottom: 4 }}>TOP CHANNELS</div>
+              <div style={{ fontSize: 10.5, color: 'var(--amber)', letterSpacing: '0.1em', marginBottom: 4 }}>TOP CHANNELS</div>
               {data.top_uploaders.map((u, i) => (
-                <div key={u.uploader} style={{ display: 'flex', gap: 8, fontSize: 10, padding: '2px 0' }}>
+                <div key={u.uploader} style={{ display: 'flex', gap: 8, fontSize: 11, padding: '2px 0' }}>
                   <span style={{ color: 'var(--t4)', minWidth: 18 }}>#{i + 1}</span>
                   <span style={{ flex: 1, color: i === 0 ? 'var(--cyan)' : 'var(--t2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.uploader}</span>
                   <span style={{ color: 'var(--t3)' }}>{u.count}</span>
@@ -79,18 +79,18 @@ function WrappedModal({ onClose }) {
             </div>
           )}
           <div style={{ marginBottom: 10 }}>
-            <div style={{ fontSize: 9, color: 'var(--amber)', letterSpacing: '0.1em', marginBottom: 4 }}>MONTH BY MONTH</div>
+            <div style={{ fontSize: 10.5, color: 'var(--amber)', letterSpacing: '0.1em', marginBottom: 4 }}>MONTH BY MONTH</div>
             <div style={{ display: 'flex', alignItems: 'flex-end', gap: 3, height: 50 }}>
               {(data.monthly || []).map((v, i) => (
                 <div key={i} style={{ flex: 1, textAlign: 'center' }} title={`${v} downloads`}>
                   <div style={{ height: Math.max(2, (v / maxMonthly) * 40), background: 'var(--cyan)', opacity: 0.35 + (v / maxMonthly) * 0.65 }} />
-                  <div style={{ fontSize: 7, color: 'var(--t4)', marginTop: 2 }}>{MONTH_LABELS[i]}</div>
+                  <div style={{ fontSize: 8.5, color: 'var(--t4)', marginTop: 2 }}>{MONTH_LABELS[i]}</div>
                 </div>
               ))}
             </div>
           </div>
           {data.busiest_day && (
-            <div style={{ fontSize: 9, color: 'var(--t3)' }}>
+            <div style={{ fontSize: 10.5, color: 'var(--t3)' }}>
               Busiest day: <span style={{ color: 'var(--cyan)' }}>{data.busiest_day.day}</span> with {data.busiest_day.count} downloads
             </div>
           )}
@@ -154,7 +154,7 @@ function HistoryPanel({ showNotif, refreshStats }) {
           <option value="video">VIDEO</option>
           <option value="audio">AUDIO</option>
         </select>
-        <span style={{ marginLeft: 'auto', fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: 'var(--t4)' }}>
+        <span style={{ marginLeft: 'auto', fontFamily: 'Share Tech Mono, monospace', fontSize: 10.5, color: 'var(--t4)' }}>
           {offset + 1}–{offset + rows.length}
         </span>
         <button className="btn btn-secondary btn-sm" disabled={offset === 0} onClick={() => setOffset(o => Math.max(0, o - HISTORY_LIMIT))}>‹ PREV</button>
@@ -174,22 +174,22 @@ function HistoryPanel({ showNotif, refreshStats }) {
               <td className="mono">{fmtBytes(r.file_size_bytes)}</td>
               <td className="mono">{fmtDate(r.timestamp)}</td>
               <td>
-                <span style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 8, padding: '2px 6px', color: r.status === 'success' ? 'var(--green)' : 'var(--red)', border: '1px solid', borderColor: r.status === 'success' ? 'rgba(0,255,148,0.3)' : 'rgba(255,59,97,0.3)' }}
+                <span style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 9.5, padding: '2px 6px', color: r.status === 'success' ? 'var(--green)' : 'var(--red)', border: '1px solid', borderColor: r.status === 'success' ? 'rgba(0,255,148,0.3)' : 'rgba(255,59,97,0.3)' }}
                   title={r.error_message || ''}>
                   {(r.status || '').toUpperCase()}
                 </span>
               </td>
               <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-                {r.url && <button className="btn btn-secondary btn-sm" style={{ padding: '2px 6px', fontSize: 8, marginRight: 4 }} title="Download again" onClick={() => redownload(r)}>↻ DL</button>}
-                {r.file_path && <button className="btn btn-secondary btn-sm" style={{ padding: '2px 6px', fontSize: 8, marginRight: 4 }} title="Open file" onClick={() => openFile(r)}>▶ OPEN</button>}
-                <button className="btn btn-danger btn-sm" style={{ padding: '2px 6px', fontSize: 8 }} title="Delete record" onClick={() => deleteRow(r)}>✕</button>
+                {r.url && <button className="btn btn-secondary btn-sm" style={{ padding: '2px 6px', fontSize: 9.5, marginRight: 4 }} title="Download again" onClick={() => redownload(r)}>↻ DL</button>}
+                {r.file_path && <button className="btn btn-secondary btn-sm" style={{ padding: '2px 6px', fontSize: 9.5, marginRight: 4 }} title="Open file" onClick={() => openFile(r)}>▶ OPEN</button>}
+                <button className="btn btn-danger btn-sm" style={{ padding: '2px 6px', fontSize: 9.5 }} title="Delete record" onClick={() => deleteRow(r)}>✕</button>
               </td>
             </tr>
           ))}
         </tbody>
       </table>
       {!rows.length && !loading && (
-        <div style={{ padding: '20px', textAlign: 'center', fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: 'var(--t4)' }}>
+        <div style={{ padding: '20px', textAlign: 'center', fontFamily: 'Share Tech Mono, monospace', fontSize: 10.5, color: 'var(--t4)' }}>
           NO MATCHING RECORDS
         </div>
       )}
@@ -420,7 +420,7 @@ export function AnalyticsPage({ stats, refreshStats, showNotif }) {
             <canvas ref={donutRef} width={140} height={140} />
             <div style={{ flex: 1 }}>
               {(localStats.storage_by_format || []).slice(0, 4).map((f, i) => (
-                <div key={f.format} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6, fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: 'var(--t2)' }}>
+                <div key={f.format} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6, fontFamily: 'Share Tech Mono, monospace', fontSize: 10.5, color: 'var(--t2)' }}>
                   <span>{(f.format || '—').toUpperCase()}</span>
                   <span style={{ color: 'var(--cyan)' }}>{fmtBytes(f.bytes)}</span>
                 </div>
@@ -488,7 +488,7 @@ export function AnalyticsPage({ stats, refreshStats, showNotif }) {
               color="rgba(255,59,97,0.85)"
             />
           ) : (
-            <div style={{ padding: '30px 0', textAlign: 'center', fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: 'var(--t4)' }}>
+            <div style={{ padding: '30px 0', textAlign: 'center', fontFamily: 'Share Tech Mono, monospace', fontSize: 10.5, color: 'var(--t4)' }}>
               NO FAILURES IN RANGE
             </div>
           )}
@@ -504,7 +504,7 @@ export function AnalyticsPage({ stats, refreshStats, showNotif }) {
               <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 6 }}>
                 {days.map((d, di) => (
                   <div key={d} style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                    <span style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 7, color: 'var(--t4)', width: 24, flexShrink: 0 }}>{d}</span>
+                    <span style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 8.5, color: 'var(--t4)', width: 24, flexShrink: 0 }}>{d}</span>
                     {Array.from({ length: 24 }, (_, h) => {
                       const v = (grid[di] || [])[h] || 0;
                       return (
@@ -545,7 +545,7 @@ export function AnalyticsPage({ stats, refreshStats, showNotif }) {
             </tbody>
           </table>
         ) : (
-          <div style={{ padding: '20px', textAlign: 'center', fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: 'var(--t4)' }}>
+          <div style={{ padding: '20px', textAlign: 'center', fontFamily: 'Share Tech Mono, monospace', fontSize: 10.5, color: 'var(--t4)' }}>
             NO SYNC RUNS LOGGED YET — RUN A VAULT OR LIBRARY SYNC
           </div>
         )}
@@ -577,7 +577,7 @@ export function AnalyticsPage({ stats, refreshStats, showNotif }) {
                 <td className="mono">{fmtBytes(r.file_size_bytes)}</td>
                 <td className="mono">{fmtDate(r.timestamp)}</td>
                 <td>
-                  <span style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 8, padding: '2px 6px', color: r.status === 'success' ? 'var(--green)' : 'var(--red)', border: '1px solid', borderColor: r.status === 'success' ? 'rgba(0,255,148,0.3)' : 'rgba(255,59,97,0.3)' }}>
+                  <span style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 9.5, padding: '2px 6px', color: r.status === 'success' ? 'var(--green)' : 'var(--red)', border: '1px solid', borderColor: r.status === 'success' ? 'rgba(0,255,148,0.3)' : 'rgba(255,59,97,0.3)' }}>
                     {(r.status || '').toUpperCase()}
                   </span>
                 </td>
@@ -586,7 +586,7 @@ export function AnalyticsPage({ stats, refreshStats, showNotif }) {
           </tbody>
         </table>
         {!(localStats.recent_records || []).length && (
-          <div style={{ padding: '24px', textAlign: 'center', fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: 'var(--t4)' }}>
+          <div style={{ padding: '24px', textAlign: 'center', fontFamily: 'Share Tech Mono, monospace', fontSize: 10.5, color: 'var(--t4)' }}>
             NO RECORDS YET — START DOWNLOADING TO POPULATE THE DATA LAKE
           </div>
         )}

@@ -120,9 +120,9 @@ export function QueuePage({ dlState, showNotif, activeJobs, playlistItems, setPl
             const live = activeJobs && activeJobs[job.id];
             return (
               <div key={job.id} className="q-item" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 14px', borderBottom: '1px solid var(--border)' }}>
-                <span style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 8, color: 'var(--t4)', minWidth: 36 }}>{(job.type || 'feed').toUpperCase()}</span>
+                <span style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 9.5, color: 'var(--t4)', minWidth: 36 }}>{(job.type || 'feed').toUpperCase()}</span>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 10, color: 'var(--t2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 11, color: 'var(--t2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {job.label || job.url}
                   </div>
                   {/* Live per-job progress — visible when downloads run concurrently */}
@@ -131,20 +131,20 @@ export function QueuePage({ dlState, showNotif, activeJobs, playlistItems, setPl
                       <div className="prog-bar" style={{ height: 3, flex: 1 }}>
                         <div className="prog-bar-fill" style={{ width: (live.pct || 0) + '%' }} />
                       </div>
-                      <span style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 8, color: 'var(--cyan)', flexShrink: 0 }}>
+                      <span style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 9.5, color: 'var(--cyan)', flexShrink: 0 }}>
                         {(live.pct || 0).toFixed(0)}% · {fmtSpeed(live.speed)}
                       </span>
                     </div>
                   )}
                 </div>
-                {job.error && <span style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 8, color: 'var(--red)', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={job.error}>{job.error}</span>}
+                {job.error && <span style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 9.5, color: 'var(--red)', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={job.error}>{job.error}</span>}
                 {job.status === 'queued' && job.not_before && job.not_before * 1000 > Date.now() ? (
                   <>
                     <span className="q-st-badge queued" style={{ color: 'var(--purple)' }}
                       title={'Starts ' + new Date(job.not_before * 1000).toLocaleString()}>
                       ⏾ {new Date(job.not_before * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </span>
-                    <button className="btn btn-secondary btn-sm" style={{ padding: '3px 8px', fontSize: 8 }}
+                    <button className="btn btn-secondary btn-sm" style={{ padding: '3px 8px', fontSize: 9.5 }}
                       onClick={() => API.post('/api/queue/' + encodeURIComponent(job.id) + '/start-now', {})
                         .then(loadJobs).catch(e => showNotif('Error', e.message, 'error'))}>▶ START NOW</button>
                   </>
@@ -153,10 +153,10 @@ export function QueuePage({ dlState, showNotif, activeJobs, playlistItems, setPl
                 )}
                 {job.status === 'queued' && queuedJobsCount > 1 && (
                   <span style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                    <button className="rand-step-btn" title="Run earlier" style={{ padding: '0 5px', fontSize: 8 }}
+                    <button className="rand-step-btn" title="Run earlier" style={{ padding: '0 5px', fontSize: 9.5 }}
                       disabled={(job.queue_position || 0) === 0}
                       onClick={() => handleReorder(job, -1)}>▲</button>
-                    <button className="rand-step-btn" title="Run later" style={{ padding: '0 5px', fontSize: 8 }}
+                    <button className="rand-step-btn" title="Run later" style={{ padding: '0 5px', fontSize: 9.5 }}
                       disabled={(job.queue_position || 0) >= queuedJobsCount - 1}
                       onClick={() => handleReorder(job, 1)}>▼</button>
                   </span>
@@ -165,7 +165,7 @@ export function QueuePage({ dlState, showNotif, activeJobs, playlistItems, setPl
                   <div className="q-del" title={job.status === 'active' ? 'Cancel this job' : 'Remove from queue'} onClick={() => handleCancelJob(job)}><Ico name="x" /></div>
                 )}
                 {(job.status === 'failed' || job.status === 'cancelled') && (
-                  <button className="btn btn-secondary btn-sm" style={{ padding: '3px 8px', fontSize: 8 }}
+                  <button className="btn btn-secondary btn-sm" style={{ padding: '3px 8px', fontSize: 9.5 }}
                     title="Run this job again, with the same options"
                     onClick={() => API.post('/api/queue/' + encodeURIComponent(job.id) + '/retry', {})
                       .then(() => { showNotif('Re-queued', job.label || job.url); loadJobs(); })
@@ -203,11 +203,11 @@ export function QueuePage({ dlState, showNotif, activeJobs, playlistItems, setPl
             <span className="q-size">{fmtBytes(dlState.total)}</span>
             <div className="q-status"><span className={'q-st-badge ' + (isPaused ? 'queued' : 'downloading')}>{isPaused ? 'PAUSED' : 'ACTIVE'}</span></div>
             {isPaused
-              ? <button className="btn btn-amber btn-sm" style={{ padding: '4px 8px', fontSize: 9 }} onClick={onResume}>▶</button>
-              : <button className="btn btn-secondary btn-sm" style={{ padding: '4px 8px', fontSize: 9 }} onClick={onPause}>⏸</button>}
+              ? <button className="btn btn-amber btn-sm" style={{ padding: '4px 8px', fontSize: 10.5 }} onClick={onResume}>▶</button>
+              : <button className="btn btn-secondary btn-sm" style={{ padding: '4px 8px', fontSize: 10.5 }} onClick={onPause}>⏸</button>}
             <div className="q-del" onClick={handleCancel}><Ico name="x" /></div>
           </div>
-          <div style={{ padding: '8px 14px', borderTop: '1px solid var(--border)', display: 'flex', gap: 12, fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: 'var(--t3)' }}>
+          <div style={{ padding: '8px 14px', borderTop: '1px solid var(--border)', display: 'flex', gap: 12, fontFamily: 'Share Tech Mono, monospace', fontSize: 10.5, color: 'var(--t3)' }}>
             <span>↓ <span style={{ color: 'var(--cyan)' }}>{fmtSpeed(dlState.speed)}</span></span>
             <span>ETA <span style={{ color: 'var(--cyan)' }}>{fmtEta(dlState.eta)}</span></span>
             <span>{fmtBytes(dlState.downloaded)} / {fmtBytes(dlState.total)}</span>
@@ -239,15 +239,15 @@ export function QueuePage({ dlState, showNotif, activeJobs, playlistItems, setPl
               FAILED{failedItems && failedItems.length ? ' (' + failedItems.length + ')' : ''}
             </div>
             {qTab === 'completed' && completedItems && completedItems.length > 0 && onClearCompleted && (
-              <span style={{ marginLeft: 'auto', cursor: 'pointer', fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: 'var(--red)', padding: '0 10px' }} onClick={onClearCompleted}>CLEAR ✕</span>
+              <span style={{ marginLeft: 'auto', cursor: 'pointer', fontFamily: 'Share Tech Mono, monospace', fontSize: 10.5, color: 'var(--red)', padding: '0 10px' }} onClick={onClearCompleted}>CLEAR ✕</span>
             )}
             {qTab === 'failed' && failedItems && failedItems.filter(i => i.url).length > 1 && (
-              <span style={{ marginLeft: 'auto', cursor: 'pointer', fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: 'var(--cyan)', padding: '0 10px' }}
+              <span style={{ marginLeft: 'auto', cursor: 'pointer', fontFamily: 'Share Tech Mono, monospace', fontSize: 10.5, color: 'var(--cyan)', padding: '0 10px' }}
                 title="Download every failed item again, with the options of the job it failed in"
                 onClick={handleRetryAll}>↻ RETRY ALL</span>
             )}
             {qTab === 'failed' && failedItems && failedItems.length > 0 && onClearFailed && (
-              <span style={{ marginLeft: failedItems.filter(i => i.url).length > 1 ? 0 : 'auto', cursor: 'pointer', fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: 'var(--red)', padding: '0 10px' }} onClick={onClearFailed}>CLEAR ✕</span>
+              <span style={{ marginLeft: failedItems.filter(i => i.url).length > 1 ? 0 : 'auto', cursor: 'pointer', fontFamily: 'Share Tech Mono, monospace', fontSize: 10.5, color: 'var(--red)', padding: '0 10px' }} onClick={onClearFailed}>CLEAR ✕</span>
             )}
           </div>
           <SyncBanner plan={syncPlan} label={syncJobLabel} />
@@ -268,7 +268,7 @@ export function QueuePage({ dlState, showNotif, activeJobs, playlistItems, setPl
                 </div>
               ))}
               {syncPlan.have > syncPlan.haveItems.length && (
-                <div style={{ padding: '8px 14px', fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: 'var(--t3)', textAlign: 'center' }}>
+                <div style={{ padding: '8px 14px', fontFamily: 'Share Tech Mono, monospace', fontSize: 10.5, color: 'var(--t3)', textAlign: 'center' }}>
                   +{syncPlan.have - syncPlan.haveItems.length} more already in the folder
                 </div>
               )}
@@ -277,27 +277,27 @@ export function QueuePage({ dlState, showNotif, activeJobs, playlistItems, setPl
             <div className="pl-queue-list">
               {(failedItems || []).map((item, i) => (
                 <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 14px', borderBottom: '1px solid var(--border)' }}>
-                  <span style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 8, color: item.reason === 'geo_blocked' ? 'var(--amber)' : 'var(--red)', minWidth: 70 }}>
+                  <span style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 9.5, color: item.reason === 'geo_blocked' ? 'var(--amber)' : 'var(--red)', minWidth: 70 }}>
                     {(item.reason || 'error').toUpperCase()}
                   </span>
-                  <span style={{ flex: 1, minWidth: 0, fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: 'var(--t2)' }} title={item.title}>
+                  <span style={{ flex: 1, minWidth: 0, fontFamily: 'Share Tech Mono, monospace', fontSize: 10.5, color: 'var(--t2)' }} title={item.title}>
                     {item.hint && <div style={{ color: 'var(--t1)', marginBottom: 2 }}>{item.hint}</div>}
                     <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: item.hint ? 'var(--t4)' : undefined }}>{item.title}</div>
                   </span>
-                  <span style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 8, color: 'var(--t4)' }}>{timeAgo(item.failedAt)}</span>
+                  <span style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 9.5, color: 'var(--t4)' }}>{timeAgo(item.failedAt)}</span>
                   {item.url && (
-                    <button className="btn btn-secondary btn-sm" style={{ padding: '3px 8px', fontSize: 8 }} onClick={() => handleRetryFailed(item)}>↻ RETRY</button>
+                    <button className="btn btn-secondary btn-sm" style={{ padding: '3px 8px', fontSize: 9.5 }} onClick={() => handleRetryFailed(item)}>↻ RETRY</button>
                   )}
                 </div>
               ))}
               {(!failedItems || failedItems.length === 0) && (
-                <div style={{ padding: '20px', fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: 'var(--t4)', textAlign: 'center' }}>NO FAILURES — ALL CLEAR</div>
+                <div style={{ padding: '20px', fontFamily: 'Share Tech Mono, monospace', fontSize: 10.5, color: 'var(--t4)', textAlign: 'center' }}>NO FAILURES — ALL CLEAR</div>
               )}
             </div>
           ) : qTab === 'pending' ? (
             <>
               {syncPlan && (!playlistItems || playlistItems.length === 0) ? (
-                <div style={{ padding: '20px', fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: 'var(--t3)', textAlign: 'center' }}>
+                <div style={{ padding: '20px', fontFamily: 'Share Tech Mono, monospace', fontSize: 10.5, color: 'var(--t3)', textAlign: 'center' }}>
                   {syncPlan.new > 0 ? 'FINISHING UP…' : 'NOTHING NEW — THE FOLDER HAS EVERY ITEM'}
                 </div>
               ) : (
@@ -326,7 +326,7 @@ export function QueuePage({ dlState, showNotif, activeJobs, playlistItems, setPl
                 </div>
               ))}
               {(!completedItems || completedItems.length === 0) && (
-                <div style={{ padding: '20px', fontFamily: 'Share Tech Mono', fontSize: 9, color: 'var(--t4)', textAlign: 'center' }}>NO COMPLETED ITEMS YET</div>
+                <div style={{ padding: '20px', fontFamily: 'Share Tech Mono', fontSize: 10.5, color: 'var(--t4)', textAlign: 'center' }}>NO COMPLETED ITEMS YET</div>
               )}
             </div>
           )}

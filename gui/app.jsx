@@ -613,7 +613,7 @@ function App() {
             </>
           }
         >
-          <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 10, color: 'var(--t2)' }}>
+          <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 11, color: 'var(--t2)' }}>
             <div style={{ marginBottom: 8, color: 'var(--t3)' }}>
               {restorableJobs.length} download(s) hadn't finished when the app last closed:
             </div>
