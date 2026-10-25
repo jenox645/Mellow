@@ -648,3 +648,25 @@ def test_list_view_and_selecting_files_like_a_file_explorer(page, downloads, mon
     page.locator(".vault-folder-card", has_text="Other").click()
     expect(page.locator(".lib-card")).to_have_count(1)
     expect(page.locator(".vault-sel-hint")).to_be_visible()
+
+
+def test_a_selection_rectangle_starts_in_the_toolbars_empty_space(page, downloads):
+    """The tester's next ask: the empty space right of the toolbar starts a
+    rectangle too, not only the files themselves."""
+    folder = downloads / "SIM"
+    folder.mkdir()
+    for name in ("1JZ_sweep", "FLAT6_sweep", "RB26_sweep", "SR20_sweep"):
+        (folder / f"{name}.wav").write_bytes(b"\0" * 64)
+    _open_folder(page, "SIM")
+    page.locator(".pill", has_text="LIST").click()
+    bar = page.locator(".randomizer-bar").bounding_box()
+    second = page.locator(".lib-row").nth(1)
+    _drag(page, (bar["x"] + bar["width"] - 30, bar["y"] + bar["height"] / 2), _middle(second))
+    expect(page.locator(".vault-sel-count")).to_have_text("2 SELECTED")
+    assert _selected(page) == ["1JZ_sweep.wav", "FLAT6_sweep.wav"]
+    # …and from the empty room below the last file, upwards
+    rows = page.locator(".lib-row")
+    below = rows.nth(3).bounding_box()
+    page.keyboard.press("Escape")
+    _drag(page, (below["x"] + below["width"] / 2, below["y"] + below["height"] + 120), _middle(rows.nth(2)))
+    assert _selected(page) == ["RB26_sweep.wav", "SR20_sweep.wav"]

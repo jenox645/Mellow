@@ -109,7 +109,7 @@ export function ApiAccessPanel({ local, set, showNotif }) {
         <Modal title={'API KEY — ' + made.name.toUpperCase()} onClose={() => setMade(null)} footer={
           <button className="btn btn-primary btn-sm" onClick={() => setMade(null)}>DONE</button>
         }>
-          <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 10, lineHeight: 1.8 }}>
+          <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 11, lineHeight: 1.8 }}>
             <div style={{ color: 'var(--amber)', marginBottom: 8 }}>
               Copy it now: MellowDLP keeps only a fingerprint of it and can't show it again.
             </div>

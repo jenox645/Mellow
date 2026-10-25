@@ -218,7 +218,7 @@ export function ConfigPage({ config, setConfig, showNotif, installAppUpdate, onA
                   <div className="sl-sub">DuckDB analytical database location</div>
                 </div>
                 <div className="settings-ctrl">
-                  <span style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: 'var(--t3)' }}>~/.mellow_dlp.duckdb</span>
+                  <span style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 10.5, color: 'var(--t3)' }}>~/.mellow_dlp.duckdb</span>
                 </div>
               </div>
               <div className="settings-row" data-tour="config-template">
@@ -243,7 +243,7 @@ export function ConfigPage({ config, setConfig, showNotif, installAppUpdate, onA
                   <div className="sl-sub">mellow_archive.txt — tracks downloaded items, import as URL list</div>
                 </div>
                 <div className="settings-ctrl" style={{ display: 'flex', gap: 6 }}>
-                  <span style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: 'var(--t3)' }}>
+                  <span style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 10.5, color: 'var(--t3)' }}>
                     {local.output_dir ? (local.output_dir.replace(/\\/g, '/').split('/').pop() || local.output_dir) + '/mellow_archive.txt' : 'mellow_archive.txt (in download folder)'}
                   </span>
                   <button className="btn btn-secondary btn-sm" onClick={() => {
@@ -391,7 +391,7 @@ export function ConfigPage({ config, setConfig, showNotif, installAppUpdate, onA
                     ))}
                   </select>
                   {local.cookies_browser && local.cookies_browser !== 'none' && (
-                    <span style={{ fontSize: 9, color: 'var(--green)', fontFamily: 'Share Tech Mono, monospace' }}>● ACTIVE</span>
+                    <span style={{ fontSize: 10.5, color: 'var(--green)', fontFamily: 'Share Tech Mono, monospace' }}>● ACTIVE</span>
                   )}
                 </div>
               </div>
@@ -422,10 +422,10 @@ export function ConfigPage({ config, setConfig, showNotif, installAppUpdate, onA
                 </div>
                 <div className="settings-ctrl" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                   {(local.cookies_browser && local.cookies_browser !== 'none')
-                    ? <span style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: 'var(--green)' }}>Browser cookies ({local.cookies_browser}){local.cookies_browser_profile ? ' · custom profile' : ''}</span>
+                    ? <span style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 10.5, color: 'var(--green)' }}>Browser cookies ({local.cookies_browser}){local.cookies_browser_profile ? ' · custom profile' : ''}</span>
                     : local.cookies_file
-                    ? <span style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: 'var(--cyan)' }}>Cookies file active</span>
-                    : <span style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: 'var(--t4)' }}>No auth — public videos only</span>
+                    ? <span style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 10.5, color: 'var(--cyan)' }}>Cookies file active</span>
+                    : <span style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 10.5, color: 'var(--t4)' }}>No auth — public videos only</span>
                   }
                   {((local.cookies_browser && local.cookies_browser !== 'none') || local.cookies_file) && (
                     <button className="btn btn-secondary btn-sm" onClick={testCookies} disabled={testingCookies}
@@ -627,7 +627,7 @@ export function ConfigPage({ config, setConfig, showNotif, installAppUpdate, onA
                   <div className="sl-sub">Analytical columnar database</div>
                 </div>
                 <div className="settings-ctrl">
-                  <span style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: 'var(--amber)' }}>DuckDB (analytical)</span>
+                  <span style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 10.5, color: 'var(--amber)' }}>DuckDB (analytical)</span>
                 </div>
               </div>
               <div className="settings-row">
@@ -636,7 +636,7 @@ export function ConfigPage({ config, setConfig, showNotif, installAppUpdate, onA
                   <div className="sl-sub">Current database file size</div>
                 </div>
                 <div className="settings-ctrl">
-                  <span style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 10, color: 'var(--cyan)' }}>{fmtBytes(sysInfo.db_size_bytes || 0)}</span>
+                  <span style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 11, color: 'var(--cyan)' }}>{fmtBytes(sysInfo.db_size_bytes || 0)}</span>
                 </div>
               </div>
               <div className="settings-row" data-tour="config-log">
@@ -846,7 +846,7 @@ export function ConfigPage({ config, setConfig, showNotif, installAppUpdate, onA
         >
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14 }}>
             <Mascot src={MASCOT_FRUSTRATED} className="error-mascot" wrapClass="error-mascot" style={{ width: 80 }} />
-            <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 10, color: 'var(--t2)', textAlign: 'center', lineHeight: 1.8 }}>
+            <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 11, color: 'var(--t2)', textAlign: 'center', lineHeight: 1.8 }}>
               This permanently deletes every download record: the History list, the Analytics numbers and
               the "already downloaded" notes.<br />
               Your files, vault folders, linked playlists and their sync settings stay as they are.<br />

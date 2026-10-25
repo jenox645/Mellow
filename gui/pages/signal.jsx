@@ -142,7 +142,7 @@ export function SignalApiPage() {
           <div className="vlabel">APIシグナル / SIGNAL API</div>
           <div className="vtitle"><span style={{ color: 'var(--t1)' }}>SIGNAL</span> <span className="a">API</span></div>
         </div>
-        <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: 'var(--t4)', textAlign: 'right' }}>
+        <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 10.5, color: 'var(--t4)', textAlign: 'right' }}>
           LIVE QUERY TERMINAL<br />
           <span style={{ color: 'var(--amber)' }}>LOCAL DATA LAKE ONLY</span>
         </div>
@@ -221,7 +221,7 @@ export function SignalApiPage() {
             ) : !running ? (
               <div className="error-state">
                 <Mascot src={MASCOT_TROUBLESHOOTING_SAFE || MASCOT_VIBING} className="error-mascot" wrapClass="error-mascot" style={{ width: 80 }} />
-                <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 10, color: 'var(--t3)', textAlign: 'center' }}>
+                <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 11, color: 'var(--t3)', textAlign: 'center' }}>
                   SELECT A PRESET OR WRITE A QUERY
                 </div>
               </div>
@@ -248,7 +248,7 @@ export function SignalApiPage() {
           API REFERENCE
         </div>
         {docsOpen && (
-          <div className="schema-block" style={{ fontSize: 10, lineHeight: 1.8 }}>
+          <div className="schema-block" style={{ fontSize: 11, lineHeight: 1.8 }}>
             <div style={{ color: 'var(--t3)', marginBottom: 6 }}>
               For programs on this computer. Every request sends <span style={{ color: 'var(--t1)' }}>Authorization: Bearer &lt;key&gt;</span>;
               make a key, and choose what it may do, in Config → API ACCESS.
@@ -289,7 +289,7 @@ export function SignalApiPage() {
           OUTBOUND WEBHOOKS
         </div>
         {webhooksOpen && (
-          <div style={{ padding: '8px 0', fontFamily: 'Share Tech Mono, monospace', fontSize: 10 }}>
+          <div style={{ padding: '8px 0', fontFamily: 'Share Tech Mono, monospace', fontSize: 11 }}>
             <div style={{ color: 'var(--t4)', marginBottom: 8 }}>POST JSON to external URLs on download events</div>
             {[['complete', whCompleteUrl, setWhCompleteUrl], ['error', whErrorUrl, setWhErrorUrl]].map(([evt, val, setVal]) => (
               <div key={evt} style={{ marginBottom: 12 }}>
@@ -318,14 +318,14 @@ export function SignalApiPage() {
         <div className="opts-adv-toggle" style={{ padding: '10px 0', borderTop: '1px solid var(--border)' }}
           onClick={() => setEventsOpen(o => !o)}>
           <span dangerouslySetInnerHTML={{ __html: eventsOpen ? SVG.chevron_down : SVG.chevron_right }} />
-          LIVE EVENT STREAM {eventsOpen && <span style={{ color: 'var(--cyan)', fontSize: 9, marginLeft: 8 }}>● CONNECTED</span>}
+          LIVE EVENT STREAM {eventsOpen && <span style={{ color: 'var(--cyan)', fontSize: 10.5, marginLeft: 8 }}>● CONNECTED</span>}
         </div>
         {eventsOpen && (
           <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', padding: 8 }}>
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 4 }}>
               <button className="btn btn-secondary btn-sm" onClick={() => setLiveEvents([])}>CLEAR</button>
             </div>
-            <div ref={liveEventsRef} style={{ maxHeight: 220, overflow: 'auto', fontFamily: 'Share Tech Mono, monospace', fontSize: 9 }}>
+            <div ref={liveEventsRef} style={{ maxHeight: 220, overflow: 'auto', fontFamily: 'Share Tech Mono, monospace', fontSize: 10.5 }}>
               {liveEvents.length === 0
                 ? <div style={{ color: 'var(--t4)', textAlign: 'center', padding: 12 }}>Waiting for events...</div>
                 : liveEvents.map((ev, i) => (
