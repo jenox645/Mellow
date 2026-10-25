@@ -6,6 +6,8 @@ import { fmtBytes, fmtDate, fmtWait, timeAgo } from '../lib/util.js';
 import { Ico } from '../components/icons.jsx';
 import { TAGGABLE_AUDIO } from '../lib/constants.js';
 import { Modal, Mascot, useFitInWindow } from '../components/common.jsx';
+import { useMarquee } from '../components/marquee.jsx';
+import { clickSelect } from '../lib/selection.js';
 import {
   MASCOT_CHILLING, MASCOT_TIRED, MASCOT_FRUSTRATED, MASCOT_COMFY_SAFE,
 } from '../lib/mascots.js';
@@ -117,6 +119,12 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
   const [vaultScale, setVaultScale] = React.useState(() => { try { return localStorage.getItem('vault_scale') || 'md'; } catch { return 'md'; } });
   const [selectedFiles, setSelectedFiles] = React.useState(new Set());
   const [selectionMode, setSelectionMode] = React.useState(false);
+  const [deleteManyConfirm, setDeleteManyConfirm] = React.useState(false);
+  const selectAnchor = React.useRef(null);     // where a Shift-click range starts
+  const filesBoxRef = React.useRef(null);
+  const marquee = useMarquee(filesBoxRef, selectedFiles, setSelectedFiles);
+  // LIST is for an open folder; the folder cards use SM there
+  const gridScale = vaultScale === 'list' ? 'sm' : vaultScale;
   const [randomizerCount, setRandomizerCount] = React.useState(5);
   const [randomizedFiles, setRandomizedFiles] = React.useState(null);
   const [watchArchivePrompt, setWatchArchivePrompt] = React.useState(null); // { path }
@@ -182,6 +190,13 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
   React.useEffect(() => {
     if (selectedFolder) loadFolder(selectedFolder);
   }, [selectedFolder, loadFolder, openFolderStamp]);
+
+  // A selection belongs to its folder: kept, DELETE in the next folder would
+  // remove files of the one before
+  React.useEffect(() => {
+    setSelectedFiles(new Set());
+    selectAnchor.current = null;
+  }, [selectedFolder]);
 
   // Load thumbnail mosaics for all vault folder cards
   React.useEffect(() => {
@@ -278,6 +293,26 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
       return a.name.localeCompare(b.name);
     }), [files, vaultSearch, vaultSort]);
 
+  // Keys in an open folder, as in a file explorer: Ctrl/⌘+A selects every file
+  // shown, Esc clears the selection, Delete asks to delete the selected files
+  React.useEffect(() => {
+    if (!selectedFolder) return undefined;
+    const onKey = (e) => {
+      if (e.target.closest && e.target.closest('input, textarea, select, [contenteditable]')) return;
+      if (document.querySelector('.modal-box')) return;
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a' && shownFiles.length) {
+        e.preventDefault();
+        setSelectedFiles(new Set(shownFiles.map(f => f.path)));
+      } else if (e.key === 'Escape' && selectedFiles.size) {
+        setSelectedFiles(new Set());
+      } else if (e.key === 'Delete' && selectedFiles.size) {
+        setDeleteManyConfirm(true);
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [selectedFolder, shownFiles, selectedFiles]);
+
   const handlePlayAll = React.useCallback(() => {
     const paths = shownFiles.map(f => f.path);
     if (!paths.length) return;
@@ -316,6 +351,7 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
         if (failed) showNotif('Not Deleted', failed + ' file(s) could not be deleted (in use or read-only?)', 'error');
         setSelectedFiles(new Set());
         setSelectionMode(false);
+        setDeleteManyConfirm(false);
       });
   }, [selectedFiles, showNotif]);
 
@@ -465,7 +501,7 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
           <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
             <div className="pills" style={{ marginBottom: 0 }}>
               {['sm','md','lg'].map(s => (
-                <div key={s} className={'pill' + (vaultScale === s ? ' active' : '')}
+                <div key={s} className={'pill' + (gridScale === s ? ' active' : '')}
                   onClick={() => { setVaultScale(s); try { localStorage.setItem('vault_scale', s); } catch {} }}>
                   {s.toUpperCase()}
                 </div>
@@ -495,7 +531,7 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
             <div className="empty-sub" onClick={onAddVault}>Add a playlist or watch folder to get started</div>
           </div>
         ) : (
-          <div className="vault-folder-grid" data-tour="vault-folders" style={{ '--vault-card-width': vaultScale === 'sm' ? '160px' : vaultScale === 'lg' ? '280px' : '200px' }}>
+          <div className="vault-folder-grid" data-tour="vault-folders" style={{ '--vault-card-width': gridScale === 'sm' ? '160px' : gridScale === 'lg' ? '280px' : '200px' }}>
             {vaultFolders.map((folder, folderIdx) => {
               const thumbs = folderMosaics[folder.path] || [];
               const showMosaic = thumbs.length > 0;
@@ -750,6 +786,58 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
   }
 
   // ── FOLDER VIEW ──────────────────────────────────────────────────────────────
+  // A click opens the file; with SELECT on, Ctrl/⌘ or Shift it selects instead
+  // (Shift: the range from the last file clicked), like a file explorer
+  const onFileClick = (e, file) => {
+    if (marquee.consumeClick()) return;
+    const add = e.ctrlKey || e.metaKey;
+    if (!(selectionMode || add || e.shiftKey)) { handleOpenFile(file.path); return; }
+    const r = clickSelect(selectedFiles, shownFiles.map(f => f.path), file.path,
+      { add: add || selectionMode, shift: e.shiftKey }, selectAnchor.current);
+    selectAnchor.current = r.anchor;
+    setSelectedFiles(r.selected);
+  };
+  const showChecks = selectionMode || selectedFiles.size > 0;
+  const fileMarks = (file) => {
+    const picked = selectedFiles.has(file.path);
+    const rand = randomizedFiles && randomizedFiles.some(f => f.path === file.path);
+    return (rand && !picked ? ' rand-selected' : '') + (picked ? ' file-selected' : '');
+  };
+  // Render functions, not components: a component made here would be a new
+  // type each render, and every thumbnail would load again while dragging
+  const fileThumb = (file, small) => (
+    <div className={'lib-thumb' + (small ? ' small' : '')}>
+      <span style={{ position: 'relative', zIndex: 0 }}>{isVideoExt(file.ext) ? '▶' : '♫'}</span>
+      {fileThumbs && (
+        <img
+          src={fileThumbs[file.path] || '/api/vault/thumb?path=' + encodeURIComponent(file.path)}
+          loading="lazy" decoding="async" draggable={false}
+          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', zIndex: 1 }}
+          alt=""
+          onError={e => { e.target.style.display = 'none'; }}
+          onLoad={e => { e.target.style.display = ''; }}
+        />
+      )}
+      {!small && (
+        <div className={'lib-fmt ' + (isVideoExt(file.ext) ? 'video' : 'audio')} style={{ position: 'absolute', top: 6, left: 6, zIndex: 2, margin: 0 }}>
+          {file.ext.toUpperCase()}
+        </div>
+      )}
+      {showChecks && (
+        <div className={'lib-check' + (selectedFiles.has(file.path) ? ' on' : '')}>{selectedFiles.has(file.path) && '✓'}</div>
+      )}
+    </div>
+  );
+  const fileMenu = (file) => (
+    <div className="lib-menu" onClick={(e) => {
+      e.stopPropagation();
+      const rect = e.currentTarget.getBoundingClientRect();
+      setCtxMenu({ file, x: rect.right, y: rect.bottom });
+    }}>
+      <Ico name="dots" />
+    </div>
+  );
+
   const folderName = selectedFolder.split(/[\\/]/).pop();
 
   return (
@@ -765,11 +853,12 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
           <div className="vtitle">VAULT <span className="c">{folderName.toUpperCase().slice(0, 16)}</span></div>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
-          <div className="pills" style={{ marginBottom: 0 }}>
-            {['sm','md','lg'].map(s => (
+          <div className="pills" style={{ marginBottom: 0 }} data-tour="vault-view">
+            {['list','sm','md','lg'].map(s => (
               <div key={s} className={'pill' + (vaultScale === s ? ' active' : '')}
+                title={s === 'list' ? 'One line per file: name, type, size, date' : 'Cards, ' + { sm: 'small', md: 'medium', lg: 'large' }[s]}
                 onClick={() => { setVaultScale(s); try { localStorage.setItem('vault_scale', s); } catch {} }}>
-                {s.toUpperCase()}
+                {s === 'list' ? '☰ LIST' : s.toUpperCase()}
               </div>
             ))}
           </div>
@@ -873,13 +962,16 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
               onClick={() => { setSelectionMode(s => !s); setSelectedFiles(new Set()); }}>
               {selectionMode ? 'EXIT SELECT' : 'SELECT'}
             </button>
-            {selectionMode && selectedFiles.size > 0 && (
+            {selectedFiles.size > 0 ? (
               <>
-                <button className="btn btn-secondary btn-sm" onClick={() => setSelectedFiles(new Set(files.map(f => f.path)))}>ALL</button>
+                <span className="vault-sel-count">{selectedFiles.size} SELECTED</span>
+                <button className="btn btn-secondary btn-sm" onClick={() => setSelectedFiles(new Set(shownFiles.map(f => f.path)))}>ALL</button>
                 <button className="btn btn-secondary btn-sm" onClick={() => setSelectedFiles(new Set())}>NONE</button>
                 <button className="btn btn-primary btn-sm" onClick={handlePlaySelected}>▶ PLAY ({selectedFiles.size})</button>
-                <button className="btn btn-danger btn-sm" onClick={handleDeleteSelected}>DELETE ({selectedFiles.size})</button>
+                <button className="btn btn-danger btn-sm" onClick={() => setDeleteManyConfirm(true)}>DELETE ({selectedFiles.size})</button>
               </>
+            ) : (
+              <span className="vault-sel-hint">or drag over files · Ctrl+click · Shift+click a range</span>
             )}
           </div>
         </>
@@ -897,61 +989,43 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
           <div className="empty-sub">Download something to this folder</div>
         </div>
       ) : (
-        <div className="lib-grid" data-tour="vault-files" style={{ '--lib-card-min': vaultScale === 'sm' ? '130px' : vaultScale === 'lg' ? '240px' : '175px' }}>
-          {shownFiles.map(file => {
-              const isRandSelected = randomizedFiles && randomizedFiles.some(f => f.path === file.path);
-              const isFileSelected = selectedFiles.has(file.path);
-              return (
-            <div key={file.path}
-              className={'lib-card' + (isRandSelected && !isFileSelected ? ' rand-selected' : '') + (isFileSelected ? ' file-selected' : '')}
-              onClick={() => {
-                if (selectionMode) {
-                  setSelectedFiles(prev => { const next = new Set(prev); next.has(file.path) ? next.delete(file.path) : next.add(file.path); return next; });
-                } else {
-                  handleOpenFile(file.path);
-                }
-              }}>
-              <div style={{ position: 'relative', width: '100%', height: 100, overflow: 'hidden', background: 'linear-gradient(135deg,var(--bg3),var(--bg2))', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 32, color: 'var(--t4)' }}>
-                <span style={{ position: 'relative', zIndex: 0 }}>{isVideoExt(file.ext) ? '▶' : '♫'}</span>
-                {fileThumbs && (
-                  <img
-                    src={fileThumbs[file.path] || '/api/vault/thumb?path=' + encodeURIComponent(file.path)}
-                    loading="lazy" decoding="async"
-                    style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', zIndex: 1 }}
-                    alt=""
-                    onError={e => { e.target.style.display = 'none'; }}
-                    onLoad={e => { e.target.style.display = ''; }}
-                  />
-                )}
-                <div className={'lib-fmt ' + (isVideoExt(file.ext) ? 'video' : 'audio')} style={{ position: 'absolute', top: 6, left: 6, zIndex: 2, margin: 0 }}>
-                  {file.ext.toUpperCase()}
+        <div ref={filesBoxRef} className="vault-files" data-tour="vault-files" onMouseDown={marquee.onMouseDown}>
+          {vaultScale === 'list' ? (
+            <div className="lib-list">
+              {shownFiles.map(file => (
+                <div key={file.path} data-select-key={file.path}
+                  className={'lib-row' + fileMarks(file)} onClick={e => onFileClick(e, file)}>
+                  {fileThumb(file, true)}
+                  <div className="lib-row-name" title={file.name}>{file.name.replace(/\.[^.]+$/, '')}</div>
+                  <span className={'lib-row-fmt ' + (isVideoExt(file.ext) ? 'video' : 'audio')}>{file.ext.toUpperCase()}</span>
+                  <span className="lib-row-size">{fmtBytes(file.size_bytes)}</span>
+                  <span className="lib-row-date">{file.created ? fmtDate(file.created * 1000) : ''}</span>
+                  {fileMenu(file)}
                 </div>
-                {selectionMode && (
-                  <div style={{ position: 'absolute', top: 6, right: 6, zIndex: 3, width: 16, height: 16, borderRadius: 3, border: '2px solid var(--cyan)', background: isFileSelected ? 'var(--cyan)' : 'var(--bg1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, color: 'var(--bg1)' }}>
-                    {isFileSelected && '✓'}
-                  </div>
-                )}
-              </div>
-              <div className="lib-body">
-                <div className="lib-title">{file.name.replace(/\.[^.]+$/, '')}</div>
-                <div className="lib-meta">{fmtBytes(file.size_bytes)}</div>
-                {file.created && (
-                  <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 8, color: 'var(--t4)', marginTop: 2 }}>{fmtDate(file.created * 1000)}</div>
-                )}
-              </div>
-              <div
-                className="lib-menu"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  setCtxMenu({ file, x: rect.right, y: rect.bottom });
-                }}
-              >
-                <Ico name="dots" />
-              </div>
+              ))}
             </div>
-              );
-            })}
+          ) : (
+            <div className="lib-grid" style={{
+              '--lib-card-min': vaultScale === 'sm' ? '130px' : vaultScale === 'lg' ? '240px' : '175px',
+              '--lib-thumb-h': vaultScale === 'sm' ? '72px' : vaultScale === 'lg' ? '135px' : '100px',
+            }}>
+              {shownFiles.map(file => (
+                <div key={file.path} data-select-key={file.path}
+                  className={'lib-card' + fileMarks(file)} onClick={e => onFileClick(e, file)}>
+                  {fileThumb(file)}
+                  <div className="lib-body">
+                    <div className="lib-title">{file.name.replace(/\.[^.]+$/, '')}</div>
+                    <div className="lib-meta">{fmtBytes(file.size_bytes)}</div>
+                    {file.created && (
+                      <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 8, color: 'var(--t4)', marginTop: 2 }}>{fmtDate(file.created * 1000)}</div>
+                    )}
+                  </div>
+                  {fileMenu(file)}
+                </div>
+              ))}
+            </div>
+          )}
+          {marquee.overlay}
         </div>
       )}
 
@@ -1008,6 +1082,25 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
             <Mascot src={MASCOT_FRUSTRATED} className="error-mascot" wrapClass="error-mascot" style={{ width: 80 }} />
             <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 11, color: 'var(--t2)', textAlign: 'center' }}>
               Delete <span style={{ color: 'var(--red)' }}>{deleteConfirm.name}</span>?<br />
+              <span style={{ color: 'var(--t4)', fontSize: 9 }}>This cannot be undone.</span>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {deleteManyConfirm && selectedFiles.size > 0 && (
+        <Modal title="CONFIRM DELETE" onClose={() => setDeleteManyConfirm(false)}
+          footer={
+            <>
+              <button className="btn btn-secondary btn-sm" onClick={() => setDeleteManyConfirm(false)}>CANCEL</button>
+              <button className="btn btn-danger btn-sm" onClick={handleDeleteSelected}>DELETE {selectedFiles.size} PERMANENTLY</button>
+            </>
+          }
+        >
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14 }}>
+            <Mascot src={MASCOT_FRUSTRATED} className="error-mascot" wrapClass="error-mascot" style={{ width: 80 }} />
+            <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 11, color: 'var(--t2)', textAlign: 'center' }}>
+              Delete <span style={{ color: 'var(--red)' }}>{selectedFiles.size} file{selectedFiles.size === 1 ? '' : 's'}</span>?<br />
               <span style={{ color: 'var(--t4)', fontSize: 9 }}>This cannot be undone.</span>
             </div>
           </div>

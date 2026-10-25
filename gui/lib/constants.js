@@ -93,3 +93,9 @@ export const TOUR_MIN_VISIBLE_PX = 4;       // a part thinner than this (a colla
 export const TOUR_CARD_SIZE = { width: 380, height: 240 };  // first guess, before the card is measured (CSS width)
 export const TOUR_CARD_GAP_PX = 14;         // between the part and the card
 export const TOUR_CARD_MARGIN_PX = 12;      // between the card and the window's edge
+
+// Vault: selecting files by dragging a rectangle (components/marquee.jsx)
+export const MARQUEE_START_PX = 5;             // a press that moves less than this is a click
+export const MARQUEE_EDGE_PX = 40;             // dragging this close to the top/bottom scrolls…
+export const MARQUEE_SCROLL_PX = 16;           // …this far each step
+export const MARQUEE_SCROLL_MS = 30;

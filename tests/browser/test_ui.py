@@ -564,3 +564,87 @@ def test_type_how_many_to_randomize_and_play_the_whole_folder(page, downloads, m
     page.locator("[data-tour=vault-play-all]").click()
     expect(page.locator(".notif", has_text="1 files opened")).to_have_count(1, timeout=10_000)
     assert [p.rsplit("/", 1)[-1] for p in played[1]] == ["c song.mp3"]
+
+
+def _selected(page):
+    return sorted(el.get_attribute("data-select-key").rsplit("/", 1)[-1]
+                  for el in page.locator("[data-select-key].file-selected").all())
+
+
+def _drag(page, start, end):
+    page.mouse.move(*start)
+    page.mouse.down()
+    page.mouse.move(*end, steps=8)
+    page.mouse.up()
+
+
+def _middle(locator):
+    box = locator.bounding_box()
+    return box["x"] + box["width"] / 2, box["y"] + box["height"] / 2
+
+
+def test_list_view_and_selecting_files_like_a_file_explorer(page, downloads, monkeypatch):
+    """A tester asked for a compact view and file-explorer selection: drag a
+    rectangle, Ctrl+click, Shift+click, Ctrl+A, Esc, Delete."""
+    from mellow import vault
+    played = []
+    monkeypatch.setattr(vault, "launch_playlist", lambda paths, open_fn: played.append(paths) or "vlc_direct")
+    folder = downloads / "Crate"
+    folder.mkdir()
+    names = [f"{c} song.mp3" for c in "abcdef"]
+    for name in names:
+        (folder / name).write_bytes(b"\0" * 64)
+    (downloads / "Other").mkdir()
+    (downloads / "Other" / "z song.mp3").write_bytes(b"\0" * 64)
+    _open_folder(page, "Crate")
+    page.locator(".pill", has_text="LIST").click()
+    rows = page.locator(".lib-row")
+    expect(rows).to_have_count(6)
+
+    # A rectangle from the 2nd row's name down to the 4th's
+    row = {n: page.locator(f"[data-select-key$='{n}']") for n in names}
+    _drag(page, _middle(row["b song.mp3"]), _middle(row["d song.mp3"]))
+    expect(page.locator(".vault-sel-count")).to_have_text("3 SELECTED")
+    assert _selected(page) == ["b song.mp3", "c song.mp3", "d song.mp3"]
+
+    row["f song.mp3"].click(modifiers=["Control"])                     # one more
+    assert _selected(page) == ["b song.mp3", "c song.mp3", "d song.mp3", "f song.mp3"]
+    row["e song.mp3"].click(modifiers=["Shift"])                       # range from the last one clicked
+    assert _selected(page) == ["e song.mp3", "f song.mp3"]
+    page.keyboard.press("Escape")
+    expect(page.locator(".vault-sel-hint")).to_be_visible()
+    page.keyboard.press("Control+a")
+    expect(page.locator(".vault-sel-count")).to_have_text("6 SELECTED")
+
+    page.get_by_role("button", name="▶ PLAY (6)").click()
+    _notification(page, "Playing")
+    assert sorted(p.rsplit("/", 1)[-1] for p in played[0]) == names
+
+    # Delete asks first
+    page.keyboard.press("Delete")
+    dialog = page.locator(".modal-box")
+    expect(dialog).to_contain_text("6 files")
+    dialog.get_by_role("button", name="CANCEL").click()
+    assert sorted(p.name for p in folder.iterdir()) == names
+
+    # A click on empty space lets go; in the cards, dragging works the same
+    box = page.locator(".vault-files").bounding_box()
+    page.mouse.click(box["x"] + box["width"] / 2, box["y"] + box["height"] - 8)
+    expect(page.locator(".vault-sel-hint")).to_be_visible()
+    page.locator(".pill", has_text="SM").click()
+    cards = page.locator(".lib-card")
+    expect(cards).to_have_count(6)
+    _drag(page, _middle(cards.nth(0)), _middle(cards.nth(1)))
+    assert _selected(page) == ["a song.mp3", "b song.mp3"]
+    page.locator(".btn-danger", has_text="DELETE (2)").click()
+    page.locator(".modal-box").get_by_role("button", name="DELETE 2 PERMANENTLY").click()
+    expect(cards).to_have_count(4)
+    assert sorted(p.name for p in folder.iterdir() if p.suffix == ".mp3") == names[2:]
+
+    # A selection stays with its folder
+    page.keyboard.press("Control+a")
+    expect(page.locator(".vault-sel-count")).to_have_text("4 SELECTED")
+    page.locator(".vbc-root").click()
+    page.locator(".vault-folder-card", has_text="Other").click()
+    expect(page.locator(".lib-card")).to_have_count(1)
+    expect(page.locator(".vault-sel-hint")).to_be_visible()
