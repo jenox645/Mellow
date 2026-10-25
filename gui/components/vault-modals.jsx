@@ -239,6 +239,11 @@ export function SyncPlaylistModal({ folder, onClose, showNotif, onRefreshVault, 
   const [previewing, setPreviewing] = React.useState(false);
   const [confirming, setConfirming] = React.useState(false);
   const [conflictDialog, setConflictDialog] = React.useState(false);
+  // Format choices are the folder's settings: saved as they change (not only
+  // by this dialog's SYNC NOW), so the folder's own SYNC NOW, SYNC ALL and
+  // auto-sync use them too. Loading them when the dialog opens saves nothing.
+  const [formatTouched, setFormatTouched] = React.useState(false);
+  const choose = setter => value => { setter(value); setFormatTouched(true); };
 
   // Auto-sync schedule for this folder ('inherit' follows the Config default)
   const [schedule, setSchedule] = React.useState(null);
@@ -285,6 +290,12 @@ export function SyncPlaylistModal({ folder, onClose, showNotif, onRefreshVault, 
       : { sync_audio: false, quality: syncQuality, container: syncContainer }),
     ...syncToggles,
   });
+
+  React.useEffect(() => {
+    if (!formatTouched) return;
+    API.post('/api/vault/sync-format', { path: folder.path, ...buildFmtOpts() })
+      .catch(e => showNotif('Options Not Saved', e.message, 'error'));
+  }, [formatTouched, syncMediaType, syncQuality, syncContainer, syncAudioFmt, syncToggles]);
 
   const doSync = (fmtOpts) => {
     const activePlaylists = playlists.filter(p => !selectedPlaylists || selectedPlaylists.has(p));
@@ -388,7 +399,7 @@ export function SyncPlaylistModal({ folder, onClose, showNotif, onRefreshVault, 
     <Modal title={'SYNC — ' + folder.name.toUpperCase()} onClose={onClose} footer={
       hasPlaylist ? (
         <>
-          <button className="btn btn-secondary btn-sm" onClick={onClose}>CANCEL</button>
+          <button className="btn btn-secondary btn-sm" onClick={onClose}>CLOSE</button>
           <button className="btn btn-primary btn-sm" onClick={handleSync} disabled={syncing || previewing}>
             {previewing ? 'CHECKING...' : syncing ? 'SYNCING...' : syncMode === 'mirror' ? 'PREVIEW MIRROR' : 'SYNC NOW'}
           </button>
@@ -428,8 +439,8 @@ export function SyncPlaylistModal({ folder, onClose, showNotif, onRefreshVault, 
           <div className="form-row">
             <div className="form-label">MEDIA TYPE</div>
             <div className="opts-tabs" style={{ marginTop: 0 }}>
-              <div className={'opts-tab' + (syncMediaType === 'video' ? ' active' : '')} onClick={() => setSyncMediaType('video')}>VIDEO</div>
-              <div className={'opts-tab' + (syncMediaType === 'audio' ? ' active' : '')} onClick={() => setSyncMediaType('audio')}>AUDIO ONLY</div>
+              <div className={'opts-tab' + (syncMediaType === 'video' ? ' active' : '')} onClick={() => choose(setSyncMediaType)('video')}>VIDEO</div>
+              <div className={'opts-tab' + (syncMediaType === 'audio' ? ' active' : '')} onClick={() => choose(setSyncMediaType)('audio')}>AUDIO ONLY</div>
             </div>
           </div>
           {syncMediaType === 'video' ? (
@@ -438,7 +449,7 @@ export function SyncPlaylistModal({ folder, onClose, showNotif, onRefreshVault, 
                 <div className="form-label">QUALITY</div>
                 <div className="pills">
                   {QUALITIES.map(q => (
-                    <div key={q} className={'pill' + (syncQuality === q ? ' active' : '')} onClick={() => setSyncQuality(q)}>{q.toUpperCase()}</div>
+                    <div key={q} className={'pill' + (syncQuality === q ? ' active' : '')} onClick={() => choose(setSyncQuality)(q)}>{q.toUpperCase()}</div>
                   ))}
                 </div>
               </div>
@@ -446,7 +457,7 @@ export function SyncPlaylistModal({ folder, onClose, showNotif, onRefreshVault, 
                 <div className="form-label">CONTAINER</div>
                 <div className="pills">
                   {CONTAINERS.map(c => (
-                    <div key={c} className={'pill' + (syncContainer === c ? ' active' : '')} onClick={() => setSyncContainer(c)}>{c.toUpperCase()}</div>
+                    <div key={c} className={'pill' + (syncContainer === c ? ' active' : '')} onClick={() => choose(setSyncContainer)(c)}>{c.toUpperCase()}</div>
                   ))}
                 </div>
               </div>
@@ -456,7 +467,7 @@ export function SyncPlaylistModal({ folder, onClose, showNotif, onRefreshVault, 
               <div className="form-label">FORMAT</div>
               <div className="pills">
                 {AUDIO_FORMATS.map(f => (
-                  <div key={f} className={'pill' + (syncAudioFmt === f ? ' active' : '')} onClick={() => setSyncAudioFmt(f)}>{f.toUpperCase()}</div>
+                  <div key={f} className={'pill' + (syncAudioFmt === f ? ' active' : '')} onClick={() => choose(setSyncAudioFmt)(f)}>{f.toUpperCase()}</div>
                 ))}
               </div>
             </div>
@@ -486,7 +497,11 @@ export function SyncPlaylistModal({ folder, onClose, showNotif, onRefreshVault, 
           <div className="form-row">
             <div className="form-label">OPTIONS</div>
             <FormatToggles values={syncToggles} media={syncMediaType === 'audio' ? 'audio' : 'video'}
-              onChange={(key, value) => setSyncToggles(t => ({ ...t, [key]: value }))} />
+              onChange={(key, value) => choose(setSyncToggles)(t => ({ ...t, [key]: value }))} />
+            <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: 'var(--t3)', marginTop: 6 }}>
+              Format and options are saved for this folder as you pick them: the folder&apos;s SYNC NOW, SYNC ALL
+              and auto-sync use them too.
+            </div>
           </div>
         </>
       )}

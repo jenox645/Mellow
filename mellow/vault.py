@@ -23,6 +23,7 @@ from .constants import (
     IMAGE_EXTS,
     M3U8_TEMP_MAX_AGE_SECS,
     MEDIA_EXTS,
+    PLAYER_ARGV_MAX_CHARS,
     SUBTITLE_EXTS,
     SYNC_PLAN_HAVE_LIST_MAX,
     THUMB_FFMPEG_SEEK_SECS,
@@ -944,30 +945,38 @@ def launch_playlist(paths: list[str], open_file_fn: Callable[[str], None]) -> st
     def _find(candidates: list[str]) -> str | None:
         return next((c for c in candidates if os.path.exists(c)), None)
 
+    # Many files (PLAY ALL of a big folder) go to the player as one playlist
+    # file: a command line that long fails to start on Windows
+    def _items() -> list[str]:
+        if sum(len(p) + 3 for p in valid) <= PLAYER_ARGV_MAX_CHARS:
+            return valid
+        return [_write_m3u8(valid)]
+
     vlc = _find(_VLC_PATHS) or shutil.which("vlc")
     if vlc:
-        threading.Thread(
-            target=lambda: subprocess.Popen([vlc, "--playlist-enqueue"] + valid),
-            daemon=True,
-        ).start()
+        args = [vlc, "--playlist-enqueue", *_items()]
+        threading.Thread(target=lambda: subprocess.Popen(args), daemon=True).start()
         return "vlc_direct"
 
     mpv = _find(_MPV_PATHS) or shutil.which("mpv")
     if mpv:
-        threading.Thread(
-            target=lambda: subprocess.Popen([mpv] + valid),
-            daemon=True,
-        ).start()
+        args = [mpv, *_items()]
+        threading.Thread(target=lambda: subprocess.Popen(args), daemon=True).start()
         return "mpv_direct"
 
     mpc = _find(_MPC_PATHS)
     if mpc:
-        threading.Thread(
-            target=lambda: subprocess.Popen([mpc] + valid),
-            daemon=True,
-        ).start()
+        args = [mpc, *_items()]
+        threading.Thread(target=lambda: subprocess.Popen(args), daemon=True).start()
         return "mpc_direct"
 
+    temp_path = _write_m3u8(valid)
+    threading.Thread(target=open_file_fn, args=(temp_path,), daemon=True).start()
+    return temp_path
+
+
+def _write_m3u8(paths: list[str]) -> str:
+    """A UTF-8 playlist of `paths` in the temp folder; returns its path."""
     # Sweep playlist temp files older than a day before writing a new one
     tmp_dir = Path(tempfile.gettempdir())
     try:
@@ -978,13 +987,11 @@ def launch_playlist(paths: list[str], open_file_fn: Callable[[str], None]) -> st
     except OSError:
         pass
 
-    lines = ["#EXTM3U"] + [p.replace("\\", "/") for p in valid]
+    lines = ["#EXTM3U"] + [p.replace("\\", "/") for p in paths]
     content = "\n".join(lines)
     with tempfile.NamedTemporaryFile(mode="wb", prefix="mellow_", suffix=".m3u8", delete=False) as f:
         f.write(b"\xef\xbb\xbf" + content.encode("utf-8"))
-        temp_path = f.name
-    threading.Thread(target=open_file_fn, args=(temp_path,), daemon=True).start()
-    return temp_path
+        return f.name
 
 
 # ── Sync opts builder ─────────────────────────────────────────────────────────

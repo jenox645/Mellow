@@ -264,10 +264,27 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
       const j = Math.floor(Math.random() * (i + 1));
       [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
     }
-    setRandomizedFiles(shuffled.slice(0, Math.min(randomizerCount, shuffled.length)));
+    setRandomizedFiles(shuffled.slice(0, Math.min(Number(randomizerCount) || 1, shuffled.length)));
     setSelectedFiles(new Set());
     setSelectionMode(true);
   }, [files, randomizerCount, showNotif]);
+
+  // The open folder's files as shown: searched, then sorted
+  const shownFiles = React.useMemo(() => files
+    .filter(f => !vaultSearch || f.name.toLowerCase().includes(vaultSearch.toLowerCase()))
+    .sort((a, b) => {
+      if (vaultSort === 'size') return (b.size_bytes || 0) - (a.size_bytes || 0);
+      if (vaultSort === 'date') return (b.created || 0) - (a.created || 0);
+      return a.name.localeCompare(b.name);
+    }), [files, vaultSearch, vaultSort]);
+
+  const handlePlayAll = React.useCallback(() => {
+    const paths = shownFiles.map(f => f.path);
+    if (!paths.length) return;
+    API.post('/api/vault/play-files', { paths })
+      .then(() => showNotif('Playing', paths.length + ' files opened in player', 'success'))
+      .catch(e => showNotif('Error', e.message, 'error'));
+  }, [shownFiles, showNotif]);
 
   const handlePlayRandom = React.useCallback(() => {
     const randPaths = (randomizedFiles || []).map(f => f.path);
@@ -819,15 +836,26 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
               <option value="date">SORT BY: DATE</option>
             </select>
           </div>
-          <div className="vault-lib-count">TOTAL: <span>{files.filter(f => !vaultSearch || f.name.toLowerCase().includes(vaultSearch.toLowerCase())).length} ITEMS</span></div>
+          <div className="vault-lib-count">TOTAL: <span>{shownFiles.length} ITEMS</span></div>
           <div className="randomizer-bar" data-tour="vault-random">
             <span className="opts-label">RANDOMIZE</span>
             <div className="rand-stepper">
-              <button className="rand-step-btn" onClick={() => setRandomizerCount(c => Math.max(1, c - 1))}>−</button>
-              <span className="rand-step-val">{randomizerCount}</span>
-              <button className="rand-step-btn" onClick={() => setRandomizerCount(c => Math.min(files.length || 99, c + 1))}>+</button>
+              <button className="rand-step-btn" onClick={() => setRandomizerCount(c => Math.max(1, (Number(c) || 1) - 1))}>−</button>
+              {/* Type a number too: stepping to 150 one click at a time was no fun */}
+              <input className="rand-step-val" type="number" inputMode="numeric" min={1} max={Math.max(1, files.length)}
+                aria-label="How many files to pick" value={randomizerCount}
+                onFocus={e => e.target.select()}
+                onChange={e => setRandomizerCount(e.target.value === '' ? ''
+                  : Math.max(1, Math.min(Math.max(1, files.length), parseInt(e.target.value, 10) || 1)))}
+                onBlur={() => setRandomizerCount(c => Number(c) || 1)}
+                onKeyDown={e => { if (e.key === 'Enter') handleRandomize(); }} />
+              <button className="rand-step-btn" onClick={() => setRandomizerCount(c => Math.min(files.length || 99, (Number(c) || 0) + 1))}>+</button>
             </div>
             <button className="btn btn-secondary btn-sm" onClick={handleRandomize}>PICK</button>
+            <button className="btn btn-primary btn-sm" data-tour="vault-play-all" onClick={handlePlayAll}
+              disabled={!shownFiles.length} title="Play every file shown here, in this order">
+              ▶ PLAY ALL ({shownFiles.length})
+            </button>
             {randomizedFiles && (
               <>
                 <span style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 9, color: 'var(--cyan)' }}>
@@ -870,14 +898,7 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
         </div>
       ) : (
         <div className="lib-grid" data-tour="vault-files" style={{ '--lib-card-min': vaultScale === 'sm' ? '130px' : vaultScale === 'lg' ? '240px' : '175px' }}>
-          {files
-            .filter(f => !vaultSearch || f.name.toLowerCase().includes(vaultSearch.toLowerCase()))
-            .sort((a, b) => {
-              if (vaultSort === 'size') return (b.size_bytes || 0) - (a.size_bytes || 0);
-              if (vaultSort === 'date') return (b.created || 0) - (a.created || 0);
-              return a.name.localeCompare(b.name);
-            })
-            .map(file => {
+          {shownFiles.map(file => {
               const isRandSelected = randomizedFiles && randomizedFiles.some(f => f.path === file.path);
               const isFileSelected = selectedFiles.has(file.path);
               return (

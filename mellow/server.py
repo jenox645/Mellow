@@ -47,6 +47,7 @@ from .config import (
 from .constants import (
     API_URL_MAX_CHARS,
     APP_RELEASES_PAGE,
+    APP_REPO_PAGE,
     AUDIO_FORMATS,
     HISTORY_DEFAULT_LIMIT,
     HISTORY_MAX_LIMIT,
@@ -533,8 +534,13 @@ def api_app_update_install() -> Response:
 
 @app.route("/api/open-release", methods=["POST"])
 def api_open_release() -> Response:
-    """Open the latest release page (a fixed URL: this can't open arbitrary pages)."""
-    threading.Thread(target=desktop.open_url, args=(APP_RELEASES_PAGE,), daemon=True).start()
+    """Open the latest release page, or the project's page with `page: "repo"`
+    (fixed URLs: this can't open arbitrary pages)."""
+    page = (request.get_json(force=True, silent=True) or {}).get("page", "release")
+    url = {"release": APP_RELEASES_PAGE, "repo": APP_REPO_PAGE}.get(page)
+    if url is None:
+        return jsonify({"error": "unknown page"}), 400
+    threading.Thread(target=desktop.open_url, args=(url,), daemon=True).start()
     return jsonify({"ok": True})
 
 
@@ -1173,6 +1179,29 @@ def api_vault_sync() -> Response:
         return jsonify({"error": "No matching playlists linked to this folder"}), 400
     return jsonify({"ok": True, "queued": True, "job_id": job["id"],
                     "playlists_synced": len(job.get("multi_urls") or [])})
+
+
+@app.route("/api/vault/sync-format", methods=["POST"])
+def api_vault_sync_format() -> Response:
+    """Save a folder's sync options without syncing. The sync dialog saves
+    them as they change: SYNC NOW in the folder, SYNC ALL and auto-sync used
+    whatever the folder had before unless the dialog's own SYNC NOW was used."""
+    data = request.get_json(force=True) or {}
+    path = (data.get("path") or "").strip()
+    if not path or path not in load_config().get("vault_playlists", {}):
+        return jsonify({"error": "Not a vault folder linked to a playlist"}), 400
+    chosen = {k: data[k] for k in _vault.SYNC_FORMAT_KEYS if k in data}
+    allowed = {"quality": tuple(downloader.QUALITY_MAP), "container": VIDEO_CONTAINERS,
+               "audio_format": AUDIO_FORMATS, "audio_quality": tuple(downloader.AUDIO_QUALITY_MAP)}
+    for key, value in chosen.items():
+        if key in allowed and value not in allowed[key]:
+            return jsonify({"error": f"{key} must be one of: {', '.join(allowed[key])}"}), 400
+        if key not in allowed and not isinstance(value, bool):
+            return jsonify({"error": f"{key} must be true or false"}), 400
+    if not chosen:
+        return jsonify({"error": "No sync options given"}), 400
+    cfg = update_config(lambda c: _vault.remember_sync_format(c, path, chosen))
+    return jsonify({"ok": True, "sync_format": cfg["vault_sync_formats"][path]})
 
 
 @app.route("/api/vault/sync-all", methods=["POST"])

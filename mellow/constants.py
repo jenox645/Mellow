@@ -100,6 +100,7 @@ UPDATE_CHECK_TIMEOUT_SECS: int = 15  # GitHub releases lookup for a newer Mellow
 APP_REPO: str = "jenox645/Mellow"
 APP_RELEASES_API: str = f"https://api.github.com/repos/{APP_REPO}/releases/latest"
 APP_RELEASES_PAGE: str = f"https://github.com/{APP_REPO}/releases/latest"
+APP_REPO_PAGE: str = f"https://github.com/{APP_REPO}"
 APP_DOWNLOADS_PREFIX: str = f"https://github.com/{APP_REPO}/releases/download/"
 # Release asset names — written by .github/workflows/release.yml (a test keeps them in step)
 APP_ASSET_NAMES: dict = {
@@ -114,6 +115,9 @@ DOWNLOAD_CHUNK_BYTES: int = 256 * 1024
 APP_UPDATE_EXIT_DELAY_SECS: float = 1.0  # lets the "restarting" event reach the page
 DIALOG_TIMEOUT_SECS: int = 120       # how long a native file/folder dialog may stay open
 M3U8_TEMP_MAX_AGE_SECS: int = 86400  # playlist temp files older than this are swept
+# Files handed to a player on its command line up to this many characters, then as
+# one .m3u8 (Windows refuses a command line over 32767; PLAY ALL of a big folder)
+PLAYER_ARGV_MAX_CHARS: int = 24000
 FFMPEG_RECHECK_SECS: int = 30        # how often a missing ffmpeg is looked for again
 # GET FFMPEG: static builds with a published checksums.sha256 (Windows, Linux).
 # The release tagged "latest", not GitHub's latest release (a dated daily build
