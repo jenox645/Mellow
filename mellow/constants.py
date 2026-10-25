@@ -101,6 +101,8 @@ APP_REPO: str = "jenox645/Mellow"
 APP_RELEASES_API: str = f"https://api.github.com/repos/{APP_REPO}/releases/latest"
 APP_RELEASES_PAGE: str = f"https://github.com/{APP_REPO}/releases/latest"
 APP_REPO_PAGE: str = f"https://github.com/{APP_REPO}"
+# Config's GET NODE.JS: a JavaScript runtime yt-dlp can solve YouTube's challenges with
+NODEJS_DOWNLOAD_PAGE: str = "https://nodejs.org/en/download"
 APP_DOWNLOADS_PREFIX: str = f"https://github.com/{APP_REPO}/releases/download/"
 # Release asset names — written by .github/workflows/release.yml (a test keeps them in step)
 APP_ASSET_NAMES: dict = {
@@ -119,6 +121,7 @@ M3U8_TEMP_MAX_AGE_SECS: int = 86400  # playlist temp files older than this are s
 # one .m3u8 (Windows refuses a command line over 32767; PLAY ALL of a big folder)
 PLAYER_ARGV_MAX_CHARS: int = 24000
 FFMPEG_RECHECK_SECS: int = 30        # how often a missing ffmpeg is looked for again
+JS_RUNTIME_RECHECK_SECS: int = 60    # how often Config's JavaScript runtime line looks again
 # GET FFMPEG: static builds with a published checksums.sha256 (Windows, Linux).
 # The release tagged "latest", not GitHub's latest release (a dated daily build
 # whose files are named differently)

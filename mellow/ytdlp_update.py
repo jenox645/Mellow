@@ -62,17 +62,28 @@ def bundled_version() -> str:
         return "0"
 
 
+# Packages the zipapp carries that must come from it together: yt-dlp only
+# takes yt-dlp-ejs' solver scripts (YouTube's player challenges) of the
+# version it was released with
+OVERLAY_PACKAGES: tuple[str, ...] = ("yt_dlp", "yt_dlp_ejs")
+
+
+def _overlay_package(name: str) -> bool:
+    return any(name == p or name.startswith(p + ".") for p in OVERLAY_PACKAGES)
+
+
 class _OverlayFinder(importlib.abc.MetaPathFinder):
-    """Finds yt_dlp and its submodules in the zipapp before any other finder,
-    PyInstaller's frozen importer included."""
+    """Finds yt_dlp, yt_dlp_ejs and their submodules in the zipapp before any
+    other finder, PyInstaller's frozen importer included. A package the zip
+    doesn't have comes from the app as before."""
 
     def __init__(self, zip_path: Path) -> None:
         self.zip_path = str(zip_path)
 
     def find_spec(self, name, path=None, target=None):
-        if name == "yt_dlp":
+        if name in OVERLAY_PACKAGES:
             return importlib.machinery.PathFinder.find_spec(name, [self.zip_path])
-        if name.startswith("yt_dlp.") and path and all(
+        if _overlay_package(name) and path and all(
                 str(p).startswith(self.zip_path) for p in path):
             # A submodule of the overlay's package: from the zip too
             return importlib.machinery.PathFinder.find_spec(name, path)
@@ -80,7 +91,7 @@ class _OverlayFinder(importlib.abc.MetaPathFinder):
 
 
 def _forget_yt_dlp() -> None:
-    for name in [m for m in sys.modules if m == "yt_dlp" or m.startswith("yt_dlp.")]:
+    for name in [m for m in sys.modules if _overlay_package(m)]:
         del sys.modules[name]
 
 

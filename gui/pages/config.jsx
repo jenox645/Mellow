@@ -731,6 +731,28 @@ export function ConfigPage({ config, setConfig, showNotif, installAppUpdate, onA
                   )}
                 </div>
               </div>
+              <div className="settings-row" data-tour="config-js">
+                <div className="settings-label">
+                  <div className="sl-name">JavaScript Runtime</div>
+                  <div className="sl-sub" title={sysInfo.js_runtime ? sysInfo.js_runtime.path : ''}>
+                    {!sysInfo.js_runtime
+                      ? <span style={{ color: 'var(--amber)' }}>None found — YouTube may offer fewer formats. yt-dlp uses Node.js, Deno, QuickJS or Bun</span>
+                      : !sysInfo.js_runtime.supported
+                      ? <span style={{ color: 'var(--amber)' }}>
+                          {sysInfo.js_runtime.name} {sysInfo.js_runtime.version} is too old for yt-dlp (Node.js 22 or newer works)
+                        </span>
+                      : <span style={{ color: 'var(--green)' }}>
+                          {sysInfo.js_runtime.name} {sysInfo.js_runtime.version} — solves YouTube's player challenges
+                        </span>}
+                  </div>
+                </div>
+                <div className="settings-ctrl">
+                  {!(sysInfo.js_runtime && sysInfo.js_runtime.supported) && (
+                    <button className="btn btn-secondary btn-sm" title="Opens nodejs.org in your browser. Once it is installed, restart MellowDLP: it finds Node.js by itself"
+                      onClick={() => API.post('/api/open-release', { page: 'nodejs' }).catch(() => {})}>GET NODE.JS</button>
+                  )}
+                </div>
+              </div>
               <div className="settings-row" data-tour="config-ytdlp">
                 <div className="settings-label">
                   <div className="sl-name">yt-dlp Version</div>
