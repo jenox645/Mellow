@@ -306,7 +306,15 @@ export const TOURS = {
     },
     {
       target: 'vault-select', title: 'Several at once',
-      text: 'SELECT, then click files to tick them: ▶ PLAY plays them together, DELETE removes them all.',
+      text: 'As in a file explorer: drag a rectangle over files, Ctrl+click to add one, Shift+click for a range, '
+        + 'Ctrl+A for all and Esc to let go. ▶ PLAY plays them together, DELETE (or the Delete key) removes them '
+        + 'after asking. SELECT makes a plain click tick files too.',
+    },
+    {
+      target: 'vault-view', title: 'List or cards',
+      text: '☰ LIST shows one line per file (name, type, size, date): many files at a glance. SM, MD and LG are '
+        + 'cards with their thumbnail, small to large.',
+      tip: 'Your choice stays for every folder, and the next time you open MellowDLP.',
     },
     {
       target: 'vault-files', title: 'Your files',
