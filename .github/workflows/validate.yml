@@ -100,9 +100,15 @@ jobs:
           node-version: '22'
           cache: npm
       - name: Install dependencies
+        # Chromium without --with-deps: the runner image has Chrome, so it has the
+        # libraries too, and --with-deps fetched fonts and Xvfb through the slow
+        # Ubuntu mirror until the job timed out. They're installed only when the
+        # browser doesn't start without them
         run: |
           pip install -r requirements.txt -r requirements-dev.txt
-          python -m playwright install --with-deps chromium
+          python -m playwright install chromium
+          python -c "from playwright.sync_api import sync_playwright as p; pw = p().start(); pw.chromium.launch().close(); pw.stop()" \
+            || python -m playwright install-deps chromium
       # ffmpeg the way GET FFMPEG installs it (BtbN's build, from GitHub's CDN,
       # checked against its checksums), not apt's: Ubuntu's mirror served apt's
       # 64 MB of ffmpeg packages at 30 kB/s and ran jobs past their timeout
