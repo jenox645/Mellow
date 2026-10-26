@@ -8,6 +8,10 @@ Each release is a `## X.Y.Z` heading followed by `- **Title**: what it does`
 lines. A pull request that raises `APP_VERSION` adds its section here: CI
 fails without one.
 
+## 2.14.1
+- **Small text you can read**: the little notes under each setting, the file details in the Vault and other small labels were still tiny. They're bigger everywhere, and the explanations and file details are bold.
+- **Start a selection anywhere around your files**: in an open folder, dragging from the empty space next to the toolbar (RANDOMIZE, PLAY ALL, SELECT) or below the last file now draws a selection rectangle too, not only dragging over the files themselves.
+
 ## 2.14.0
 - **YouTube works with Node.js**: YouTube hides its video links behind a small puzzle that needs a JavaScript runtime to solve. yt-dlp only looked for Deno, so with Node.js (or Bun, or QuickJS) installed it had none, and YouTube offered fewer formats or none at all. MellowDLP now uses whichever one is installed. Config → JavaScript Runtime says which one it found; without one, GET NODE.JS opens its download page.
 - **A list view in the Vault**: ☰ LIST, next to SM / MD / LG in an open folder, shows one line per file (name, type, size, date), so a big folder fits on a screen. SM cards are smaller too.

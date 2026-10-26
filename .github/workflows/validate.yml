@@ -100,8 +100,11 @@ jobs:
           node-version: '22'
           cache: npm
       - name: Install dependencies
+        # ffmpeg alone: its recommended extras (GPU drivers, a 27 MB speech model) are
+        # ~100 packages the tests never use, and on a slow mirror they ran the job
+        # past its timeout before a test started
         run: |
-          sudo apt-get update && sudo apt-get install -y ffmpeg
+          sudo apt-get update && sudo apt-get install -y --no-install-recommends -o Acquire::Retries=3 -o Acquire::http::Timeout=30 ffmpeg
           pip install -r requirements.txt -r requirements-dev.txt
           python -m playwright install --with-deps chromium
       - name: Build the frontend

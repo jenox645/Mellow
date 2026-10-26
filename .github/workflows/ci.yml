@@ -43,7 +43,7 @@ jobs:
           cache: npm
 
       - name: Install system deps
-        run: sudo apt-get install -y ffmpeg wget python3-tk
+        run: sudo apt-get install -y --no-install-recommends -o Acquire::Retries=3 -o Acquire::http::Timeout=30 ffmpeg wget python3-tk   # see validate.yml
 
       # build_setup.py installs the Python and npm dependencies itself
       - name: Build
