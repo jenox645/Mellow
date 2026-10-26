@@ -100,13 +100,23 @@ jobs:
           node-version: '22'
           cache: npm
       - name: Install dependencies
-        # ffmpeg alone: its recommended extras (GPU drivers, a 27 MB speech model) are
-        # ~100 packages the tests never use, and on a slow mirror they ran the job
-        # past its timeout before a test started
         run: |
-          sudo apt-get update && sudo apt-get install -y --no-install-recommends -o Acquire::Retries=3 -o Acquire::http::Timeout=30 ffmpeg
           pip install -r requirements.txt -r requirements-dev.txt
           python -m playwright install --with-deps chromium
+      # ffmpeg the way GET FFMPEG installs it (BtbN's build, from GitHub's CDN,
+      # checked against its checksums), not apt's: Ubuntu's mirror served apt's
+      # 64 MB of ffmpeg packages at 30 kB/s and ran jobs past their timeout
+      - name: Install ffmpeg
+        run: |
+          python - <<'PY'
+          import sys
+          from mellow import ffmpeg_install
+          events = []
+          ffmpeg_install.install(events.append)
+          print(events[-1])
+          sys.exit(events[-1]["stage"] != "done")
+          PY
+          echo "$HOME/.mellow_dlp_ffmpeg" >> "$GITHUB_PATH"
       - name: Build the frontend
         run: python build_setup.py --frontend-only
       - name: Browser tests
