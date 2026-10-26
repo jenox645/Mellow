@@ -43,7 +43,9 @@ jobs:
           cache: npm
 
       - name: Install system deps
-        run: sudo apt-get install -y ffmpeg wget python3-tk
+        # tkinter only (as release.yml's build): the build and its smoke test need no
+        # ffmpeg, and apt's ffmpeg once took 27 minutes from a slow Ubuntu mirror
+        run: sudo apt-get install -y --no-install-recommends python3-tk
 
       # build_setup.py installs the Python and npm dependencies itself
       - name: Build

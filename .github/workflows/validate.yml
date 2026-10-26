@@ -100,10 +100,29 @@ jobs:
           node-version: '22'
           cache: npm
       - name: Install dependencies
+        # Chromium without --with-deps: the runner image has Chrome, so it has the
+        # libraries too, and --with-deps fetched fonts and Xvfb through the slow
+        # Ubuntu mirror until the job timed out. They're installed only when the
+        # browser doesn't start without them
         run: |
-          sudo apt-get update && sudo apt-get install -y ffmpeg
           pip install -r requirements.txt -r requirements-dev.txt
-          python -m playwright install --with-deps chromium
+          python -m playwright install chromium
+          python -c "from playwright.sync_api import sync_playwright as p; pw = p().start(); pw.chromium.launch().close(); pw.stop()" \
+            || python -m playwright install-deps chromium
+      # ffmpeg the way GET FFMPEG installs it (BtbN's build, from GitHub's CDN,
+      # checked against its checksums), not apt's: Ubuntu's mirror served apt's
+      # 64 MB of ffmpeg packages at 30 kB/s and ran jobs past their timeout
+      - name: Install ffmpeg
+        run: |
+          python - <<'PY'
+          import sys
+          from mellow import ffmpeg_install
+          events = []
+          ffmpeg_install.install(events.append)
+          print(events[-1])
+          sys.exit(events[-1]["stage"] != "done")
+          PY
+          echo "$HOME/.mellow_dlp_ffmpeg" >> "$GITHUB_PATH"
       - name: Build the frontend
         run: python build_setup.py --frontend-only
       - name: Browser tests
