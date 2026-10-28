@@ -29,6 +29,7 @@ ROOT = Path(__file__).resolve().parents[2]
 LOCAL_CHROMIUM = Path("/opt/pw-browsers/chromium")
 SLOW_CHUNK = 64 * 1024
 SLOW_CHUNK_DELAY_SECS = 0.25
+CRAWL_CHUNK = 16 * 1024          # /crawl/: slow enough to stop the app mid-file
 
 CLIPS = {            # name: (seconds, test pattern)
     "clip": (2, "testsrc"),
@@ -99,7 +100,8 @@ def media_site(tmp_path_factory):
     """A tiny video site: /<name>.mp4, /slow/<name>.mp4, /playlist (three clips),
     /playlist-slow (three clips served slowly), /playlist-long-first (a slow
     long clip, then two quick ones) and
-    /playlist-dash (two videos with separate audio, see DASH_AUDIO_REFUSED) and
+    /playlist-dash (two videos with separate audio, see DASH_AUDIO_REFUSED),
+    /playlist-crash (three quick clips, then the long one crawling) and
     /titled/<name> (a page whose one video is named LONG_TITLE)."""
     folder = tmp_path_factory.mktemp("media")
     _make_clips(folder)
@@ -123,6 +125,27 @@ def media_site(tmp_path_factory):
                     time.sleep(SLOW_CHUNK_DELAY_SECS)
         return Response(chunks(), mimetype="video/mp4",
                         headers={"Content-Length": str(path.stat().st_size)})
+
+    @site.route("/crawl/<name>.mp4")
+    def crawl(name):
+        """Like /slow/, slower: the app can be stopped in the middle of the file"""
+        path = folder / f"{name}.mp4"
+        if not path.exists():
+            abort(404)
+
+        def chunks():
+            with open(path, "rb") as f:
+                while chunk := f.read(CRAWL_CHUNK):
+                    yield chunk
+                    time.sleep(SLOW_CHUNK_DELAY_SECS)
+        return Response(chunks(), mimetype="video/mp4",
+                        headers={"Content-Length": str(path.stat().st_size)})
+
+    @site.route("/playlist-crash")
+    def playlist_crash():
+        return ("<html><head><title>Crash Mix</title></head><body>"
+                '<video src="/clip.mp4"></video><video src="/second.mp4"></video>'
+                '<video src="/third.mp4"></video><video src="/crawl/long.mp4"></video></body></html>')
 
     @site.route("/playlist")
     def playlist():
