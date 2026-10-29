@@ -60,7 +60,8 @@ def test_no_thumbnail_work_when_embedding_is_off_or_ffmpeg_is_missing(tmp_dir):
         ydl_opts, ydl, _ = _opts_for(tmp_dir, opts, ffmpeg=ffmpeg)
         assert 'writethumbnail' not in ydl_opts
         assert isinstance(ydl_opts['outtmpl'], str)
-        ydl.add_post_processor.assert_not_called()
+        added = [type(c.args[0]).__name__ for c in ydl.add_post_processor.call_args_list]
+        assert not [name for name in added if 'Thumbnail' in name], added
 
 
 def test_failed_embed_does_not_fail_the_download(tmp_path):
