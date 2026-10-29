@@ -109,6 +109,15 @@ export const TOURS = {
       ] },
     },
     {
+      target: 'feed-file-name', title: 'Name the file',
+      missing: 'Shows up once a single video is analyzed.',
+      text: 'The name the file will be saved under, from Config\'s file name template. Change it before DOWNLOAD; '
+        + 'the extension follows the format you pick, and ↺ goes back to the template\'s name.',
+      example: { onlyMissing: true, kind: 'rows', rows: [
+        { text: 'Never Gonna Give You Up (Live)', sub: '.mp3 — typed over the video\'s title', badge: 'FILE NAME', tone: 'cyan' },
+      ] },
+    },
+    {
       target: 'feed-from-list', title: 'A video from a playlist or Mix',
       missing: 'Shows up when a link was copied while a playlist or YouTube Mix played.',
       text: 'A link copied while a playlist or Mix plays ("watch?v=…&list=…") names both the video and the list. '

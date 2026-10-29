@@ -51,6 +51,15 @@ export function FeedPage({ dlState, stats, sysInfo, refreshStats, showNotif, swi
   const [endTime, setEndTime] = useSessionState('feed_endTime', '');
   const [customFmt, setCustomFmt] = useSessionState('feed_customFmt', '');
   const [downloadPath, setDownloadPath] = useSessionState('feed_downloadPath', '');
+  // FILE NAME: this video's own file name (null = the one Config's template gives),
+  // kept with the video it was typed for: another analysis starts from its own
+  const [fileNameFor, setFileNameFor] = useSessionState('feed_fileName', { url: '', name: null });
+  const fileName = info && fileNameFor.url === info.webpage_url ? fileNameFor.name : null;
+  const setFileName = name => setFileNameFor({ url: info && info.webpage_url, name });
+  // Sent only when it differs from the default (empty = the default)
+  const customFileName = info && !info.is_playlist && fileName && fileName.trim() !== (info.file_name || '')
+    ? fileName.trim() : '';
+  const fileExt = mode === 'audio' ? (audioFmt === 'aac' ? 'm4a' : audioFmt) : container;
 
   const prevUrl = React.useRef(url);
   React.useEffect(() => {
@@ -341,11 +350,12 @@ export function FeedPage({ dlState, stats, sysInfo, refreshStats, showNotif, swi
       ...(downloadPath ? { output_dir: downloadPath } : {}),
       ...(playlistItemsParam ? { playlist_items: playlistItemsParam } : {}),
       ...(chosenChapters.length ? { chapters: chosenChapters } : {}),
+      ...(customFileName ? { file_name: customFileName } : {}),
       scheduled: scheduleLater,
       ...extra,
     }).then(d => { onQueued(d); if (info && info.is_playlist) onListQueued(d); })
       .catch(e => { showNotif('Error', e.message, 'error'); setSubmitting(false); });
-  }, [url, mode, quality, container, audioFmt, audioQuality, toggles, startTime, endTime, customFmt, downloadPath, playlistItems, info, showNotif, scheduleLater, onQueued, onListQueued, chosenChapters]);
+  }, [url, mode, quality, container, audioFmt, audioQuality, toggles, startTime, endTime, customFmt, downloadPath, playlistItems, info, showNotif, scheduleLater, onQueued, onListQueued, chosenChapters, customFileName]);
 
   // Keep ref in sync with latest startDownload (assigned during render, safe to read in callbacks)
   startDownloadRef.current = startDownload;
@@ -661,6 +671,20 @@ export function FeedPage({ dlState, stats, sysInfo, refreshStats, showNotif, swi
                     <span className="info-prev-link" onClick={() => { setUrl(info.from_list.url); handleAnalyze(info.from_list.url, true); }}>
                       {info.from_list.mix ? 'THE WHOLE MIX' : 'THE WHOLE PLAYLIST'}
                     </span>
+                  </div>
+                )}
+                {!info.is_playlist && info.file_name && (
+                  <div className="info-filename" data-tour="feed-file-name">
+                    <span className="info-filename-label">FILE NAME</span>
+                    <input className="info-filename-input" aria-label="File name" spellCheck={false}
+                      value={fileName ?? info.file_name} placeholder={info.file_name}
+                      title="The downloaded file's name: change it before DOWNLOAD (empty = the name above)"
+                      onChange={e => setFileName(e.target.value)} />
+                    <span className="info-filename-ext">{chosenChapters.length ? ' - 01 …' : ''}.{fileExt}</span>
+                    {fileName !== null && fileName !== info.file_name && (
+                      <button className="btn btn-secondary btn-sm info-filename-reset" title="Back to the name Config's file name template gives"
+                        onClick={() => setFileName(null)}>↺</button>
+                    )}
                   </div>
                 )}
                 <div className="info-tags">
