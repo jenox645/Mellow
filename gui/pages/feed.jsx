@@ -51,6 +51,15 @@ export function FeedPage({ dlState, stats, sysInfo, refreshStats, showNotif, swi
   const [endTime, setEndTime] = useSessionState('feed_endTime', '');
   const [customFmt, setCustomFmt] = useSessionState('feed_customFmt', '');
   const [downloadPath, setDownloadPath] = useSessionState('feed_downloadPath', '');
+  // FILE NAME: this video's own file name (null = the one Config's template gives),
+  // kept with the video it was typed for: another analysis starts from its own
+  const [fileNameFor, setFileNameFor] = useSessionState('feed_fileName', { url: '', name: null });
+  const fileName = info && fileNameFor.url === info.webpage_url ? fileNameFor.name : null;
+  const setFileName = name => setFileNameFor({ url: info && info.webpage_url, name });
+  // Sent only when it differs from the default (empty = the default)
+  const customFileName = info && !info.is_playlist && fileName && fileName.trim() !== (info.file_name || '')
+    ? fileName.trim() : '';
+  const fileExt = mode === 'audio' ? (audioFmt === 'aac' ? 'm4a' : audioFmt) : container;
 
   const prevUrl = React.useRef(url);
   React.useEffect(() => {
@@ -341,11 +350,12 @@ export function FeedPage({ dlState, stats, sysInfo, refreshStats, showNotif, swi
       ...(downloadPath ? { output_dir: downloadPath } : {}),
       ...(playlistItemsParam ? { playlist_items: playlistItemsParam } : {}),
       ...(chosenChapters.length ? { chapters: chosenChapters } : {}),
+      ...(customFileName ? { file_name: customFileName } : {}),
       scheduled: scheduleLater,
       ...extra,
     }).then(d => { onQueued(d); if (info && info.is_playlist) onListQueued(d); })
       .catch(e => { showNotif('Error', e.message, 'error'); setSubmitting(false); });
-  }, [url, mode, quality, container, audioFmt, audioQuality, toggles, startTime, endTime, customFmt, downloadPath, playlistItems, info, showNotif, scheduleLater, onQueued, onListQueued, chosenChapters]);
+  }, [url, mode, quality, container, audioFmt, audioQuality, toggles, startTime, endTime, customFmt, downloadPath, playlistItems, info, showNotif, scheduleLater, onQueued, onListQueued, chosenChapters, customFileName]);
 
   // Keep ref in sync with latest startDownload (assigned during render, safe to read in callbacks)
   startDownloadRef.current = startDownload;
@@ -637,7 +647,29 @@ export function FeedPage({ dlState, stats, sysInfo, refreshStats, showNotif, swi
               </div>
               {/* CENTER: metadata */}
               <div className="info-details">
-                <div className="info-title">{info.title || 'Unknown Title'}</div>
+                {!info.is_playlist && info.file_name ? (
+                  // The title is the file's name: click it and type (no box, the title's own font).
+                  // The hidden copy in data-value sizes the field to its text, so the extension follows it
+                  <div className="info-title info-title-edit" data-tour="feed-file-name"
+                    title={'Click to rename the file before DOWNLOAD (video: ' + (info.title || '') + ')'}>
+                    <span className="info-title-field" data-value={(fileName ?? info.file_name) || info.file_name}>
+                      <input className="info-title-input" aria-label="File name" spellCheck={false} size={1}
+                        value={fileName ?? info.file_name} placeholder={info.file_name}
+                        onChange={e => setFileName(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') e.currentTarget.blur();
+                          if (e.key === 'Escape') { setFileName(null); e.currentTarget.blur(); }
+                        }} />
+                    </span>
+                    <span className="info-filename-ext">{chosenChapters.length ? ' - 01 …' : ''}.{fileExt}</span>
+                    {fileName !== null && fileName !== info.file_name ? (
+                      <button className="info-filename-reset" title="Back to the name Config's file name template gives"
+                        onClick={() => setFileName(null)}>↺</button>
+                    ) : <span className="info-title-pen" aria-hidden="true">✎</span>}
+                  </div>
+                ) : (
+                  <div className="info-title">{info.title || 'Unknown Title'}</div>
+                )}
                 <div className="info-meta">
                   {[info.uploader, info.platform, info.is_playlist ? (info.playlist_count + ' items') : null].filter(Boolean).join(' · ')}
                 </div>

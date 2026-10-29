@@ -677,7 +677,9 @@ def _build_ydl_opts(url: str, out_dir: Path, opts: dict, *, ffmpeg: str | None,
     start_time = "" if chapters else _opt_str(opts, "start_time")
     end_time = "" if chapters else _opt_str(opts, "end_time")
     embed_subs = bool(opts.get("embed_subs")) and not want_audio
-    outtmpl = str(out_dir / _fit_template(_output_template(opts, chapters), out_dir))
+    # The Feed's FILE NAME names one video's file; a playlist's items keep the template
+    name = None if _is_playlist_like(opts, url) else custom_file_name(_opt_str(opts, "file_name"), out_dir)
+    outtmpl = str(out_dir / _fit_template(_output_template(opts, chapters, name), out_dir))
     log.debug(f"yt-dlp outtmpl={outtmpl!r} mode={_opt_str(opts, 'mode', 'video').lower()} "
               f"audio_format={_opt_str(opts, 'audio_format', 'mp3').lower()} "
               f"quality={_opt_str(opts, 'quality', 'best')} container={_opt_str(opts, 'container', 'mp4').lower()}")
@@ -721,9 +723,13 @@ def _build_ydl_opts(url: str, out_dir: Path, opts: dict, *, ffmpeg: str | None,
     return ydl_opts, warning
 
 
-def _output_template(opts: dict, chapters: list[dict]) -> str:
-    """The file name template, relative to the output folder."""
+def _output_template(opts: dict, chapters: list[dict], name: str | None = None) -> str:
+    """The file name template, relative to the output folder. `name` (already
+    made safe by custom_file_name) replaces the template's file name; its
+    folders stay."""
     template = _opt_str(opts, "filename_template") or _DEFAULT_TEMPLATE
+    if name:
+        template = "/".join([*_template_parts(template)[:-1], name.replace("%", "%%") + ".%(ext)s"])
     if not chapters:
         if template.endswith(".%(ext)s"):
             return template[:-len(".%(ext)s")] + f"%({DUP_FIELD}|)s.%(ext)s"
@@ -733,6 +739,52 @@ def _output_template(opts: dict, chapters: list[dict]) -> str:
     stem = template[:-len(".%(ext)s")] if template.endswith(".%(ext)s") \
         else template.replace("%(ext)s", "").rstrip(".")
     return f"{stem} - %(section_number)02d %(section_title)s.%(ext)s"
+
+
+_WINDOWS_RESERVED_NAMES = frozenset({"CON", "PRN", "AUX", "NUL", *(f"COM{i}" for i in range(1, 10)),
+                                     *(f"LPT{i}" for i in range(1, 10))})
+
+
+def custom_file_name(name: str, out_dir: Path, windows: bool | None = None) -> str | None:
+    """A file name typed for one download (the Feed's FILE NAME), made safe: one
+    name, no folders, without its extension (the download adds the real one).
+
+    Characters a file name can't hold are replaced the way yt-dlp replaces them
+    in titles ("/" → "⧸", ":" → "："); leading dots go (a hidden file the vault
+    leaves out), and so do trailing ones (Windows drops them). It is cut to
+    leave room for the same-title " [id]", chapter names and yt-dlp's working
+    suffixes. None when nothing usable is left.
+    """
+    if windows is None:
+        windows = os.name == "nt"
+    name = yt_dlp.utils.sanitize_filename(str(name or "").strip())
+    suffix = "." + name.rsplit(".", 1)[-1].lower() if "." in name else ""
+    if suffix in MEDIA_EXTS:   # also ".mp4" alone, which Path takes for a hidden file
+        name = name[:-len(suffix)]
+    name = name.strip(" .")
+    if not name:
+        return None
+    if name.split(".")[0].upper() in _WINDOWS_RESERVED_NAMES:
+        name = "_" + name
+    cap = FILENAME_MAX - NAME_SUFFIX_RESERVE - NAME_FIELD_RESERVE - NAME_FIELD_MIN
+    if windows:
+        room = WINDOWS_MAX_PATH - len(str(out_dir)) - 1 - NAME_SUFFIX_RESERVE - NAME_FIELD_RESERVE
+        name = name[:max(NAME_FIELD_MIN, min(cap, room))]
+    else:
+        name = name.encode()[:cap].decode("utf-8", "ignore")
+    return name.rstrip(" .") or None
+
+
+def default_file_name(ydl: yt_dlp.YoutubeDL, info: dict, template: str = "") -> str | None:
+    """The name, without folders or extension, a download of `info` gets from
+    the file name template: what the Feed's FILE NAME starts with."""
+    last = _template_parts(template or _DEFAULT_TEMPLATE)[-1]
+    stem = last[:-len(".%(ext)s")] if last.endswith(".%(ext)s") else last.replace("%(ext)s", "").rstrip(".")
+    try:
+        return Path(ydl.prepare_filename({**info, "ext": "x"}, outtmpl=stem + ".x")).name[:-2] or None
+    except Exception as exc:
+        log.debug(f"default file name: {exc}")
+        return None
 
 
 # Fields whose value can be any length; written plainly ("%(title)s") they get
@@ -879,6 +931,11 @@ def _apply_ranges(ydl_opts: dict, chapters: list[dict], start_time: str, end_tim
     ydl_opts["force_keyframes_at_cuts"] = True
 
 
+def _is_playlist_like(opts: dict, url: str) -> bool:
+    """A run that takes several items: a playlist, a channel, a sync."""
+    return bool(_opt_str(opts, "playlist_items")) or "list=" in url or "/playlist" in url.lower()
+
+
 def _apply_playlist_opts(ydl_opts: dict, opts: dict, url: str) -> None:
     """Which playlist entries to take, and how a playlist-like run treats failures."""
     playlist_items = _opt_str(opts, "playlist_items")
@@ -894,7 +951,7 @@ def _apply_playlist_opts(ydl_opts: dict, opts: dict, url: str) -> None:
         if _opt_str(opts, key):
             ydl_opts[ydl_key] = _opt_str(opts, key).replace("-", "")
     # Playlist-like downloads skip geo-blocked/failed items instead of aborting
-    if playlist_items or "list=" in url or "/playlist" in url.lower():
+    if _is_playlist_like(opts, url):
         ydl_opts["ignoreerrors"] = True
     if ydl_opts.get("ignoreerrors"):
         # Playlists, channels and syncs only: a single pasted link is what the
@@ -1363,7 +1420,7 @@ def _preview(template: str) -> str:
         return ydl.prepare_filename(dict(_SAMPLE_VIDEO))
 
 
-def get_video_info(url: str, cookie_opts: dict | None = None) -> dict:
+def get_video_info(url: str, cookie_opts: dict | None = None, filename_template: str = "") -> dict:
     ydl_opts = {
         "quiet": True,
         "no_warnings": True,
@@ -1380,6 +1437,7 @@ def get_video_info(url: str, cookie_opts: dict | None = None) -> dict:
             return {}
         is_playlist = info.get("_type") == "playlist" or "entries" in info
         estimates = None if is_playlist else _size_estimates(ydl, info)
+        file_name = None if is_playlist else default_file_name(ydl, info, filename_template)
     playlist_count = 0
     thumbnail = info.get("thumbnail")
     if is_playlist:
@@ -1401,6 +1459,7 @@ def get_video_info(url: str, cookie_opts: dict | None = None) -> dict:
         "id": info.get("id"),
         "webpage_url": info.get("webpage_url") or url,
         "size_estimates": estimates,
+        "file_name": file_name,
         "chapters": None if is_playlist else _chapter_list(info),
         # The same flat extraction /api/playlist-items does: spares the Feed a second one
         "items": _flat_items(info.get("entries") or []) if is_playlist else None,

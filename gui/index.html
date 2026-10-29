@@ -503,6 +503,18 @@
     .notif.error{border-left-color:var(--red)}
     .notif.success{border-left-color:var(--green)}
     .notif.warn{border-left-color:var(--amber)}
+    /* The analyzed video's title is its file name, edited in place (Feed: click the title and type) */
+    .info-title-edit{display:flex;align-items:baseline;gap:3px;min-width:0;overflow:visible}
+    .info-title-field{display:inline-grid;min-width:0;max-width:100%}
+    .info-title-field::after{content:attr(data-value) ' ';visibility:hidden;white-space:pre;grid-area:1/1;overflow:hidden}
+    .info-title-input{grid-area:1/1;font:inherit;color:inherit;background:transparent;border:none;border-bottom:1px dashed transparent;
+      padding:0;margin:0;min-width:2ch;width:100%;text-overflow:ellipsis;outline:none;cursor:text}
+    .info-title-edit:hover .info-title-input{border-bottom-color:var(--t4)}
+    .info-title-input:focus{border-bottom:1px solid var(--cyan)}
+    .info-filename-ext{font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--t3);font-weight:700;flex-shrink:0}
+    .info-title-pen{font-size:12px;color:var(--t3);opacity:0;transition:opacity 0.15s;flex-shrink:0}
+    .info-title-edit:hover .info-title-pen,.info-title-input:focus ~ .info-title-pen{opacity:1}
+    .info-filename-reset{background:none;border:none;color:var(--cyan);cursor:pointer;font-size:13px;padding:0 2px;flex-shrink:0}
     .info-prev{display:flex;align-items:center;gap:10px;margin:4px 0 2px;font-family:'Share Tech Mono',monospace;font-size:10.5px}
     .info-prev-link{color:var(--cyan);cursor:pointer;letter-spacing:.08em}
     .info-prev-link:hover{text-decoration:underline}
