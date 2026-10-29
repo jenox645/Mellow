@@ -53,7 +53,7 @@ def _outtmpl(url, opts):
 
 
 def test_a_download_uses_it_and_a_playlist_doesnt():
-    assert _outtmpl("https://example.com/v", {"file_name": "Mine"}).endswith("/Mine%(mellow_dup|)s.%(ext)s")
+    assert Path(_outtmpl("https://example.com/v", {"file_name": "Mine"})).name == "Mine%(mellow_dup|)s.%(ext)s"
     # Every item of a playlist would get the one name
     assert "Mine" not in _outtmpl("https://example.com/playlist?list=PL1", {"file_name": "Mine"})
 
