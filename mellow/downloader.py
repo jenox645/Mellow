@@ -975,51 +975,72 @@ def _saved_file(info: dict | None) -> dict:
 def _playlist_records(info: dict, base: dict, item_stats: dict, wanted_ext: str,
                       avg_speed: int | None, elapsed: int) -> list[dict]:
     """One history row per playlist entry whose file is on disk."""
-    rows = []
-    for entry in info.get("entries") or []:
-        if not entry:
-            continue
-        req = entry.get("requested_downloads") or [{}]
-        fp = (req[0].get("filepath") or req[0].get("_filename")) if req else None
-        if not fp:
-            continue
+    rows = [_entry_record(entry, base, item_stats, wanted_ext, avg_speed, elapsed)
+            for entry in info.get("entries") or [] if entry]
+    return [row for row in rows if row]
+
+
+def _entry_record(entry: dict, base: dict, item_stats: dict, wanted_ext: str,
+                  avg_speed: int | None, elapsed: int) -> dict | None:
+    """The history row of one playlist entry, or None when its file isn't on disk."""
+    req = entry.get("requested_downloads") or [{}]
+    fp = (req[0].get("filepath") or req[0].get("_filename")) if req else None
+    if not fp:
+        return None
+    try:
+        size = Path(fp).stat().st_size
+    except OSError:
+        # Extracted but never written: this item's download failed
+        # (already reported as item_failed) or a filter skipped it.
+        # It is not a successful download and gets no sidecar.
+        return None
+    thumb = entry.get("thumbnail")
+    if thumb:
+        _save_thumbnail_sidecar(fp, thumb)
+    # Per-item timing captured by the progress hook — the playlist totals
+    # would otherwise corrupt speed/duration stats.
+    per_item = item_stats.get(entry.get("id"), {})
+    return {
+        **base,
+        "_found_there": not req[0].get("__real_download"),
+        "url": entry.get("webpage_url") or entry.get("url", ""),
+        "video_id": entry.get("id"),
+        "title": entry.get("title"),
+        "uploader": entry.get("uploader") or entry.get("channel"),
+        "duration_seconds": req[0].get("duration") or entry.get("duration"),
+        "file_size_bytes": size,
+        "container": _file_ext(fp, wanted_ext),
+        "file_path": fp,
+        "thumbnail_url": thumb,
+        "status": "success",
+        "download_speed_avg_bps": per_item.get("speed", avg_speed),
+        "elapsed_seconds": per_item.get("elapsed", elapsed),
+    }
+
+
+class _ItemHistoryPP(yt_dlp.postprocessor.PostProcessor):
+    """Hands each video to `record` once it is saved (when="after_video": after
+    every postprocessor and the move to its final name)."""
+
+    def __init__(self, downloader, record: Callable[[dict], None]):
+        super().__init__(downloader)
+        self._record = record
+
+    def run(self, info):
         try:
-            size = Path(fp).stat().st_size
-        except OSError:
-            # Extracted but never written: this item's download failed
-            # (already reported as item_failed) or a filter skipped it.
-            # It is not a successful download and gets no sidecar.
-            continue
-        thumb = entry.get("thumbnail")
-        if thumb:
-            _save_thumbnail_sidecar(fp, thumb)
-        # Per-item timing captured by the progress hook — the playlist totals
-        # would otherwise corrupt speed/duration stats.
-        per_item = item_stats.get(entry.get("id"), {})
-        rows.append({
-            **base,
-            "_found_there": not req[0].get("__real_download"),
-            "url": entry.get("webpage_url") or entry.get("url", ""),
-            "video_id": entry.get("id"),
-            "title": entry.get("title"),
-            "uploader": entry.get("uploader") or entry.get("channel"),
-            "duration_seconds": req[0].get("duration") or entry.get("duration"),
-            "file_size_bytes": size,
-            "container": _file_ext(fp, wanted_ext),
-            "file_path": fp,
-            "thumbnail_url": thumb,
-            "status": "success",
-            "download_speed_avg_bps": per_item.get("speed", avg_speed),
-            "elapsed_seconds": per_item.get("elapsed", elapsed),
-        })
-    return rows
+            self._record(info)
+        except Exception as exc:   # the history never fails a download
+            log.warning(f"history record failed: {exc}")
+        return [], info
 
 
 def _run_ydl(url: str, ydl_opts: dict, *, normalize_audio: bool, embed_thumb: bool,
              speed_tracker: dict, logger: _GeoBlockLogger | None,
-             tag_music: bool = False) -> dict | None:
+             tag_music: bool = False, record_item: Callable[[dict], None] | None = None) -> dict | None:
     """Run yt-dlp for one download; raises DownloadError when nothing could be had."""
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        if record_item:
+            ydl.add_post_processor(_ItemHistoryPP(ydl, record_item), when="after_video")
         if normalize_audio and not _ExtractAudioNormalized.replacing(ydl):
             log.warning("normalize_audio: no audio extraction step to attach to")
         if tag_music:
@@ -1153,10 +1174,30 @@ def _download_video(
         ydl_opts["logger"] = logger
 
     base = {"url": url, "platform": _detect_platform(url), "format": media_kind, "quality": quality}
+    recorded: set[str] = set()   # files whose history row is already written
+
+    def _record_item(entry: dict) -> None:
+        """A playlist item's row as soon as its file is saved: a run that stops
+        halfway (CANCEL, a crash, a power cut) keeps the rows of the files it
+        finished. A single video's rows come when it ends, as before."""
+        if entry.get("playlist_index") is None:
+            return
+        samples = speed_tracker["samples"]
+        row = _entry_record(entry, base, speed_tracker.get("items", {}), wanted_ext,
+                            int(sum(samples) / len(samples)) if samples else None,
+                            int(time.monotonic() - t_start))
+        if not row:
+            return
+        recorded.add(row["file_path"])
+        if row.pop("_found_there", False) and analytics.is_recorded(row["file_path"]):
+            return   # an earlier download's file, already in the history
+        _record(row)
+
     saved = _saved_file(None)
     try:
         info = _run_ydl(url, ydl_opts, normalize_audio=normalize_audio, embed_thumb=embed_thumb,
-                        speed_tracker=speed_tracker, logger=logger, tag_music=tag_music)
+                        speed_tracker=speed_tracker, logger=logger, tag_music=tag_music,
+                        record_item=_record_item)
         saved = _saved_file(info)
         if cancel_event.is_set():
             progress_cb({"status": "cancelled"})
@@ -1174,6 +1215,8 @@ def _download_video(
         })
         for row in _history_rows(info, base, saved, wanted_ext, speed_tracker,
                                  int(time.monotonic() - t_start)):
+            if row["file_path"] in recorded:
+                continue   # written as the item finished
             if row.pop("_found_there", False) and analytics.is_recorded(row["file_path"]):
                 continue   # an earlier download's file, already in the history: not a new download
             _record(row)
