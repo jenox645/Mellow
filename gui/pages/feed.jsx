@@ -647,7 +647,29 @@ export function FeedPage({ dlState, stats, sysInfo, refreshStats, showNotif, swi
               </div>
               {/* CENTER: metadata */}
               <div className="info-details">
-                <div className="info-title">{info.title || 'Unknown Title'}</div>
+                {!info.is_playlist && info.file_name ? (
+                  // The title is the file's name: click it and type (no box, the title's own font).
+                  // The hidden copy in data-value sizes the field to its text, so the extension follows it
+                  <div className="info-title info-title-edit" data-tour="feed-file-name"
+                    title={'Click to rename the file before DOWNLOAD (video: ' + (info.title || '') + ')'}>
+                    <span className="info-title-field" data-value={(fileName ?? info.file_name) || info.file_name}>
+                      <input className="info-title-input" aria-label="File name" spellCheck={false} size={1}
+                        value={fileName ?? info.file_name} placeholder={info.file_name}
+                        onChange={e => setFileName(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') e.currentTarget.blur();
+                          if (e.key === 'Escape') { setFileName(null); e.currentTarget.blur(); }
+                        }} />
+                    </span>
+                    <span className="info-filename-ext">{chosenChapters.length ? ' - 01 …' : ''}.{fileExt}</span>
+                    {fileName !== null && fileName !== info.file_name ? (
+                      <button className="info-filename-reset" title="Back to the name Config's file name template gives"
+                        onClick={() => setFileName(null)}>↺</button>
+                    ) : <span className="info-title-pen" aria-hidden="true">✎</span>}
+                  </div>
+                ) : (
+                  <div className="info-title">{info.title || 'Unknown Title'}</div>
+                )}
                 <div className="info-meta">
                   {[info.uploader, info.platform, info.is_playlist ? (info.playlist_count + ' items') : null].filter(Boolean).join(' · ')}
                 </div>
@@ -671,20 +693,6 @@ export function FeedPage({ dlState, stats, sysInfo, refreshStats, showNotif, swi
                     <span className="info-prev-link" onClick={() => { setUrl(info.from_list.url); handleAnalyze(info.from_list.url, true); }}>
                       {info.from_list.mix ? 'THE WHOLE MIX' : 'THE WHOLE PLAYLIST'}
                     </span>
-                  </div>
-                )}
-                {!info.is_playlist && info.file_name && (
-                  <div className="info-filename" data-tour="feed-file-name">
-                    <span className="info-filename-label">FILE NAME</span>
-                    <input className="info-filename-input" aria-label="File name" spellCheck={false}
-                      value={fileName ?? info.file_name} placeholder={info.file_name}
-                      title="The downloaded file's name: change it before DOWNLOAD (empty = the name above)"
-                      onChange={e => setFileName(e.target.value)} />
-                    <span className="info-filename-ext">{chosenChapters.length ? ' - 01 …' : ''}.{fileExt}</span>
-                    {fileName !== null && fileName !== info.file_name && (
-                      <button className="btn btn-secondary btn-sm info-filename-reset" title="Back to the name Config's file name template gives"
-                        onClick={() => setFileName(null)}>↺</button>
-                    )}
                   </div>
                 )}
                 <div className="info-tags">

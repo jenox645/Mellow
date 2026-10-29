@@ -109,12 +109,12 @@ export const TOURS = {
       ] },
     },
     {
-      target: 'feed-file-name', title: 'Name the file',
+      target: 'feed-file-name', title: 'Rename the file',
       missing: 'Shows up once a single video is analyzed.',
-      text: 'The name the file will be saved under, from Config\'s file name template. Change it before DOWNLOAD; '
-        + 'the extension follows the format you pick, and ↺ goes back to the template\'s name.',
+      text: 'The title is the file\'s name: click it and type to save the video under another name. The extension '
+        + 'follows the format you pick; Esc or ↺ goes back to the name from Config\'s file name template.',
       example: { onlyMissing: true, kind: 'rows', rows: [
-        { text: 'Never Gonna Give You Up (Live)', sub: '.mp3 — typed over the video\'s title', badge: 'FILE NAME', tone: 'cyan' },
+        { text: 'Never Gonna Give You Up (Live) ✎', sub: '.mp3 — the title, typed over', badge: 'CLICK TO RENAME', tone: 'cyan' },
       ] },
     },
     {

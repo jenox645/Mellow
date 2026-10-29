@@ -93,7 +93,7 @@ def test_search_then_pick_a_result(page, media_site):
     rows.nth(1).click()
     page.locator(".info-actions .btn-primary").wait_for(timeout=30_000)
     assert box.input_value() == f"{media_site}/third.mp4"
-    expect(page.locator(".info-title")).to_contain_text("third")
+    expect(page.get_by_label("File name")).to_have_value(re.compile("third"))   # the title, as the file's name
 
 
 def test_search_results_ticked_together_download_together(page, media_site, downloads):
@@ -674,7 +674,8 @@ def test_a_selection_rectangle_starts_in_the_toolbars_empty_space(page, download
 
 def test_rename_the_file_before_downloading(page, media_site, downloads):
     """There was no way to name a file after ANALYZE: it took the template's
-    name. FILE NAME starts with that name and the download uses what's typed."""
+    name. The title is now the file name, edited in place: it starts with that
+    name and the download uses what's typed."""
     _analyze(page, f"{media_site}/intro/clip")
     name = page.get_by_label("File name")
     expect(name).to_have_value("Intro (1)")                  # what the template gives (the test site's title)
@@ -689,4 +690,7 @@ def test_rename_the_file_before_downloading(page, media_site, downloads):
     expect(name).to_have_value("Intro (1)")
     name.fill("Something else")
     page.locator(".info-filename-reset").click()
+    expect(name).to_have_value("Intro (1)")
+    name.fill("Something else")                              # Esc goes back too
+    name.press("Escape")
     expect(name).to_have_value("Intro (1)")
