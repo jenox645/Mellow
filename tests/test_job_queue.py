@@ -147,6 +147,9 @@ def test_worker_pool_respects_limit():
         release.set()
         assert started.acquire(timeout=10), "third job never started after slots freed"
         assert peak['n'] == 2
+        # Let the workers save the queue before its folder is deleted (Windows
+        # can't remove a folder while a save's temp file is being created in it)
+        assert m.wait_idle(10)
 
 
 def _multi_job(tmp, urls, job_id='multi', job_type='sync', library_id=None):
