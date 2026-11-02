@@ -18,6 +18,7 @@ import json
 import logging
 import re
 import sys
+import threading
 import zipfile
 from pathlib import Path
 from typing import Callable
@@ -184,8 +185,29 @@ def download_latest() -> str:
     return version
 
 
+_updating = threading.Lock()
+
+
+def updating() -> bool:
+    return _updating.locked()
+
+
 def run_update(push: Callable[[dict], None]) -> None:
-    """Download the latest yt-dlp and report the outcome as one `ytdlp_updated` event."""
+    """Download the latest yt-dlp and report the outcome as one `ytdlp_updated` event.
+
+    One at a time: a second run (a double click) wrote the same zip while the
+    first checked it, and one of them reported "Update failed" after a good
+    download. The server refuses a second request while one runs.
+    """
+    if not _updating.acquire(blocking=False):
+        return
+    try:
+        _run_update(push)
+    finally:
+        _updating.release()
+
+
+def _run_update(push: Callable[[dict], None]) -> None:
     running = running_version()
     try:
         new_ver = download_latest()

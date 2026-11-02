@@ -84,8 +84,9 @@ def run(cmd: list[str], **kwargs) -> subprocess.CompletedProcess:
 # ── Step 1: Python version check ──────────────────────────────────────────────
 step("1/12 · Checking Python version")
 major, minor = sys.version_info[:2]
-if major < 3 or (major == 3 and minor < 9):
-    fail(f"Python 3.9+ required, got {major}.{minor}")
+# The app needs 3.12 (flaskwebgui); checked first, before any package is removed or installed
+if (major, minor) < (3, 12):
+    fail(f"Python 3.12+ required, got {major}.{minor}")
 print(f"  Python {sys.version.split()[0]} — OK")
 
 

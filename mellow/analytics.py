@@ -554,6 +554,16 @@ def run_query(sql: str) -> dict:
     if first_word not in ("SELECT", "WITH"):
         return {"error": "Only SELECT statements (including WITH ... SELECT) are permitted.",
                 "columns": [], "rows": [], "time_ms": 0}
+    # Only the first word was checked: "SELECT 1; COMMIT; COPY … TO 'file'" ran
+    # all three (COMMIT ended the rolled-back transaction, COPY wrote a file).
+    # DuckDB's own parser says how many statements there are, and of what kind
+    try:
+        statements = duckdb.extract_statements(stripped)
+    except Exception as exc:
+        return {"error": str(exc), "columns": [], "rows": [], "time_ms": 0}
+    if len(statements) != 1 or statements[0].type != duckdb.StatementType.SELECT:
+        return {"error": "One SELECT statement at a time (no ';' followed by another statement).",
+                "columns": [], "rows": [], "time_ms": 0}
     t0 = time.monotonic()
     try:
         # Shared connection (a separate read_only connection conflicts with the

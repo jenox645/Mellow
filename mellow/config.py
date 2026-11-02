@@ -114,22 +114,25 @@ def _backup_corrupt() -> None:
         pass
 
 
+def write_atomic(path: Path, data: bytes) -> None:
+    """Write a file whole or not at all: a temp file next to it, then os.replace.
+    A crash mid-write leaves the old file, never a torn one."""
+    fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=path.name, suffix=".tmp")
+    try:
+        with os.fdopen(fd, "wb") as fh:
+            fh.write(data)
+        os.replace(tmp, str(path))
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
 def save_config(cfg: dict) -> None:
     with _lock:
-        data = json.dumps(cfg, indent=2)
-        fd, tmp = tempfile.mkstemp(
-            dir=str(CONFIG_PATH.parent), prefix=CONFIG_PATH.name, suffix=".tmp"
-        )
-        try:
-            with os.fdopen(fd, "w", encoding="utf-8") as fh:
-                fh.write(data)
-            os.replace(tmp, str(CONFIG_PATH))
-        except BaseException:
-            try:
-                os.unlink(tmp)
-            except OSError:
-                pass
-            raise
+        write_atomic(CONFIG_PATH, json.dumps(cfg, indent=2).encode("utf-8"))
 
 
 def download_root(cfg: dict) -> str:

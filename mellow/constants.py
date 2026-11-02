@@ -117,6 +117,7 @@ DOWNLOAD_CHUNK_BYTES: int = 256 * 1024
 APP_UPDATE_EXIT_DELAY_SECS: float = 1.0  # lets the "restarting" event reach the page
 DIALOG_TIMEOUT_SECS: int = 120       # how long a native file/folder dialog may stay open
 M3U8_TEMP_MAX_AGE_SECS: int = 86400  # playlist temp files older than this are swept
+PRE_RESTORE_KEEP: int = 3            # backup restore: copies kept of the files it replaced, per file
 # Files handed to a player on its command line up to this many characters, then as
 # one .m3u8 (Windows refuses a command line over 32767; PLAY ALL of a big folder)
 PLAYER_ARGV_MAX_CHARS: int = 24000
