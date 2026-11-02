@@ -77,8 +77,8 @@ def test_backup_roundtrip(tmp_path):
         result = backup.restore_backup(data)
         assert result["ok"]
         assert json.loads(cfg_path.read_text(encoding="utf-8")) == {"output_dir": "X"}
-        # Pre-restore safety copy exists
-        assert cfg_path.with_suffix(".json.pre-restore").exists()
+        # Pre-restore safety copy exists (dated: a second restore keeps the first's)
+        assert list(tmp_path.glob("config.json.pre-restore-*"))
         analytics.reset_connections()
 
 
