@@ -604,7 +604,9 @@ def api_info() -> Response:
     if not url:
         return jsonify({"error": "No URL"}), 400
     try:
-        info = downloader.get_video_info(url, cookie_opts=request_settings(load_config()))
+        cfg = load_config()
+        info = downloader.get_video_info(url, cookie_opts=request_settings(cfg),
+                                         filename_template=cfg.get("filename_template", ""))
     except Exception as exc:
         return jsonify({"error": str(exc), **(errors.explain(str(exc)) or {})}), 500
     if info and not info.get("is_playlist"):
@@ -683,6 +685,8 @@ def _download_opts(data: dict, cfg: dict) -> dict:
         "date_before": data.get("date_before", ""),
         "date_after": data.get("date_after", ""),
         "filename_template": data.get("filename_template", "") or cfg.get("filename_template", ""),
+        # The Feed's FILE NAME for this one video (downloader.custom_file_name makes it safe)
+        "file_name": str(data.get("file_name") or ""),
         **download_settings(cfg),
     }
 
