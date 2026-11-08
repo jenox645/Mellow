@@ -122,6 +122,45 @@ def test_queue_saves_never_overlap(monkeypatch):
     assert overlaps and max(overlaps) == 1
 
 
+def test_a_save_while_a_worker_saves_with_the_queue_locked_never_deadlocks():
+    """A worker saves with the queue lock held (a job just finished); a
+    download being added saves too. Holding the save lock while waiting for
+    the queue lock froze both, and the whole app with them."""
+    m = jobs.JobManager()
+    m._pending = [{"id": "a", "url": "https://x/a", "status": "queued"}]
+    real = m._persist_lock
+    saving, worker_holds_queue = threading.Event(), threading.Event()
+
+    class SaveLock:
+        """The real save lock; the first thread in waits for the worker to take the queue lock."""
+        def __enter__(self):
+            real.acquire()
+            if not saving.is_set():
+                saving.set()
+                worker_holds_queue.wait(2)
+            return self
+
+        def __exit__(self, *exc):
+            real.release()
+
+    m._persist_lock = SaveLock()
+
+    def worker_finishing_a_job():
+        saving.wait(2)
+        with m._cv:
+            worker_holds_queue.set()
+            m._persist()
+
+    worker = threading.Thread(target=worker_finishing_a_job, daemon=True)
+    adding = threading.Thread(target=m._persist, daemon=True)
+    worker.start()
+    adding.start()
+    adding.join(5)
+    worker.join(5)
+    assert not adding.is_alive() and not worker.is_alive(), "the two saves deadlocked"
+    assert json.loads(jobs.QUEUE_STATE_PATH.read_text(encoding="utf-8"))[0]["id"] == "a"
+
+
 def test_a_failed_save_keeps_the_last_saved_queue(monkeypatch):
     m = jobs.JobManager()
     m._pending = [{"id": "a", "url": "https://x/a", "status": "queued"}]

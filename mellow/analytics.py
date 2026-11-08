@@ -15,7 +15,7 @@ from typing import Any, Callable
 import duckdb
 
 from . import formats
-from .constants import SYNC_REPORTS_KEEP
+from .constants import DUCKDB_STORAGE_VERSION, SYNC_REPORTS_KEEP
 
 log = logging.getLogger(__name__)
 
@@ -41,18 +41,23 @@ def get_conn() -> duckdb.DuckDBPyConnection:
         return _conns[key].cursor()
 
 
+def _open(path: str) -> duckdb.DuckDBPyConnection:
+    """One connection, in the storage format older MellowDLP versions read."""
+    return duckdb.connect(path, config={"storage_compatibility_version": DUCKDB_STORAGE_VERSION})
+
+
 def _connect(path: str) -> duckdb.DuckDBPyConnection:
     """Open the database, surviving a write-ahead log DuckDB cannot replay.
 
-    DuckDB fails to replay an ALTER TABLE on a table that has a DEFAULT now()
-    column ("GetDefaultDatabase with no default database set"). If the app is
-    killed after a schema migration and before a checkpoint, every later
-    launch dies on that WAL. The database file itself is intact, so the WAL
-    is moved aside (kept, not deleted) and the file is opened without it;
+    DuckDB 1.x failed to replay an ALTER TABLE on a table that has a DEFAULT
+    now() column ("GetDefaultDatabase with no default database set"), and a
+    WAL cut short by a crash or a full disk fails its checksum. Every later
+    launch died on it. The database file itself is intact, so the WAL is
+    moved aside (kept, not deleted) and the file is opened without it;
     init_db() then re-applies the migrations.
     """
     try:
-        return duckdb.connect(path)
+        return _open(path)
     except duckdb.Error as exc:
         wal = Path(path + ".wal")
         if "WAL" not in str(exc) or not wal.exists():
@@ -61,7 +66,7 @@ def _connect(path: str) -> duckdb.DuckDBPyConnection:
         wal.replace(aside)
         log.warning(f"write-ahead log could not be replayed; moved to {aside.name}. "
                     f"Reason: {str(exc).splitlines()[0]}")
-        return duckdb.connect(path)
+        return _open(path)
 
 
 def _add_missing_columns(con: duckdb.DuckDBPyConnection, table: str,
