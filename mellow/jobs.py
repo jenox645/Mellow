@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Callable
 
 from . import analytics, downloader, errors, power, vault
-from .config import download_root, load_config, update_config
+from .config import download_root, load_config, update_config, write_atomic
 from .constants import (
     DEFAULT_DOWNLOAD_WORKERS,
     DEFAULT_SCHEDULE_START,
@@ -86,6 +86,14 @@ def _sync_plan(job: dict) -> dict | None:
 class JobManager:
     def __init__(self) -> None:
         self._cv = threading.Condition()
+        # One save at a time, the newest snapshot last: two threads saving
+        # could write an older one last (a cancelled job offered again at the
+        # next start). Taken only after the snapshot is made, never while
+        # waiting for _cv: a worker saves with _cv held, so the other order
+        # deadlocks (a download added while another one finished)
+        self._persist_lock = threading.Lock()
+        self._persist_seq = 0       # snapshots taken (under _cv)
+        self._saved_seq = 0         # newest snapshot written (under _persist_lock)
         self._pending: list[dict] = []   # waiting, in run order (reorderable)
         self._jobs: list[dict] = []      # everything: pending + active + finished
         self._active_count = 0
@@ -287,17 +295,24 @@ class JobManager:
         offering again (yt-dlp resumes its .part file); saving only the
         queued jobs lost it.
         """
+        with self._cv:
+            unfinished = [j for j in self._jobs if j["status"] == "active"] + self._pending
+            pending = [{k: j.get(k) for k in _PERSIST_KEYS} for j in unfinished]
+            self._persist_seq += 1
+            seq = self._persist_seq
         try:
-            with self._cv:
-                unfinished = [j for j in self._jobs if j["status"] == "active"] + self._pending
-                pending = [{k: j.get(k) for k in _PERSIST_KEYS} for j in unfinished]
-            # A queued job is one the computer should stay awake for, a
-            # scheduled one included (it can't start in a sleeping computer)
-            power.keeper.set(bool(unfinished) and bool(load_config().get("keep_awake", True)))
-            if pending:
-                QUEUE_STATE_PATH.write_text(json.dumps(pending), encoding="utf-8")
-            elif QUEUE_STATE_PATH.exists():
-                QUEUE_STATE_PATH.unlink()
+            with self._persist_lock:
+                if seq < self._saved_seq:
+                    return              # a newer snapshot is already on disk
+                self._saved_seq = seq
+                # A queued job is one the computer should stay awake for, a
+                # scheduled one included (it can't start in a sleeping computer)
+                power.keeper.set(bool(unfinished) and bool(load_config().get("keep_awake", True)))
+                if pending:
+                    # Whole or not at all: a torn file lost every saved job
+                    write_atomic(QUEUE_STATE_PATH, json.dumps(pending).encode("utf-8"))
+                elif QUEUE_STATE_PATH.exists():
+                    QUEUE_STATE_PATH.unlink()
         except OSError as exc:
             log.warning(f"queue persist failed: {exc}")
 

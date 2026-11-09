@@ -109,6 +109,15 @@ export const TOURS = {
       ] },
     },
     {
+      target: 'feed-file-name', title: 'Rename the file',
+      missing: 'Shows up once a single video is analyzed.',
+      text: 'The title is the file\'s name: click it and type to save the video under another name. The extension '
+        + 'follows the format you pick; Esc or ↺ goes back to the name from Config\'s file name template.',
+      example: { onlyMissing: true, kind: 'rows', rows: [
+        { text: 'Never Gonna Give You Up (Live) ✎', sub: '.mp3 — the title, typed over', badge: 'CLICK TO RENAME', tone: 'cyan' },
+      ] },
+    },
+    {
       target: 'feed-from-list', title: 'A video from a playlist or Mix',
       missing: 'Shows up when a link was copied while a playlist or YouTube Mix played.',
       text: 'A link copied while a playlist or Mix plays ("watch?v=…&list=…") names both the video and the list. '

@@ -327,18 +327,26 @@ def _isolation_headers(resp: Response) -> Response:
     return resp
 
 
+def _same_origin(origin: str) -> bool:
+    """Whether a request's Origin is this server itself: a local host on this port."""
+    try:
+        sent, here = urlparse(origin), urlparse("//" + request.host)
+        default = {"http": 80, "https": 443}.get(sent.scheme)
+        return (sent.hostname in _LOCAL_HOSTS and here.hostname in _LOCAL_HOSTS
+                and (sent.port or default) == (here.port or 80))
+    except ValueError:
+        return False
+
+
 @app.before_request
 def _api_write_guard() -> Response | None:
     if request.method not in ("POST", "PUT", "DELETE") or not request.path.startswith("/api/"):
         return None
     origin = request.headers.get("Origin")
-    if origin:
-        try:
-            host = urlparse(origin).hostname
-        except ValueError:
-            host = None
-        if host not in _LOCAL_HOSTS:
-            return jsonify({"error": "Cross-origin requests are not allowed"}), 403
+    if origin and not _same_origin(origin):
+        # Another site, or another program's page on this machine (another port).
+        # The session token already stops them; this refuses them before it
+        return jsonify({"error": "Cross-origin requests are not allowed"}), 403
     if request.path in _MULTIPART_ALLOWED_PATHS:
         return None
     if request.content_length and not request.is_json:
@@ -556,6 +564,8 @@ def api_check_ytdlp_update() -> Response:
 
 @app.route("/api/update-ytdlp", methods=["POST"])
 def api_update_ytdlp() -> Response:
+    if ytdlp_update.updating():
+        return jsonify({"error": "yt-dlp is already being updated."}), 409
     threading.Thread(target=ytdlp_update.run_update, args=(_push_progress,), daemon=True).start()
     return jsonify({"status": "updating"})
 
@@ -604,7 +614,9 @@ def api_info() -> Response:
     if not url:
         return jsonify({"error": "No URL"}), 400
     try:
-        info = downloader.get_video_info(url, cookie_opts=request_settings(load_config()))
+        cfg = load_config()
+        info = downloader.get_video_info(url, cookie_opts=request_settings(cfg),
+                                         filename_template=cfg.get("filename_template", ""))
     except Exception as exc:
         return jsonify({"error": str(exc), **(errors.explain(str(exc)) or {})}), 500
     if info and not info.get("is_playlist"):
@@ -683,6 +695,8 @@ def _download_opts(data: dict, cfg: dict) -> dict:
         "date_before": data.get("date_before", ""),
         "date_after": data.get("date_after", ""),
         "filename_template": data.get("filename_template", "") or cfg.get("filename_template", ""),
+        # The Feed's FILE NAME for this one video (downloader.custom_file_name makes it safe)
+        "file_name": str(data.get("file_name") or ""),
         **download_settings(cfg),
     }
 

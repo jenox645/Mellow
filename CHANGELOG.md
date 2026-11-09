@@ -8,6 +8,16 @@ Each release is a `## X.Y.Z` heading followed by `- **Title**: what it does`
 lines. A pull request that raises `APP_VERSION` adds its section here: CI
 fails without one.
 
+## 2.14.2
+- **Name the file before you download it**: after ANALYZE, the video's title on its card is the file name. Click it and type to change it; Esc or ↺ puts the original back. The GUIDE shows where.
+- **A stopped sync keeps what it finished**: cancel a playlist sync halfway (or have the computer shut down) and the songs it already saved stay in your history and stats. The next sync downloads only what's missing, nothing twice.
+- **Safer backup restore**: a damaged or wrong backup file is refused before anything is replaced. Each restore keeps a dated copy of what it replaced (the last three), and a backup from an older version works straight away.
+- **The saved queue survives a crash**: the list of unfinished downloads offered at the next start is written whole or not at all, so a crash or a full disk can't lose it.
+- **One yt-dlp update at a time**: clicking UPDATE twice no longer starts two updates that fight over the same file.
+- **Signal's custom SQL runs one query**: a query is a single SELECT, and anything after a `;` is refused instead of run.
+- **Only MellowDLP's own page can change it**: a web page from another program on your computer (another port) is turned away.
+- **A newer database engine**: the stats database now uses DuckDB 2.0. It writes the same file format as before, so going back to an older MellowDLP still works.
+
 ## 2.14.1
 - **Small text you can read**: the little notes under each setting, the file details in the Vault and other small labels were still tiny. They're bigger everywhere, and the explanations and file details are bold.
 - **Start a selection anywhere around your files**: in an open folder, dragging from the empty space next to the toolbar (RANDOMIZE, PLAY ALL, SELECT) or below the last file now draws a selection rectangle too, not only dragging over the files themselves.
