@@ -15,6 +15,7 @@ import {
   NOTIF_READ_MS_PER_CHAR,
   NOTIF_TIMEOUT_MS,
   PAGE_ORDER,
+  RESYNC_POLL_MS,
   STATS_POLL_ACTIVE_MS,
   STATS_POLL_IDLE_MS,
   APP_UPDATE_POLL_MS,
@@ -381,8 +382,17 @@ function App() {
   }, [appState, dlState]);
 
   // ── SSE event hub ────────────────────────────────────────────────────────────
+  // Events sent while the stream was down are lost: every (re)connect, and a
+  // poll while something shows as running, re-reads the job list so a job
+  // that ended meanwhile doesn't leave the page on "downloading"
+  const resyncJobs = React.useCallback(() => {
+    API.get('/api/queue/status')
+      .then(d => dispatch({ type: 'resync', jobs: d.jobs || [], now: Date.now() }))
+      .catch(() => {});
+  }, []);
   React.useEffect(() => {
     const es = new EventSource('/api/progress');
+    es.onopen = resyncJobs;
     es.onmessage = (e) => {
       let data;
       try { data = JSON.parse(e.data); } catch { return; }
@@ -390,7 +400,13 @@ function App() {
     };
     es.onerror = () => {};
     return () => es.close();
-  }, []);
+  }, [resyncJobs]);
+  const showsRunning = appState === 'downloading' || appState === 'processing' || Object.keys(activeJobs).length > 0;
+  React.useEffect(() => {
+    if (!showsRunning) return undefined;
+    const t = setInterval(resyncJobs, RESYNC_POLL_MS);
+    return () => clearInterval(t);
+  }, [showsRunning, resyncJobs]);
 
   // Run what the events asked for (toasts, chime, refreshes, celebration)
   const celebrate = React.useCallback((fx) => {
