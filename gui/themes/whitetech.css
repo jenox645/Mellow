@@ -44,10 +44,11 @@
   --on-accent:#FFFFFF;--on-accent-alt:#FFFFFF;
   --on-media:#fff;
 
-  /* Accents. --danger and --success are the text colours (4.5:1 on every surface); their -rgb channels
-     are the bright fills (#F04E23, #14A06B) for dots, bars, soft backgrounds, borders and charts.
+  /* Accents. --accent, --danger and --success are the text colours (4.5:1 on every surface, small text
+     included); their -rgb channels are the bright fills (#1F6FEB, #F04E23, #14A06B) for the progress bar,
+     dots, soft backgrounds, borders and charts.
      --accent-2 (Classic's amber "data lake" colour) is a quiet steel here: a second hue would fight the blue */
-  --accent:#1F6FEB;--accent-rgb:31,111,235;
+  --accent:#185FCF;--accent-rgb:31,111,235;
   --accent-soft:rgba(var(--accent-rgb),0.18);--accent-faint:rgba(var(--accent-rgb),0.07);
   --accent-hover:#1558C0;
   --accent-2:#3F5B78;--accent-2-rgb:63,91,120;
@@ -73,7 +74,7 @@
   --shadow-popup:0 8px 22px rgba(var(--shadow-rgb),0.16);
   --shadow-modal:0 16px 40px rgba(var(--shadow-rgb),0.24);
   --shadow-tour-spot:0 0 0 9999px var(--scrim-tour);
-  --prog-fill:var(--accent);
+  --prog-fill:rgb(var(--accent-rgb));
   --prog-shine:rgba(255,255,255,0.5);
   --canvas-scanlines:none;
   --canvas-grid:linear-gradient(#E2E5E9 1px,transparent 1px),linear-gradient(90deg,#E2E5E9 1px,transparent 1px);
@@ -123,7 +124,7 @@
    Menus and overlays a page renders among its blocks are left out (they place themselves).
    "backwards" only: once it has played, a block has no transform left (a transformed block would
    become the containing block of the fixed menus inside it). */
-:root[data-theme="whitetech"] .content.active{animation:none;overflow-anchor:none}
+:root[data-theme="whitetech"] .content.active{animation:none}
 @media (prefers-reduced-motion: no-preference){
   :root[data-theme="whitetech"] .content.active > *:not(.modal-overlay):not(.ctx-menu):not(.vfc-menu-popup):not(.tour-root):not(.dl-panel){animation:wt-rise var(--dur-mid) var(--ease-out) backwards}
   :root[data-theme="whitetech"] .content.active > *:nth-child(2){animation-delay:0.04s}
@@ -218,13 +219,21 @@
 :root[data-theme="whitetech"] .sb-path{text-transform:none;letter-spacing:0.04em}
 
 /* ── CONTENT, PAGE HEADERS ───────────────────────────────────────────────── */
-:root[data-theme="whitetech"] .content{padding:22px 28px}
+:root[data-theme="whitetech"] .content{padding:0 28px 22px}
+:root[data-theme="whitetech"] .content > :first-child:not(.vhead){margin-top:22px}
 :root[data-theme="whitetech"] .content::-webkit-scrollbar,:root[data-theme="whitetech"] .modal-box::-webkit-scrollbar,:root[data-theme="whitetech"] .pl-queue-list::-webkit-scrollbar,:root[data-theme="whitetech"] .results-area::-webkit-scrollbar{width:6px;height:6px}
 :root[data-theme="whitetech"] .content::-webkit-scrollbar-track{background:transparent}
-:root[data-theme="whitetech"] .vhead{margin-bottom:18px;align-items:flex-end}
+/* The page header stays under the top bar while the page scrolls (it used to slide half under it:
+   the Feed's "USER // ADMIN" line cut in two). It carries the canvas and its grid, fixed to the window
+   so the lines meet the page's */
+:root[data-theme="whitetech"] .vhead{position:sticky;top:0;z-index:20;margin:0 -28px 10px;padding:18px 28px 10px;align-items:flex-end;gap:16px;
+  background:var(--canvas-grid),var(--bg);background-size:var(--canvas-grid-size);background-attachment:fixed}
 :root[data-theme="whitetech"] .vlabel{font-size:10px;color:var(--t3);opacity:1;margin-bottom:6px}
 :root[data-theme="whitetech"] .vlabel::before{color:var(--t4)}
-:root[data-theme="whitetech"] .vtitle{font-size:40px;line-height:.9}
+:root[data-theme="whitetech"] .vtitle{font-size:36px;line-height:.92;white-space:nowrap}
+/* A long folder name stays on one line: the button row next to it wraps (to the right) instead */
+:root[data-theme="whitetech"] .vhead > :first-child{flex:none}
+:root[data-theme="whitetech"] .vhead > :last-child:not(:first-child){min-width:0;justify-content:flex-end}
 :root[data-theme="whitetech"] .vtitle .c,:root[data-theme="whitetech"] .vtitle .a{color:var(--t1)}
 :root[data-theme="whitetech"] .vright{font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:var(--t3)}
 :root[data-theme="whitetech"] .vright .acc{color:var(--t1);font-weight:500}
@@ -232,14 +241,17 @@
 /* ── PANELS: white, 1px rule, the top-right corner cut at 45° ────────────── */
 /* The rule is an inset shadow and the cut a corner piece in the canvas colour: a clip-path on the panel
    would also cut off the fixed menus that open out of it (the Feed's SAVE TO history) */
-:root[data-theme="whitetech"] .panel,:root[data-theme="whitetech"] .cfg-panel,:root[data-theme="whitetech"] .chart-panel,:root[data-theme="whitetech"] .query-panel,:root[data-theme="whitetech"] .preset-panel{border:none;box-shadow:inset 0 0 0 1px var(--border);position:relative}
-:root[data-theme="whitetech"] .panel::after,:root[data-theme="whitetech"] .cfg-panel::after,:root[data-theme="whitetech"] .chart-panel::after{content:'';position:absolute;top:0;right:0;width:18px;height:18px;pointer-events:none;z-index:2;
+:root[data-theme="whitetech"] .panel,:root[data-theme="whitetech"] .cfg-panel,:root[data-theme="whitetech"] .chart-panel{border:none;position:relative}
+:root[data-theme="whitetech"] .cfg-panel,:root[data-theme="whitetech"] .chart-panel{box-shadow:inset 0 0 0 1px var(--border)}
+/* a .panel's rule lies over its content (the info card and thumbnails reach the edge and would cover it) */
+:root[data-theme="whitetech"] .panel::before{content:'';position:absolute;inset:0;z-index:2;pointer-events:none;box-shadow:inset 0 0 0 1px var(--border)}
+:root[data-theme="whitetech"] .panel::after,:root[data-theme="whitetech"] .cfg-panel::after,:root[data-theme="whitetech"] .chart-panel::after{content:'';position:absolute;top:0;right:0;width:18px;height:18px;pointer-events:none;z-index:3;
   background:linear-gradient(to top right,transparent calc(50% - 1px),var(--border2) calc(50% - 1px),var(--border2) calc(50% + 0.5px),var(--bg) calc(50% + 0.5px))}
 :root[data-theme="whitetech"] .modal-box .panel::after,:root[data-theme="whitetech"] .panel .panel::after,:root[data-theme="whitetech"] .modal-box .chart-panel::after{display:none}
 /* hover: an ink tick on the top-left corner extends */
-:root[data-theme="whitetech"] .panel::before,:root[data-theme="whitetech"] .cfg-panel::before,:root[data-theme="whitetech"] .chart-panel::before{content:'';position:absolute;top:0;left:0;width:56px;height:2px;background:#14171C;pointer-events:none;z-index:2;transform:scaleX(.25);transform-origin:left;transition:transform var(--dur-quick) var(--ease-out)}
-:root[data-theme="whitetech"] .panel:hover::before,:root[data-theme="whitetech"] .cfg-panel:hover::before,:root[data-theme="whitetech"] .chart-panel:hover::before{transform:scaleX(1)}
-:root[data-theme="whitetech"] .dl-panel.panel:not(.open)::before{opacity:0}
+:root[data-theme="whitetech"] .ph,:root[data-theme="whitetech"] .cfg-ph{position:relative}
+:root[data-theme="whitetech"] .panel > .ph::before,:root[data-theme="whitetech"] .cfg-panel::before,:root[data-theme="whitetech"] .chart-panel::before{content:'';position:absolute;top:0;left:0;width:56px;height:2px;background:#14171C;pointer-events:none;z-index:3;transform:scaleX(.25);transform-origin:left;transition:transform var(--dur-quick) var(--ease-out)}
+:root[data-theme="whitetech"] .panel:hover > .ph::before,:root[data-theme="whitetech"] .cfg-panel:hover::before,:root[data-theme="whitetech"] .chart-panel:hover::before{transform:scaleX(1)}
 :root[data-theme="whitetech"] .panel-hud,:root[data-theme="whitetech"] .panel-hud-br,:root[data-theme="whitetech"] .modal-hud,:root[data-theme="whitetech"] .modal-hud-br{display:none}
 :root[data-theme="whitetech"] .ph,:root[data-theme="whitetech"] .cfg-ph{padding:12px 18px;gap:10px}
 :root[data-theme="whitetech"] .ptag{font-size:10px;padding:3px 7px;background:#14171C;color:#FFFFFF}
@@ -283,8 +295,9 @@
 :root[data-theme="whitetech"] .btn-primary:focus-visible{outline:none;box-shadow:inset 0 0 0 2px var(--accent)}
 :root[data-theme="whitetech"] .btn-danger{background:#FFFFFF;color:var(--danger);border-color:rgba(var(--danger-rgb),0.45)}
 :root[data-theme="whitetech"] .btn-danger:hover:not(:disabled){background:var(--danger);border-color:var(--danger);color:#FFFFFF}
-:root[data-theme="whitetech"] .btn-amber{background:var(--accent-faint);color:var(--t1);border-color:#14171C;box-shadow:inset 0 -3px 0 var(--accent)}
-:root[data-theme="whitetech"] .btn-amber:hover:not(:disabled){background:var(--accent-soft);color:var(--t1)}
+/* Classic's amber buttons (SYNC NOW, EXPORT CSV, a ticked LATER): the stronger secondary, an ink outline */
+:root[data-theme="whitetech"] .btn-amber{background:#FFFFFF;color:var(--t1);border-color:#14171C}
+:root[data-theme="whitetech"] .btn-amber:hover:not(:disabled){background:#14171C;color:#FFFFFF}
 
 /* ── SEGMENT TABS: skewed, the selected one solid ink ───────────────────── */
 /* The slant is drawn by ::before, so the label stays upright */
@@ -300,6 +313,7 @@
 :root[data-theme="whitetech"] .opts-tabs{border-bottom:none;padding:0 5px;margin-bottom:16px}
 :root[data-theme="whitetech"] .q-tabs{padding:10px 18px 10px 23px;border-bottom:1px solid var(--border)}
 :root[data-theme="whitetech"] .q-tab,:root[data-theme="whitetech"] .range-tab{min-height:28px}
+:root[data-theme="whitetech"] .pill{gap:6px}
 
 /* ── OPTIONS, CHECKBOXES, TOGGLES ────────────────────────────────────────── */
 :root[data-theme="whitetech"] .opts-inner{padding:16px 18px;background:#FFFFFF}
@@ -445,6 +459,8 @@
 :root[data-theme="whitetech"] .data-table td{font-size:12.5px}
 :root[data-theme="whitetech"] .data-table td.mono{font-size:11px}
 :root[data-theme="whitetech"] .data-table tr:hover td{background:var(--bg2)}
+:root[data-theme="whitetech"] .preset-panel,:root[data-theme="whitetech"] .query-panel{border-color:var(--border)}
+:root[data-theme="whitetech"] .preset-panel .ptitle{font-size:16px}
 :root[data-theme="whitetech"] .preset-item{font-size:12.5px}
 :root[data-theme="whitetech"] .preset-item:hover{background:var(--bg2)}
 :root[data-theme="whitetech"] .preset-item.active{background:#F4F5F7;color:var(--t1);font-weight:600;border-left:none;box-shadow:inset 4px 0 0 var(--accent)}
