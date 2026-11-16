@@ -173,3 +173,69 @@ def test_a_fixed_port_is_used_when_free_and_skipped_when_taken():
     for bad in (0, 80, 70000, "x"):
         update_config(lambda c, bad=bad: c.update(api_port=bad))
         assert main._choose_port() >= 1024
+
+
+# ── --shell: a desktop shell (src-tauri/) owns the window ───────────────────────
+
+def _ready_line(out: str) -> tuple[str, str, list[str]]:
+    """(base URL, launch token, extra words) of the one ready line in `out`."""
+    lines = [ln for ln in out.splitlines() if ln.startswith(main.READY_PREFIX)]
+    assert len(lines) == 1, out
+    url, *extra = lines[0][len(main.READY_PREFIX):].split()
+    base, _, token = url.partition('/launch?t=')
+    return base, token, extra
+
+
+def test_the_shell_ready_line_comes_once_the_server_listens():
+    from mellow import session
+    session.start_instance(5123, publish=False)
+    order = []
+    server = MagicMock()
+    server.serve_forever.side_effect = lambda: order.append('serving')
+    with patch('werkzeug.serving.make_server',
+               side_effect=lambda host, port, app, threaded: order.append(('bound', host, port)) or server), \
+            patch('main._print_ready', side_effect=lambda *a, **k: order.append('ready')), \
+            patch('main.threading.Thread') as watcher:
+        main._run_shell(MagicMock(), 5123)
+    assert order == [('bound', '127.0.0.1', 5123), 'ready', 'serving']
+    watcher.return_value.start.assert_called_once()     # the stdin watcher
+
+
+def test_the_ready_line_signs_a_window_in_once(capsys):
+    from mellow import session
+    session.start_instance(5123, publish=False)
+    main._print_ready('http://127.0.0.1:5123', session.launch_token())
+    base, token, extra = _ready_line(capsys.readouterr().out)
+    assert base == 'http://127.0.0.1:5123' and extra == []
+    assert session.redeem(token) is not None
+    assert session.redeem(token) is None                # single use
+
+
+def test_a_second_shell_launch_attaches_to_the_running_copy(capsys):
+    from mellow import session
+    running = {"port": 6001, "secret": b"s" * 32, "url": "http://127.0.0.1:6001"}
+    with patch('main.applog.setup'), \
+            patch.object(main.sys, 'excepthook', main.sys.excepthook), \
+            patch.object(main.sys, 'argv', ['main.py', main.SHELL_FLAG]), \
+            patch('main._running_instance', return_value=running), \
+            patch('main.webbrowser.open') as browser_open, \
+            pytest.raises(SystemExit) as exit_:
+        main.main()
+    assert exit_.value.code == 0
+    browser_open.assert_not_called()                    # the shell's window goes there instead
+    base, token, extra = _ready_line(capsys.readouterr().out)
+    assert base == 'http://127.0.0.1:6001' and extra == ['attached']
+    # Made with the running copy's secret: that copy redeems it
+    nonce, expires, mac = token.split('.')
+    assert session.same(mac, session._mac(b"s" * 32, 'launch', 6001, nonce, expires))
+
+
+def test_the_shell_backend_quits_when_its_shell_closes_stdin():
+    import io
+    with patch('main._stop_instance') as stop, patch('main.os._exit') as exit_:
+        main._exit_with_parent(io.StringIO('a line the shell wrote\n'))
+    stop.assert_called_once()
+    exit_.assert_called_once_with(0)
+    with patch('main.os._exit') as exit_:
+        main._exit_with_parent(None)                    # pythonw: nothing to watch
+    exit_.assert_not_called()

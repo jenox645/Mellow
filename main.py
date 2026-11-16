@@ -28,6 +28,9 @@ BROWSER_OPEN_DELAY_SECS = 1      # let the server start listening first
 PAGE_WATCH_INTERVAL_SECS = 2
 PAGE_GONE_EXIT_SECS = 30        # a reload or a short network hiccup reconnects well before
 FIRST_PAGE_TIMEOUT_SECS = 120
+# --shell: a desktop shell (src-tauri/) owns the window and reads READY_PREFIX + launch URL
+SHELL_FLAG = "--shell"
+READY_PREFIX = "MELLOW_READY "
 
 # Where versions before sign-in wrote their port; removed at start
 LEGACY_PORT_FILE = Path.home() / ".mellow_dlp.port"
@@ -104,7 +107,14 @@ def main() -> None:
     sys.excepthook = _log_crash
     # Single-instance guard: a second launch opens the existing UI instead of
     # spawning a duplicate server + window.
+    shell = SHELL_FLAG in sys.argv
     existing = _running_instance()
+    if existing and shell:
+        # The shell's window signs in to the running copy instead
+        log.info(f"already running at {existing['url']}: the shell attaches to it")
+        _print_ready(existing["url"], session.launch_token(existing["secret"], existing["port"]),
+                     attached=True)
+        sys.exit(0)
     if existing:
         log.info(f"already running at {existing['url']}, opening a window on it")
         _open_in_browser(_launch_page_uri(existing["url"], existing["secret"], existing["port"]))
@@ -138,7 +148,44 @@ def main() -> None:
               f"http://127.0.0.1:{port}/launch?t={token}", flush=True)
         flask_app.run(host="127.0.0.1", port=port, threaded=True)
         return
+    if shell:
+        _run_shell(flask_app, port)
+        return
     _run_window(flask_app, port)
+
+
+def _print_ready(url: str, token: str, attached: bool = False) -> None:
+    """The one stdout line a desktop shell waits for (SHELL_FLAG): where its
+    window signs in. The token is single-use and short-lived
+    (LAUNCH_TOKEN_TTL_SECS), and goes through the shell's pipe, never a
+    command line."""
+    print(f"{READY_PREFIX}{url}/launch?t={token}{' attached' if attached else ''}", flush=True)
+
+
+def _run_shell(flask_app, port: int, stdin=None) -> None:
+    """--shell: serve for a desktop shell that started this process (the
+    Tauri trial, src-tauri/) and owns the window. Prints the ready line once
+    the server listens; exits when the shell closes stdin (it quit or died)."""
+    from werkzeug.serving import make_server
+    server = make_server("127.0.0.1", port, flask_app, threaded=True)
+    threading.Thread(target=_exit_with_parent, args=(stdin or sys.stdin,), daemon=True).start()
+    log.info(f"serving for a desktop shell at http://127.0.0.1:{port}")
+    _print_ready(f"http://127.0.0.1:{port}", session.launch_token())
+    server.serve_forever()
+
+
+def _exit_with_parent(stdin) -> None:
+    """Block until the shell closes our stdin (EOF), then quit like the window does."""
+    if stdin is None:   # no stdin at all (pythonw): nothing to watch
+        return
+    try:
+        while stdin.readline():
+            pass
+    except (OSError, ValueError):
+        pass
+    log.info("the desktop shell closed: quitting")
+    _stop_instance()
+    os._exit(0)
 
 
 def _run_window(flask_app, port: int) -> None:
