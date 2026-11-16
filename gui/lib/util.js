@@ -1,6 +1,8 @@
 // Shared formatting helpers.
 'use strict';
 
+import { DEFAULT_THEME, THEME_STORAGE_KEY, THEMES } from './constants.js';
+
 export function fmtBytes(b) {
   if (!b && b !== 0) return '—';
   if (b === 0) return '0 B';
@@ -179,7 +181,16 @@ export function splitFolder(path) {
   return i < 0 ? { name: p, parent: '' } : { name: p.slice(i + 1) || p, parent: p.slice(0, i + 1) };
 }
 
-// ── Theme tokens (gui/index.html :root, gui/themes/*.css) ─────────────────────
+// ── Theme (gui/index.html :root, gui/themes/*.css) ────────────────────────────
+// Switch the page to a theme (config `ui_theme`) and remember it for index.html's early script, which
+// applies it before the next launch's first paint. An unknown id is Classic. Returns the id applied.
+export function applyTheme(id) {
+  const theme = THEMES.some(t => t.id === id) ? id : DEFAULT_THEME;
+  document.documentElement.dataset.theme = theme;
+  try { localStorage.setItem(THEME_STORAGE_KEY, theme); } catch { /* storage blocked: applied for this session */ }
+  return theme;
+}
+
 // A canvas can't resolve var(--x): read the token's value when drawing
 export function cssVar(name, el) {
   return window.getComputedStyle(el || document.documentElement).getPropertyValue(name).trim();

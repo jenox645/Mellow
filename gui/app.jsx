@@ -7,6 +7,7 @@
 'use strict';
 
 import { API } from './lib/api.js';
+import { applyTheme } from './lib/util.js';
 import {
   CLIPBOARD_URL_RE,
   NOTIF_ACTION_TIMEOUT_MS,
@@ -268,6 +269,12 @@ function App() {
       .then(d => { if (d.jobs && d.jobs.length) setRestorableJobs(d.jobs); })
       .catch(() => {});
   }, []);
+
+  // The theme follows config ui_theme (Config → APPEARANCE changes it live); before the config has
+  // loaded, index.html's early script has applied the one remembered in localStorage
+  React.useEffect(() => {
+    if (config.ui_theme !== undefined) applyTheme(config.ui_theme);
+  }, [config.ui_theme]);
 
   // Initial load: stats, config, vault — then the once-a-day yt-dlp check
   React.useEffect(() => {

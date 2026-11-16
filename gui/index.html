@@ -9,9 +9,15 @@
   <link rel="icon" type="image/x-icon" href="favicon.ico"/>
   <link rel="stylesheet" href="fonts/fonts.css"/>
   <script>
+    // The theme, before the first paint (the app applies config ui_theme once it has loaded: lib/util.js
+    // applyTheme). This runs before the bundle, so the ids are repeated here: the same list as THEMES in
+    // lib/constants.js and UI_THEMES in mellow/constants.py (tests/test_themes.py compares them).
     (function(){
-      document.documentElement.setAttribute('data-theme',
-        localStorage.getItem('mellow-theme') || 'dark');
+      var THEME_IDS = ['classic', 'whitetech', 'archive', 'tactical'];
+      var theme = null;
+      try { theme = localStorage.getItem('mellow-theme'); } catch (e) { /* storage blocked: Classic */ }
+      // 'dark' (what older versions stored), nothing or an unknown id: Classic
+      document.documentElement.dataset.theme = THEME_IDS.indexOf(theme) >= 0 ? theme : 'classic';
     })();
   </script>
   <style>
@@ -788,6 +794,10 @@
     /* Reduced motion: every animation and transition ends at once */
     @media (prefers-reduced-motion: reduce){*,*::before,*::after{animation-duration:0.01ms!important;animation-iteration-count:1!important;transition-duration:0.01ms!important;scroll-behavior:auto!important}}
   </style>
+  <!-- The other themes: token overrides under :root[data-theme="<id>"], after the block above so they win -->
+  <link rel="stylesheet" href="themes/whitetech.css"/>
+  <link rel="stylesheet" href="themes/archive.css"/>
+  <link rel="stylesheet" href="themes/tactical.css"/>
 </head>
 <body>
 <svg style="display:none" aria-hidden="true">
