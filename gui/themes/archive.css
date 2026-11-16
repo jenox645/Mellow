@@ -1,0 +1,71 @@
+/* Theme "Archive" (light sky, navy text, sky-blue accent with yellow).
+   A starter set: only the tokens of gui/index.html's :root, overridden. Shapes, type details and the
+   parts that need their own rules come with the full theme. Every rule here must stay under
+   :root[data-theme="archive"] (tests/test_themes.py). */
+:root[data-theme="archive"]{
+  color-scheme:light;
+
+  /* Surfaces */
+  --bg:#F3F8FD;--bg1:#FFFFFF;--bg2:#EAF2FB;--bg3:#DCE9F7;
+  --surface-chrome:#FFFFFF;
+  --surface-statusbar:#EAF2FB;--border-statusbar:#C9DCF0;
+  --surface-input:var(--bg1);--surface-input-2:var(--bg1);
+  --surface-hover:var(--accent-faint);--surface-hover-solid:var(--bg3);--surface-hover-solid-2:var(--bg2);
+  --surface-selected:var(--accent-faint);--surface-selected-strong:rgba(var(--accent-rgb),0.12);
+  --surface-placeholder:#C9DCF0;
+  --scrim:rgba(27,42,74,0.5);--scrim-tour:rgba(27,42,74,0.55);--scrim-victory:rgba(243,248,253,0.96);
+  --scrim-menu:rgba(255,255,255,0.88);
+  --media-bg:#000;
+  --shadow-rgb:27,42,74;
+
+  /* Text: each level keeps 4.5:1 against --bg, --bg1, --bg2 and --bg3 (tests/test_themes.py) */
+  --t1:#1B2A4A;--t2:#364B73;--t3:#44587E;--t4:#4F628A;
+  --t1-rgb:27,42,74;--t2-rgb:54,75,115;
+  --t-bright:#1B2A4A;--t-muted:#44587E;--t-muted-2:#4F628A;--t-dim:#4F628A;
+  --on-accent:#0E1A33;--on-accent-alt:#0E1A33;
+  --on-media:#fff;
+
+  /* Accents */
+  --accent:#2E9BFF;--accent-rgb:46,155,255;
+  --accent-soft:rgba(var(--accent-rgb),0.2);--accent-faint:rgba(var(--accent-rgb),0.08);
+  --accent-hover:#1670C8;
+  /* Yellow is the call-to-action colour: fine as a fill, too light as text on these backgrounds
+     (the full theme deals with where --accent-2 is text) */
+  --accent-2:#FFD43B;--accent-2-rgb:255,212,59;
+  --accent-2-soft:rgba(var(--accent-2-rgb),0.18);
+  --accent-3:#6D4AD6;--accent-3-rgb:109,74,214;
+  --warn:#9A5B00;--warn-rgb:154,91,0;--warn-soft:rgba(var(--warn-rgb),0.16);
+  --danger:#D92D20;--danger-rgb:217,45,32;--danger-soft:rgba(var(--danger-rgb),0.12);
+  --success:#0F7B4F;--success-rgb:15,123,79;--success-soft:rgba(var(--success-rgb),0.12);
+  --chart-axis-rgb:79,98,138;--chart-track-rgb:201,220,240;
+
+  /* Borders */
+  --border:#C9DCF0;--border2:#8FB4DC;
+
+  /* Effects: no glows, soft shadows */
+  --glow-text:none;--glow-title-accent:none;--glow-stat:none;--glow-victory:none;
+  --glow-logo:none;--glow-splash:none;
+  --glow-accent:none;--glow-accent-soft:none;--glow-btn:none;--glow-check:none;--glow-toggle:none;
+  --glow-dot:none;--glow-success:none;
+  --ring-focus:0 0 0 1px rgba(var(--accent-rgb),0.35);--ring-focus-soft:0 0 0 1px rgba(var(--accent-rgb),0.3);
+  --shadow-card:0 4px 14px rgba(var(--shadow-rgb),0.08);
+  --shadow-card-hover:0 0 0 1px var(--accent),0 4px 14px rgba(var(--shadow-rgb),0.1);
+  --shadow-menu:0 6px 20px rgba(var(--shadow-rgb),0.12);
+  --shadow-popup:0 6px 20px rgba(var(--shadow-rgb),0.14);
+  --shadow-modal:0 10px 32px rgba(var(--shadow-rgb),0.18);
+  --shadow-tour-spot:0 0 0 9999px var(--scrim-tour);
+  --prog-fill:var(--accent);
+  --prog-shine:rgba(255,255,255,0.5);
+  --canvas-scanlines:none;
+  --canvas-grid:none;
+  /* Mascots. The line art (inline SVG) is drawn in the text colour of its place, so it follows --accent
+     by itself and needs no filter; the pictures (PNG, light on dark) are turned dark */
+  --mascot-filter:none;
+  --mascot-idle:var(--t1);
+  --mascot-img-filter-accent:invert(1) grayscale(1);--mascot-img-filter-accent-2:invert(1) grayscale(1);
+  --tint-accent:invert(1) grayscale(1);--tint-accent-2:invert(1) grayscale(1);
+  --mascot-splash-filter:none;--mascot-splash-img-filter:invert(1) grayscale(1);
+
+  /* Type (the families come with gui/fonts/fonts.css) */
+  --font-display:'Barlow Condensed',sans-serif;--font-body:'Barlow',sans-serif;--font-mono:'JetBrains Mono',monospace;
+}

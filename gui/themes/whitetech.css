@@ -1,0 +1,69 @@
+/* Theme "White Tech" (light panels, ink text, one blue accent).
+   A starter set: only the tokens of gui/index.html's :root, overridden. Shapes, type details and the
+   parts that need their own rules come with the full theme. Every rule here must stay under
+   :root[data-theme="whitetech"] (tests/test_themes.py). */
+:root[data-theme="whitetech"]{
+  color-scheme:light;
+
+  /* Surfaces */
+  --bg:#ECEEF1;--bg1:#FFFFFF;--bg2:#F4F5F7;--bg3:#E3E6EA;
+  --surface-chrome:#FFFFFF;
+  --surface-statusbar:#F4F5F7;--border-statusbar:#D5D9E0;
+  --surface-input:var(--bg1);--surface-input-2:var(--bg1);
+  --surface-hover:var(--accent-faint);--surface-hover-solid:var(--bg3);--surface-hover-solid-2:var(--bg2);
+  --surface-selected:var(--accent-faint);--surface-selected-strong:rgba(var(--accent-rgb),0.12);
+  --surface-placeholder:#D5D9E0;
+  --scrim:rgba(20,23,28,0.55);--scrim-tour:rgba(20,23,28,0.6);--scrim-victory:rgba(236,238,241,0.96);
+  --scrim-menu:rgba(255,255,255,0.88);
+  --media-bg:#000;
+  --shadow-rgb:20,23,28;
+
+  /* Text: each level keeps 4.5:1 against --bg, --bg1, --bg2 and --bg3 (tests/test_themes.py) */
+  --t1:#14171C;--t2:#3A424E;--t3:#4B5462;--t4:#586270;
+  --t1-rgb:20,23,28;--t2-rgb:58,66,78;
+  --t-bright:#14171C;--t-muted:#4B5462;--t-muted-2:#586270;--t-dim:#586270;
+  --on-accent:#FFFFFF;--on-accent-alt:#FFFFFF;
+  --on-media:#fff;
+
+  /* Accents */
+  --accent:#1F6FEB;--accent-rgb:31,111,235;
+  --accent-soft:rgba(var(--accent-rgb),0.2);--accent-faint:rgba(var(--accent-rgb),0.08);
+  --accent-hover:#1558C0;
+  --accent-2:#B45309;--accent-2-rgb:180,83,9;
+  --accent-2-soft:rgba(var(--accent-2-rgb),0.18);
+  --accent-3:#7C3AED;--accent-3-rgb:124,58,237;
+  --warn:#A14A00;--warn-rgb:161,74,0;--warn-soft:rgba(var(--warn-rgb),0.16);
+  --danger:#F04E23;--danger-rgb:240,78,35;--danger-soft:rgba(var(--danger-rgb),0.12);
+  --success:#0F7B4F;--success-rgb:15,123,79;--success-soft:rgba(var(--success-rgb),0.12);
+  --chart-axis-rgb:88,98,112;--chart-track-rgb:213,217,224;
+
+  /* Borders */
+  --border:#D5D9E0;--border2:#9AA3B2;
+
+  /* Effects: no glows, soft shadows */
+  --glow-text:none;--glow-title-accent:none;--glow-stat:none;--glow-victory:none;
+  --glow-logo:none;--glow-splash:none;
+  --glow-accent:none;--glow-accent-soft:none;--glow-btn:none;--glow-check:none;--glow-toggle:none;
+  --glow-dot:none;--glow-success:none;
+  --ring-focus:0 0 0 1px rgba(var(--accent-rgb),0.35);--ring-focus-soft:0 0 0 1px rgba(var(--accent-rgb),0.3);
+  --shadow-card:0 4px 14px rgba(var(--shadow-rgb),0.08);
+  --shadow-card-hover:0 0 0 1px var(--accent),0 4px 14px rgba(var(--shadow-rgb),0.1);
+  --shadow-menu:0 6px 20px rgba(var(--shadow-rgb),0.12);
+  --shadow-popup:0 6px 20px rgba(var(--shadow-rgb),0.14);
+  --shadow-modal:0 10px 32px rgba(var(--shadow-rgb),0.18);
+  --shadow-tour-spot:0 0 0 9999px var(--scrim-tour);
+  --prog-fill:var(--accent);
+  --prog-shine:rgba(255,255,255,0.5);
+  --canvas-scanlines:none;
+  --canvas-grid:linear-gradient(rgba(20,23,28,0.035) 1px,transparent 1px),linear-gradient(90deg,rgba(20,23,28,0.035) 1px,transparent 1px);
+  /* Mascots. The line art (inline SVG) is drawn in the text colour of its place, so it follows --accent
+     by itself and needs no filter; the pictures (PNG, light on dark) are turned dark */
+  --mascot-filter:none;
+  --mascot-idle:var(--t1);
+  --mascot-img-filter-accent:invert(1) grayscale(1);--mascot-img-filter-accent-2:invert(1) grayscale(1);
+  --tint-accent:invert(1) grayscale(1);--tint-accent-2:invert(1) grayscale(1);
+  --mascot-splash-filter:none;--mascot-splash-img-filter:invert(1) grayscale(1);
+
+  /* Type (the families come with gui/fonts/fonts.css) */
+  --font-display:'Barlow Condensed',sans-serif;--font-body:'Barlow',sans-serif;--font-mono:'JetBrains Mono',monospace;
+}

@@ -4,7 +4,8 @@
 ```
 main.py            desktop entry point (single-instance guard, FlaskWebGUI window)
 mellow/            backend package — modules import each other relatively (`from . import jobs`)
-gui/               frontend source (React ES modules + index.html/CSS; fonts/ = bundled woff2 + OFL licenses)
+gui/               frontend source (React ES modules + index.html/CSS; fonts/ = bundled woff2 + OFL licenses;
+                   themes/ = one token file per theme other than Classic)
 static/            build output only (gitignored): bundle, React, index.html, mascots.js
 assets/            icons, mascot art (*_vector used by the build), installer images;
                    originals/ holds unused source art
@@ -126,6 +127,7 @@ A new event = a case in `applyEvent` + a test in `tests/js/downloads.test.mjs`. 
 - `skip_shorts` / `skip_live` (config, copied by `download_settings`) become a yt-dlp `match_filter` only on playlist-like runs (`ignoreerrors`); a single pasted link is never filtered
 - `/api/cookies/test` loads cookies from the request's (unsaved) settings; `/api/filename-preview` validates a template and names a sample video with it. Cookie failures are explained by `errors.py` (`cookies_locked` / `cookies_encrypted` / `cookies_not_found`)
 - Victory overlay at App root (outside all page components), z-index 9999
+- Themes: every colour, font, glow/shadow, radius and duration is a custom property in index.html's `:root` (= theme Classic, the default, which must keep looking as it always has); CSS and inline styles use `var(--…)`, never a literal colour or font name. Names are semantic (`--accent`, `--accent-2` = the vault/data-lake colour, `--warn`, `--danger`, `--success`, `--accent-3`, `--surface-*`, `--glow-*`, `--shadow-*`, `--font-display|body|mono`, `--dur-*`, `--ease-*`, `--radius-*`); `rgba(var(--accent-rgb),0.3)` for a hue with alpha. A canvas can't resolve `var()`: read tokens at draw time with `util.cssVar` / `util.themeRgba`. The other themes (`constants.UI_THEMES` = `THEMES` in gui/lib/constants.js = the ids in index.html's early script) are `gui/themes/<id>.css`, every rule under `:root[data-theme="<id>"]`, each redefining every colour/font/glow token (`tests/test_themes.py`). Config `ui_theme` (validated by `/api/config`, picked in Config → APPEARANCE, saved at once) is applied by `util.applyTheme` (the App's effect) and remembered in localStorage `mellow-theme` for the early script
 - Text colours: `--t3` / `--t4` (gui/index.html) are for small text too, so they keep 4.5:1 against every `--bg*`; `tests/test_tester_feedback.py` checks it
 - Small text: nothing under 8.5px; the explanatory lines (`.sl-sub`, `.psub`, file details and type tags) are bold (Share Tech Mono has one weight, the browser thickens it)
 - An open vault folder shows its files as cards (SM/MD/LG) or ☰ LIST (`vault_scale` in localStorage; the folder cards use SM for it). Selecting works like a file explorer: drag a rectangle (`useMarquee` on `.vault-files-area`: the toolbar's empty space and the room below the files start one too; items marked `data-select-key`), Ctrl/⌘-click, Shift-click a range, Ctrl+A, Esc; a plain click still opens the file unless SELECT is on. Deleting several files always asks first (button or Delete key), and the selection is cleared when the open folder changes
