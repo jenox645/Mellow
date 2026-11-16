@@ -28,7 +28,7 @@ function MediaPreviewModal({ file, onClose }) {
       <button className="btn btn-secondary btn-sm" onClick={onClose}>CLOSE</button>
     }>
       {isVideo ? (
-        <video src={src} controls autoPlay style={{ width: '100%', maxHeight: 380, background: '#000' }} />
+        <video src={src} controls autoPlay style={{ width: '100%', maxHeight: 380, background: 'var(--media-bg)' }} />
       ) : (
         <audio src={src} controls autoPlay style={{ width: '100%' }} />
       )}
@@ -47,7 +47,7 @@ function SyncReport({ report, folder, showNotif }) {
     filtered.length ? filtered.length + ' skipped (Shorts / live)' : null,
     failed.length ? failed.length + ' failed' : null,
   ].filter(Boolean);
-  const mono = { fontFamily: 'Share Tech Mono, monospace', fontSize: 10.5 };
+  const mono = { fontFamily: 'var(--font-mono)', fontSize: 10.5 };
   const statusColor = report.status === 'complete' ? 'var(--success)' : report.status === 'failed' ? 'var(--danger)' : 'var(--t3)';
   // Into this folder, in the format it syncs with
   const retry = (url) => API.post('/api/vault/retry-item', { path: folder, url })
@@ -651,7 +651,7 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
               </>
             }
           >
-            <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 11, color: 'var(--t2)', textAlign: 'center', lineHeight: 2 }}>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--t2)', textAlign: 'center', lineHeight: 2 }}>
               Dropped: <span style={{ color: 'var(--accent)' }}>{dropModal.name}</span><br />
               <span style={{ color: 'var(--t4)', fontSize: 10.5 }}>What would you like to do?</span>
             </div>
@@ -684,7 +684,7 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
               </>
             }
           >
-            <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 11, color: 'var(--t2)', lineHeight: 2 }}>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--t2)', lineHeight: 2 }}>
               <div style={{ color: 'var(--accent)', marginBottom: 6 }}>{watchArchivePrompt.path}</div>
               <div>Create a <span style={{ color: 'var(--accent-2)' }}>mellow_archive.txt</span> in this folder?</div>
               <div style={{ color: 'var(--t4)', fontSize: 10.5, marginTop: 4 }}>
@@ -698,11 +698,11 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
         {folderStatsModal && (
           <Modal title={'STATS — ' + folderStatsModal.name.toUpperCase()} onClose={() => setFolderStatsModal(null)}>
             {!folderStatsData ? (
-              <div style={{ padding: 24, textAlign: 'center', color: 'var(--t3)', fontFamily: 'Share Tech Mono, monospace', fontSize: 11 }}>Loading...</div>
+              <div style={{ padding: 24, textAlign: 'center', color: 'var(--t3)', fontFamily: 'var(--font-mono)', fontSize: 11 }}>Loading...</div>
             ) : folderStatsData.error ? (
-              <div style={{ padding: 24, color: 'var(--danger)', fontFamily: 'Share Tech Mono, monospace', fontSize: 11 }}>{folderStatsData.error}</div>
+              <div style={{ padding: 24, color: 'var(--danger)', fontFamily: 'var(--font-mono)', fontSize: 11 }}>{folderStatsData.error}</div>
             ) : (
-              <div style={{ padding: '8px 0', fontFamily: 'Share Tech Mono, monospace', fontSize: 11 }}>
+              <div style={{ padding: '8px 0', fontFamily: 'var(--font-mono)', fontSize: 11 }}>
                 {(() => {
                   const s = folderStatsData;
                   const rows = [
@@ -949,7 +949,7 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
             </button>
             {randomizedFiles && (
               <>
-                <span style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 10.5, color: 'var(--accent)' }}>
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10.5, color: 'var(--accent)' }}>
                   {new Set([...randomizedFiles.map(f => f.path), ...selectedFiles]).size} selected
                 </span>
                 <button className="btn btn-primary btn-sm" onClick={handlePlayRandom}>
@@ -1019,7 +1019,7 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
                     <div className="lib-title">{file.name.replace(/\.[^.]+$/, '')}</div>
                     <div className="lib-meta">{fmtBytes(file.size_bytes)}</div>
                     {file.created && (
-                      <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 9.5, color: 'var(--t4)', marginTop: 2 }}>{fmtDate(file.created * 1000)}</div>
+                      <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9.5, color: 'var(--t4)', marginTop: 2 }}>{fmtDate(file.created * 1000)}</div>
                     )}
                   </div>
                   {fileMenu(file)}
@@ -1083,7 +1083,7 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
         >
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14 }}>
             <Mascot src={MASCOT_FRUSTRATED} className="error-mascot" wrapClass="error-mascot" style={{ width: 80 }} />
-            <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 11, color: 'var(--t2)', textAlign: 'center' }}>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--t2)', textAlign: 'center' }}>
               Delete <span style={{ color: 'var(--danger)' }}>{deleteConfirm.name}</span>?<br />
               <span style={{ color: 'var(--t4)', fontSize: 10.5 }}>This cannot be undone.</span>
             </div>
@@ -1102,7 +1102,7 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
         >
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14 }}>
             <Mascot src={MASCOT_FRUSTRATED} className="error-mascot" wrapClass="error-mascot" style={{ width: 80 }} />
-            <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 11, color: 'var(--t2)', textAlign: 'center' }}>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--t2)', textAlign: 'center' }}>
               Delete <span style={{ color: 'var(--danger)' }}>{selectedFiles.size} file{selectedFiles.size === 1 ? '' : 's'}</span>?<br />
               <span style={{ color: 'var(--t4)', fontSize: 10.5 }}>This cannot be undone.</span>
             </div>
@@ -1119,7 +1119,7 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
             </>
           }
         >
-          <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 11, color: 'var(--t2)', textAlign: 'center', lineHeight: 2 }}>
+          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--t2)', textAlign: 'center', lineHeight: 2 }}>
             Dropped: <span style={{ color: 'var(--accent)' }}>{dropModal.name}</span><br />
             <span style={{ color: 'var(--t4)', fontSize: 10.5 }}>Open the folder to manage files directly.</span>
           </div>

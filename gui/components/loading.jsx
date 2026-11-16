@@ -111,15 +111,15 @@ export function LoadingScreen({ onReady }) {
   return (
     <div className="loading-screen" onClick={skip} style={{ cursor: 'pointer' }} title="Click to skip">
       {splashIsSvg ? (
-        <div className="loading-mascot" style={{ filter: 'drop-shadow(0 0 24px rgba(0,216,255,0.35))' }} dangerouslySetInnerHTML={{ __html: splashSvgHtml }} />
+        <div className="loading-mascot" style={{ filter: 'var(--mascot-splash-filter)' }} dangerouslySetInnerHTML={{ __html: splashSvgHtml }} />
       ) : splashMascot ? (
-        <img src={splashMascot} className="loading-mascot" style={{ filter: 'sepia(1) saturate(6.7) hue-rotate(151deg) brightness(0.87) drop-shadow(0 0 24px rgba(0,216,255,0.35))', mixBlendMode: 'screen' }} alt="" />
+        <img src={splashMascot} className="loading-mascot" style={{ filter: 'var(--mascot-splash-img-filter)', mixBlendMode: 'screen' }} alt="" />
       ) : null}
       <div className="loading-title">{text}<span style={{ opacity: 0.5, animation: 'pulse 1s infinite' }}>_</span></div>
       <div className="loading-sub">MELLOW // DATA LAKE COMMANDER{appVersion ? ' v' + appVersion : ''}</div>
       <div className="loading-bar"><div className="loading-bar-fill" /></div>
       {attempts > 0 && (
-        <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: '9px', color: 'var(--t4)' }}>
+        <div style={{ fontFamily: 'var(--font-mono)', fontSize: '9px', color: 'var(--t4)' }}>
           CONNECTING... ATTEMPT {attempts}/5
         </div>
       )}

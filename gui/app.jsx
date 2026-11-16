@@ -52,7 +52,7 @@ function ShortcutHelpOverlay({ onClose }) {
     <Modal title="KEYBOARD SHORTCUTS" onClose={onClose} footer={
       <button className="btn btn-secondary btn-sm" onClick={onClose}>CLOSE</button>
     }>
-      <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 11 }}>
+      <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11 }}>
         {KEYBOARD_SHORTCUTS.map(([key, desc]) => (
           <div key={key} style={{ display: 'flex', gap: 14, padding: '6px 0', borderBottom: '1px solid var(--border)' }}>
             <span style={{ color: 'var(--accent)', minWidth: 90 }}>{key}</span>
@@ -566,12 +566,12 @@ function App() {
           <Mascot src={MASCOT_VICTORY_SAFE} className="victory-mascot" wrapClass="victory-mascot" />
           <div className="victory-text">✦ PLAYLIST COMPLETE ✦</div>
           {victoryData && victoryData.playlistName && (
-            <div style={{ fontFamily: "'Exo 2', sans-serif", fontSize: 16, color: '#e0e8f0', fontStyle: 'italic', textAlign: 'center', maxWidth: 400 }}>
+            <div style={{ fontFamily: 'var(--font-body)', fontSize: 16, color: 'var(--t-bright)', fontStyle: 'italic', textAlign: 'center', maxWidth: 400 }}>
               "{victoryData.playlistName}"
             </div>
           )}
           {victoryData && (victoryData.itemCount > 0) && (
-            <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 13, color: '#8899aa', letterSpacing: '0.1em' }}>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 13, color: 'var(--t-muted)', letterSpacing: '0.1em' }}>
               {victoryData.itemCount} ITEMS DOWNLOADED
             </div>
           )}
@@ -613,7 +613,7 @@ function App() {
             </>
           }
         >
-          <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 11, color: 'var(--t2)' }}>
+          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--t2)' }}>
             <div style={{ marginBottom: 8, color: 'var(--t3)' }}>
               {restorableJobs.length} download(s) hadn't finished when the app last closed:
             </div>

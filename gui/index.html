@@ -30,6 +30,7 @@
       --surface-placeholder:#111820;               /* an empty cell of a folder card's mosaic */
       --scrim:rgba(7,9,15,0.85);--scrim-tour:rgba(4,6,12,0.74);--scrim-victory:rgba(10,15,26,0.95);
       --scrim-menu:rgba(7,9,15,0.8);               /* the ⋯ button over a thumbnail */
+      --media-bg:#000;                             /* behind a playing video */
       --shadow-rgb:0,0,0;
 
       /* Text: t3 and t4 keep 4.5:1 against every background (small text stays readable) */
@@ -87,6 +88,8 @@
       --mascot-img-filter-accent-2:url(#mascot-tint-amber) drop-shadow(0 0 14px rgba(var(--accent-2-rgb),0.6)) drop-shadow(0 0 4px rgba(var(--accent-2-rgb),0.4));
       --tint-accent:sepia(1) saturate(6.7) hue-rotate(151deg) brightness(0.87);   /* turns white art into the accent */
       --tint-accent-2:sepia(1) saturate(3) hue-rotate(10deg) brightness(0.9);
+      /* The splash sets its own filter (inline, so --mascot-filter doesn't reach it): line art / a picture */
+      --mascot-splash-filter:var(--glow-splash);--mascot-splash-img-filter:var(--tint-accent) var(--glow-splash);
       --overlay-blur:blur(4px);
 
       /* Type */

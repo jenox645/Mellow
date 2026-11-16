@@ -1,7 +1,7 @@
 // App chrome: sidebar navigation, top bar, bottom status bar.
 'use strict';
 
-import { fmtBytes, fmtSpeed } from '../lib/util.js';
+import { fmtBytes, fmtSpeed, themeRgba } from '../lib/util.js';
 import { SVG } from './icons.jsx';
 import { Mascot } from './common.jsx';
 import {
@@ -23,7 +23,7 @@ export function Sidebar({ page, setPage, appState, stats, speedHistory, sysInfo 
     const pts = speedHistory.length ? speedHistory.slice(-20) : Array(20).fill(0);
     const maxV = Math.max(...pts, 1);
     ctx.clearRect(0, 0, w, h);
-    ctx.strokeStyle = 'rgba(0,216,255,0.6)';
+    ctx.strokeStyle = themeRgba('--accent-rgb', 0.6);   // a canvas can't resolve var()
     ctx.lineWidth = 1;
     ctx.beginPath();
     pts.forEach((v, i) => {
@@ -179,7 +179,7 @@ export function StatusBar({ sysInfo, speedHistory, config, appUpdate, onAppUpdat
     ctx.clearRect(0, 0, w, 16);
     const pts = speedHistory.length ? speedHistory : Array(60).fill(0);
     const maxV = Math.max(...pts, 1);
-    ctx.strokeStyle = 'rgba(249,169,0,0.7)';
+    ctx.strokeStyle = themeRgba('--accent-2-rgb', 0.7);
     ctx.lineWidth = 1;
     ctx.beginPath();
     pts.forEach((v, i) => {

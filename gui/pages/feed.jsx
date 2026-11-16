@@ -450,7 +450,7 @@ export function FeedPage({ dlState, stats, sysInfo, refreshStats, showNotif, swi
           <button className="btn btn-secondary btn-sm" data-tour="feed-paste" onClick={handlePaste}>PASTE</button>
           <button className="btn btn-secondary btn-sm" data-tour="feed-import" onClick={handleImportFile} title="Import URLs from .txt file">IMPORT FILE</button>
         </div>
-        <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 10.5, color: 'var(--t4)', padding: '0 18px 8px', marginTop: -10 }}>
+        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10.5, color: 'var(--t4)', padding: '0 18px 8px', marginTop: -10 }}>
           ENTER: {!url.trim() ? 'paste' : !info && !analyzing ? (isLinkLike(url) ? 'analyze' : 'search') : 'download'}
           {importedFileName && <span style={{ color: 'var(--accent)', marginLeft: 10 }}>↑ {importedFileName} ({importedUrls ? importedUrls.length : 0} URLs)</span>}
           {analyzeSlow && (
@@ -579,7 +579,7 @@ export function FeedPage({ dlState, stats, sysInfo, refreshStats, showNotif, swi
                   {chosenChapters.length > 0 && <span style={{ color: 'var(--accent)', marginLeft: 8 }}>{chosenChapters.length} CHOSEN</span>}
                 </div>
                 <div className={'opts-adv-body' + (chaptersOpen ? ' open' : '')}>
-                  <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 10.5, color: 'var(--t3)', margin: '4px 0 6px', display: 'flex', gap: 12 }}>
+                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10.5, color: 'var(--t3)', margin: '4px 0 6px', display: 'flex', gap: 12 }}>
                     <span>Each chosen chapter is saved as its own file (clip start/end is ignored).</span>
                     <span style={{ cursor: 'pointer', color: 'var(--accent)' }} onClick={() => setChapterSel(new Set(videoChapters.map(c => c.index)))}>ALL</span>
                     <span style={{ cursor: 'pointer', color: 'var(--accent)' }} onClick={() => setChapterSel(new Set())}>NONE</span>
@@ -592,7 +592,7 @@ export function FeedPage({ dlState, stats, sysInfo, refreshStats, showNotif, swi
                           if (next.has(c.index)) next.delete(c.index); else next.add(c.index);
                           return next;
                         })} />
-                        <span style={{ fontFamily: 'Share Tech Mono, monospace', color: 'var(--t4)', minWidth: 90 }}>
+                        <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--t4)', minWidth: 90 }}>
                           {fmtDuration(c.start)} – {fmtDuration(c.end)}
                         </span>
                         {c.title}
@@ -767,7 +767,7 @@ export function FeedPage({ dlState, stats, sysInfo, refreshStats, showNotif, swi
                 }
                 <div className="dl-info">
                   {info && info.is_playlist && dlState.current_item_title && (
-                    <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 10.5, color: '#8899aa', marginBottom: 3, letterSpacing: '0.1em' }}>
+                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10.5, color: 'var(--t-muted)', marginBottom: 3, letterSpacing: '0.1em' }}>
                       FROM: {(info.title || '').toUpperCase().slice(0, 32)}
                     </div>
                   )}
@@ -831,7 +831,7 @@ export function FeedPage({ dlState, stats, sysInfo, refreshStats, showNotif, swi
                 COMPLETED ({completedItems ? completedItems.length : 0})
               </div>
               {feedQTab === 'completed' && completedItems && completedItems.length > 0 && onClearCompleted && (
-                <span style={{ marginLeft: 'auto', cursor: 'pointer', fontFamily: 'Share Tech Mono, monospace', fontSize: 10.5, color: 'var(--danger)', padding: '0 10px' }} onClick={onClearCompleted}>CLEAR ✕</span>
+                <span style={{ marginLeft: 'auto', cursor: 'pointer', fontFamily: 'var(--font-mono)', fontSize: 10.5, color: 'var(--danger)', padding: '0 10px' }} onClick={onClearCompleted}>CLEAR ✕</span>
               )}
             </div>
           )}
@@ -846,7 +846,7 @@ export function FeedPage({ dlState, stats, sysInfo, refreshStats, showNotif, swi
             ) : (syncPlan || syncJobLabel) ? (
               <SyncBanner plan={syncPlan} label={syncJobLabel} />
             ) : fetchingItems ? (
-              <div style={{ padding: '20px', fontFamily: 'Share Tech Mono', fontSize: 10.5, color: 'var(--t3)', textAlign: 'center' }}>
+              <div style={{ padding: '20px', fontFamily: 'var(--font-mono)', fontSize: 10.5, color: 'var(--t3)', textAlign: 'center' }}>
                 FETCHING PLAYLIST ITEMS...
               </div>
             ) : (
@@ -875,7 +875,7 @@ export function FeedPage({ dlState, stats, sysInfo, refreshStats, showNotif, swi
                 </div>
               ))}
               {(!completedItems || completedItems.length === 0) && (
-                <div style={{ padding: '20px', fontFamily: 'Share Tech Mono', fontSize: 10.5, color: 'var(--t4)', textAlign: 'center' }}>NO COMPLETED ITEMS YET</div>
+                <div style={{ padding: '20px', fontFamily: 'var(--font-mono)', fontSize: 10.5, color: 'var(--t4)', textAlign: 'center' }}>NO COMPLETED ITEMS YET</div>
               )}
             </div>
           )}
@@ -949,7 +949,7 @@ function SearchResults({ results, info, onPick, onPickMany, onClear }) {
             data-tour="search-pick-many" title="Put the ticked videos in one list, then DOWNLOAD them with the options below"
             onClick={() => onPickMany(chosen)}>LIST {chosen.length} →</button>
         )}
-        <span style={{ cursor: 'pointer', fontFamily: 'Share Tech Mono, monospace', fontSize: 10.5, color: 'var(--t3)', paddingLeft: 10 }}
+        <span style={{ cursor: 'pointer', fontFamily: 'var(--font-mono)', fontSize: 10.5, color: 'var(--t3)', paddingLeft: 10 }}
           title="Close the results" onClick={onClear}>CLEAR ✕</span>
       </div>
       <div className="pl-queue-list" style={{ maxHeight: 360 }}>

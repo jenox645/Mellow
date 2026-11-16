@@ -178,3 +178,14 @@ export function splitFolder(path) {
   const i = Math.max(p.lastIndexOf('/'), p.lastIndexOf('\\'));
   return i < 0 ? { name: p, parent: '' } : { name: p.slice(i + 1) || p, parent: p.slice(0, i + 1) };
 }
+
+// ── Theme tokens (gui/index.html :root, gui/themes/*.css) ─────────────────────
+// A canvas can't resolve var(--x): read the token's value when drawing
+export function cssVar(name, el) {
+  return window.getComputedStyle(el || document.documentElement).getPropertyValue(name).trim();
+}
+
+// rgba() from a channel token: themeRgba('--accent-rgb', 0.85) → 'rgba(0,216,255,0.85)' in Classic
+export function themeRgba(name, alpha) {
+  return `rgba(${cssVar(name)},${alpha})`;
+}
