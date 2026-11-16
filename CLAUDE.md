@@ -82,7 +82,11 @@ reducer over the download state (dlState, activeJobs, playlist/completed/failed 
 Side effects (toasts, chime, desktop notification, refreshes, the victory overlay) are queued in
 `state.effects`, and the App runs them in order and acknowledges them (`effects_done`). Pages change this
 state through setState-style setters (`{type:'set', key, value}`) or `playlist_started`.
-A new event = a case in `applyEvent` + a test in `tests/js/downloads.test.mjs`. The victory overlay follows a Feed playlist
+A new event = a case in `applyEvent` + a test in `tests/js/downloads.test.mjs`.
+Events sent while the stream is down are lost, so the App re-reads `/api/queue/status` on every stream (re)open and
+every `RESYNC_POLL_MS` while a job shows as running, and dispatches `resync`: a job the page shows as running that the
+server lists as ended gets its missed terminal event (one missing from two lists in a row is ended quietly);
+`endedJobs` drops a late duplicate terminal event. The victory overlay follows a Feed playlist
 (`playlist_started` → `playlistActive`) or any `sync` job whose `complete` comes after at least one `item_done`
 (`jobItemsDone`, named by `syncName(job_label)`).
 - `starting` — download started

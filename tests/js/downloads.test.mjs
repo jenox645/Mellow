@@ -229,3 +229,63 @@ test('the pending list belongs to a job until that job ends', () => {
   s = run([{ status: 'complete', job_id: 's', job_type: 'sync' }], s);
   assert.equal(s.playlistJobId, null);
 });
+
+// ── resync: the job list re-read after the progress stream dropped ──────────
+const resync = (jobs, state) => downloadsReducer(state, { type: 'resync', jobs, now: 2000 });
+const running = () => run([
+  { status: 'starting', job_id: 'j1' },
+  { status: 'downloading', job_id: 'j1', pct: 40, current_item_title: 'Song', job_label: 'Song', job_type: 'download' },
+]);
+
+test('resync: a job that finished while the stream was down ends the main panel', () => {
+  const s = resync([{ id: 'j1', status: 'complete', label: 'https://x/song', type: 'download' }], running());
+  assert.equal(s.appState, 'idle');
+  assert.equal(s.primaryJob, null);
+  assert.deepEqual(s.activeJobs, {});
+  assert.ok(types(s).includes('notify'));
+  assert.equal(s.effects.find(fx => fx.type === 'notify').title, 'Download Complete');
+  assert.equal(s.effects.find(fx => fx.type === 'notify').body, 'Song');
+  // The real event arriving late changes nothing and says nothing twice
+  const late = run([{ status: 'complete', job_id: 'j1', title: 'Song' }], s);
+  assert.equal(late, s);
+});
+
+test('resync: a failed job shows the error, a cancelled one ends quietly', () => {
+  const failed = resync([{ id: 'j1', status: 'failed', label: 'Song', error: 'HTTP Error 403' }], running());
+  assert.equal(failed.appState, 'error');
+  assert.equal(failed.failedItems[0].title, 'HTTP Error 403');
+  const cancelled = resync([{ id: 'j1', status: 'cancelled', label: 'Song' }], running());
+  assert.equal(cancelled.appState, 'idle');
+  assert.ok(!types(cancelled).includes('notify'));
+});
+
+test('resync: a job still running or queued is left alone', () => {
+  const s = running();
+  assert.equal(resync([{ id: 'j1', status: 'active' }], s), s);
+  assert.equal(resync([{ id: 'j1', status: 'queued' }], s), s);
+});
+
+test('resync: a job missing from the list ends only when the next list misses it too', () => {
+  const once = resync([], running());
+  assert.equal(once.appState, 'downloading');
+  assert.deepEqual(once.resyncMissing, ['j1']);
+  const back = resync([{ id: 'j1', status: 'active' }], once);
+  assert.deepEqual(back.resyncMissing, []);
+  assert.equal(back.appState, 'downloading');
+  const twice = resync([], once);
+  assert.equal(twice.appState, 'idle');
+  assert.deepEqual(twice.resyncMissing, []);
+});
+
+test('resync: a background job that ended leaves the main panel to the primary one', () => {
+  const s = run([{ status: 'downloading', job_id: 'j2', pct: 10, job_label: 'Other' }], running());
+  const after = resync([{ id: 'j1', status: 'active' }, { id: 'j2', status: 'complete', label: 'Other' }], s);
+  assert.equal(after.appState, 'downloading');
+  assert.equal(after.primaryJob, 'j1');
+  assert.deepEqual(Object.keys(after.activeJobs), ['j1']);
+});
+
+test('a duplicate terminal event for the same job is ignored', () => {
+  const done = run([{ status: 'complete', job_id: 'j1', title: 'Song' }], running());
+  assert.equal(run([{ status: 'error', job_id: 'j1', message: 'x' }], done), done);
+});

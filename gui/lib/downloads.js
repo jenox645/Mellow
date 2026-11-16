@@ -6,7 +6,7 @@
 // (effectsFromQueue), in the order the events arrived.
 'use strict';
 
-import { BREAKAGE_RE, COMPLETED_ITEMS_KEEP, FAILED_ITEMS_KEEP, SPEED_HISTORY_LEN } from './constants.js';
+import { BREAKAGE_RE, COMPLETED_ITEMS_KEEP, ENDED_JOBS_KEEP, FAILED_ITEMS_KEEP, SPEED_HISTORY_LEN } from './constants.js';
 
 export function initialDownloads() {
   return {
@@ -32,6 +32,8 @@ export function initialDownloads() {
     syncPlan: null,            // the running sync's plan: {jobId, name, total, have, new, haveItems, failed}
     appUpdate: null,           // MellowDLP updating itself: {stage, pct, version}
     ffmpegInstall: null,       // GET FFMPEG running: {stage, pct, version}
+    resyncMissing: [],         // running jobs the last resync's job list didn't name
+    endedJobs: [],             // jobs whose terminal event was applied (a late duplicate is ignored)
     effects: [],               // side effects waiting for the App (see applyEvent)
   };
 }
@@ -40,6 +42,8 @@ export function downloadsReducer(state, action) {
   switch (action.type) {
     case 'event':
       return applyEvent(state, action.data, action.now);
+    case 'resync':
+      return resync(state, action.jobs || [], action.now);
     case 'set': {
       // setState-style: a value or an updater function, for one field
       const value = typeof action.value === 'function' ? action.value(state[action.key]) : action.value;
@@ -123,11 +127,55 @@ function withoutFinished(items, data) {
   return items;
 }
 
+// The server's job list (/api/queue/status), read again after the progress
+// stream reconnected or while something runs: a job this page still shows as
+// running that the server says has ended gets the terminal event it missed
+// (an event lost while the stream was down left the page on "downloading"
+// for good). A job missing from the list (the server keeps only the last
+// finished ones, or restarted) ends only when the previous list missed it
+// too: a list read just before a job started doesn't name it yet.
+const TERMINAL = new Set(['complete', 'error', 'cancelled']);
+const TERMINAL_EVENT = { complete: 'complete', failed: 'error', cancelled: 'cancelled' };
+
+export function resync(state, jobs, now = Date.now()) {
+  const byId = new Map(jobs.map(j => [j.id, j]));
+  const running = jobs.some(j => j.status === 'active' || j.status === 'queued');
+  const shown = new Set(Object.keys(state.activeJobs));
+  if (state.primaryJob) shown.add(state.primaryJob);
+  const missing = [];
+  let s = state;
+  for (const id of shown) {
+    if (id === '_single') {
+      // Events without a job id: over once nothing runs at all
+      if (!running) s = applyEvent(s, { status: 'cancelled', quiet: true }, now);
+      continue;
+    }
+    const job = byId.get(id);
+    if (!job) {
+      if (state.resyncMissing.includes(id)) s = applyEvent(s, { status: 'cancelled', job_id: id, quiet: true }, now);
+      else missing.push(id);
+      continue;
+    }
+    const status = TERMINAL_EVENT[job.status];
+    if (!status) continue;
+    s = applyEvent(s, { status, job_id: id, job_type: job.type, job_label: job.label, library_id: job.library_id,
+      title: (state.activeJobs[id] && state.activeJobs[id].title) || job.label, message: job.error || (job.label ? 'Failed: ' + job.label : null), url: job.url, quiet: true }, now);
+  }
+  const same = missing.length === state.resyncMissing.length && missing.every(id => state.resyncMissing.includes(id));
+  return same && s === state ? state : { ...s, resyncMissing: missing };
+}
+
 export function applyEvent(state, data, now = Date.now()) {
   const jobId = data.job_id || null;
   const isPrimary = state.primaryJob === null || jobId === null || jobId === state.primaryJob;
   const fx = [];
   let s = state;
+
+  if (TERMINAL.has(data.status) && jobId) {
+    // One ending per job: a resync may have ended it before its own event came
+    if (s.endedJobs.includes(jobId)) return state;
+    s = { ...s, endedJobs: [jobId, ...s.endedJobs].slice(0, ENDED_JOBS_KEEP) };
+  }
 
   switch (data.status) {
     case 'starting':
@@ -280,7 +328,7 @@ export function applyEvent(state, data, now = Date.now()) {
 
     case 'cancelled':
       s = { ...s, activeJobs: withoutJob(s.activeJobs, jobId), jobItemsDone: withoutJob(s.jobItemsDone, jobId) };
-      fx.push({ type: 'notify', title: 'Cancelled', body: 'Download stopped', kind: 'info' });
+      if (!data.quiet) fx.push({ type: 'notify', title: 'Cancelled', body: 'Download stopped', kind: 'info' });
       if (isPrimary) s = { ...endPrimary(s, 'idle'), pausedCount: 0 };
       s = withoutPlan(s, jobId);
       break;
