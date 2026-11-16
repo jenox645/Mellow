@@ -1460,18 +1460,6 @@ def api_library_post() -> Response:
     return jsonify({**entry, "folder_path": folder_path}), 201
 
 
-@app.route("/api/library/<entry_id>", methods=["PUT"])
-def api_library_put(entry_id: str) -> Response:
-    data = request.get_json(force=True) or {}
-    existing = analytics.get_library_entry(entry_id)
-    if not existing:
-        return jsonify({"error": "Not found"}), 404
-    existing.update(data)
-    existing["id"] = entry_id
-    analytics.upsert_library_entry(existing)
-    return jsonify(existing)
-
-
 @app.route("/api/library/<entry_id>", methods=["DELETE"])
 def api_library_delete(entry_id: str) -> Response:
     analytics.delete_library_entry(entry_id)

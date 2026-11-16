@@ -49,7 +49,6 @@ export const download = (url) => fetch(url, { headers: authHeaders() }).then(asy
 export const API = {
   get: (url) => request('GET', url),
   post: (url, body) => request('POST', url, body),
-  put: (url, body) => request('PUT', url, body),
   del: (url, body) => request('DELETE', url, body),
 };
 
