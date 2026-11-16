@@ -73,8 +73,13 @@ export function ConfigPage({ config, setConfig, showNotif, installAppUpdate, onA
   const currentTheme = THEMES.some(t => t.id === config.ui_theme) ? config.ui_theme : DEFAULT_THEME;
   const pickTheme = id => {
     if (id === currentTheme) return;
+    const before = currentTheme;
     setConfig(c => ({ ...c, ui_theme: id }));
-    API.post('/api/config', { ui_theme: id }).catch(e => showNotif('Error', e.message, 'error'));
+    // Not saved: back to the theme the config still has, so the next launch doesn't disagree
+    API.post('/api/config', { ui_theme: id }).catch(e => {
+      setConfig(c => (c.ui_theme === id ? { ...c, ui_theme: before } : c));
+      showNotif('Error', e.message, 'error');
+    });
   };
 
   // Every setting back to the server's defaults (a list kept here missed
