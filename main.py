@@ -31,6 +31,7 @@ FIRST_PAGE_TIMEOUT_SECS = 120
 # --shell: a desktop shell (src-tauri/) owns the window and reads READY_PREFIX + launch URL
 SHELL_FLAG = "--shell"
 READY_PREFIX = "MELLOW_READY "
+STD_INPUT_HANDLE = -10          # Windows GetStdHandle/SetStdHandle
 
 # Where versions before sign-in wrote their port; removed at start
 LEGACY_PORT_FILE = Path.home() / ".mellow_dlp.port"
@@ -168,10 +169,32 @@ def _run_shell(flask_app, port: int, stdin=None) -> None:
     the server listens; exits when the shell closes stdin (it quit or died)."""
     from werkzeug.serving import make_server
     server = make_server("127.0.0.1", port, flask_app, threaded=True)
-    threading.Thread(target=_exit_with_parent, args=(stdin or sys.stdin,), daemon=True).start()
+    watched = stdin if stdin is not None else _detach_stdin()
+    threading.Thread(target=_exit_with_parent, args=(watched,), daemon=True).start()
     log.info(f"serving for a desktop shell at http://127.0.0.1:{port}")
     _print_ready(f"http://127.0.0.1:{port}", session.launch_token())
     server.serve_forever()
+
+
+def _detach_stdin():
+    """The shell's pipe as a file of its own, with stdin itself pointed at the null device.
+
+    The watcher blocks reading that pipe. On Windows a child process that
+    inherits it as stdin (ffmpeg, deno… every Popen without stdin=) hangs at
+    start until that pending read ends: analyzing a link would wait until
+    the window closed. Children get the null device instead."""
+    try:
+        fd = os.dup(sys.stdin.fileno())
+    except (AttributeError, OSError, ValueError):     # no stdin (pythonw), or not a real one
+        return None
+    null = os.open(os.devnull, os.O_RDONLY)
+    os.dup2(null, 0)
+    os.close(null)
+    if os.name == "nt":
+        import ctypes
+        import msvcrt
+        ctypes.windll.kernel32.SetStdHandle(STD_INPUT_HANDLE, msvcrt.get_osfhandle(0))
+    return os.fdopen(fd, "r", encoding="ascii", errors="replace")
 
 
 def _exit_with_parent(stdin) -> None:

@@ -195,10 +195,13 @@ def test_the_shell_ready_line_comes_once_the_server_listens():
     with patch('werkzeug.serving.make_server',
                side_effect=lambda host, port, app, threaded: order.append(('bound', host, port)) or server), \
             patch('main._print_ready', side_effect=lambda *a, **k: order.append('ready')), \
+            patch('main._detach_stdin') as detach, \
             patch('main.threading.Thread') as watcher:
         main._run_shell(MagicMock(), 5123)
     assert order == [('bound', '127.0.0.1', 5123), 'ready', 'serving']
-    watcher.return_value.start.assert_called_once()     # the stdin watcher
+    # The stdin watcher reads the shell's pipe, moved off stdin
+    assert watcher.call_args.kwargs['args'] == (detach.return_value,)
+    watcher.return_value.start.assert_called_once()
 
 
 def test_the_ready_line_signs_a_window_in_once(capsys):
