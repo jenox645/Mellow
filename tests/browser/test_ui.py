@@ -171,6 +171,41 @@ def test_cancel_a_running_download(page, app_url, media_site, downloads):
     assert not any(name.endswith(".mp4") for name in _files(downloads))
 
 
+# The page's progress stream, with a switch that drops what it receives:
+# events sent while the connection is down never reach the page
+DROPPABLE_EVENTS = """
+const Real = window.EventSource;
+window.__dropEvents = false;
+window.EventSource = class extends Real {
+  set onmessage(fn) { super.onmessage = e => { if (!window.__dropEvents) fn(e); }; }
+  get onmessage() { return super.onmessage; }
+};
+"""
+
+
+def test_a_download_that_ends_unseen_doesnt_stay_on_downloading(page, app_url, media_site, downloads):
+    page.add_init_script(DROPPABLE_EVENTS)
+    page.reload()
+    page.locator(".nav-item").first.wait_for()
+    _analyze(page, f"{media_site}/slow/long.mp4")   # served at ~250 KB/s
+    page.locator(".info-actions .btn-primary").click()
+    cancel = page.get_by_text("CANCEL", exact=True)
+    cancel.wait_for(timeout=30_000)
+    page.evaluate("window.__dropEvents = true")
+    # The download ends on the server; the page hears nothing of it
+    deadline = time.monotonic() + DOWNLOAD_TIMEOUT_MS / 1000
+    while time.monotonic() < deadline:
+        statuses = [job["status"] for job in _get(app_url, "/api/queue/status")["jobs"]]
+        if statuses and statuses[-1] == "complete":
+            break
+        time.sleep(0.5)
+    else:
+        raise AssertionError(f"the download didn't finish: {statuses}")
+    # The page re-reads the job list while it shows a download running
+    assert "long" in _notification(page, "Download Complete")
+    expect(cancel).to_have_count(0, timeout=5_000)
+
+
 def test_add_a_playlist_to_the_vault(page, app_url, media_site, downloads):
     page.locator(".nav-item", has_text=re.compile("vault", re.I)).first.click()
     page.get_by_text("ADD PLAYLIST", exact=True).click()
