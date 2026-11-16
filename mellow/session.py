@@ -35,6 +35,7 @@ import os
 import secrets
 import threading
 import time
+from contextlib import contextmanager
 from pathlib import Path
 
 from . import datadir
@@ -50,6 +51,8 @@ log = logging.getLogger(__name__)
 COOKIE = "mellow_session"
 HEADER = "X-Mellow-Token"
 INSTANCE_FILE_NAME = "instance.json"
+# Held while the instance file is written, or read and then removed (`_instance_file_lock`)
+INSTANCE_LOCK_NAME = "instance.lock"
 # sessionStorage key the launch page stores the header token under (gui/lib/api.js)
 STORAGE_KEY = "mellow-token"
 
@@ -64,6 +67,46 @@ def instance_file() -> Path:
     return datadir.data_dir() / INSTANCE_FILE_NAME
 
 
+@contextmanager
+def _instance_file_lock():
+    """Hold the instance file's lock (between processes): a launch removing a stale file must not
+    remove the one a copy starting at the same moment has just written. Yields False when the
+    lock can't be had (its file can't be opened): callers that only tidy up then do nothing."""
+    try:
+        fd = os.open(datadir.ensure_private() / INSTANCE_LOCK_NAME, os.O_RDWR | os.O_CREAT, 0o600)
+    except OSError as e:
+        log.warning(f"can't open the instance lock: {e}")
+        yield False
+        return
+    try:
+        try:
+            if os.name == "nt":
+                import msvcrt
+                msvcrt.locking(fd, msvcrt.LK_LOCK, 1)    # retries for ~10 s, then OSError
+            else:
+                import fcntl
+                fcntl.flock(fd, fcntl.LOCK_EX)
+        except OSError as e:
+            log.warning(f"can't lock the instance file: {e}")
+            yield False
+            return
+        try:
+            yield True
+        finally:
+            try:
+                if os.name == "nt":
+                    import msvcrt
+                    os.lseek(fd, 0, os.SEEK_SET)
+                    msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+                else:
+                    import fcntl
+                    fcntl.flock(fd, fcntl.LOCK_UN)
+            except OSError:
+                pass
+    finally:
+        os.close(fd)
+
+
 # ── This copy's secret ─────────────────────────────────────────────────────────
 
 def start_instance(port: int, publish: bool = True) -> None:
@@ -75,19 +118,29 @@ def start_instance(port: int, publish: bool = True) -> None:
     if not publish:
         return
     folder = datadir.ensure_private()
-    datadir.write_private(folder / INSTANCE_FILE_NAME, json.dumps({"port": port, "secret": _secret.hex(),
-                                                          "pid": os.getpid()}))
+    with _instance_file_lock():   # written even without the lock: this copy must be found
+        datadir.write_private(folder / INSTANCE_FILE_NAME, json.dumps({"port": port, "secret": _secret.hex(),
+                                                              "pid": os.getpid()}))
 
 
 def stop_instance() -> None:
     """Remove the instance file if it is still ours (a newer copy may have replaced it)."""
-    try:
-        data = read_instance()
-        if data and data["port"] == _port:
-            instance_file().unlink(missing_ok=True)
-    except OSError:
-        pass
+    _remove_instance_if(lambda data: data["port"] == _port)
     _remove_launch_pages(0)
+
+
+def _remove_instance_if(still_it) -> None:
+    """Remove the instance file if `still_it(its contents)`, checked and removed under the lock
+    so a copy that publishes in between keeps its file."""
+    with _instance_file_lock() as locked:
+        if not locked:
+            return
+        try:
+            data = read_instance()
+            if data and still_it(data):
+                instance_file().unlink(missing_ok=True)
+        except OSError:
+            pass
 
 
 def read_instance(path: Path | None = None) -> dict | None:
@@ -105,12 +158,7 @@ def read_instance(path: Path | None = None) -> dict | None:
 def drop_stale_instance(pid: int) -> None:
     """Remove the instance file of a copy that is no longer running (only if it still names `pid`:
     a copy starting meanwhile has written its own)."""
-    try:
-        data = read_instance()
-        if data and data["pid"] == pid:
-            instance_file().unlink(missing_ok=True)
-    except OSError:
-        pass
+    _remove_instance_if(lambda data: data["pid"] == pid)
 
 
 # Windows: OpenProcess access right, its "denied" error, and GetExitCodeProcess's "still running"

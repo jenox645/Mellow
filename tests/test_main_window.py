@@ -230,6 +230,26 @@ def test_a_stale_file_replaced_meanwhile_is_left_alone(isolated_user_files):
     assert path.exists()
 
 
+def test_removing_a_stale_file_waits_for_a_copy_publishing_its_own(isolated_user_files):
+    """Two launches find the same stale file: the one tidying up checks and removes it under the
+    instance lock, so it can't remove the file the other has just written."""
+    import threading
+
+    from mellow import session
+    dead = _dead_pid()
+    path = _instance_file(pid=dead)
+    with session._instance_file_lock() as locked:     # a copy publishing its file right now
+        assert locked
+        tidy = threading.Thread(target=session.drop_stale_instance, args=(dead,))
+        tidy.start()
+        tidy.join(0.3)
+        assert tidy.is_alive()                         # waiting for the lock
+        _instance_file(pid=dead + 1)                   # the new copy's file
+    tidy.join(5)
+    assert not tidy.is_alive()
+    assert path.exists() and session.read_instance()["pid"] == dead + 1
+
+
 def test_closing_the_window_forgets_the_instance():
     """FlaskWebGUI ends the server with a signal when the window closes (atexit doesn't run);
     its on_shutdown runs first."""
