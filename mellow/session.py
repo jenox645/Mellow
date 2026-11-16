@@ -91,12 +91,67 @@ def stop_instance() -> None:
 
 
 def read_instance(path: Path | None = None) -> dict | None:
-    """{port, secret} of the copy that last started (this account's, or the one at `path`), or None."""
+    """{port, secret, pid} of the copy that last started (this account's, or the one at `path`), or None.
+    `pid` is None in a file an older version wrote."""
     try:
         data = json.loads((path or instance_file()).read_text(encoding="utf-8"))
-        return {"port": int(data["port"]), "secret": bytes.fromhex(data["secret"])}
-    except (OSError, ValueError, KeyError, TypeError):
+        pid = data.get("pid")
+        return {"port": int(data["port"]), "secret": bytes.fromhex(data["secret"]),
+                "pid": int(pid) if pid is not None else None}
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
         return None
+
+
+def drop_stale_instance(pid: int) -> None:
+    """Remove the instance file of a copy that is no longer running (only if it still names `pid`:
+    a copy starting meanwhile has written its own)."""
+    try:
+        data = read_instance()
+        if data and data["pid"] == pid:
+            instance_file().unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
+# Windows: OpenProcess access right, its "denied" error, and GetExitCodeProcess's "still running"
+_PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+_ERROR_ACCESS_DENIED = 5
+_STILL_ACTIVE = 259
+
+
+def process_alive(pid: int) -> bool:
+    """Whether a process with this id runs (it may be another program reusing the id: callers
+    still check what answers)."""
+    if pid <= 0:
+        return False
+    if os.name == "nt":   # os.kill(pid, 0) would end the process there
+        import ctypes
+        from ctypes import wintypes
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel32.OpenProcess.restype = wintypes.HANDLE
+        kernel32.OpenProcess.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
+        kernel32.GetExitCodeProcess.argtypes = (wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD))
+        kernel32.CloseHandle.argtypes = (wintypes.HANDLE,)
+        handle = kernel32.OpenProcess(_PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+        if not handle:
+            # Another account's process can't be opened, but it exists
+            return ctypes.get_last_error() == _ERROR_ACCESS_DENIED
+        try:
+            code = wintypes.DWORD()
+            if not kernel32.GetExitCodeProcess(handle, ctypes.byref(code)):
+                return True
+            return code.value == _STILL_ACTIVE
+        finally:
+            kernel32.CloseHandle(handle)
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:   # another account's process
+        return True
+    except OSError:
+        return True           # unsure: let the probe decide
+    return True
 
 
 def _mac(secret: bytes, *parts: object) -> str:
