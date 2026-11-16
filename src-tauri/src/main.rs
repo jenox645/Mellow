@@ -284,6 +284,9 @@ fn main() {
                 .title(WINDOW_TITLE)
                 .inner_size(WINDOW_WIDTH, WINDOW_HEIGHT)
                 .visible(false) // shown once sized like the --app window (fit_outer_size)
+                // The page's own drag and drop (a link dropped anywhere, files dropped on
+                // the Vault): with Tauri's handler on, Windows never gives the page drop events
+                .disable_drag_drop_handler()
                 // The page's title (download progress) shows in the taskbar, like the --app window
                 .on_document_title_changed(|window, title| {
                     let _ = window.set_title(if title.is_empty() { WINDOW_TITLE } else { &title });
