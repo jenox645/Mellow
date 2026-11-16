@@ -28,8 +28,7 @@ import { playCompletionChime } from './lib/sound.js';
 import { downloadsReducer, initialDownloads } from './lib/downloads.js';
 import { MASCOT_VICTORY_SAFE } from './lib/mascots.js';
 import { Modal, Notif, Mascot, AppUpdateOverlay, WhatsNewModal } from './components/common.jsx';
-import { LoadingScreen } from './components/loading.jsx';
-import { Sidebar, TopBar, StatusBar } from './components/chrome.jsx';
+import { themeSlots } from './themes/slots.jsx';
 import { FeedPage } from './pages/feed.jsx';
 import { QueuePage } from './pages/queue.jsx';
 import { VaultPage } from './pages/vault.jsx';
@@ -278,6 +277,8 @@ function App() {
   React.useEffect(() => {
     if (config.ui_theme !== undefined) setTheme(applyTheme(config.ui_theme));
   }, [config.ui_theme]);
+  // The window's parts for this theme: its own components where it has them (gui/themes/slots.jsx)
+  const S = React.useMemo(() => themeSlots(theme), [theme]);
 
   // Initial load: stats, config, vault — then the once-a-day yt-dlp check
   React.useEffect(() => {
@@ -447,12 +448,12 @@ function App() {
   const switchPage = React.useCallback((p) => setPage(p), []);
 
   if (loading) {
-    return <LoadingScreen onReady={() => setLoading(false)} />;
+    return <S.LoadingScreen onReady={() => setLoading(false)} />;
   }
 
   return (
     <div className="app">
-      <Sidebar
+      <S.Sidebar
         page={page}
         setPage={setPage}
         appState={appState}
@@ -463,7 +464,9 @@ function App() {
       />
 
       <div className="main">
-        <TopBar page={page} onGuide={startGuide} />
+        <S.TopBar page={page} onGuide={startGuide} />
+
+        <S.PageFrame page={page}>
 
         {page === 'feed' && (
           <FeedPage
@@ -550,8 +553,9 @@ function App() {
             refreshStats={refreshStats}
           />
         )}
+        </S.PageFrame>
 
-        <StatusBar sysInfo={sysInfo} speedHistory={speedHistory} theme={theme} config={config}
+        <S.StatusBar sysInfo={sysInfo} speedHistory={speedHistory} theme={theme} config={config}
           appUpdate={appUpdateOffer} onAppUpdate={() => takeAppUpdate(appUpdateOffer)}
           ffmpegInstall={ffmpegInstall} onGetFfmpeg={installFfmpeg} />
       </div>
