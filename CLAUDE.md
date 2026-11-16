@@ -85,8 +85,8 @@ state through setState-style setters (`{type:'set', key, value}`) or `playlist_s
 A new event = a case in `applyEvent` + a test in `tests/js/downloads.test.mjs`.
 Events sent while the stream is down are lost, so the App re-reads `/api/queue/status` on every stream (re)open and
 every `RESYNC_POLL_MS` while a job shows as running, and dispatches `resync`: a job the page shows as running that the
-server lists as ended gets its missed terminal event (one missing from two lists in a row is ended quietly);
-`endedJobs` drops a late duplicate terminal event. The victory overlay follows a Feed playlist
+server lists as ended (or leaves out) in two lists in a row gets its missed terminal event (the real one, with its
+details, usually arrives in between); `endedJobs` drops a late duplicate terminal event and late progress of an ended job. The victory overlay follows a Feed playlist
 (`playlist_started` → `playlistActive`) or any `sync` job whose `complete` comes after at least one `item_done`
 (`jobItemsDone`, named by `syncName(job_label)`).
 - `starting` — download started

@@ -32,7 +32,7 @@ export function initialDownloads() {
     syncPlan: null,            // the running sync's plan: {jobId, name, total, have, new, haveItems, failed}
     appUpdate: null,           // MellowDLP updating itself: {stage, pct, version}
     ffmpegInstall: null,       // GET FFMPEG running: {stage, pct, version}
-    resyncMissing: [],         // running jobs the last resync's job list didn't name
+    resyncPending: [],         // shown as running, but ended or missing in the last job list
     endedJobs: [],             // jobs whose terminal event was applied (a late duplicate is ignored)
     effects: [],               // side effects waiting for the App (see applyEvent)
   };
@@ -131,38 +131,44 @@ function withoutFinished(items, data) {
 // stream reconnected or while something runs: a job this page still shows as
 // running that the server says has ended gets the terminal event it missed
 // (an event lost while the stream was down left the page on "downloading"
-// for good). A job missing from the list (the server keeps only the last
-// finished ones, or restarted) ends only when the previous list missed it
-// too: a list read just before a job started doesn't name it yet.
+// for good). Only when two lists in a row say so: the real event, with its
+// details (warning, sync summary, file), may still be on its way, and a list
+// read just before a job started doesn't name it yet. A job missing from the
+// list (the server keeps only the last finished ones, or restarted) ends
+// quietly.
 const TERMINAL = new Set(['complete', 'error', 'cancelled']);
+const PROGRESS = new Set(['starting', 'downloading', 'processing', 'sync_plan']);
 const TERMINAL_EVENT = { complete: 'complete', failed: 'error', cancelled: 'cancelled' };
+
+function missedEnding(state, id, job) {
+  if (!job) return { status: 'cancelled', job_id: id, quiet: true };
+  const status = TERMINAL_EVENT[job.status];
+  if (!status) return null;
+  const base = { status, job_id: id, job_type: job.type, job_label: job.label, library_id: job.library_id,
+    url: job.url, quiet: true };
+  if (status === 'complete') return { ...base, title: (state.activeJobs[id] && state.activeJobs[id].title) || job.label };
+  // No `title` on an error: that would read as an explained one (title + hint)
+  return status === 'error' ? { ...base, message: job.error || 'Failed: ' + (job.label || id) } : base;
+}
 
 export function resync(state, jobs, now = Date.now()) {
   const byId = new Map(jobs.map(j => [j.id, j]));
   const running = jobs.some(j => j.status === 'active' || j.status === 'queued');
   const shown = new Set(Object.keys(state.activeJobs));
   if (state.primaryJob) shown.add(state.primaryJob);
-  const missing = [];
+  const pending = [];
   let s = state;
   for (const id of shown) {
-    if (id === '_single') {
+    const ending = id === '_single'
       // Events without a job id: over once nothing runs at all
-      if (!running) s = applyEvent(s, { status: 'cancelled', quiet: true }, now);
-      continue;
-    }
-    const job = byId.get(id);
-    if (!job) {
-      if (state.resyncMissing.includes(id)) s = applyEvent(s, { status: 'cancelled', job_id: id, quiet: true }, now);
-      else missing.push(id);
-      continue;
-    }
-    const status = TERMINAL_EVENT[job.status];
-    if (!status) continue;
-    s = applyEvent(s, { status, job_id: id, job_type: job.type, job_label: job.label, library_id: job.library_id,
-      title: (state.activeJobs[id] && state.activeJobs[id].title) || job.label, message: job.error || (job.label ? 'Failed: ' + job.label : null), url: job.url, quiet: true }, now);
+      ? (running ? null : { status: 'cancelled', quiet: true })
+      : missedEnding(state, id, byId.get(id));
+    if (!ending) continue;
+    if (state.resyncPending.includes(id)) s = applyEvent(s, ending, now);
+    else pending.push(id);
   }
-  const same = missing.length === state.resyncMissing.length && missing.every(id => state.resyncMissing.includes(id));
-  return same && s === state ? state : { ...s, resyncMissing: missing };
+  const same = pending.length === state.resyncPending.length && pending.every(id => state.resyncPending.includes(id));
+  return same && s === state ? state : { ...s, resyncPending: pending };
 }
 
 export function applyEvent(state, data, now = Date.now()) {
@@ -176,6 +182,8 @@ export function applyEvent(state, data, now = Date.now()) {
     if (s.endedJobs.includes(jobId)) return state;
     s = { ...s, endedJobs: [jobId, ...s.endedJobs].slice(0, ENDED_JOBS_KEEP) };
   }
+  // Progress buffered behind a resync that ended the job must not revive it
+  if (PROGRESS.has(data.status) && jobId && s.endedJobs.includes(jobId)) return state;
 
   switch (data.status) {
     case 'starting':
