@@ -1,0 +1,53 @@
+name: Task for the friend queue
+description: A self-contained brief another Claude Code session picks up, implements on a branch and opens as a PR
+labels: [for-friend]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This issue is the whole spec: whoever picks it up has not seen the conversation it came from. Their PR says "Closes #<this issue>", carries the `from-friend` label, and is merged only by the owner.
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: One or two sentences on what changes for the user.
+    validations:
+      required: true
+  - type: textarea
+    id: where
+    attributes:
+      label: Where
+      description: Files and functions to change (paths), and the ones NOT to touch.
+    validations:
+      required: true
+  - type: textarea
+    id: done
+    attributes:
+      label: Done means
+      description: Concrete, checkable outcomes.
+      value: |
+        -
+    validations:
+      required: true
+  - type: textarea
+    id: checks
+    attributes:
+      label: Checks to run
+      description: pytest / ruff / ESLint / playwright, plus any manual check (run the app, do X, see Y).
+      value: |
+        - pytest
+        - ruff check
+        - npm run lint
+        - npm test
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Out of scope
+      description: What not to do in this PR (releases, tags, signing, secrets are always out of scope).
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes
+      description: Context, decisions already made, links.
