@@ -113,7 +113,7 @@ export function LoadingScreen({ onReady }) {
       {splashIsSvg ? (
         <div className="loading-mascot" style={{ filter: 'var(--mascot-splash-filter)' }} dangerouslySetInnerHTML={{ __html: splashSvgHtml }} />
       ) : splashMascot ? (
-        <img src={splashMascot} className="loading-mascot" style={{ filter: 'var(--mascot-splash-img-filter)', mixBlendMode: 'screen' }} alt="" />
+        <img src={splashMascot} className="loading-mascot" style={{ filter: 'var(--mascot-splash-img-filter)', mixBlendMode: 'var(--mascot-blend)' }} alt="" />
       ) : null}
       <div className="loading-title">{text}<span style={{ opacity: 0.5, animation: 'pulse 1s infinite' }}>_</span></div>
       <div className="loading-sub">MELLOW // DATA LAKE COMMANDER{appVersion ? ' v' + appVersion : ''}</div>

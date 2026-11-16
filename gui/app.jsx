@@ -272,8 +272,10 @@ function App() {
 
   // The theme follows config ui_theme (Config → APPEARANCE changes it live); before the config has
   // loaded, index.html's early script has applied the one remembered in localStorage
+  // `theme` is the one applied: the sidebar and status-bar graphs redraw with its colours once it is
+  const [theme, setTheme] = React.useState(() => document.documentElement.dataset.theme || '');
   React.useEffect(() => {
-    if (config.ui_theme !== undefined) applyTheme(config.ui_theme);
+    if (config.ui_theme !== undefined) setTheme(applyTheme(config.ui_theme));
   }, [config.ui_theme]);
 
   // Initial load: stats, config, vault — then the once-a-day yt-dlp check
@@ -440,6 +442,7 @@ function App() {
         appState={appState}
         stats={stats}
         speedHistory={speedHistory}
+        theme={theme}
         sysInfo={sysInfo}
       />
 
@@ -532,7 +535,7 @@ function App() {
           />
         )}
 
-        <StatusBar sysInfo={sysInfo} speedHistory={speedHistory} config={config}
+        <StatusBar sysInfo={sysInfo} speedHistory={speedHistory} theme={theme} config={config}
           appUpdate={appUpdateOffer} onAppUpdate={() => takeAppUpdate(appUpdateOffer)}
           ffmpegInstall={ffmpegInstall} onGetFfmpeg={installFfmpeg} />
       </div>

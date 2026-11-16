@@ -65,6 +65,7 @@
   --mascot-img-filter-accent:invert(1) grayscale(1);--mascot-img-filter-accent-2:invert(1) grayscale(1);
   --tint-accent:invert(1) grayscale(1);--tint-accent-2:invert(1) grayscale(1);
   --mascot-splash-filter:none;--mascot-splash-img-filter:invert(1) grayscale(1);
+  --mascot-blend:normal;   /* screen can't darken a light page: the dark art would vanish */
 
   /* Type (the families come with gui/fonts/fonts.css) */
   --font-display:'Barlow Condensed',sans-serif;--font-body:'Barlow',sans-serif;--font-mono:'JetBrains Mono',monospace;

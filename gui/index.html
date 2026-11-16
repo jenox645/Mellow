@@ -96,6 +96,7 @@
       --tint-accent-2:sepia(1) saturate(3) hue-rotate(10deg) brightness(0.9);
       /* The splash sets its own filter (inline, so --mascot-filter doesn't reach it): line art / a picture */
       --mascot-splash-filter:var(--glow-splash);--mascot-splash-img-filter:var(--tint-accent) var(--glow-splash);
+      --mascot-blend:screen;                       /* light art on a dark page; a light theme draws it dark: normal */
       --overlay-blur:blur(4px);
 
       /* Type */
@@ -646,7 +647,7 @@
     /* VICTORY OVERLAY */
     .victory-overlay{position:fixed;inset:0;background:var(--scrim-victory);backdrop-filter:var(--overlay-blur);z-index:9000;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;animation:fadein var(--dur-slower) var(--ease-out);cursor:pointer;overflow:hidden;transition:opacity var(--dur-dismiss) var(--ease),transform var(--dur-dismiss) var(--ease)}
     .victory-overlay.dismissing{opacity:0;transform:scale(1.03);pointer-events:none}
-    .victory-mascot{width:340px;height:auto;animation:mascot-float var(--dur-loop-float-fast) var(--ease-in-out) infinite;color:var(--accent);mix-blend-mode:screen;filter:var(--tint-accent)}
+    .victory-mascot{width:340px;height:auto;animation:mascot-float var(--dur-loop-float-fast) var(--ease-in-out) infinite;color:var(--accent);mix-blend-mode:var(--mascot-blend);filter:var(--tint-accent)}
     .victory-mascot svg{width:340px;height:auto;display:block}
     .victory-text{font-family:var(--font-display);font-size:24px;font-weight:800;color:var(--accent);letter-spacing:6px;text-shadow:var(--glow-victory);text-transform:uppercase}
     .victory-sparkle{position:absolute;width:4px;height:4px;background:var(--accent);border-radius:50%;animation:sparklePop var(--dur-sparkle) var(--ease) forwards;animation-delay:var(--delay)}

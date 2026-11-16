@@ -71,15 +71,23 @@ export function ConfigPage({ config, setConfig, showNotif, installAppUpdate, onA
 
   // APPEARANCE: a theme applies and saves when picked (the App follows config.ui_theme), no SAVE needed
   const currentTheme = THEMES.some(t => t.id === config.ui_theme) ? config.ui_theme : DEFAULT_THEME;
+  // Quick picks save one after another, in click order; `saved` is the last theme the server took
+  const themeSaves = React.useRef({ chain: Promise.resolve(), pending: 0, last: 0, saved: null });
   const pickTheme = id => {
     if (id === currentTheme) return;
-    const before = currentTheme;
+    const s = themeSaves.current;
+    if (!s.pending) s.saved = currentTheme;   // nothing on its way: what's shown is what's saved
+    s.pending++;
+    const pick = ++s.last;
     setConfig(c => ({ ...c, ui_theme: id }));
-    // Not saved: back to the theme the config still has, so the next launch doesn't disagree
-    API.post('/api/config', { ui_theme: id }).catch(e => {
-      setConfig(c => (c.ui_theme === id ? { ...c, ui_theme: before } : c));
-      showNotif('Error', e.message, 'error');
-    });
+    s.chain = s.chain
+      .then(() => API.post('/api/config', { ui_theme: id }))
+      .then(() => { s.saved = id; }, e => {
+        // Not saved: if it's still the latest pick, back to the saved theme so the next launch doesn't disagree
+        if (pick === s.last) setConfig(c => (c.ui_theme === id ? { ...c, ui_theme: s.saved } : c));
+        showNotif('Error', e.message, 'error');
+      })
+      .finally(() => { s.pending--; });
   };
 
   // Every setting back to the server's defaults (a list kept here missed

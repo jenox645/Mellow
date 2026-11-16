@@ -9,7 +9,7 @@ import {
   MASCOT_COMFY_SAFE, MASCOT_SUCCESS_SAFE, MASCOT_TROUBLESHOOTING_SAFE,
 } from '../lib/mascots.js';
 
-export function Sidebar({ page, setPage, appState, stats, speedHistory, sysInfo }) {
+export function Sidebar({ page, setPage, appState, stats, speedHistory, theme, sysInfo }) {
   const canvasRef = React.useRef(null);
 
   React.useEffect(() => {
@@ -32,7 +32,7 @@ export function Sidebar({ page, setPage, appState, stats, speedHistory, sysInfo 
       i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
     });
     ctx.stroke();
-  }, [speedHistory]);
+  }, [speedHistory, theme]);   // the line's colour is the theme's
 
   const CORE_PAGES = [
     { id: 'feed', label: 'FEED', num: '01', icon: 'feed' },
@@ -163,7 +163,7 @@ export function TopBar({ page, onGuide }) {
   );
 }
 
-export function StatusBar({ sysInfo, speedHistory, config, appUpdate, onAppUpdate, ffmpegInstall, onGetFfmpeg }) {
+export function StatusBar({ sysInfo, speedHistory, theme, config, appUpdate, onAppUpdate, ffmpegInstall, onGetFfmpeg }) {
   const canvasRef = React.useRef(null);
 
   React.useEffect(() => {
@@ -188,7 +188,7 @@ export function StatusBar({ sysInfo, speedHistory, config, appUpdate, onAppUpdat
       i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
     });
     ctx.stroke();
-  }, [speedHistory]);
+  }, [speedHistory, theme]);   // the line's colour is the theme's
 
   const currentSpeed = speedHistory.length ? speedHistory[speedHistory.length - 1] : 0;
   const isActive = currentSpeed > 0;
