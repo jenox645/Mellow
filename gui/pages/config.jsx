@@ -7,7 +7,7 @@ import { Toggle, Modal, Mascot } from '../components/common.jsx';
 import { ApiAccessPanel } from '../components/api-access.jsx';
 import { MASCOT_FRUSTRATED } from '../lib/mascots.js';
 import {
-  AUDIO_FORMATS, AUDIO_QUALITIES, CONTAINERS, QUALITIES, TEMPLATE_PREVIEW_DEBOUNCE_MS,
+  AUDIO_FORMATS, AUDIO_QUALITIES, CONTAINERS, DEFAULT_THEME, QUALITIES, TEMPLATE_PREVIEW_DEBOUNCE_MS, THEMES,
 } from '../lib/constants.js';
 
 export function ConfigPage({ config, setConfig, showNotif, installAppUpdate, onAppUpdateChecked, installFfmpeg, ffmpegInstall, showWhatsNew, sysInfo, refreshStats }) {
@@ -20,8 +20,19 @@ export function ConfigPage({ config, setConfig, showNotif, installAppUpdate, onA
   const [vacuuming, setVacuuming] = React.useState(false);
   const [dangerModal, setDangerModal] = React.useState(null);
 
+  // The form follows the saved config, but a change to one setting (picking a theme saves at once)
+  // must not wipe what was typed here and not saved yet: an edited key stays unless that key changed
+  const prevConfig = React.useRef(config);
   React.useEffect(() => {
-    setLocal({ ...config });
+    const prev = prevConfig.current;
+    prevConfig.current = config;
+    setLocal(l => {
+      const next = { ...config };
+      for (const k of Object.keys(l)) {
+        if (l[k] !== prev[k] && config[k] === prev[k]) next[k] = l[k];
+      }
+      return next;
+    });
   }, [config]);
 
   const set = (key, val) => setLocal(l => ({ ...l, [key]: val }));
@@ -56,6 +67,14 @@ export function ConfigPage({ config, setConfig, showNotif, installAppUpdate, onA
     API.post('/api/config', toSave)
       .then(() => { setConfig(c => ({ ...c, ...toSave })); showNotif('Saved', 'Configuration updated', 'success'); })
       .catch(e => showNotif('Error', e.message, 'error'));
+  };
+
+  // APPEARANCE: a theme applies and saves when picked (the App follows config.ui_theme), no SAVE needed
+  const currentTheme = THEMES.some(t => t.id === config.ui_theme) ? config.ui_theme : DEFAULT_THEME;
+  const pickTheme = id => {
+    if (id === currentTheme) return;
+    setConfig(c => ({ ...c, ui_theme: id }));
+    API.post('/api/config', { ui_theme: id }).catch(e => showNotif('Error', e.message, 'error'));
   };
 
   // Every setting back to the server's defaults (a list kept here missed
@@ -778,6 +797,31 @@ export function ConfigPage({ config, setConfig, showNotif, installAppUpdate, onA
                     }}>{updating ? 'UPDATING...' : 'UPDATE'}</button>
                   )}
                 </div>
+              </div>
+            </div>
+          </div>
+
+          {/* APPEARANCE */}
+          <div className="cfg-panel" data-tour="config-appearance">
+            <div className="cfg-ph">
+              <span className="ptag" style={{ background: 'var(--accent-3)' }}>UI</span>
+              <span className="ptitle">APPEARANCE</span>
+            </div>
+            <div className="cfg-body">
+              <div className="theme-grid">
+                {THEMES.map(t => (
+                  <div key={t.id} className={'theme-card' + (t.id === currentTheme ? ' on' : '')}
+                    role="button" tabIndex={0} aria-pressed={t.id === currentTheme}
+                    aria-label={'Theme: ' + t.name}
+                    onClick={() => pickTheme(t.id)}
+                    onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pickTheme(t.id); } }}>
+                    <div className="theme-swatches" aria-hidden="true">
+                      {t.swatches.map((colour, i) => <span key={i} className="theme-swatch" style={{ background: colour }} />)}
+                    </div>
+                    <div className="theme-name">{t.name}</div>
+                    <div className="theme-current">{t.id === currentTheme ? '● CURRENT' : ''}</div>
+                  </div>
+                ))}
               </div>
             </div>
           </div>

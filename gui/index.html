@@ -543,6 +543,16 @@
     .settings-ctrl{flex-shrink:0}
     .sel{background:var(--surface-input-2);border:1px solid var(--border);color:var(--t1);padding:7px 10px;font-family:var(--font-mono);font-size:10.5px;outline:none;cursor:pointer;min-width:130px}
     .sel:focus{border-color:var(--accent)}
+    /* APPEARANCE: one card per theme (Config) */
+    .theme-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px}
+    .theme-card{display:flex;flex-direction:column;gap:8px;padding:10px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-panel);cursor:pointer;user-select:none;transition:border-color var(--dur-fast),background var(--dur-fast)}
+    .theme-card:hover{border-color:var(--border2);background:var(--surface-hover-solid)}
+    .theme-card:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+    .theme-card.on{border-color:var(--accent)}
+    .theme-swatches{display:flex;height:26px;border:1px solid var(--border)}
+    .theme-swatch{flex:1}
+    .theme-name{font-family:var(--font-display);font-size:12.5px;font-weight:600;color:var(--t1);letter-spacing:0.06em}
+    .theme-current{font-family:var(--font-mono);font-size:9.5px;letter-spacing:0.1em;color:var(--accent);min-height:12px}
     .cfg-danger{border-color:rgba(var(--danger-rgb),0.3)}
     .sb-update{color:var(--warn);cursor:pointer;font-weight:700}
     .sb-update:hover{color:var(--t1);background:rgba(var(--warn-rgb),0.15)}
