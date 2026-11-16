@@ -229,3 +229,85 @@ test('the pending list belongs to a job until that job ends', () => {
   s = run([{ status: 'complete', job_id: 's', job_type: 'sync' }], s);
   assert.equal(s.playlistJobId, null);
 });
+
+// ── resync: the job list re-read after the progress stream dropped ──────────
+const resync = (jobs, state) => downloadsReducer(state, { type: 'resync', jobs, now: 2000 });
+const twice = (jobs, state) => resync(jobs, resync(jobs, state));
+const running = () => run([
+  { status: 'starting', job_id: 'j1' },
+  { status: 'downloading', job_id: 'j1', pct: 40, current_item_title: 'Song', job_label: 'Song', job_type: 'download' },
+]);
+
+test('resync: a job that finished unseen ends once two lists say so', () => {
+  const list = [{ id: 'j1', status: 'complete', label: 'https://x/song', type: 'download' }];
+  const once = resync(list, running());
+  assert.equal(once.appState, 'downloading');      // its own event may still be coming
+  assert.deepEqual(once.resyncPending, ['j1']);
+  const s = resync(list, once);
+  assert.equal(s.appState, 'idle');
+  assert.equal(s.primaryJob, null);
+  assert.deepEqual(s.activeJobs, {});
+  assert.deepEqual(s.resyncPending, []);
+  const toast = s.effects.find(fx => fx.type === 'notify');
+  assert.equal(toast.title, 'Download Complete');
+  assert.equal(toast.body, 'Song');
+  // The real event arriving late changes nothing and says nothing twice
+  assert.equal(run([{ status: 'complete', job_id: 'j1', title: 'Song' }], s), s);
+});
+
+test('resync: the real event arriving between two lists wins, with its details', () => {
+  const list = [{ id: 'j1', status: 'complete', label: 'Song' }];
+  const once = resync(list, running());
+  const real = run([{ status: 'complete', job_id: 'j1', title: 'Song', warning: '1 of 2 links failed' }], once);
+  assert.equal(real.effects.find(fx => fx.type === 'notify').title, 'Downloaded With Limits');
+  const after = resync(list, real);
+  assert.equal(after.effects.length, real.effects.length);   // nothing repeated
+});
+
+test('resync: a failed job shows its error, a cancelled one ends quietly', () => {
+  const failed = twice([{ id: 'j1', status: 'failed', label: 'Song', error: 'HTTP Error 403' }], running());
+  assert.equal(failed.appState, 'error');
+  assert.equal(failed.failedItems[0].title, 'HTTP Error 403');
+  assert.equal(failed.failedItems[0].hint, null);
+  assert.match(failed.effects.find(fx => fx.type === 'notify').body, /HTTP Error 403/);
+  const cancelled = twice([{ id: 'j1', status: 'cancelled', label: 'Song' }], running());
+  assert.equal(cancelled.appState, 'idle');
+  assert.ok(!types(cancelled).includes('notify'));
+});
+
+test('resync: progress buffered behind the resync does not revive the job', () => {
+  const s = twice([{ id: 'j1', status: 'complete', label: 'Song' }], running());
+  const late = run([{ status: 'downloading', job_id: 'j1', pct: 90 }, { status: 'processing', job_id: 'j1' }], s);
+  assert.equal(late, s);
+});
+
+test('resync: a job still running or queued is left alone', () => {
+  const s = running();
+  assert.equal(resync([{ id: 'j1', status: 'active' }], s), s);
+  assert.equal(resync([{ id: 'j1', status: 'queued' }], s), s);
+});
+
+test('resync: a job missing from the list ends only when the next list misses it too', () => {
+  const once = resync([], running());
+  assert.equal(once.appState, 'downloading');
+  assert.deepEqual(once.resyncPending, ['j1']);
+  const back = resync([{ id: 'j1', status: 'active' }], once);
+  assert.deepEqual(back.resyncPending, []);
+  assert.equal(back.appState, 'downloading');
+  const gone = resync([], once);
+  assert.equal(gone.appState, 'idle');
+  assert.deepEqual(gone.resyncPending, []);
+});
+
+test('resync: a background job that ended leaves the main panel to the primary one', () => {
+  const s = run([{ status: 'downloading', job_id: 'j2', pct: 10, job_label: 'Other' }], running());
+  const after = twice([{ id: 'j1', status: 'active' }, { id: 'j2', status: 'complete', label: 'Other' }], s);
+  assert.equal(after.appState, 'downloading');
+  assert.equal(after.primaryJob, 'j1');
+  assert.deepEqual(Object.keys(after.activeJobs), ['j1']);
+});
+
+test('a duplicate terminal event for the same job is ignored', () => {
+  const done = run([{ status: 'complete', job_id: 'j1', title: 'Song' }], running());
+  assert.equal(run([{ status: 'error', job_id: 'j1', message: 'x' }], done), done);
+});

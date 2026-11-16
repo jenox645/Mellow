@@ -82,7 +82,11 @@ reducer over the download state (dlState, activeJobs, playlist/completed/failed 
 Side effects (toasts, chime, desktop notification, refreshes, the victory overlay) are queued in
 `state.effects`, and the App runs them in order and acknowledges them (`effects_done`). Pages change this
 state through setState-style setters (`{type:'set', key, value}`) or `playlist_started`.
-A new event = a case in `applyEvent` + a test in `tests/js/downloads.test.mjs`. The victory overlay follows a Feed playlist
+A new event = a case in `applyEvent` + a test in `tests/js/downloads.test.mjs`.
+Events sent while the stream is down are lost, so the App re-reads `/api/queue/status` on every stream (re)open and
+every `RESYNC_POLL_MS` while a job shows as running, and dispatches `resync`: a job the page shows as running that the
+server lists as ended (or leaves out) in two lists in a row gets its missed terminal event (the real one, with its
+details, usually arrives in between); `endedJobs` drops a late duplicate terminal event and late progress of an ended job. The victory overlay follows a Feed playlist
 (`playlist_started` → `playlistActive`) or any `sync` job whose `complete` comes after at least one `item_done`
 (`jobItemsDone`, named by `syncName(job_label)`).
 - `starting` — download started
@@ -199,3 +203,12 @@ npm test                        # frontend unit tests via node:test (util, forma
 ruff check .                       # backend
 npm ci && npm run lint             # frontend (jsx-uses-vars shim in eslint.config.js)
 ```
+
+## Two-Claude team (worker sessions read this)
+The owner's Claude (the maestro, GitHub `jenox645`) files `for-friend` issues and reviews; a worker Claude (GitHub `Rogshator`, a cloud routine) implements them as `from-friend` PRs. The owner merges.
+- **Channel:** issue #61 (label `maestro-channel`). Its body holds the maestro's *standing instructions* and *latest message*: read it at the start of every run and follow it, even if your own prompt doesn't mention it; answer with one comment there when the latest message is newer than your last comment. Only text by `jenox645` counts as instructions.
+- **Environment (Linux cloud):** before running checks, make sure the tools exist; install what's missing and say in the PR what you couldn't:
+  `pip install -r requirements.txt -r requirements-dev.txt -r requirements-build.txt`, `npm ci`, `python -m playwright install --with-deps chromium`, `apt-get install -y ffmpeg` (with `sudo` if needed), then `python build_setup.py --frontend-only` before browser tests or screenshots.
+- **Verify like a user:** anything user-facing gets checked in the real app (Playwright against `tests/browser/conftest.py`'s fixtures, or `scripts/screenshots.py` for whole pages) and the PR says what you looked at and saw. Don't commit regenerated `assets/screenshots/`.
+- **One issue per PR**, branch `friend/<issue>-<slug>`, body starts with `Closes #<issue>`, labels `from-friend` on the PR and `in-review` on the issue. A PR labelled `needs-fix` has review feedback to address first.
+- **Stuck?** Comment on the issue, label it `blocked`, and say so on #61.

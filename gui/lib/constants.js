@@ -17,6 +17,8 @@ export const ANALYZE_SLOW_MS = 15000;          // show the "still analyzing" hin
 export const STATS_POLL_ACTIVE_MS = 3000;      // while downloading
 export const STATS_POLL_IDLE_MS = 30000;
 export const QUEUE_POLL_MS = 4000;             // jobs list on the Queue page
+export const RESYNC_POLL_MS = 15000;           // re-read the job list while a download shows as running
+export const ENDED_JOBS_KEEP = 50;             // ended job ids remembered (late duplicate terminal events)
 export const PENDING_LIST_RENDER_MAX = 500;    // rows a pending list draws (the count is always whole)
 
 // Victory overlay
