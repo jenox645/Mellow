@@ -252,6 +252,21 @@ fn start_backend(app: &AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+/// Chrome's --window-size (FlaskWebGUI) is the whole window, frame included;
+/// Tauri sizes the page area. Shrink the page area by the frame so the window
+/// is as big as today's.
+fn fit_outer_size(window: &tauri::WebviewWindow) {
+    let (Ok(scale), Ok(outer), Ok(inner)) = (window.scale_factor(), window.outer_size(), window.inner_size())
+    else {
+        return;
+    };
+    let frame_w = outer.width.saturating_sub(inner.width);
+    let frame_h = outer.height.saturating_sub(inner.height);
+    let width = ((WINDOW_WIDTH * scale) as u32).saturating_sub(frame_w);
+    let height = ((WINDOW_HEIGHT * scale) as u32).saturating_sub(frame_h);
+    let _ = window.set_size(tauri::PhysicalSize::new(width, height));
+}
+
 fn main() {
     timing("shell_start");
     let app = tauri::Builder::default()
@@ -265,9 +280,10 @@ fn main() {
         }))
         .manage(Backend { child: Mutex::new(None), stdin: Mutex::new(None), tree: Mutex::new(None) })
         .setup(|app| {
-            WebviewWindowBuilder::new(app, WINDOW_LABEL, WebviewUrl::App("index.html".into()))
+            let window = WebviewWindowBuilder::new(app, WINDOW_LABEL, WebviewUrl::App("index.html".into()))
                 .title(WINDOW_TITLE)
                 .inner_size(WINDOW_WIDTH, WINDOW_HEIGHT)
+                .visible(false) // shown once sized like the --app window (fit_outer_size)
                 // The page's title (download progress) shows in the taskbar, like the --app window
                 .on_document_title_changed(|window, title| {
                     let _ = window.set_title(if title.is_empty() { WINDOW_TITLE } else { &title });
@@ -284,6 +300,8 @@ fn main() {
                     NewWindowResponse::Deny
                 })
                 .build()?;
+            fit_outer_size(&window);
+            window.show()?;
             if let Err(e) = start_backend(app.handle()) {
                 show_error(app.handle(), &e);
             }
