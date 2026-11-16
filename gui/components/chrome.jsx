@@ -223,7 +223,7 @@ export function StatusBar({ sysInfo, speedHistory, config, appUpdate, onAppUpdat
       )}
       {sysInfo.disk_free_bytes != null && (
         <div className="sb-seg" title="Free space on the download drive"
-          style={sysInfo.disk_low ? { color: 'var(--red)' } : undefined}>
+          style={sysInfo.disk_low ? { color: 'var(--danger)' } : undefined}>
           <div className={'sb-dot' + (sysInfo.disk_low ? ' err' : ' ok')} />
           {sysInfo.disk_low ? 'DISK LOW ' : 'DISK '}{fmtBytes(sysInfo.disk_free_bytes)} FREE
         </div>

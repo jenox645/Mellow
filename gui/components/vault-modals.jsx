@@ -130,7 +130,7 @@ export function AddVaultModal({ onClose, onSaved, showNotif }) {
         <div className="pills">
           <div className={'pill' + (mode === 'add' ? ' active' : '')} onClick={() => setMode('add')}>ADD ONLY</div>
           <div className={'pill' + (mode === 'mirror' ? ' active' : '')} onClick={() => setMode('mirror')}>
-            MIRROR <span style={{ color: 'var(--amber)', fontSize: 9.5 }}> DESTRUCTIVE</span>
+            MIRROR <span style={{ color: 'var(--warn)', fontSize: 9.5 }}> DESTRUCTIVE</span>
           </div>
         </div>
       </div>
@@ -213,7 +213,7 @@ export function LinkPlaylistModal({ folder, onClose, showNotif }) {
           {playlists.map(pl => (
             <div key={pl} style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--bg3)', padding: '6px 10px' }}>
               <span style={{ flex: 1, fontFamily: 'Share Tech Mono, monospace', fontSize: 11, color: 'var(--t2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{pl}</span>
-              <span style={{ cursor: 'pointer', color: 'var(--red)', fontSize: 12, flexShrink: 0 }} onClick={() => handleUnlink(pl)}>✕</span>
+              <span style={{ cursor: 'pointer', color: 'var(--danger)', fontSize: 12, flexShrink: 0 }} onClick={() => handleUnlink(pl)}>✕</span>
             </div>
           ))}
         </div>
@@ -370,11 +370,11 @@ export function SyncPlaylistModal({ folder, onClose, showNotif, onRefreshVault, 
         </>
       }>
         <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 11, padding: '6px 0', borderBottom: '1px solid var(--border)', marginBottom: 8 }}>
-          {toAddCount > 0 && <div style={{ color: 'var(--cyan)' }}>+ {toAddCount} new item(s) will be downloaded</div>}
-          {toDelete.length > 0 && <div style={{ color: 'var(--red)' }}>− {toDelete.length} item(s) will be deleted (not in any playlist)</div>}
+          {toAddCount > 0 && <div style={{ color: 'var(--accent)' }}>+ {toAddCount} new item(s) will be downloaded</div>}
+          {toDelete.length > 0 && <div style={{ color: 'var(--danger)' }}>− {toDelete.length} item(s) will be deleted (not in any playlist)</div>}
           {unchangedCount > 0 && <div style={{ color: 'var(--t4)' }}>= {unchangedCount} item(s) unchanged</div>}
           {(mirrorPreview.fetch_errors || []).length > 0 ? (
-            <div style={{ color: 'var(--amber)' }}>
+            <div style={{ color: 'var(--warn)' }}>
               ⚠ {mirrorPreview.fetch_errors.length} playlist(s) could not be read, so nothing will be deleted this time
               (their files would look orphaned). New items are still downloaded.
             </div>
@@ -385,7 +385,7 @@ export function SyncPlaylistModal({ folder, onClose, showNotif, onRefreshVault, 
         {toDelete.length > 0 && (
           <div style={{ maxHeight: 180, overflow: 'auto' }}>
             {toDelete.map((f, i) => (
-              <div key={i} style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 10.5, color: 'var(--red)', padding: '2px 0', borderBottom: '1px solid var(--border)' }}>
+              <div key={i} style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 10.5, color: 'var(--danger)', padding: '2px 0', borderBottom: '1px solid var(--border)' }}>
                 {f.name} <span style={{ color: 'var(--t4)' }}>({fmtBytes(f.size)})</span>
               </div>
             ))}
@@ -430,7 +430,7 @@ export function SyncPlaylistModal({ folder, onClose, showNotif, onRefreshVault, 
                         return next;
                       });
                     }} />
-                    <span style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 10.5, color: checked ? 'var(--cyan)' : 'var(--t4)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{pl}</span>
+                    <span style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 10.5, color: checked ? 'var(--accent)' : 'var(--t4)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{pl}</span>
                   </label>
                 );
               })}
@@ -477,7 +477,7 @@ export function SyncPlaylistModal({ folder, onClose, showNotif, onRefreshVault, 
             <div className="pills">
               <div className={'pill' + (syncMode === 'add' ? ' active' : '')} onClick={() => setSyncMode('add')}>ADD ONLY</div>
               <div className={'pill' + (syncMode === 'mirror' ? ' active' : '')} onClick={() => setSyncMode('mirror')}>
-                MIRROR <span style={{ color: 'var(--amber)', fontSize: 9.5 }}> DESTRUCTIVE</span>
+                MIRROR <span style={{ color: 'var(--warn)', fontSize: 9.5 }}> DESTRUCTIVE</span>
               </div>
             </div>
           </div>
@@ -489,7 +489,7 @@ export function SyncPlaylistModal({ folder, onClose, showNotif, onRefreshVault, 
               ))}
             </div>
             {!autoSyncEnabled && schedule !== null && (
-              <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 9.5, color: 'var(--amber)', marginTop: 4 }}>
+              <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 9.5, color: 'var(--warn)', marginTop: 4 }}>
                 Auto-sync is OFF globally — enable it in CONFIG → BEHAVIOR for schedules to run.
               </div>
             )}
@@ -506,8 +506,8 @@ export function SyncPlaylistModal({ folder, onClose, showNotif, onRefreshVault, 
         </>
       )}
       {conflictDialog && (
-        <div style={{ marginTop: 12, padding: '10px 12px', background: 'var(--bg3)', border: '1px solid var(--amber)', borderRadius: 4 }}>
-          <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 11, color: 'var(--amber)', marginBottom: 8 }}>
+        <div style={{ marginTop: 12, padding: '10px 12px', background: 'var(--bg3)', border: '1px solid var(--warn)', borderRadius: 4 }}>
+          <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 11, color: 'var(--warn)', marginBottom: 8 }}>
             ⚠ A download is in progress. Sync will be queued after it completes.
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
@@ -577,19 +577,19 @@ export function DuplicatesModal({ onClose, showNotif, onRefreshVault }) {
         </div>
       ) : (
         <div style={{ maxHeight: 320, overflow: 'auto' }}>
-          <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 10.5, color: 'var(--amber)', marginBottom: 8 }}>
+          <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 10.5, color: 'var(--warn)', marginBottom: 8 }}>
             {groups.length} duplicated video(s) · {fmtBytes(data.total_wasted_bytes)} reclaimable
           </div>
           {groups.map(g => (
             <div key={g.video_id} style={{ marginBottom: 10, borderBottom: '1px solid var(--border)', paddingBottom: 6 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 10.5, color: 'var(--cyan)' }}>[{g.video_id}]</span>
+                <span style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 10.5, color: 'var(--accent)' }}>[{g.video_id}]</span>
                 <span style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 9.5, color: 'var(--t4)' }}>{g.copies.length} copies · {fmtBytes(g.wasted_bytes)} wasted</span>
                 <button className="btn btn-danger btn-sm" style={{ marginLeft: 'auto', padding: '2px 6px', fontSize: 9.5 }} disabled={deleting}
                   onClick={() => deleteSmaller([g])}>DELETE SMALLER</button>
               </div>
               {g.copies.map((c, i) => (
-                <div key={c.path} style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 9.5, color: i === 0 ? 'var(--green)' : 'var(--t3)', padding: '2px 0 0 12px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={c.path}>
+                <div key={c.path} style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 9.5, color: i === 0 ? 'var(--success)' : 'var(--t3)', padding: '2px 0 0 12px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={c.path}>
                   {i === 0 ? '✓ KEEP ' : '✕ DEL  '}{c.name} · {fmtBytes(c.size)} · {c.folder}
                 </div>
               ))}

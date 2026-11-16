@@ -110,11 +110,11 @@ export function ApiAccessPanel({ local, set, showNotif }) {
           <button className="btn btn-primary btn-sm" onClick={() => setMade(null)}>DONE</button>
         }>
           <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 11, lineHeight: 1.8 }}>
-            <div style={{ color: 'var(--amber)', marginBottom: 8 }}>
+            <div style={{ color: 'var(--warn)', marginBottom: 8 }}>
               Copy it now: MellowDLP keeps only a fingerprint of it and can't show it again.
             </div>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12 }}>
-              <code style={{ wordBreak: 'break-all', color: 'var(--cyan)' }} data-testid="new-api-key">{made.key}</code>
+              <code style={{ wordBreak: 'break-all', color: 'var(--accent)' }} data-testid="new-api-key">{made.key}</code>
               <button className="btn btn-secondary btn-sm" onClick={() => copy(made.key)}>COPY</button>
             </div>
             <div style={{ color: 'var(--t3)' }}>For example:</div>

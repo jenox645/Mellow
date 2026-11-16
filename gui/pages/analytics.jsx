@@ -68,22 +68,22 @@ function WrappedModal({ onClose }) {
           </div>
           {(data.top_uploaders || []).length > 0 && (
             <div style={{ marginBottom: 10 }}>
-              <div style={{ fontSize: 10.5, color: 'var(--amber)', letterSpacing: '0.1em', marginBottom: 4 }}>TOP CHANNELS</div>
+              <div style={{ fontSize: 10.5, color: 'var(--accent-2)', letterSpacing: '0.1em', marginBottom: 4 }}>TOP CHANNELS</div>
               {data.top_uploaders.map((u, i) => (
                 <div key={u.uploader} style={{ display: 'flex', gap: 8, fontSize: 11, padding: '2px 0' }}>
                   <span style={{ color: 'var(--t4)', minWidth: 18 }}>#{i + 1}</span>
-                  <span style={{ flex: 1, color: i === 0 ? 'var(--cyan)' : 'var(--t2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.uploader}</span>
+                  <span style={{ flex: 1, color: i === 0 ? 'var(--accent)' : 'var(--t2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.uploader}</span>
                   <span style={{ color: 'var(--t3)' }}>{u.count}</span>
                 </div>
               ))}
             </div>
           )}
           <div style={{ marginBottom: 10 }}>
-            <div style={{ fontSize: 10.5, color: 'var(--amber)', letterSpacing: '0.1em', marginBottom: 4 }}>MONTH BY MONTH</div>
+            <div style={{ fontSize: 10.5, color: 'var(--accent-2)', letterSpacing: '0.1em', marginBottom: 4 }}>MONTH BY MONTH</div>
             <div style={{ display: 'flex', alignItems: 'flex-end', gap: 3, height: 50 }}>
               {(data.monthly || []).map((v, i) => (
                 <div key={i} style={{ flex: 1, textAlign: 'center' }} title={`${v} downloads`}>
-                  <div style={{ height: Math.max(2, (v / maxMonthly) * 40), background: 'var(--cyan)', opacity: 0.35 + (v / maxMonthly) * 0.65 }} />
+                  <div style={{ height: Math.max(2, (v / maxMonthly) * 40), background: 'var(--accent)', opacity: 0.35 + (v / maxMonthly) * 0.65 }} />
                   <div style={{ fontSize: 8.5, color: 'var(--t4)', marginTop: 2 }}>{MONTH_LABELS[i]}</div>
                 </div>
               ))}
@@ -91,7 +91,7 @@ function WrappedModal({ onClose }) {
           </div>
           {data.busiest_day && (
             <div style={{ fontSize: 10.5, color: 'var(--t3)' }}>
-              Busiest day: <span style={{ color: 'var(--cyan)' }}>{data.busiest_day.day}</span> with {data.busiest_day.count} downloads
+              Busiest day: <span style={{ color: 'var(--accent)' }}>{data.busiest_day.day}</span> with {data.busiest_day.count} downloads
             </div>
           )}
         </div>
@@ -174,7 +174,7 @@ function HistoryPanel({ showNotif, refreshStats }) {
               <td className="mono">{fmtBytes(r.file_size_bytes)}</td>
               <td className="mono">{fmtDate(r.timestamp)}</td>
               <td>
-                <span style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 9.5, padding: '2px 6px', color: r.status === 'success' ? 'var(--green)' : 'var(--red)', border: '1px solid', borderColor: r.status === 'success' ? 'rgba(0,255,148,0.3)' : 'rgba(255,59,97,0.3)' }}
+                <span style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 9.5, padding: '2px 6px', color: r.status === 'success' ? 'var(--success)' : 'var(--danger)', border: '1px solid', borderColor: r.status === 'success' ? 'rgba(0,255,148,0.3)' : 'rgba(255,59,97,0.3)' }}
                   title={r.error_message || ''}>
                   {(r.status || '').toUpperCase()}
                 </span>
@@ -422,7 +422,7 @@ export function AnalyticsPage({ stats, refreshStats, showNotif }) {
               {(localStats.storage_by_format || []).slice(0, 4).map((f, i) => (
                 <div key={f.format} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6, fontFamily: 'Share Tech Mono, monospace', fontSize: 10.5, color: 'var(--t2)' }}>
                   <span>{(f.format || '—').toUpperCase()}</span>
-                  <span style={{ color: 'var(--cyan)' }}>{fmtBytes(f.bytes)}</span>
+                  <span style={{ color: 'var(--accent)' }}>{fmtBytes(f.bytes)}</span>
                 </div>
               ))}
             </div>
@@ -537,8 +537,8 @@ export function AnalyticsPage({ stats, refreshStats, showNotif }) {
                 <tr key={i}>
                   <td className="mono">{fmtTimestamp(s.synced_at)}</td>
                   <td>{s.name || '—'}</td>
-                  <td className="mono" style={{ color: 'var(--green)' }}>{s.new_items ?? 0}</td>
-                  <td className="mono" style={{ color: s.errors ? 'var(--red)' : 'var(--t4)' }}>{s.errors ?? 0}</td>
+                  <td className="mono" style={{ color: 'var(--success)' }}>{s.new_items ?? 0}</td>
+                  <td className="mono" style={{ color: s.errors ? 'var(--danger)' : 'var(--t4)' }}>{s.errors ?? 0}</td>
                   <td className="mono">{fmtEta(s.duration_seconds || 0)}</td>
                 </tr>
               ))}
@@ -577,7 +577,7 @@ export function AnalyticsPage({ stats, refreshStats, showNotif }) {
                 <td className="mono">{fmtBytes(r.file_size_bytes)}</td>
                 <td className="mono">{fmtDate(r.timestamp)}</td>
                 <td>
-                  <span style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 9.5, padding: '2px 6px', color: r.status === 'success' ? 'var(--green)' : 'var(--red)', border: '1px solid', borderColor: r.status === 'success' ? 'rgba(0,255,148,0.3)' : 'rgba(255,59,97,0.3)' }}>
+                  <span style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 9.5, padding: '2px 6px', color: r.status === 'success' ? 'var(--success)' : 'var(--danger)', border: '1px solid', borderColor: r.status === 'success' ? 'rgba(0,255,148,0.3)' : 'rgba(255,59,97,0.3)' }}>
                     {(r.status || '').toUpperCase()}
                   </span>
                 </td>

@@ -144,7 +144,7 @@ export function SignalApiPage() {
         </div>
         <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 10.5, color: 'var(--t4)', textAlign: 'right' }}>
           LIVE QUERY TERMINAL<br />
-          <span style={{ color: 'var(--amber)' }}>LOCAL DATA LAKE ONLY</span>
+          <span style={{ color: 'var(--accent-2)' }}>LOCAL DATA LAKE ONLY</span>
         </div>
       </div>
 
@@ -260,9 +260,9 @@ export function SignalApiPage() {
               ['GET',  '/api/v1/events',    'events:read',      'Progress as server-sent events (text/event-stream)'],
             ].map(([method, path, scope, desc]) => (
               <div key={path} style={{ display: 'flex', gap: 8, padding: '2px 0' }}>
-                <span style={{ color: method === 'GET' ? 'var(--cyan)' : 'var(--amber)', minWidth: 36 }}>{method}</span>
+                <span style={{ color: method === 'GET' ? 'var(--accent)' : 'var(--accent-2)', minWidth: 36 }}>{method}</span>
                 <span style={{ color: 'var(--t1)', minWidth: 150 }}>{path}</span>
-                <span style={{ color: 'var(--purple)', minWidth: 110 }}>{scope}</span>
+                <span style={{ color: 'var(--accent-3)', minWidth: 110 }}>{scope}</span>
                 <span style={{ color: 'var(--t4)' }}>{desc}</span>
               </div>
             ))}
@@ -271,7 +271,7 @@ export function SignalApiPage() {
               backups are for MellowDLP's own window only.
             </div>
             <div style={{ marginTop: 8, color: 'var(--t3)' }}>
-              Base URL: <span style={{ color: 'var(--cyan)' }}>{window.location.origin}</span>
+              Base URL: <span style={{ color: 'var(--accent)' }}>{window.location.origin}</span>
               <button className="btn btn-secondary btn-sm" style={{ marginLeft: 12 }}
                 onClick={() => navigator.clipboard.writeText(window.location.origin).catch(() => {})}>
                 COPY
@@ -296,8 +296,8 @@ export function SignalApiPage() {
                 <div style={{ color: 'var(--t3)', marginBottom: 4 }}>ON {evt.toUpperCase()}</div>
                 {(webhooks[evt] || []).map(url => (
                   <div key={url} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 4 }}>
-                    <span style={{ flex: 1, color: 'var(--cyan)', overflow: 'hidden', textOverflow: 'ellipsis' }}>{url}</span>
-                    <span style={{ cursor: 'pointer', color: 'var(--red)' }} onClick={() => removeWebhook(evt, url)}>✕</span>
+                    <span style={{ flex: 1, color: 'var(--accent)', overflow: 'hidden', textOverflow: 'ellipsis' }}>{url}</span>
+                    <span style={{ cursor: 'pointer', color: 'var(--danger)' }} onClick={() => removeWebhook(evt, url)}>✕</span>
                   </div>
                 ))}
                 <div style={{ display: 'flex', gap: 6 }}>
@@ -318,7 +318,7 @@ export function SignalApiPage() {
         <div className="opts-adv-toggle" style={{ padding: '10px 0', borderTop: '1px solid var(--border)' }}
           onClick={() => setEventsOpen(o => !o)}>
           <span dangerouslySetInnerHTML={{ __html: eventsOpen ? SVG.chevron_down : SVG.chevron_right }} />
-          LIVE EVENT STREAM {eventsOpen && <span style={{ color: 'var(--cyan)', fontSize: 10.5, marginLeft: 8 }}>● CONNECTED</span>}
+          LIVE EVENT STREAM {eventsOpen && <span style={{ color: 'var(--accent)', fontSize: 10.5, marginLeft: 8 }}>● CONNECTED</span>}
         </div>
         {eventsOpen && (
           <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', padding: 8 }}>
@@ -331,7 +331,7 @@ export function SignalApiPage() {
                 : liveEvents.map((ev, i) => (
                   <div key={i} style={{ display: 'flex', gap: 10, padding: '2px 0', borderBottom: '1px solid var(--border)' }}>
                     <span style={{ color: 'var(--t4)', flexShrink: 0 }}>{ev.ts}</span>
-                    <span style={{ color: 'var(--amber)', flexShrink: 0, minWidth: 80 }}>{ev.status}</span>
+                    <span style={{ color: 'var(--accent-2)', flexShrink: 0, minWidth: 80 }}>{ev.status}</span>
                     <span style={{ color: 'var(--t2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {ev.title || ev.message || ev.current_item_title || (ev.pct !== undefined ? ev.pct + '%' : '')}
                     </span>

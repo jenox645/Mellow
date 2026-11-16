@@ -99,7 +99,7 @@ export function LoadingScreen({ onReady }) {
         {signedOut.download && (
           <div className="loading-sub" style={{ maxWidth: 520, textAlign: 'center', lineHeight: 1.8 }}>
             Still not working? Get the latest MellowDLP:{' '}
-            <a href={signedOut.download} target="_blank" rel="noreferrer" style={{ color: 'var(--cyan)' }}>
+            <a href={signedOut.download} target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }}>
               {signedOut.download.replace(/^https:\/\//, '')}
             </a>
           </div>

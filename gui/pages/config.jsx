@@ -227,13 +227,13 @@ export function ConfigPage({ config, setConfig, showNotif, installAppUpdate, onA
                   <div className="sl-sub">yt-dlp output template — a "/" makes subfolders</div>
                   {namePreview && (
                     <div className="sl-sub" title="A sample video, named with this template"
-                      style={{ color: namePreview.ok ? 'var(--cyan)' : 'var(--red)', wordBreak: 'break-all' }}>
+                      style={{ color: namePreview.ok ? 'var(--accent)' : 'var(--danger)', wordBreak: 'break-all' }}>
                       {namePreview.ok ? '→ ' + namePreview.example : '✕ ' + namePreview.error}
                     </div>
                   )}
                 </div>
                 <div className="settings-ctrl">
-                  <input className="inp-sm" style={{ width: 220, borderColor: namePreview && !namePreview.ok ? 'var(--red)' : undefined }}
+                  <input className="inp-sm" style={{ width: 220, borderColor: namePreview && !namePreview.ok ? 'var(--danger)' : undefined }}
                     value={local.filename_template || ''} onChange={e => set('filename_template', e.target.value)} placeholder="%(title)s [%(id)s].%(ext)s" />
                 </div>
               </div>
@@ -381,7 +381,7 @@ export function ConfigPage({ config, setConfig, showNotif, installAppUpdate, onA
                 <div className="settings-label">
                   <div className="sl-name">Browser Cookies</div>
                   <div className="sl-sub">
-                    Uses your browser login session — <span style={{ color: 'var(--amber)' }}>close browser before use if locked</span>
+                    Uses your browser login session — <span style={{ color: 'var(--warn)' }}>close browser before use if locked</span>
                   </div>
                 </div>
                 <div className="settings-ctrl" style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
@@ -391,7 +391,7 @@ export function ConfigPage({ config, setConfig, showNotif, installAppUpdate, onA
                     ))}
                   </select>
                   {local.cookies_browser && local.cookies_browser !== 'none' && (
-                    <span style={{ fontSize: 10.5, color: 'var(--green)', fontFamily: 'Share Tech Mono, monospace' }}>● ACTIVE</span>
+                    <span style={{ fontSize: 10.5, color: 'var(--success)', fontFamily: 'Share Tech Mono, monospace' }}>● ACTIVE</span>
                   )}
                 </div>
               </div>
@@ -422,9 +422,9 @@ export function ConfigPage({ config, setConfig, showNotif, installAppUpdate, onA
                 </div>
                 <div className="settings-ctrl" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                   {(local.cookies_browser && local.cookies_browser !== 'none')
-                    ? <span style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 10.5, color: 'var(--green)' }}>Browser cookies ({local.cookies_browser}){local.cookies_browser_profile ? ' · custom profile' : ''}</span>
+                    ? <span style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 10.5, color: 'var(--success)' }}>Browser cookies ({local.cookies_browser}){local.cookies_browser_profile ? ' · custom profile' : ''}</span>
                     : local.cookies_file
-                    ? <span style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 10.5, color: 'var(--cyan)' }}>Cookies file active</span>
+                    ? <span style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 10.5, color: 'var(--accent)' }}>Cookies file active</span>
                     : <span style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 10.5, color: 'var(--t4)' }}>No auth — public videos only</span>
                   }
                   {((local.cookies_browser && local.cookies_browser !== 'none') || local.cookies_file) && (
@@ -627,7 +627,7 @@ export function ConfigPage({ config, setConfig, showNotif, installAppUpdate, onA
                   <div className="sl-sub">Analytical columnar database</div>
                 </div>
                 <div className="settings-ctrl">
-                  <span style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 10.5, color: 'var(--amber)' }}>DuckDB (analytical)</span>
+                  <span style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 10.5, color: 'var(--accent-2)' }}>DuckDB (analytical)</span>
                 </div>
               </div>
               <div className="settings-row">
@@ -636,7 +636,7 @@ export function ConfigPage({ config, setConfig, showNotif, installAppUpdate, onA
                   <div className="sl-sub">Current database file size</div>
                 </div>
                 <div className="settings-ctrl">
-                  <span style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 11, color: 'var(--cyan)' }}>{fmtBytes(sysInfo.db_size_bytes || 0)}</span>
+                  <span style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 11, color: 'var(--accent)' }}>{fmtBytes(sysInfo.db_size_bytes || 0)}</span>
                 </div>
               </div>
               <div className="settings-row" data-tour="config-log">
@@ -683,14 +683,14 @@ export function ConfigPage({ config, setConfig, showNotif, installAppUpdate, onA
                   <div className="sl-name">FFmpeg</div>
                   <div className="sl-sub" title={sysInfo.ffmpeg_path || ''}>
                     {ffmpegInstall
-                      ? <span style={{ color: 'var(--amber)' }}>
+                      ? <span style={{ color: 'var(--warn)' }}>
                           {ffmpegInstall.stage === 'downloading' ? 'Downloading ' + ffmpegInstall.pct + '%' : 'Installing…'}
                         </span>
                       : sysInfo.ffmpeg
-                      ? <span style={{ color: 'var(--green)' }}>
+                      ? <span style={{ color: 'var(--success)' }}>
                           {sysInfo.ffmpeg_installed_by_app ? 'Installed by MellowDLP' : 'Found'} — {sysInfo.ffmpeg_path}
                         </span>
-                      : <span style={{ color: 'var(--red)' }}>
+                      : <span style={{ color: 'var(--danger)' }}>
                           Missing — needed to merge, convert and trim{sysInfo.ffmpeg_installable ? '' : '. ' + (sysInfo.ffmpeg_install_note || '')}
                         </span>}
                   </div>
@@ -708,12 +708,12 @@ export function ConfigPage({ config, setConfig, showNotif, installAppUpdate, onA
                   <div className="sl-name">MellowDLP Version</div>
                   <div className="sl-sub">
                     {'v' + (sysInfo.app_version || '?') + ' — '}
-                    {appUpdate && appUpdate.error ? <span style={{ color: 'var(--red)' }}>Check failed: {appUpdate.error}</span>
-                      : appUpdate && appUpdate.update_available ? <span style={{ color: 'var(--amber)' }}>
+                    {appUpdate && appUpdate.error ? <span style={{ color: 'var(--danger)' }}>Check failed: {appUpdate.error}</span>
+                      : appUpdate && appUpdate.update_available ? <span style={{ color: 'var(--warn)' }}>
                           v{appUpdate.latest} is available{!appUpdate.can_install && appUpdate.install_note ? ' — ' + appUpdate.install_note : ''}
                         </span>
                       : appUpdate && appUpdate.message ? appUpdate.message
-                      : appUpdate ? <span style={{ color: 'var(--green)' }}>Up to date</span>
+                      : appUpdate ? <span style={{ color: 'var(--success)' }}>Up to date</span>
                       : 'new versions are published on GitHub'}
                   </div>
                 </div>
@@ -736,12 +736,12 @@ export function ConfigPage({ config, setConfig, showNotif, installAppUpdate, onA
                   <div className="sl-name">JavaScript Runtime</div>
                   <div className="sl-sub" title={sysInfo.js_runtime ? sysInfo.js_runtime.path : ''}>
                     {!sysInfo.js_runtime
-                      ? <span style={{ color: 'var(--amber)' }}>None found — YouTube may offer fewer formats. yt-dlp uses Node.js, Deno, QuickJS or Bun</span>
+                      ? <span style={{ color: 'var(--warn)' }}>None found — YouTube may offer fewer formats. yt-dlp uses Node.js, Deno, QuickJS or Bun</span>
                       : !sysInfo.js_runtime.supported
-                      ? <span style={{ color: 'var(--amber)' }}>
+                      ? <span style={{ color: 'var(--warn)' }}>
                           {sysInfo.js_runtime.name} {sysInfo.js_runtime.version} is too old for yt-dlp (Node.js 22 or newer works)
                         </span>
-                      : <span style={{ color: 'var(--green)' }}>
+                      : <span style={{ color: 'var(--success)' }}>
                           {sysInfo.js_runtime.name} {sysInfo.js_runtime.version} — solves YouTube's player challenges
                         </span>}
                   </div>
@@ -758,10 +758,10 @@ export function ConfigPage({ config, setConfig, showNotif, installAppUpdate, onA
                   <div className="sl-name">yt-dlp Version</div>
                   <div className="sl-sub">
                     {updateInfo && updateInfo.pending_restart
-                      ? <span style={{ color: 'var(--amber)' }}>{updateInfo.pending_restart} downloaded — restart MellowDLP to use it</span>
+                      ? <span style={{ color: 'var(--warn)' }}>{updateInfo.pending_restart} downloaded — restart MellowDLP to use it</span>
                       : updateInfo && !updateInfo.error && updateInfo.update_available
-                      ? <span style={{ color: 'var(--amber)' }}>Update available: {updateInfo.latest} (running {updateInfo.installed})</span>
-                      : updateInfo && !updateInfo.error ? <span style={{ color: 'var(--green)' }}>Up to date ({updateInfo.installed})</span>
+                      ? <span style={{ color: 'var(--warn)' }}>Update available: {updateInfo.latest} (running {updateInfo.installed})</span>
+                      : updateInfo && !updateInfo.error ? <span style={{ color: 'var(--success)' }}>Up to date ({updateInfo.installed})</span>
                       : 'Check for updates below'
                     }
                   </div>
@@ -785,7 +785,7 @@ export function ConfigPage({ config, setConfig, showNotif, installAppUpdate, onA
           {/* UI PREFERENCES */}
           <div className="cfg-panel">
             <div className="cfg-ph">
-              <span className="ptag" style={{ background: 'var(--purple)' }}>UI</span>
+              <span className="ptag" style={{ background: 'var(--accent-3)' }}>UI</span>
               <span className="ptitle">UI PREFERENCES</span>
             </div>
             <div className="cfg-body">
@@ -816,7 +816,7 @@ export function ConfigPage({ config, setConfig, showNotif, installAppUpdate, onA
           <div className="cfg-panel cfg-danger" data-tour="config-danger">
             <div className="cfg-ph">
               <span className="ptag red">DANGER</span>
-              <span className="ptitle" style={{ color: 'var(--red)' }}>DANGER ZONE</span>
+              <span className="ptitle" style={{ color: 'var(--danger)' }}>DANGER ZONE</span>
             </div>
             <div className="cfg-body">
               <div className="settings-row">
@@ -850,7 +850,7 @@ export function ConfigPage({ config, setConfig, showNotif, installAppUpdate, onA
               This permanently deletes every download record: the History list, the Analytics numbers and
               the "already downloaded" notes.<br />
               Your files, vault folders, linked playlists and their sync settings stay as they are.<br />
-              <span style={{ color: 'var(--red)' }}>This cannot be undone.</span>
+              <span style={{ color: 'var(--danger)' }}>This cannot be undone.</span>
             </div>
           </div>
         </Modal>

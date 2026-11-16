@@ -452,9 +452,9 @@ export function FeedPage({ dlState, stats, sysInfo, refreshStats, showNotif, swi
         </div>
         <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 10.5, color: 'var(--t4)', padding: '0 18px 8px', marginTop: -10 }}>
           ENTER: {!url.trim() ? 'paste' : !info && !analyzing ? (isLinkLike(url) ? 'analyze' : 'search') : 'download'}
-          {importedFileName && <span style={{ color: 'var(--cyan)', marginLeft: 10 }}>↑ {importedFileName} ({importedUrls ? importedUrls.length : 0} URLs)</span>}
+          {importedFileName && <span style={{ color: 'var(--accent)', marginLeft: 10 }}>↑ {importedFileName} ({importedUrls ? importedUrls.length : 0} URLs)</span>}
           {analyzeSlow && (
-            <span style={{ color: 'var(--amber)', marginLeft: 10 }}>
+            <span style={{ color: 'var(--warn)', marginLeft: 10 }}>
               STILL ANALYZING — big playlists take a while. If it never finishes, try Config → Network → Force IPv4.
             </span>
           )}
@@ -483,7 +483,7 @@ export function FeedPage({ dlState, stats, sysInfo, refreshStats, showNotif, swi
                   <div key={p.name} className="pill" title={'Apply "' + p.name + '"'} onClick={() => applyPreset(p)}>
                     {p.name.toUpperCase()}
                     <span
-                      style={{ marginLeft: 6, color: 'var(--red)' }}
+                      style={{ marginLeft: 6, color: 'var(--danger)' }}
                       title="Delete preset"
                       onClick={e => { e.stopPropagation(); deletePreset(p.name); }}
                     >✕</span>
@@ -576,13 +576,13 @@ export function FeedPage({ dlState, stats, sysInfo, refreshStats, showNotif, swi
                 <div className="opts-adv-toggle" onClick={() => setChaptersOpen(o => !o)}>
                   <span dangerouslySetInnerHTML={{ __html: chaptersOpen ? SVG.chevron_down : SVG.chevron_right }} />
                   CHAPTERS · {videoChapters.length}
-                  {chosenChapters.length > 0 && <span style={{ color: 'var(--cyan)', marginLeft: 8 }}>{chosenChapters.length} CHOSEN</span>}
+                  {chosenChapters.length > 0 && <span style={{ color: 'var(--accent)', marginLeft: 8 }}>{chosenChapters.length} CHOSEN</span>}
                 </div>
                 <div className={'opts-adv-body' + (chaptersOpen ? ' open' : '')}>
                   <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 10.5, color: 'var(--t3)', margin: '4px 0 6px', display: 'flex', gap: 12 }}>
                     <span>Each chosen chapter is saved as its own file (clip start/end is ignored).</span>
-                    <span style={{ cursor: 'pointer', color: 'var(--cyan)' }} onClick={() => setChapterSel(new Set(videoChapters.map(c => c.index)))}>ALL</span>
-                    <span style={{ cursor: 'pointer', color: 'var(--cyan)' }} onClick={() => setChapterSel(new Set())}>NONE</span>
+                    <span style={{ cursor: 'pointer', color: 'var(--accent)' }} onClick={() => setChapterSel(new Set(videoChapters.map(c => c.index)))}>ALL</span>
+                    <span style={{ cursor: 'pointer', color: 'var(--accent)' }} onClick={() => setChapterSel(new Set())}>NONE</span>
                   </div>
                   <div style={{ maxHeight: 220, overflowY: 'auto' }}>
                     {videoChapters.map(c => (
@@ -780,9 +780,9 @@ export function FeedPage({ dlState, stats, sysInfo, refreshStats, showNotif, swi
                   </div>
                   <div className="prog-row">
                     <div className="prog-bar">
-                      <div className="prog-bar-fill" style={{ width: (dlState.pct || 0) + '%', background: isPaused ? 'var(--amber)' : undefined }} />
+                      <div className="prog-bar-fill" style={{ width: (dlState.pct || 0) + '%', background: isPaused ? 'var(--warn)' : undefined }} />
                     </div>
-                    <span className="prog-pct" style={{ color: isPaused ? 'var(--amber)' : undefined }}>
+                    <span className="prog-pct" style={{ color: isPaused ? 'var(--warn)' : undefined }}>
                       {isPaused ? 'PAUSED' : (dlState.pct || 0).toFixed(1) + '%'}
                     </span>
                   </div>
@@ -831,7 +831,7 @@ export function FeedPage({ dlState, stats, sysInfo, refreshStats, showNotif, swi
                 COMPLETED ({completedItems ? completedItems.length : 0})
               </div>
               {feedQTab === 'completed' && completedItems && completedItems.length > 0 && onClearCompleted && (
-                <span style={{ marginLeft: 'auto', cursor: 'pointer', fontFamily: 'Share Tech Mono, monospace', fontSize: 10.5, color: 'var(--red)', padding: '0 10px' }} onClick={onClearCompleted}>CLEAR ✕</span>
+                <span style={{ marginLeft: 'auto', cursor: 'pointer', fontFamily: 'Share Tech Mono, monospace', fontSize: 10.5, color: 'var(--danger)', padding: '0 10px' }} onClick={onClearCompleted}>CLEAR ✕</span>
               )}
             </div>
           )}

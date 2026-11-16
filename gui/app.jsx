@@ -55,7 +55,7 @@ function ShortcutHelpOverlay({ onClose }) {
       <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 11 }}>
         {KEYBOARD_SHORTCUTS.map(([key, desc]) => (
           <div key={key} style={{ display: 'flex', gap: 14, padding: '6px 0', borderBottom: '1px solid var(--border)' }}>
-            <span style={{ color: 'var(--cyan)', minWidth: 90 }}>{key}</span>
+            <span style={{ color: 'var(--accent)', minWidth: 90 }}>{key}</span>
             <span style={{ color: 'var(--t2)' }}>{desc}</span>
           </div>
         ))}
@@ -619,8 +619,8 @@ function App() {
             </div>
             {restorableJobs.slice(0, 8).map(j => (
               <div key={j.id} style={{ padding: '3px 0', borderBottom: '1px solid var(--border)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                <span style={{ color: 'var(--amber)', marginRight: 8 }}>{(j.type || 'feed').toUpperCase()}</span>
-                <span style={{ color: 'var(--cyan)' }}>{j.label || j.url}</span>
+                <span style={{ color: 'var(--accent-2)', marginRight: 8 }}>{(j.type || 'feed').toUpperCase()}</span>
+                <span style={{ color: 'var(--accent)' }}>{j.label || j.url}</span>
               </div>
             ))}
             {restorableJobs.length > 8 && (
