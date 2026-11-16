@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>MellowDLP</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #07090F; color: #9fb3c8;
+    font: 13px/1.5 "Consolas", "DejaVu Sans Mono", monospace; }
+  body { display: flex; align-items: center; justify-content: center; }
+  #msg { max-width: 640px; padding: 16px; white-space: pre-wrap; }
+  #msg.error { color: #ff6b6b; }
+</style>
+</head>
+<body>
+<!-- Shown only until the backend says it is ready (src/main.rs then
+     navigates this window to the server's /launch page). -->
+<div id="msg">Starting MellowDLP…</div>
+<script>
+  window.mellowShellError = function (text) {
+    var el = document.getElementById('msg');
+    el.className = 'error';
+    el.textContent = text;
+  };
+</script>
+</body>
+</html>
