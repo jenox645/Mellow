@@ -8,6 +8,7 @@ from __future__ import annotations
 import io
 import json
 import logging
+import re
 import time
 import zipfile
 from pathlib import Path
@@ -105,24 +106,46 @@ def _check_members(contents: dict[str, bytes]) -> str | None:
     return None
 
 
+# What follows `<name>` in a copy's name: the time of the restore, and a counter for a second one in the same second
+_PRE_RESTORE_NAME = re.compile(r"\.pre-restore-(\d{8}-\d{6})(?:-(\d+))?")
+
+
+def _stamp() -> str:
+    """The restore's time in a copy's name (local time, to the second)."""
+    return time.strftime("%Y%m%d-%H%M%S")
+
+
 def _replace_file(target: Path, data: bytes) -> None:
     """Keep the current file as a dated .pre-restore copy, then swap the new one in whole."""
     if target.exists():
-        stamp = time.strftime("%Y%m%d-%H%M%S")
-        copy = target.with_name(f"{target.name}.pre-restore-{stamp}")
-        n = 1
-        while copy.exists():      # two restores within a second
-            n += 1
-            copy = target.with_name(f"{target.name}.pre-restore-{stamp}-{n}")
-        write_atomic(copy, target.read_bytes())
+        stamp = _stamp()
+        # Another restore within this second: the next counter after the highest one there, never a
+        # number pruning freed (that copy would then look like the oldest of the second)
+        taken = [order[1] for p in target.parent.glob(f"{target.name}.pre-restore-{stamp}*")
+                 if (order := _copy_order(p, target)) is not None and order[0] == stamp]
+        n = max(taken, default=0) + 1
+        suffix = stamp if n == 1 else f"{stamp}-{n}"
+        write_atomic(target.with_name(f"{target.name}.pre-restore-{suffix}"), target.read_bytes())
         _prune_pre_restore(target)
     write_atomic(target, data)
 
 
+def _copy_order(copy: Path, target: Path) -> tuple[str, int] | None:
+    """Where a .pre-restore copy of `target` falls in time, from its name: (stamp, n), the stamp
+    `_replace_file` wrote and its counter (1 for none; `-10` after `-9`). None for a name it didn't write.
+
+    Names, not file times: copies made within one tick of the clock (several restores in a second,
+    Windows' coarse file times) have equal mtimes, and the newest could be the one pruned."""
+    m = _PRE_RESTORE_NAME.fullmatch(copy.name[len(target.name):])
+    return (m.group(1), int(m.group(2) or 1)) if m else None
+
+
 def _prune_pre_restore(target: Path) -> None:
-    """Keep the last PRE_RESTORE_KEEP copies of `target` (and the old single .pre-restore)."""
-    copies = sorted(target.parent.glob(target.name + ".pre-restore-*"),
-                    key=lambda p: p.stat().st_mtime_ns, reverse=True)
+    """Keep the last PRE_RESTORE_KEEP copies of `target`. Files whose name `_replace_file` didn't
+    write (the old single `.pre-restore`, a stray temp file) are left alone."""
+    dated = [(order, p) for p in target.parent.glob(target.name + ".pre-restore-*")
+             if (order := _copy_order(p, target)) is not None]
+    copies = [p for _, p in sorted(dated, reverse=True)]
     for old in copies[PRE_RESTORE_KEEP:]:
         try:
             old.unlink()
