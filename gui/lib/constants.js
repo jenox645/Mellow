@@ -89,12 +89,19 @@ export const THEMES = [
   { id: 'classic', name: 'Classic', swatches: ['#07090F', '#0C1118', '#D8ECF5', '#00D8FF', '#F9A900'] },
   { id: 'classic-light', name: 'Classic Light', swatches: ['#ECEEF1', '#FFFFFF', '#14171C', '#185FCF', '#995500'] },
   { id: 'archive', name: 'Archive', swatches: ['#F3F8FD', '#FFFFFF', '#1B2A4A', '#2E9BFF', '#FFD43B'] },
-  { id: 'tactical', name: 'Tactical', swatches: ['#111316', '#1A1D21', '#E8EAED', '#FF5A1F', '#C9A227'] },
+  { id: 'tactical', name: 'Tactical', swatches: ['#0D0E10', '#141619', '#E9E7E1', '#FF5A1F', '#D2C7A8'] },
 ];
 // Two versions of one theme: Config → APPEARANCE shows them as one card with a Dark / Light switch
 export const THEME_PAIRS = [{ dark: 'classic', light: 'classic-light' }];
 export const DEFAULT_THEME = 'classic';
 export const THEME_STORAGE_KEY = 'mellow-theme';   // localStorage: index.html applies it before the first paint
+// Theme Tactical's window (gui/themes/tactical/)
+export const TACTICAL_GAUGE_SEGMENTS = 14;     // the instrument rail's speed gauge
+export const TACTICAL_RAIL_GRAPH_BARS = 18;    // its history, one bar per sample
+export const TACTICAL_RAIL_GRAPH_H = 30;       // px
+export const TACTICAL_STATUS_GRAPH_H = 14;     // px, the annunciator row's speed line
+export const TACTICAL_SPLASH_SEGMENTS = 24;    // the boot splash's bar…
+export const TACTICAL_SPLASH_STEP_MS = 40;     // …lights one segment after the other
 
 // Error patterns that usually mean yt-dlp is outdated
 export const BREAKAGE_RE = /unable to extract|unsupported url|extractor|sign in to confirm|http error 403/i;
