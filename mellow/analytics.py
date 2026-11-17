@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import contextlib
+import copy
 import csv
+import functools
 import io
 import json
 import logging
@@ -15,7 +17,7 @@ from typing import Any, Callable
 import duckdb
 
 from . import formats
-from .constants import DUCKDB_STORAGE_VERSION, SYNC_REPORTS_KEEP
+from .constants import DUCKDB_STORAGE_VERSION, STATS_CACHE_SECS, SYNC_REPORTS_KEEP
 
 log = logging.getLogger(__name__)
 
@@ -27,6 +29,32 @@ DB_PATH = Path.home() / ".mellow_dlp.duckdb"
 # download was recording. Cursors of a shared parent are safe across threads.
 _conns: dict[str, duckdb.DuckDBPyConnection] = {}
 _conns_lock = threading.Lock()
+
+# What get_stats reads (downloads, library, sync_log) changes only through the
+# writers below, which bump this data generation when they're done; a stats
+# answer computed at an older generation is never handed out again
+_stats_lock = threading.Lock()
+_generation = 0
+_stats_cache: dict[tuple[str, int | None], tuple[int, float, dict]] = {}
+
+
+def _data_changed() -> None:
+    global _generation
+    with _stats_lock:
+        _generation += 1
+        _stats_cache.clear()
+
+
+def _writes(fn: Callable) -> Callable:
+    """A function that changes rows get_stats reads: bump the generation once it's done
+    (even when it failed halfway: some rows may have changed)."""
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        try:
+            return fn(*args, **kwargs)
+        finally:
+            _data_changed()
+    return wrapper
 
 
 def get_conn() -> duckdb.DuckDBPyConnection:
@@ -97,11 +125,15 @@ def exclusive_file_access():
     backup/restore must read or replace it with every connection closed.
     Closing also checkpoints the WAL, so the file on disk is complete.
     """
-    with _conns_lock:
-        _close_all_locked()
-        yield Path(DB_PATH)
+    try:
+        with _conns_lock:
+            _close_all_locked()
+            yield Path(DB_PATH)
+    finally:
+        _data_changed()   # a restore swaps the whole file
 
 
+@_writes
 def init_db() -> None:
     with get_conn() as con:
         con.execute("""
@@ -194,6 +226,7 @@ def init_db() -> None:
             con.execute("CHECKPOINT")
 
 
+@_writes
 def record_download(meta: dict) -> None:
     with get_conn() as con:
         con.execute("""
@@ -236,8 +269,25 @@ def _iso(ts: Any) -> str | None:
 
 
 def get_stats(time_range: str = "30d") -> dict[str, Any]:
-    """Everything the Analytics page shows, for the last 7 or 30 days or "all"."""
+    """Everything the Analytics page shows, for the last 7 or 30 days or "all".
+
+    Kept until the data changes (_writes) or STATS_CACHE_SECS pass; each caller gets its own copy."""
     days = {"7d": 7, "30d": 30}.get(time_range)
+    key = (str(DB_PATH), days)
+    with _stats_lock:
+        generation = _generation
+        hit = _stats_cache.get(key)
+    if hit and hit[0] == generation and time.monotonic() - hit[1] < STATS_CACHE_SECS:
+        return copy.deepcopy(hit[2])
+    started = time.monotonic()
+    stats = _compute_stats(days)
+    with _stats_lock:
+        if _generation == generation:   # nothing was written while it was computed
+            _stats_cache[key] = (generation, started, stats)
+    return copy.deepcopy(stats)
+
+
+def _compute_stats(days: int | None) -> dict[str, Any]:
     # `where` narrows a query to the range; it goes after a WHERE clause
     where = "AND timestamp >= ?" if days else ""
     params: list = [datetime.now() - timedelta(days=days)] if days else []
@@ -453,6 +503,7 @@ def get_history(
     ]
 
 
+@_writes
 def delete_history(
     ids: list[int] | None = None,
     older_than_days: int | None = None,
@@ -533,6 +584,7 @@ def find_previous_download(urls: list[str], video_id: str | None = None) -> dict
     }
 
 
+@_writes
 def delete_history_by_path(file_path: str) -> int:
     """Delete download rows whose file_path matches (used by vault file delete)."""
     if not file_path:
@@ -628,6 +680,7 @@ def get_db_size() -> int:
         return 0
 
 
+@_writes
 def record_sync_log(
     library_id: str, new_items: int, skipped: int, errors: int, duration_seconds: int = 0
 ) -> None:
@@ -716,6 +769,7 @@ def get_library_entry(entry_id: str) -> dict | None:
     return next((e for e in get_library_entries() if e["id"] == entry_id), None)
 
 
+@_writes
 def upsert_library_entry(entry: dict) -> None:
     columns = (*_LIBRARY_COLUMNS, *formats.TOGGLES)
     values = {**{k: entry.get(k, _LIBRARY_DEFAULTS.get(k)) for k in _LIBRARY_COLUMNS},
@@ -728,6 +782,7 @@ def upsert_library_entry(entry: dict) -> None:
             [values[c] for c in columns])
 
 
+@_writes
 def move_paths(mapper: Callable[[str], str | None]) -> int:
     """A folder moved (folder_move): rewrite the download history's file
     paths and the sync reports' folders that `mapper` maps to a new path.
@@ -743,11 +798,13 @@ def move_paths(mapper: Callable[[str], str | None]) -> int:
     return changed
 
 
+@_writes
 def delete_library_entry(entry_id: str) -> None:
     with get_conn() as con:
         con.execute("DELETE FROM library WHERE id = ?", [entry_id])
 
 
+@_writes
 def update_library_last_synced(entry_id: str) -> None:
     with get_conn() as con:
         con.execute("UPDATE library SET last_synced = now() WHERE id = ?", [entry_id])
