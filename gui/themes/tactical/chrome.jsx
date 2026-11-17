@@ -12,10 +12,10 @@ import {
   MASCOT_COMFY_SAFE, MASCOT_SUCCESS_SAFE, MASCOT_TROUBLESHOOTING_SAFE,
 } from '../../lib/mascots.js';
 
-const GAUGE_SEGMENTS = 14;      // the rail's speed gauge
-const RAIL_GRAPH_BARS = 18;     // its history, one bar per sample
-const RAIL_GRAPH_H = 30;
-const STATUS_GRAPH_H = 14;
+import {
+  TACTICAL_GAUGE_SEGMENTS as GAUGE_SEGMENTS, TACTICAL_RAIL_GRAPH_BARS as RAIL_GRAPH_BARS,
+  TACTICAL_RAIL_GRAPH_H as RAIL_GRAPH_H, TACTICAL_STATUS_GRAPH_H as STATUS_GRAPH_H,
+} from '../../lib/constants.js';
 
 // The six sections, in the order of the 1–6 keys. `role` is what the command bar calls the page.
 const PAGES = [

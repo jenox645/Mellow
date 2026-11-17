@@ -93,6 +93,13 @@ export const THEMES = [
 ];
 export const DEFAULT_THEME = 'classic';
 export const THEME_STORAGE_KEY = 'mellow-theme';   // localStorage: index.html applies it before the first paint
+// Theme Tactical's window (gui/themes/tactical/)
+export const TACTICAL_GAUGE_SEGMENTS = 14;     // the instrument rail's speed gauge
+export const TACTICAL_RAIL_GRAPH_BARS = 18;    // its history, one bar per sample
+export const TACTICAL_RAIL_GRAPH_H = 30;       // px
+export const TACTICAL_STATUS_GRAPH_H = 14;     // px, the annunciator row's speed line
+export const TACTICAL_SPLASH_SEGMENTS = 24;    // the boot splash's bar…
+export const TACTICAL_SPLASH_STEP_MS = 40;     // …lights one segment after the other
 
 // Error patterns that usually mean yt-dlp is outdated
 export const BREAKAGE_RE = /unable to extract|unsupported url|extractor|sign in to confirm|http error 403/i;

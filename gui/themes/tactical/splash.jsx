@@ -5,9 +5,8 @@
 import { useSplash } from '../../components/loading.jsx';
 import { Mascot } from '../../components/common.jsx';
 import { MASCOT_VIBING, MASCOT_CHILLING, MASCOT_COMFY_SAFE, MASCOT_SUCCESS_SAFE } from '../../lib/mascots.js';
+import { TACTICAL_SPLASH_SEGMENTS as BAR_SEGMENTS, TACTICAL_SPLASH_STEP_MS as BAR_STEP_MS } from '../../lib/constants.js';
 
-const BAR_SEGMENTS = 24;
-const BAR_STEP_MS = 40;         // one segment lights after the other
 const POOL = [MASCOT_VIBING, MASCOT_CHILLING, MASCOT_COMFY_SAFE, MASCOT_SUCCESS_SAFE].filter(Boolean);
 
 function Reticle() {
