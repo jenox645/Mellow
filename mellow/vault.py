@@ -940,8 +940,26 @@ def find_duplicates(folders: list[str]) -> list[dict]:
 
 # ── Media player launch ───────────────────────────────────────────────────────
 
+class PlayerStartError(Exception):
+    """A media player was found but didn't start (removed, not executable…)."""
+
+    def __init__(self, player: str, error: OSError):
+        super().__init__(f"Couldn't start {player}: {error}")
+        self.player = player
+
+
+def _start_player(player: str, args: list[str]) -> None:
+    # Popen returns once the process has started: it doesn't wait for the player
+    try:
+        subprocess.Popen(args)
+    except OSError as e:
+        raise PlayerStartError(player, e) from e
+
+
 def launch_playlist(paths: list[str], open_file_fn: Callable[[str], None]) -> str:
-    """Open media files in a player. Returns method name used."""
+    """Open media files in a player. Returns method name used ("no_files" when
+    none of the paths exists); raises PlayerStartError when the player found
+    can't be started."""
     valid = [p for p in paths if Path(p).exists()]
     if not valid:
         return "no_files"
@@ -959,19 +977,19 @@ def launch_playlist(paths: list[str], open_file_fn: Callable[[str], None]) -> st
     vlc = _find(_VLC_PATHS) or shutil.which("vlc")
     if vlc:
         args = [vlc, "--playlist-enqueue", *_items()]
-        threading.Thread(target=lambda: subprocess.Popen(args), daemon=True).start()
+        _start_player("VLC", args)
         return "vlc_direct"
 
     mpv = _find(_MPV_PATHS) or shutil.which("mpv")
     if mpv:
         args = [mpv, *_items()]
-        threading.Thread(target=lambda: subprocess.Popen(args), daemon=True).start()
+        _start_player("mpv", args)
         return "mpv_direct"
 
     mpc = _find(_MPC_PATHS)
     if mpc:
         args = [mpc, *_items()]
-        threading.Thread(target=lambda: subprocess.Popen(args), daemon=True).start()
+        _start_player("MPC", args)
         return "mpc_direct"
 
     temp_path = _write_m3u8(valid)

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import threading
 import time
 import zipfile
@@ -64,6 +65,66 @@ def test_each_restore_keeps_its_own_copy_of_what_it_replaced():
     kept = {json.loads(c.read_text(encoding="utf-8"))["output_dir"] for c in copies}
     assert kept == {f"before-{n}" for n in range(2, PRE_RESTORE_KEEP + 2)}
     assert json.loads(cfg.read_text(encoding="utf-8")) == {"output_dir": "restored"}
+
+
+def _restore_times(times: list[str]):
+    """Restores at these `time.strftime` stamps; returns the copies' output_dir, newest restore last."""
+    cfg = _config_path()
+    with patch.object(backup, "_stamp", side_effect=times):
+        for n in range(len(times)):
+            cfg.write_text(json.dumps({"output_dir": f"before-{n}"}), encoding="utf-8")
+            assert backup.restore_backup(_backup_zip(config=b'{"output_dir": "restored"}'))["ok"]
+
+
+def _kept():
+    cfg = _config_path()
+    return {json.loads(c.read_text(encoding="utf-8"))["output_dir"]
+            for c in cfg.parent.glob(cfg.name + ".pre-restore-*")}
+
+
+def test_copies_with_equal_file_times_are_pruned_by_their_names(monkeypatch):
+    """Windows' file times are coarse: copies written within one tick tie on mtime. The order is the name's."""
+    real_write = backup.write_atomic
+
+    def write_with_one_mtime(path, data):
+        real_write(path, data)
+        os.utime(path, ns=(1_700_000_000_000_000_000, 1_700_000_000_000_000_000))
+
+    monkeypatch.setattr(backup, "write_atomic", write_with_one_mtime)
+    _restore_times(["20261116-224600", "20261116-224601", "20261116-224602", "20261116-224603", "20261116-224604"])
+    assert _kept() == {"before-2", "before-3", "before-4"}
+
+
+def test_eleven_restores_in_one_second_keep_the_last_ones():
+    """The counter is a number: -10 and -11 come after -9 (as text they'd sort before -2)."""
+    _restore_times(["20261116-224600"] * 12)
+    cfg = _config_path()
+    names = sorted(c.name[len(cfg.name):] for c in cfg.parent.glob(cfg.name + ".pre-restore-*"))
+    assert names == [".pre-restore-20261116-224600-10", ".pre-restore-20261116-224600-11",
+                     ".pre-restore-20261116-224600-12"]
+    assert _kept() == {"before-9", "before-10", "before-11"}
+
+
+def test_a_later_second_beats_a_high_counter():
+    _restore_times(["20261116-224600"] * 4 + ["20261116-224601"])
+    assert _kept() == {"before-2", "before-3", "before-4"}
+
+
+def test_files_not_named_by_a_restore_are_left_alone():
+    """The old single .pre-restore (no stamp) and a temp file a crash left behind are never pruned."""
+    cfg = _config_path()
+    legacy = cfg.with_name(cfg.name + ".pre-restore")
+    legacy.write_text("{}", encoding="utf-8")
+    stray = cfg.with_name(cfg.name + ".pre-restore-20261116-224600abc123.tmp")
+    stray.write_text("{}", encoding="utf-8")
+    _restore_times([f"20261116-2246{n:02d}" for n in range(PRE_RESTORE_KEEP + 2)])
+    assert legacy.exists() and stray.exists()
+    assert len(_kept_dated()) == PRE_RESTORE_KEEP
+
+
+def _kept_dated():
+    cfg = _config_path()
+    return [c for c in cfg.parent.glob(cfg.name + ".pre-restore-*") if not c.name.endswith(".tmp")]
 
 
 @pytest.mark.parametrize("members, error", [
