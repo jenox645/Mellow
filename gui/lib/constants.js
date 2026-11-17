@@ -83,6 +83,17 @@ export const TAGGABLE_AUDIO = ['mp3', 'm4a', 'aac', 'flac', 'opus', 'ogg'];
 // [value, label]; 'best' = highest-quality VBR
 export const AUDIO_QUALITIES = [['best', 'BEST'], ['320', '320K'], ['256', '256K'], ['192', '192K'], ['128', '128K']];
 
+// Themes (Config → APPEARANCE). The ids are mellow/constants.py UI_THEMES and the list in index.html's
+// early script (tests/test_themes.py compares the three); `swatches` = canvas, panel, text, accent, accent-2
+export const THEMES = [
+  { id: 'classic', name: 'Classic', swatches: ['#07090F', '#0C1118', '#D8ECF5', '#00D8FF', '#F9A900'] },
+  { id: 'whitetech', name: 'White Tech', swatches: ['#ECEEF1', '#FFFFFF', '#14171C', '#1F6FEB', '#B45309'] },
+  { id: 'archive', name: 'Archive', swatches: ['#F3F8FD', '#FFFFFF', '#1B2A4A', '#2E9BFF', '#FFD43B'] },
+  { id: 'tactical', name: 'Tactical', swatches: ['#111316', '#1A1D21', '#E8EAED', '#FF5A1F', '#C9A227'] },
+];
+export const DEFAULT_THEME = 'classic';
+export const THEME_STORAGE_KEY = 'mellow-theme';   // localStorage: index.html applies it before the first paint
+
 // Error patterns that usually mean yt-dlp is outdated
 export const BREAKAGE_RE = /unable to extract|unsupported url|extractor|sign in to confirm|http error 403/i;
 

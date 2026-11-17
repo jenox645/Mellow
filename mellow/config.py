@@ -75,6 +75,7 @@ _DEFAULTS: dict = {
     "desktop_notifications": False,   # system notification when unfocused
     "ui_victory_animation": True,     # celebration after a playlist download
     "ui_victory_sync": True,          # ... and after a vault sync
+    "ui_theme": "classic",            # Config → APPEARANCE: one of constants.UI_THEMES
     "download_presets": [],           # saved option bundles for the Feed
     "recent_output_dirs": [],         # the Feed's SAVE TO history, newest first
 }

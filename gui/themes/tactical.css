@@ -1,0 +1,68 @@
+/* Theme "Tactical" (dark graphite, no neon, one orange-red accent).
+   A starter set: only the tokens of gui/index.html's :root, overridden. Shapes, type details and the
+   parts that need their own rules come with the full theme. Every rule here must stay under
+   :root[data-theme="tactical"] (tests/test_themes.py). */
+:root[data-theme="tactical"]{
+  color-scheme:dark;
+
+  /* Surfaces */
+  --bg:#111316;--bg1:#1A1D21;--bg2:#22262B;--bg3:#2B3036;
+  --surface-chrome:#1A1D21;
+  --surface-statusbar:#15171A;--border-statusbar:#2B3036;
+  --surface-input:var(--bg1);--surface-input-2:var(--bg1);
+  --surface-hover:var(--accent-faint);--surface-hover-solid:var(--bg3);--surface-hover-solid-2:var(--bg2);
+  --surface-selected:var(--accent-faint);--surface-selected-strong:rgba(var(--accent-rgb),0.12);
+  --surface-placeholder:#22262B;
+  --scrim:rgba(10,11,13,0.82);--scrim-tour:rgba(10,11,13,0.72);--scrim-victory:rgba(17,19,22,0.95);
+  --scrim-menu:rgba(17,19,22,0.8);
+  --media-bg:#000;
+  --shadow-rgb:0,0,0;
+
+  /* Text: each level keeps 4.5:1 against --bg, --bg1, --bg2 and --bg3 (tests/test_themes.py) */
+  --t1:#E8EAED;--t2:#B9BEC5;--t3:#A3A9B1;--t4:#959BA3;
+  --t1-rgb:232,234,237;--t2-rgb:185,190,197;
+  --t-bright:#E8EAED;--t-muted:#A3A9B1;--t-muted-2:#959BA3;--t-dim:#959BA3;
+  --on-accent:#111316;--on-accent-alt:#111316;
+  --on-media:#fff;
+
+  /* Accents */
+  --accent:#FF5A1F;--accent-rgb:255,90,31;
+  --accent-soft:rgba(var(--accent-rgb),0.2);--accent-faint:rgba(var(--accent-rgb),0.08);
+  --accent-hover:#FF7A47;
+  --accent-2:#C9A227;--accent-2-rgb:201,162,39;
+  --accent-2-soft:rgba(var(--accent-2-rgb),0.18);
+  --accent-3:#9AA7FF;--accent-3-rgb:154,167,255;
+  --warn:#E0A53A;--warn-rgb:224,165,58;--warn-soft:rgba(var(--warn-rgb),0.16);
+  --danger:#FF4D4D;--danger-rgb:255,77,77;--danger-soft:rgba(var(--danger-rgb),0.12);
+  --success:#6FCF7C;--success-rgb:111,207,124;--success-soft:rgba(var(--success-rgb),0.12);
+  --chart-axis-rgb:149,155,163;--chart-track-rgb:43,48,54;
+
+  /* Borders */
+  --border:#2B3036;--border2:#4A5058;
+
+  /* Effects: no glows, soft shadows */
+  --glow-text:none;--glow-title-accent:none;--glow-stat:none;--glow-victory:none;
+  --glow-logo:none;--glow-splash:none;
+  --glow-accent:none;--glow-accent-soft:none;--glow-btn:none;--glow-check:none;--glow-toggle:none;
+  --glow-dot:none;--glow-success:none;
+  --ring-focus:0 0 0 1px rgba(var(--accent-rgb),0.35);--ring-focus-soft:0 0 0 1px rgba(var(--accent-rgb),0.3);
+  --shadow-card:0 4px 14px rgba(var(--shadow-rgb),0.3);
+  --shadow-card-hover:0 0 0 1px var(--accent),0 4px 14px rgba(var(--shadow-rgb),0.35);
+  --shadow-menu:0 6px 20px rgba(var(--shadow-rgb),0.45);
+  --shadow-popup:0 6px 20px rgba(var(--shadow-rgb),0.5);
+  --shadow-modal:0 10px 32px rgba(var(--shadow-rgb),0.6);
+  --shadow-tour-spot:0 0 0 9999px var(--scrim-tour);
+  --prog-fill:var(--accent);
+  --prog-shine:rgba(255,255,255,0.25);
+  --canvas-scanlines:none;
+  --canvas-grid:none;
+  /* Mascots: the line art follows --accent by itself; the pictures lose their cyan / amber tint */
+  --mascot-filter:none;
+  --mascot-idle:var(--t1);
+  --mascot-img-filter-accent:grayscale(1);--mascot-img-filter-accent-2:grayscale(1);
+  --tint-accent:grayscale(1);--tint-accent-2:grayscale(1);
+  --mascot-splash-filter:none;--mascot-splash-img-filter:grayscale(1);
+
+  /* Type (the families come with gui/fonts/fonts.css) */
+  --font-display:'Barlow Condensed',sans-serif;--font-body:'Barlow',sans-serif;--font-mono:'JetBrains Mono',monospace;
+}

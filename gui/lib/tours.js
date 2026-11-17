@@ -550,6 +550,12 @@ export const TOURS = {
         + 'or to attach to a bug report.',
     },
     {
+      target: 'config-appearance', title: 'Appearance',
+      text: 'How MellowDLP looks. Click a theme and the whole app changes at once; it is saved right away, '
+        + 'without SAVE CONFIG. Classic is the look it has always had.',
+      tip: 'RESET DEFAULTS goes back to Classic.',
+    },
+    {
       target: 'config-danger', title: 'Danger zone',
       text: 'PURGE HISTORY deletes the whole download history (the analytics and the "already downloaded" notes). '
         + 'Your files, vault folders and linked playlists stay.',

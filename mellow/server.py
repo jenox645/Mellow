@@ -59,6 +59,7 @@ from .constants import (
     SSE_PING_INTERVAL_SECS,
     SSE_QUEUE_MAXSIZE,
     THUMB_CACHE_SECS,
+    UI_THEMES,
     VIDEO_CONTAINERS,
     WEBHOOK_TIMEOUT_SECS,
 )
@@ -580,6 +581,8 @@ def api_config_get() -> Response:
 @app.route("/api/config", methods=["POST"])
 def api_config_post() -> Response:
     data = request.get_json(force=True) or {}
+    if "ui_theme" in data and data["ui_theme"] not in UI_THEMES:
+        return jsonify({"error": f"ui_theme must be one of: {', '.join(UI_THEMES)}"}), 400
     update_config(lambda cfg: cfg.update(data))
     return jsonify({"ok": True})
 

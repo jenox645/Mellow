@@ -20,6 +20,11 @@ AUDIO_FORMATS: tuple[str, ...] = ("mp3", "m4a", "aac", "flac", "opus", "wav")
 # Containers a video download can be merged into
 VIDEO_CONTAINERS: tuple[str, ...] = ("mp4", "mkv", "webm")
 
+# Themes the UI can wear (config `ui_theme`, Config → APPEARANCE). "classic" is the look MellowDLP has
+# always had; each other id has a gui/themes/<id>.css. The frontend keeps the same list (THEMES in
+# gui/lib/constants.js, and index.html's early script): tests/test_themes.py fails when they disagree
+UI_THEMES: tuple[str, ...] = ("classic", "whitetech", "archive", "tactical")
+
 # MIME types for streaming/preview
 MEDIA_MIME: dict[str, str] = {
     '.mp4': 'video/mp4', '.webm': 'video/webm', '.mkv': 'video/x-matroska',
