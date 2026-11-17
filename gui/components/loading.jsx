@@ -13,31 +13,18 @@ const _SPLASH_POOL = [
   MASCOT_COMFY_SAFE, MASCOT_SUCCESS_SAFE, MASCOT_TROUBLESHOOTING_SAFE, MASCOT_VICTORY_SAFE,
 ].filter(Boolean);
 
-export function LoadingScreen({ onReady }) {
-  const [text, setText] = React.useState('');
+// What every splash does, whatever it looks like (a theme's own LoadingScreen uses it too): a short
+// floor, click to skip, and waiting for the server. `signedOut` is the 401 answer, once refused.
+export function useSplash(onReady) {
   const [attempts, setAttempts] = React.useState(0);
   const [appVersion, setAppVersion] = React.useState('');
-  const [signedOut, setSignedOut] = React.useState(null);   // the 401 answer, once refused
+  const [signedOut, setSignedOut] = React.useState(null);
   const serverReadyRef = React.useRef(false);
   const minElapsedRef = React.useRef(false);
-  const TARGET = 'WELCOME, ADMINISTRATOR';
-  const splashMascot = React.useRef(_SPLASH_POOL[Math.floor(Math.random() * _SPLASH_POOL.length)]).current;
-  const splashIsSvg = typeof splashMascot === 'string' && (splashMascot.trimStart().startsWith('<svg') || splashMascot.trimStart().startsWith('<?xml'));
-  const splashSvgHtml = splashIsSvg ? splashMascot.replace(/^<\?xml[^?]*\?>\s*/i, '') : null;
 
   const tryReady = React.useCallback(() => {
     if (serverReadyRef.current && minElapsedRef.current) onReady();
   }, [onReady]);
-
-  React.useEffect(() => {
-    let i = 0;
-    const timer = setInterval(() => {
-      i++;
-      setText(TARGET.slice(0, i));
-      if (i >= TARGET.length) clearInterval(timer);
-    }, 60);
-    return () => clearInterval(timer);
-  }, []);
 
   // Minimum display duration — ensures animation completes
   React.useEffect(() => {
@@ -87,6 +74,27 @@ export function LoadingScreen({ onReady }) {
     minElapsedRef.current = true;
     tryReady();
   }, [tryReady]);
+
+  return { attempts, appVersion, signedOut, skip };
+}
+
+export function LoadingScreen({ onReady }) {
+  const [text, setText] = React.useState('');
+  const { attempts, appVersion, signedOut, skip } = useSplash(onReady);
+  const TARGET = 'WELCOME, ADMINISTRATOR';
+  const splashMascot = React.useRef(_SPLASH_POOL[Math.floor(Math.random() * _SPLASH_POOL.length)]).current;
+  const splashIsSvg = typeof splashMascot === 'string' && (splashMascot.trimStart().startsWith('<svg') || splashMascot.trimStart().startsWith('<?xml'));
+  const splashSvgHtml = splashIsSvg ? splashMascot.replace(/^<\?xml[^?]*\?>\s*/i, '') : null;
+
+  React.useEffect(() => {
+    let i = 0;
+    const timer = setInterval(() => {
+      i++;
+      setText(TARGET.slice(0, i));
+      if (i >= TARGET.length) clearInterval(timer);
+    }, 60);
+    return () => clearInterval(timer);
+  }, []);
 
   if (signedOut) {
     return (
