@@ -89,7 +89,7 @@ export const THEMES = [
   { id: 'classic', name: 'Classic', swatches: ['#07090F', '#0C1118', '#D8ECF5', '#00D8FF', '#F9A900'] },
   { id: 'whitetech', name: 'White Tech', swatches: ['#ECEEF1', '#FFFFFF', '#14171C', '#1F6FEB', '#B45309'] },
   { id: 'archive', name: 'Archive', swatches: ['#F3F8FD', '#FFFFFF', '#1B2A4A', '#2E9BFF', '#FFD43B'] },
-  { id: 'tactical', name: 'Tactical', swatches: ['#111316', '#1A1D21', '#E8EAED', '#FF5A1F', '#C9A227'] },
+  { id: 'tactical', name: 'Tactical', swatches: ['#0D0E10', '#141619', '#E9E7E1', '#FF5A1F', '#D2C7A8'] },
 ];
 export const DEFAULT_THEME = 'classic';
 export const THEME_STORAGE_KEY = 'mellow-theme';   // localStorage: index.html applies it before the first paint
