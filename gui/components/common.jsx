@@ -3,7 +3,7 @@
 
 import { API } from '../lib/api.js';
 import { togglesFor } from '../lib/formats.js';
-import { matchFolders, splitFolder, stepHistory } from '../lib/util.js';
+import { cssVar, matchFolders, splitFolder, stepHistory, themeRgba } from '../lib/util.js';
 import { Ico } from './icons.jsx';
 import { MENU_EDGE_PX } from '../lib/constants.js';
 
@@ -211,7 +211,9 @@ export function Pipeline({ stage }) {
   return <div className="pipeline">{items}</div>;
 }
 
-export function LineChart({ data, color = 'rgba(0,216,255,0.85)', height = 120, yFormat }) {
+// `color` names a channel token (--accent-rgb, --danger-rgb…): a canvas can't resolve var(), so the
+// colours are read from the theme when the chart is drawn
+export function LineChart({ data, color = '--accent-rgb', height = 120, yFormat }) {
   const ref = React.useRef(null);
   React.useEffect(() => {
     const c = ref.current;
@@ -228,32 +230,32 @@ export function LineChart({ data, color = 'rgba(0,216,255,0.85)', height = 120, 
     const pad = { l: 44, r: 8, t: 8, b: 20 };
     const cw = w - pad.l - pad.r, ch = height - pad.t - pad.b;
     const fmt = yFormat || (v => String(Math.round(v)));
+    const line = themeRgba(color, 0.85), mono = cssVar('--font-mono');
     [0, 0.5, 1].forEach(f => {
       const y = pad.t + ch * (1 - f);
-      ctx.strokeStyle = 'rgba(61,96,112,0.25)'; ctx.lineWidth = 0.5; ctx.setLineDash([2, 3]);
+      ctx.strokeStyle = themeRgba('--chart-axis-rgb', 0.25); ctx.lineWidth = 0.5; ctx.setLineDash([2, 3]);
       ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(pad.l + cw, y); ctx.stroke();
       ctx.setLineDash([]);
-      ctx.fillStyle = 'rgba(61,96,112,0.6)'; ctx.font = '8px Share Tech Mono'; ctx.textAlign = 'left';
+      ctx.fillStyle = themeRgba('--chart-axis-rgb', 0.6); ctx.font = '8px ' + mono; ctx.textAlign = 'left';
       ctx.fillText(fmt(maxV * f), 0, y + 3);
     });
     // One point has no line to draw: put it in the middle as a dot
     const xAt = i => pts.length === 1 ? pad.l + cw / 2 : pad.l + i * (cw / (pts.length - 1));
     const yAt = v => pad.t + ch * (1 - v / maxV);
     if (pts.length === 1) {
-      ctx.fillStyle = color; ctx.beginPath(); ctx.arc(xAt(0), yAt(pts[0]), 3, 0, 2 * Math.PI); ctx.fill();
+      ctx.fillStyle = line; ctx.beginPath(); ctx.arc(xAt(0), yAt(pts[0]), 3, 0, 2 * Math.PI); ctx.fill();
     }
-    const fillColor = color.replace(/[\d.]+\)$/, '0.15)');
     const grad = ctx.createLinearGradient(0, pad.t, 0, pad.t + ch);
-    grad.addColorStop(0, fillColor); grad.addColorStop(1, 'rgba(0,0,0,0)');
+    grad.addColorStop(0, themeRgba(color, 0.15)); grad.addColorStop(1, themeRgba('--shadow-rgb', 0));
     if (pts.length > 1) {
       ctx.fillStyle = grad; ctx.beginPath();
       pts.forEach((v, i) => (i === 0 ? ctx.moveTo(xAt(i), yAt(v)) : ctx.lineTo(xAt(i), yAt(v))));
       ctx.lineTo(xAt(pts.length - 1), pad.t + ch); ctx.lineTo(pad.l, pad.t + ch); ctx.closePath(); ctx.fill();
-      ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.beginPath();
+      ctx.strokeStyle = line; ctx.lineWidth = 1.5; ctx.beginPath();
       pts.forEach((v, i) => (i === 0 ? ctx.moveTo(xAt(i), yAt(v)) : ctx.lineTo(xAt(i), yAt(v))));
       ctx.stroke();
     }
-    ctx.fillStyle = 'rgba(61,96,112,0.6)'; ctx.font = '7px Share Tech Mono'; ctx.textAlign = 'center';
+    ctx.fillStyle = themeRgba('--chart-axis-rgb', 0.6); ctx.font = '7px ' + mono; ctx.textAlign = 'center';
     labels.forEach((l, i) => {
       if (i % Math.ceil(labels.length / 8) === 0) {
         ctx.fillText(String(l).slice(5), xAt(i), height - 5);
@@ -287,7 +289,7 @@ export function AppUpdateOverlay({ update }) {
             </div>
             <div className="prog-pct">{update.stage === 'downloading' ? update.pct + '%' : '✓'}</div>
           </div>
-          <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 11, color: 'var(--t2)', letterSpacing: '0.08em' }}>
+          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--t2)', letterSpacing: '0.08em' }}>
             {APP_UPDATE_STAGES[update.stage] || update.stage.toUpperCase()}
           </div>
           <div style={{ fontSize: 12, color: 'var(--t3)', marginTop: 10 }}>

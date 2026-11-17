@@ -59,6 +59,7 @@ from .constants import (
     SSE_PING_INTERVAL_SECS,
     SSE_QUEUE_MAXSIZE,
     THUMB_CACHE_SECS,
+    UI_THEMES,
     VIDEO_CONTAINERS,
     WEBHOOK_TIMEOUT_SECS,
 )
@@ -580,6 +581,8 @@ def api_config_get() -> Response:
 @app.route("/api/config", methods=["POST"])
 def api_config_post() -> Response:
     data = request.get_json(force=True) or {}
+    if "ui_theme" in data and data["ui_theme"] not in UI_THEMES:
+        return jsonify({"error": f"ui_theme must be one of: {', '.join(UI_THEMES)}"}), 400
     update_config(lambda cfg: cfg.update(data))
     return jsonify({"ok": True})
 
@@ -1056,7 +1059,13 @@ def api_vault_play_files() -> Response:
     paths = data.get("paths", [])
     if not paths:
         return jsonify({"error": "No files provided"}), 400
-    result = _vault.launch_playlist(paths, desktop.open_file)
+    try:
+        result = _vault.launch_playlist(paths, desktop.open_file)
+    except _vault.PlayerStartError as e:
+        log.warning("Play files: %s", e)
+        return jsonify({"error": str(e)}), 500
+    if result == "no_files":
+        return jsonify({"error": "None of these files exist any more"}), 400
     return jsonify({"status": "ok", "method": result})
 
 
@@ -1458,18 +1467,6 @@ def api_library_post() -> Response:
     # folder_path: where downloads for this entry go (the client downloads
     # into exactly the folder the entry and its playlist links point at)
     return jsonify({**entry, "folder_path": folder_path}), 201
-
-
-@app.route("/api/library/<entry_id>", methods=["PUT"])
-def api_library_put(entry_id: str) -> Response:
-    data = request.get_json(force=True) or {}
-    existing = analytics.get_library_entry(entry_id)
-    if not existing:
-        return jsonify({"error": "Not found"}), 404
-    existing.update(data)
-    existing["id"] = entry_id
-    analytics.upsert_library_entry(existing)
-    return jsonify(existing)
 
 
 @app.route("/api/library/<entry_id>", methods=["DELETE"])

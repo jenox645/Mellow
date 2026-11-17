@@ -416,24 +416,28 @@ def resolve_file_thumbs(paths: list[str], get_conn: Callable) -> dict[str, str]:
 
 def get_folder_stats(path: str, linked_playlists: list) -> dict:
     p = Path(path)
-    # Single pass: stat() each file once (rglob over network/WSL mounts is
-    # slow, and the previous version statted every file 3-4 times).
+    # One os.scandir per folder, like the cards (get_folder_media_stats): the
+    # listing knows file vs folder, and on Windows the size and mtime too, so
+    # a big folder costs no extra call per file. Symlinked folders aren't
+    # followed; an unreadable subfolder is left out, the rest still counts.
     file_count = 0
     media: list[tuple[str, int, float, str]] = []  # (name, size, mtime, ext)
-    try:
-        for f in p.rglob("*"):
-            if not f.is_file() or f.name.startswith("."):
-                continue
-            file_count += 1
-            ext = f.suffix.lower()
-            if is_media(f):
-                try:
-                    st = f.stat()
-                except OSError:
+    pending = [str(p)]
+    while pending:
+        for entry in _entries(pending.pop()):
+            try:
+                if entry.is_dir(follow_symlinks=False):
+                    pending.append(entry.path)
                     continue
-                media.append((f.name, st.st_size, st.st_mtime, ext))
-    except PermissionError:
-        pass
+                if entry.name.startswith(".") or not entry.is_file():
+                    continue
+                file_count += 1
+                if _is_media_name(entry.name):
+                    st = entry.stat()
+                    media.append((entry.name, st.st_size, st.st_mtime,
+                                  os.path.splitext(entry.name)[1].lower()))
+            except OSError:
+                pass
     total_size = sum(m[1] for m in media)
     video_count = sum(1 for m in media if m[3] in VIDEO_EXTS)
     audio_count = len(media) - video_count
@@ -936,8 +940,26 @@ def find_duplicates(folders: list[str]) -> list[dict]:
 
 # ── Media player launch ───────────────────────────────────────────────────────
 
+class PlayerStartError(Exception):
+    """A media player was found but didn't start (removed, not executable…)."""
+
+    def __init__(self, player: str, error: OSError):
+        super().__init__(f"Couldn't start {player}: {error}")
+        self.player = player
+
+
+def _start_player(player: str, args: list[str]) -> None:
+    # Popen returns once the process has started: it doesn't wait for the player
+    try:
+        subprocess.Popen(args)
+    except OSError as e:
+        raise PlayerStartError(player, e) from e
+
+
 def launch_playlist(paths: list[str], open_file_fn: Callable[[str], None]) -> str:
-    """Open media files in a player. Returns method name used."""
+    """Open media files in a player. Returns method name used ("no_files" when
+    none of the paths exists); raises PlayerStartError when the player found
+    can't be started."""
     valid = [p for p in paths if Path(p).exists()]
     if not valid:
         return "no_files"
@@ -955,19 +977,19 @@ def launch_playlist(paths: list[str], open_file_fn: Callable[[str], None]) -> st
     vlc = _find(_VLC_PATHS) or shutil.which("vlc")
     if vlc:
         args = [vlc, "--playlist-enqueue", *_items()]
-        threading.Thread(target=lambda: subprocess.Popen(args), daemon=True).start()
+        _start_player("VLC", args)
         return "vlc_direct"
 
     mpv = _find(_MPV_PATHS) or shutil.which("mpv")
     if mpv:
         args = [mpv, *_items()]
-        threading.Thread(target=lambda: subprocess.Popen(args), daemon=True).start()
+        _start_player("mpv", args)
         return "mpv_direct"
 
     mpc = _find(_MPC_PATHS)
     if mpc:
         args = [mpc, *_items()]
-        threading.Thread(target=lambda: subprocess.Popen(args), daemon=True).start()
+        _start_player("MPC", args)
         return "mpc_direct"
 
     temp_path = _write_m3u8(valid)

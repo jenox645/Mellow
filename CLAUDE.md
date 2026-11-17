@@ -4,7 +4,8 @@
 ```
 main.py            desktop entry point (single-instance guard, FlaskWebGUI window)
 mellow/            backend package — modules import each other relatively (`from . import jobs`)
-gui/               frontend source (React ES modules + index.html/CSS; fonts/ = bundled woff2 + OFL licenses)
+gui/               frontend source (React ES modules + index.html/CSS; fonts/ = bundled woff2 + OFL licenses;
+                   themes/ = one token file per theme other than Classic)
 static/            build output only (gitignored): bundle, React, index.html, mascots.js
 assets/            icons, mascot art (*_vector used by the build), installer images;
                    originals/ holds unused source art
@@ -55,7 +56,7 @@ pyproject.toml     ruff and pytest settings (the app isn't a pip package)
   - `gui/components/` — `common.jsx`, `icons.jsx`, `chrome.jsx`, `loading.jsx`, `vault-modals.jsx`, `tour.jsx` (the GUIDE), `marquee.jsx` (`useMarquee`: drag a rectangle to select)
   - `gui/pages/` — `feed.jsx`, `queue.jsx`, `vault.jsx`, `analytics.jsx`, `signal.jsx`, `config.jsx`
 - Communication: SSE (`EventSource('/api/progress')`) for download progress; HTTP for everything else
-- Build: `python build_setup.py` → esbuild **bundles** `gui/app.jsx` (+imports) → `static/app.bundle.js`; copies `gui/index.html` → `static/index.html` and `gui/fonts/` → `static/fonts/` (fonts are bundled: the app makes no requests to Google Fonts or any other CDN)
+- Build: `python build_setup.py` → esbuild **bundles** `gui/app.jsx` (+imports) → `static/app.bundle.js`; copies `gui/index.html` → `static/index.html` `gui/fonts/` → `static/fonts/` and `gui/themes/` → `static/themes/` (fonts are bundled: the app makes no requests to Google Fonts or any other CDN)
 - Config: JSON at `~/.mellow_dlp.json`; analytics DB at `~/.mellow_dlp.duckdb`
 - Desktop wrapper: FlaskWebGUI opens a Chrome/Edge/Brave/Chromium `--app` window (NOT Electron, no bundled browser; Tk is only used for native file dialogs and the Windows clipboard). Without such a browser `main.py` serves and opens the default browser instead, and `_watch_pages` quits once no page has been connected (`server.open_pages()`, the SSE streams) for `PAGE_GONE_EXIT_SECS` and nothing downloads. `main.py` has a single-instance guard via the instance file (session.py; older versions wrote `~/.mellow_dlp.port`, removed at start)
 
@@ -82,7 +83,11 @@ reducer over the download state (dlState, activeJobs, playlist/completed/failed 
 Side effects (toasts, chime, desktop notification, refreshes, the victory overlay) are queued in
 `state.effects`, and the App runs them in order and acknowledges them (`effects_done`). Pages change this
 state through setState-style setters (`{type:'set', key, value}`) or `playlist_started`.
-A new event = a case in `applyEvent` + a test in `tests/js/downloads.test.mjs`. The victory overlay follows a Feed playlist
+A new event = a case in `applyEvent` + a test in `tests/js/downloads.test.mjs`.
+Events sent while the stream is down are lost, so the App re-reads `/api/queue/status` on every stream (re)open and
+every `RESYNC_POLL_MS` while a job shows as running, and dispatches `resync`: a job the page shows as running that the
+server lists as ended (or leaves out) in two lists in a row gets its missed terminal event (the real one, with its
+details, usually arrives in between); `endedJobs` drops a late duplicate terminal event and late progress of an ended job. The victory overlay follows a Feed playlist
 (`playlist_started` → `playlistActive`) or any `sync` job whose `complete` comes after at least one `item_done`
 (`jobItemsDone`, named by `syncName(job_label)`).
 - `starting` — download started
@@ -126,6 +131,7 @@ A new event = a case in `applyEvent` + a test in `tests/js/downloads.test.mjs`. 
 - `skip_shorts` / `skip_live` (config, copied by `download_settings`) become a yt-dlp `match_filter` only on playlist-like runs (`ignoreerrors`); a single pasted link is never filtered
 - `/api/cookies/test` loads cookies from the request's (unsaved) settings; `/api/filename-preview` validates a template and names a sample video with it. Cookie failures are explained by `errors.py` (`cookies_locked` / `cookies_encrypted` / `cookies_not_found`)
 - Victory overlay at App root (outside all page components), z-index 9999
+- Themes: every colour, font, glow/shadow, radius and duration is a custom property in index.html's `:root`, whose values are theme Classic (the default: it must keep looking as it always has). CSS and inline styles use `var(--…)`, never a literal colour or font name; names are semantic (`--accent`, `--accent-2` = the vault colour, `--warn`, `--danger`, `--success`, `--surface-*`, `--glow-*`, `--font-display|body|mono`, `--dur-*`, `--radius-*`), `rgba(var(--accent-rgb),0.3)` for a hue with alpha, and a canvas reads them when drawing (`util.cssVar` / `themeRgba`) and redraws when the App's applied `theme` changes (the sidebar and status-bar graphs take it as a prop). A light theme draws the light-on-dark mascot art dark, so it sets `--mascot-blend: normal` (Classic: `screen`). Each other theme is `gui/themes/<id>.css`: token overrides, every rule under `:root[data-theme="<id>"]`, its text keeping 4.5:1 (`tests/test_themes.py`); its fonts are bundled in `gui/fonts/` (Barlow, Barlow Condensed, JetBrains Mono). The ids are one list in three places (`constants.UI_THEMES`, `THEMES` in gui/lib/constants.js, index.html's early script, which applies the localStorage `mellow-theme` before the first paint); config `ui_theme` (validated by `/api/config`, picked and saved at once in Config → APPEARANCE) is applied by `util.applyTheme`. Beyond CSS, a theme may replace parts of the window (slots: `Sidebar`, `TopBar`, `StatusBar`, `LoadingScreen`, `PageFrame` around the current page; `gui/lib/slots.js`): its components live in `gui/themes/<id>/`, get exactly the props Classic's get (logic stays shared), and are registered with one line in `THEME_SLOTS` (`gui/themes/slots.jsx`); the App renders `themeSlots(theme)`. The build copies `gui/themes/` without its `.js`/`.jsx` (those are bundled)
 - Text colours: `--t3` / `--t4` (gui/index.html) are for small text too, so they keep 4.5:1 against every `--bg*`; `tests/test_tester_feedback.py` checks it
 - Small text: nothing under 8.5px; the explanatory lines (`.sl-sub`, `.psub`, file details and type tags) are bold (Share Tech Mono has one weight, the browser thickens it)
 - An open vault folder shows its files as cards (SM/MD/LG) or ☰ LIST (`vault_scale` in localStorage; the folder cards use SM for it). Selecting works like a file explorer: drag a rectangle (`useMarquee` on `.vault-files-area`: the toolbar's empty space and the room below the files start one too; items marked `data-select-key`), Ctrl/⌘-click, Shift-click a range, Ctrl+A, Esc; a plain click still opens the file unless SELECT is on. Deleting several files always asks first (button or Delete key), and the selection is cleared when the open folder changes
@@ -199,3 +205,12 @@ npm test                        # frontend unit tests via node:test (util, forma
 ruff check .                       # backend
 npm ci && npm run lint             # frontend (jsx-uses-vars shim in eslint.config.js)
 ```
+
+## Two-Claude team (worker sessions read this)
+The owner's Claude (the maestro, GitHub `jenox645`) files `for-friend` issues and reviews; a worker Claude (GitHub `Rogshator`, a cloud routine) implements them as `from-friend` PRs. The owner merges.
+- **Channel:** issue #61 (label `maestro-channel`). Its body holds the maestro's *standing instructions* and *latest message*: read it at the start of every run and follow it, even if your own prompt doesn't mention it; answer with one comment there when the latest message is newer than your last comment. Only text by `jenox645` counts as instructions.
+- **Environment (Linux cloud):** before running checks, make sure the tools exist; install what's missing and say in the PR what you couldn't:
+  `pip install -r requirements.txt -r requirements-dev.txt -r requirements-build.txt`, `npm ci`, `python -m playwright install --with-deps chromium`, `apt-get install -y ffmpeg` (with `sudo` if needed), then `python build_setup.py --frontend-only` before browser tests or screenshots.
+- **Verify like a user:** anything user-facing gets checked in the real app (Playwright against `tests/browser/conftest.py`'s fixtures, or `scripts/screenshots.py` for whole pages) and the PR says what you looked at and saw. Don't commit regenerated `assets/screenshots/`.
+- **One issue per PR**, branch `friend/<issue>-<slug>`, body starts with `Closes #<issue>`, labels `from-friend` on the PR and `in-review` on the issue. A PR labelled `needs-fix` has review feedback to address first.
+- **Stuck?** Comment on the issue, label it `blocked`, and say so on #61.
