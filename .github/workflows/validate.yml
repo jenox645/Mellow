@@ -23,11 +23,40 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # macos-15, not macos-latest: macos-latest became the macOS 26 image, whose
-        # runners were so scarce that jobs waited out GitHub's queue limit and were
-        # cancelled without starting (the gate then failed on main and on PRs)
-        os: [windows-latest, ubuntu-latest, macos-15]
+        os: [windows-latest, ubuntu-latest]
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.sha }}
+          persist-credentials: false
+      - name: Tested commit is the requested one
+        shell: bash
+        env:
+          EXPECTED: ${{ inputs.sha }}
+        run: |
+          [[ "$EXPECTED" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::not a full commit SHA: $EXPECTED"; exit 1; }
+          [[ "$(git rev-parse HEAD)" == "$EXPECTED" ]] || { echo "::error::checked out $(git rev-parse HEAD), expected $EXPECTED"; exit 1; }
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: requirements*.txt
+      - name: Install dependencies
+        run: pip install -r requirements.txt -r requirements-dev.txt
+      - name: Lint
+        run: ruff check .
+      # e2e/slow tests download from real sites and are run by hand
+      - name: Run tests
+        run: python -m pytest tests/ -m "not e2e and not slow and not browser" --timeout=60
+
+  # macOS runs the same tests but doesn't decide the gate: MellowDLP ships no macOS
+  # build, and GitHub's macOS runners (macos-latest and macos-15 alike) are often so
+  # scarce that the job waits 15 minutes for a machine and is cancelled without
+  # starting, which failed the gate on main and on every PR in the queue
+  test-macos:
+    runs-on: macos-15
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
