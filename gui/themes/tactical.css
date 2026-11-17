@@ -478,7 +478,6 @@
 :root[data-theme="tactical"] .sync-banner{border-left:3px solid var(--warn)}
 
 /* GUIDE */
-:root[data-theme="tactical"] .tour-spot{transition:left var(--dur-slower) var(--ease-spring),top var(--dur-slower) var(--ease-spring),width var(--dur-slower) var(--ease-spring),height var(--dur-slower) var(--ease-spring)}
 :root[data-theme="tactical"] .tour-card{border:1px solid var(--border2);border-top:3px solid var(--accent);background:var(--bg1)}
 :root[data-theme="tactical"] .tour-head{background:var(--bg2)}
 :root[data-theme="tactical"] .tour-title{font-size:14px;letter-spacing:0.1em;text-transform:uppercase}
@@ -566,6 +565,9 @@
 }
 
 /* ── MOTION ─────────────────────────────────────────────────────────────── */
+/* Only transform and opacity ever animate: what the shared rules would slide by size or position
+   (a panel opening, the GUIDE's spotlight moving) snaps instead, and still fades where it faded */
+:root[data-theme="tactical"] *,:root[data-theme="tactical"] *::before,:root[data-theme="tactical"] *::after{transition-property:transform,opacity!important}
 @keyframes tac-rise{from{opacity:0;transform:translateY(8px)}}
 @keyframes tac-drop{from{opacity:0;transform:translateY(-12px)}}
 @keyframes tac-slide-left{from{opacity:0;transform:translateX(16px)}}
@@ -589,9 +591,10 @@
 @keyframes tac-scan-card{0%{transform:translateX(-90px)}60%,100%{transform:translateX(1400px)}}
 @keyframes tac-row-out{to{opacity:0;transform:translateX(-40px)}}
 @keyframes tac-check{from{opacity:0;transform:rotate(45deg) scale(0.3)}}
-/* Reduced motion: nothing moves, nothing blinks */
+/* Reduced motion: everything ends at once, as in Classic (the queue waits for a row's animation to end,
+   so animations are cut short, never removed); what only exists to move is gone */
 @media (prefers-reduced-motion: reduce){
-  :root[data-theme="tactical"] *,:root[data-theme="tactical"] *::before,:root[data-theme="tactical"] *::after{animation:none!important;transition:none!important}
-  :root[data-theme="tactical"] .tac-frame-sweep{display:none}
+  :root[data-theme="tactical"] *,:root[data-theme="tactical"] *::before,:root[data-theme="tactical"] *::after{animation-duration:0.01ms!important;animation-delay:0s!important;animation-iteration-count:1!important;transition-duration:0.01ms!important}
+  :root[data-theme="tactical"] .tac-frame-sweep,:root[data-theme="tactical"] .tac-head-scan,:root[data-theme="tactical"] .dl-card::after,:root[data-theme="tactical"] .tac-portrait-frame::after,:root[data-theme="tactical"] .btn::after{display:none}
   :root[data-theme="tactical"] .tac-boot-bar i::after{opacity:1}
 }
