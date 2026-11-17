@@ -6,6 +6,8 @@ import { Sidebar, TopBar, StatusBar } from '../components/chrome.jsx';
 import { LoadingScreen } from '../components/loading.jsx';
 import { THEMES } from '../lib/constants.js';
 import { resolveSlots, registryProblems } from '../lib/slots.js';
+import { ArchiveSidebar, ArchiveTopBar, ArchiveStatusBar, ArchivePageFrame } from './archive/chrome.jsx';
+import { ArchiveLoadingScreen } from './archive/splash.jsx';
 
 // Classic's frame around the current page: nothing (a theme can add a header, rails, a backdrop)
 function PageFrame({ children }) {
@@ -15,6 +17,7 @@ function PageFrame({ children }) {
 export const DEFAULT_SLOTS = { Sidebar, TopBar, StatusBar, LoadingScreen, PageFrame };
 
 export const THEME_SLOTS = {
+  archive: { Sidebar: ArchiveSidebar, TopBar: ArchiveTopBar, StatusBar: ArchiveStatusBar, LoadingScreen: ArchiveLoadingScreen, PageFrame: ArchivePageFrame },
 };
 
 const problems = registryProblems(THEME_SLOTS, THEMES.map(t => t.id));
