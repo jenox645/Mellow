@@ -2,7 +2,7 @@
 'use strict';
 
 import { API, authHeaders, download } from '../lib/api.js';
-import { fmtBytes } from '../lib/util.js';
+import { fmtBytes, themeCards } from '../lib/util.js';
 import { Toggle, Modal, Mascot } from '../components/common.jsx';
 import { ApiAccessPanel } from '../components/api-access.jsx';
 import { MASCOT_FRUSTRATED } from '../lib/mascots.js';
@@ -822,19 +822,46 @@ export function ConfigPage({ config, setConfig, showNotif, installAppUpdate, onA
             </div>
             <div className="cfg-body">
               <div className="theme-grid">
-                {THEMES.map(t => (
-                  <div key={t.id} className={'theme-card' + (t.id === currentTheme ? ' on' : '')}
-                    role="button" tabIndex={0} aria-pressed={t.id === currentTheme}
-                    aria-label={'Theme: ' + t.name}
-                    onClick={() => pickTheme(t.id)}
-                    onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pickTheme(t.id); } }}>
+                {themeCards(currentTheme).map(t => {
+                  const on = t.id === currentTheme;
+                  const swatches = (
                     <div className="theme-swatches" aria-hidden="true">
                       {t.swatches.map((colour, i) => <span key={i} className="theme-swatch" style={{ background: colour }} />)}
                     </div>
-                    <div className="theme-name">{t.name}</div>
-                    <div className="theme-current">{t.id === currentTheme ? '● CURRENT' : ''}</div>
-                  </div>
-                ))}
+                  );
+                  if (!t.pair) return (
+                    <div key={t.id} className={'theme-card' + (on ? ' on' : '')}
+                      role="button" tabIndex={0} aria-pressed={on}
+                      aria-label={'Theme: ' + t.name}
+                      onClick={() => pickTheme(t.id)}
+                      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pickTheme(t.id); } }}>
+                      {swatches}
+                      <div className="theme-name">{t.name}</div>
+                      <div className="theme-current">{on ? '● CURRENT' : ''}</div>
+                    </div>
+                  );
+                  // Two versions, one card: a click picks the version shown; the keyboard uses the switch
+                  return (
+                    <div key={t.pair.dark} className={'theme-card' + (on ? ' on' : '')}
+                      role="group" aria-label={'Theme: ' + t.name}
+                      onClick={() => pickTheme(t.id)}>
+                      {swatches}
+                      <div className="theme-name">{t.name}</div>
+                      <div className="theme-mode">
+                        {[['dark', 'DARK'], ['light', 'LIGHT']].map(([version, label]) => {
+                          const id = t.pair[version];
+                          const pressed = id === currentTheme;
+                          return (
+                            <button key={version} type="button" className={'theme-mode-btn' + (pressed ? ' on' : '')}
+                              aria-pressed={pressed} aria-label={t.name + ' ' + version}
+                              onClick={e => { e.stopPropagation(); pickTheme(id); }}>{label}</button>
+                          );
+                        })}
+                      </div>
+                      <div className="theme-current">{on ? '● CURRENT' : ''}</div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           </div>

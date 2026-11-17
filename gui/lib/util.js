@@ -1,7 +1,7 @@
 // Shared formatting helpers.
 'use strict';
 
-import { DEFAULT_THEME, THEME_STORAGE_KEY, THEMES } from './constants.js';
+import { DEFAULT_THEME, THEME_PAIRS, THEME_STORAGE_KEY, THEMES } from './constants.js';
 
 export function fmtBytes(b) {
   if (!b && b !== 0) return '—';
@@ -189,6 +189,21 @@ export function applyTheme(id) {
   document.documentElement.dataset.theme = theme;
   try { localStorage.setItem(THEME_STORAGE_KEY, theme); } catch { /* storage blocked: applied for this session */ }
   return theme;
+}
+
+// Config → APPEARANCE's cards: one per theme, except that a pair's two versions (THEME_PAIRS: Classic and
+// Classic Light) share the dark one's card, which shows the version in use (the dark one otherwise).
+// Each card: { id, name, swatches, pair }: `id` is what picking the card applies, `pair` null or
+// { dark, light } for its Dark / Light switch
+export function themeCards(current) {
+  const cards = [];
+  for (const t of THEMES) {
+    const pair = THEME_PAIRS.find(p => p.dark === t.id || p.light === t.id) || null;
+    if (pair && t.id !== pair.dark) continue;
+    const shown = pair && current === pair.light ? THEMES.find(x => x.id === pair.light) : t;
+    cards.push({ id: shown.id, name: t.name, swatches: shown.swatches, pair });
+  }
+  return cards;
 }
 
 // A canvas can't resolve var(--x): read the token's value when drawing

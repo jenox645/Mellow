@@ -729,3 +729,60 @@ def test_rename_the_file_before_downloading(page, media_site, downloads):
     name.fill("Something else")                              # Esc goes back too
     name.press("Escape")
     expect(name).to_have_value("Intro (1)")
+
+
+# Every element's box and look, to compare two moments of the same page (scrolled back to the top first:
+# focusing a control scrolls it into view)
+_UNSCROLL = "document.querySelectorAll('*').forEach(e => { if (e.scrollTop) e.scrollTop = 0; });"
+_SNAPSHOT_JS = """() => { """ + _UNSCROLL + """ return [...document.querySelectorAll('.app *')].map(e => {
+  const r = e.getBoundingClientRect(), s = getComputedStyle(e);
+  return [e.tagName, e.className && String(e.className), Math.round(r.x), Math.round(r.y), Math.round(r.width),
+          Math.round(r.height), s.color, s.backgroundColor, s.backgroundImage, s.boxShadow, s.borderColor, s.fontFamily];
+}); }"""
+_LAYOUT_JS = "() => { " + _UNSCROLL + " return [...document.querySelectorAll('.app *')].map(e => { " \
+             "const r = e.getBoundingClientRect(); " \
+             "return [e.tagName, Math.round(r.x), Math.round(r.y), Math.round(r.width), Math.round(r.height)]; }); }"
+
+
+def test_classic_has_a_light_version_that_changes_only_the_colours(page, app_url):
+    from mellow import config
+    page.locator(".nav-item", has_text=re.compile("config", re.I)).first.click()
+    card = page.locator(".theme-card", has_text="Classic")
+    expect(card).to_have_count(1)                                   # one card for the two versions
+    expect(page.locator(".theme-card", has_text="Classic Light")).to_have_count(0)
+    dark, light = card.get_by_role("button", name="Classic dark"), card.get_by_role("button", name="Classic light")
+    expect(dark).to_have_attribute("aria-pressed", "true")
+    page.mouse.move(0, 0)
+    page.wait_for_timeout(500)                                      # the page has settled (counts, toasts)
+    classic = page.evaluate(_SNAPSHOT_JS)
+    classic_layout = page.evaluate(_LAYOUT_JS)
+
+    light.focus()                                                   # the keyboard can switch
+    page.keyboard.press("Enter")
+    expect(page.locator("html")).to_have_attribute("data-theme", "classic-light")
+    expect(light).to_have_attribute("aria-pressed", "true")
+    for _ in range(50):                                             # saved at once, no SAVE CONFIG
+        if config.load_config()["ui_theme"] == "classic-light":
+            break
+        page.wait_for_timeout(100)
+    assert config.load_config()["ui_theme"] == "classic-light"
+    assert page.evaluate("localStorage.getItem('mellow-theme')") == "classic-light"
+    page.wait_for_timeout(500)
+    # Same page, other colours: every element where it was, at its size
+    assert page.evaluate(_LAYOUT_JS) == classic_layout
+    assert page.evaluate("getComputedStyle(document.body).backgroundColor") != "rgb(7, 9, 15)"
+
+    page.reload()                                                   # kept across a restart
+    page.locator(".nav-item").first.wait_for()
+    expect(page.locator("html")).to_have_attribute("data-theme", "classic-light")
+    page.locator(".nav-item", has_text=re.compile("config", re.I)).first.click()
+    dark.click()
+    expect(page.locator("html")).to_have_attribute("data-theme", "classic")
+    expect(dark).to_have_attribute("aria-pressed", "true")
+    for _ in range(50):
+        if config.load_config()["ui_theme"] == "classic":
+            break
+        page.wait_for_timeout(100)
+    page.mouse.move(0, 0)                                           # no hover left on the card
+    page.wait_for_timeout(500)
+    assert page.evaluate(_SNAPSHOT_JS) == classic                   # back to Classic, no trace left
