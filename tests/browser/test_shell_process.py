@@ -8,6 +8,8 @@ its window closes, or what the OS does when the shell dies) ends it.
 from __future__ import annotations
 
 import json
+import os
+import signal
 import subprocess
 import sys
 import threading
@@ -32,11 +34,11 @@ EXIT_TIMEOUT_SECS = 15
 ANALYZE_TIMEOUT_SECS = 30
 
 
-def _shell(env: dict) -> tuple[subprocess.Popen, str]:
+def _shell(env: dict, **popen) -> tuple[subprocess.Popen, str]:
     """`python main.py --shell` and its ready line (without the prefix)."""
     proc = subprocess.Popen([sys.executable, str(ROOT / "main.py"), main.SHELL_FLAG], cwd=ROOT, env=env,
                             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-                            text=True)
+                            text=True, **popen)
     lines: list[str] = []
     reader = threading.Thread(target=lambda: lines.append(proc.stdout.readline()), daemon=True)
     reader.start()
@@ -86,3 +88,27 @@ def test_the_shell_backend_signs_its_window_in_once_and_ends_with_its_shell(tmp_
     finally:
         if proc.poll() is None:
             proc.kill()
+
+
+@pytest.mark.skipif(not hasattr(os, "killpg"), reason="Windows: the shell's job object ends the tree")
+def test_a_backend_whose_shell_died_takes_its_children_with_it(tmp_path):
+    """The Tauri shell starts the backend as the leader of its own process
+    group (src-tauri: process_group(0)). If the shell is killed it can't kill
+    that group: the backend sees stdin close and ends the group itself, so an
+    ffmpeg it started doesn't keep running."""
+    home = tmp_path / "home"
+    home.mkdir()
+    env = app_env(str(home))
+    proc, _ready = _shell(env, process_group=0)
+    # Stands in for an ffmpeg the backend started: a process in its group
+    child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(120)"],
+                             process_group=proc.pid)
+    try:
+        proc.stdin.close()                          # what the OS does when the shell dies
+        assert proc.wait(timeout=EXIT_TIMEOUT_SECS) == -signal.SIGKILL   # its own last act
+        assert child.wait(timeout=EXIT_TIMEOUT_SECS) == -signal.SIGKILL
+        assert session.read_instance(real_data_dir(env) / session.INSTANCE_FILE_NAME) is None
+    finally:
+        for p in (proc, child):
+            if p.poll() is None:
+                p.kill()
