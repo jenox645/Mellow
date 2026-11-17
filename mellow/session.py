@@ -35,6 +35,7 @@ import os
 import secrets
 import threading
 import time
+from contextlib import contextmanager
 from pathlib import Path
 
 from . import datadir
@@ -50,6 +51,8 @@ log = logging.getLogger(__name__)
 COOKIE = "mellow_session"
 HEADER = "X-Mellow-Token"
 INSTANCE_FILE_NAME = "instance.json"
+# Held while the instance file is written, or read and then removed (`_instance_file_lock`)
+INSTANCE_LOCK_NAME = "instance.lock"
 # sessionStorage key the launch page stores the header token under (gui/lib/api.js)
 STORAGE_KEY = "mellow-token"
 
@@ -64,6 +67,46 @@ def instance_file() -> Path:
     return datadir.data_dir() / INSTANCE_FILE_NAME
 
 
+@contextmanager
+def _instance_file_lock():
+    """Hold the instance file's lock (between processes): a launch removing a stale file must not
+    remove the one a copy starting at the same moment has just written. Yields False when the
+    lock can't be had (its file can't be opened): callers that only tidy up then do nothing."""
+    try:
+        fd = os.open(datadir.ensure_private() / INSTANCE_LOCK_NAME, os.O_RDWR | os.O_CREAT, 0o600)
+    except OSError as e:
+        log.warning(f"can't open the instance lock: {e}")
+        yield False
+        return
+    try:
+        try:
+            if os.name == "nt":
+                import msvcrt
+                msvcrt.locking(fd, msvcrt.LK_LOCK, 1)    # retries for ~10 s, then OSError
+            else:
+                import fcntl
+                fcntl.flock(fd, fcntl.LOCK_EX)
+        except OSError as e:
+            log.warning(f"can't lock the instance file: {e}")
+            yield False
+            return
+        try:
+            yield True
+        finally:
+            try:
+                if os.name == "nt":
+                    import msvcrt
+                    os.lseek(fd, 0, os.SEEK_SET)
+                    msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+                else:
+                    import fcntl
+                    fcntl.flock(fd, fcntl.LOCK_UN)
+            except OSError:
+                pass
+    finally:
+        os.close(fd)
+
+
 # ── This copy's secret ─────────────────────────────────────────────────────────
 
 def start_instance(port: int, publish: bool = True) -> None:
@@ -75,28 +118,88 @@ def start_instance(port: int, publish: bool = True) -> None:
     if not publish:
         return
     folder = datadir.ensure_private()
-    datadir.write_private(folder / INSTANCE_FILE_NAME, json.dumps({"port": port, "secret": _secret.hex(),
-                                                          "pid": os.getpid()}))
+    with _instance_file_lock():   # written even without the lock: this copy must be found
+        datadir.write_private(folder / INSTANCE_FILE_NAME, json.dumps({"port": port, "secret": _secret.hex(),
+                                                              "pid": os.getpid()}))
 
 
 def stop_instance() -> None:
     """Remove the instance file if it is still ours (a newer copy may have replaced it)."""
-    try:
-        data = read_instance()
-        if data and data["port"] == _port:
-            instance_file().unlink(missing_ok=True)
-    except OSError:
-        pass
+    _remove_instance_if(lambda data: data["port"] == _port)
     _remove_launch_pages(0)
 
 
+def _remove_instance_if(still_it) -> None:
+    """Remove the instance file if `still_it(its contents)`, checked and removed under the lock
+    so a copy that publishes in between keeps its file."""
+    with _instance_file_lock() as locked:
+        if not locked:
+            return
+        try:
+            data = read_instance()
+            if data and still_it(data):
+                instance_file().unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
 def read_instance(path: Path | None = None) -> dict | None:
-    """{port, secret} of the copy that last started (this account's, or the one at `path`), or None."""
+    """{port, secret, pid} of the copy that last started (this account's, or the one at `path`), or None.
+    `pid` is None in a file an older version wrote."""
     try:
         data = json.loads((path or instance_file()).read_text(encoding="utf-8"))
-        return {"port": int(data["port"]), "secret": bytes.fromhex(data["secret"])}
-    except (OSError, ValueError, KeyError, TypeError):
+        pid = data.get("pid")
+        return {"port": int(data["port"]), "secret": bytes.fromhex(data["secret"]),
+                "pid": int(pid) if pid is not None else None}
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
         return None
+
+
+def drop_stale_instance(pid: int) -> None:
+    """Remove the instance file of a copy that is no longer running (only if it still names `pid`:
+    a copy starting meanwhile has written its own)."""
+    _remove_instance_if(lambda data: data["pid"] == pid)
+
+
+# Windows: OpenProcess access right, its "denied" error, and GetExitCodeProcess's "still running"
+_PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+_ERROR_ACCESS_DENIED = 5
+_STILL_ACTIVE = 259
+
+
+def process_alive(pid: int) -> bool:
+    """Whether a process with this id runs (it may be another program reusing the id: callers
+    still check what answers)."""
+    if pid <= 0:
+        return False
+    if os.name == "nt":   # os.kill(pid, 0) would end the process there
+        import ctypes
+        from ctypes import wintypes
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel32.OpenProcess.restype = wintypes.HANDLE
+        kernel32.OpenProcess.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
+        kernel32.GetExitCodeProcess.argtypes = (wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD))
+        kernel32.CloseHandle.argtypes = (wintypes.HANDLE,)
+        handle = kernel32.OpenProcess(_PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+        if not handle:
+            # Another account's process can't be opened, but it exists
+            return ctypes.get_last_error() == _ERROR_ACCESS_DENIED
+        try:
+            code = wintypes.DWORD()
+            if not kernel32.GetExitCodeProcess(handle, ctypes.byref(code)):
+                return True
+            return code.value == _STILL_ACTIVE
+        finally:
+            kernel32.CloseHandle(handle)
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:   # another account's process
+        return True
+    except OSError:
+        return True           # unsure: let the probe decide
+    return True
 
 
 def _mac(secret: bytes, *parts: object) -> str:
