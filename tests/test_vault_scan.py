@@ -115,8 +115,8 @@ def test_the_fast_name_check_agrees_with_is_media(name):
 
 
 # ── Folder stats (the open folder's STATS panel, /api/vault/folder-stats) ─────
-# Pinned as it is today (#59): on 20 folders × 500 files it takes ~5 ms warm,
-# so it walks the folder on every call and keeps no cache.
+# Pinned since #59: one os.scandir per folder (Windows lists size and mtime
+# with the names), so it walks the folder on every call and keeps no cache.
 
 def _stats_folder(tmp_path: Path) -> Path:
     root = tmp_path / "Mix"
@@ -153,6 +153,43 @@ def test_folder_stats_counts_sizes_formats_and_extremes(tmp_path):
         "oldest_file": {"name": "Ferrari.f40.mp3", "ts": 500},
         "linked_playlists": 2,
     }
+
+
+def test_folder_stats_average_is_truncated_to_an_int(tmp_path):
+    root = tmp_path / "Odd"
+    for i, size in enumerate((10, 10, 10, 10, 8)):          # 48 / 5 = 9.6
+        _write(root / f"{i}.mp3", size)
+    avg = vault.get_folder_stats(str(root), [])["avg_size_bytes"]
+    assert avg == 9 and type(avg) is int
+
+
+@pytest.mark.skipif(not hasattr(os, "symlink"), reason="needs symlinks")
+def test_folder_stats_does_not_follow_a_symlinked_folder(tmp_path):
+    root = _stats_folder(tmp_path)
+    elsewhere = tmp_path / "Elsewhere"
+    _write(elsewhere / "far.mp4", 50)
+    try:
+        (root / "link").symlink_to(elsewhere, target_is_directory=True)
+    except OSError:
+        pytest.skip("symlinks not allowed here")
+    stats = vault.get_folder_stats(str(root), [])
+    assert (stats["file_count"], stats["media_count"]) == (8, 5)
+
+
+def test_folder_stats_leaves_out_only_an_unreadable_subfolder(tmp_path, monkeypatch):
+    root = _stats_folder(tmp_path)
+    real_scandir = os.scandir
+    locked = str(root / "sub")
+
+    def scandir(path="."):
+        if os.fspath(path) == locked:
+            raise PermissionError(13, "Permission denied", locked)
+        return real_scandir(path)
+
+    monkeypatch.setattr(vault.os, "scandir", scandir)
+    stats = vault.get_folder_stats(str(root), [])
+    # sub/b.mp3 and sub/deeper/c.webm are behind the locked folder
+    assert (stats["file_count"], stats["media_count"], stats["total_size_bytes"]) == (6, 3, 20)
 
 
 def test_folder_stats_sees_a_file_added_or_removed_on_the_next_call(tmp_path):

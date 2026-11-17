@@ -416,24 +416,28 @@ def resolve_file_thumbs(paths: list[str], get_conn: Callable) -> dict[str, str]:
 
 def get_folder_stats(path: str, linked_playlists: list) -> dict:
     p = Path(path)
-    # Single pass: stat() each file once (rglob over network/WSL mounts is
-    # slow, and the previous version statted every file 3-4 times).
+    # One os.scandir per folder, like the cards (get_folder_media_stats): the
+    # listing knows file vs folder, and on Windows the size and mtime too, so
+    # a big folder costs no extra call per file. Symlinked folders aren't
+    # followed; an unreadable subfolder is left out, the rest still counts.
     file_count = 0
     media: list[tuple[str, int, float, str]] = []  # (name, size, mtime, ext)
-    try:
-        for f in p.rglob("*"):
-            if not f.is_file() or f.name.startswith("."):
-                continue
-            file_count += 1
-            ext = f.suffix.lower()
-            if is_media(f):
-                try:
-                    st = f.stat()
-                except OSError:
+    pending = [str(p)]
+    while pending:
+        for entry in _entries(pending.pop()):
+            try:
+                if entry.is_dir(follow_symlinks=False):
+                    pending.append(entry.path)
                     continue
-                media.append((f.name, st.st_size, st.st_mtime, ext))
-    except PermissionError:
-        pass
+                if entry.name.startswith(".") or not entry.is_file():
+                    continue
+                file_count += 1
+                if _is_media_name(entry.name):
+                    st = entry.stat()
+                    media.append((entry.name, st.st_size, st.st_mtime,
+                                  os.path.splitext(entry.name)[1].lower()))
+            except OSError:
+                pass
     total_size = sum(m[1] for m in media)
     video_count = sum(1 for m in media if m[3] in VIDEO_EXTS)
     audio_count = len(media) - video_count
