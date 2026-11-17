@@ -112,3 +112,77 @@ def test_a_card_shows_the_first_media_files_that_have_a_thumbnail(tmp_path):
 def test_the_fast_name_check_agrees_with_is_media(name):
     # The vault's folder reads use the name check; everything else is_media()
     assert vault._is_media_name(name) == vault.is_media(Path(name))
+
+
+# ── Folder stats (the open folder's STATS panel, /api/vault/folder-stats) ─────
+# Pinned as it is today (#59): on 20 folders × 500 files it takes ~5 ms warm,
+# so it walks the folder on every call and keeps no cache.
+
+def _stats_folder(tmp_path: Path) -> Path:
+    root = tmp_path / "Mix"
+    files = {
+        "a.mp4": (10, 1_000), "upper.MP3": (3, 4_000),
+        "sub/b.mp3": (20, 2_000), "sub/deeper/c.webm": (5, 3_000),
+    }
+    for rel, (size, mtime) in files.items():
+        os.utime(_write(root / rel, size), (mtime, mtime))
+    _write(root / "a.jpg", 99)                      # sidecar: a file, not media
+    _write(root / "a.en.srt", 99)                   # subtitles: a file, not media
+    _write(root / "Title.f399.mp4", 99)             # yt-dlp part: a file, not media
+    _write(root / "Ferrari.f40.mp3", 7)             # a title, not a part (only mp4/webm/m4a parts)
+    os.utime(root / "Ferrari.f40.mp3", (500, 500))
+    _write(root / ".hidden.mp4", 99)                # hidden: not counted at all
+    (root / "folder.mp4").mkdir()                   # a folder with a media name
+    return root
+
+
+def test_folder_stats_counts_sizes_formats_and_extremes(tmp_path):
+    root = _stats_folder(tmp_path)
+    assert vault.get_folder_stats(str(root), ["https://a", "https://b"]) == {
+        "path": str(root),
+        "file_count": 8,            # every non-hidden file, sidecars and parts too
+        "media_count": 5,
+        "video_count": 2,           # a.mp4, c.webm
+        "audio_count": 3,           # upper.MP3, b.mp3, Ferrari.f40.mp3
+        "total_size_bytes": 45,
+        "avg_size_bytes": 9,        # int(45 / 5)
+        "formats": {"mp4": 1, "mp3": 3, "webm": 1},  # lower-cased extensions
+        "largest_file": {"name": "b.mp3", "size": 20},
+        "smallest_file": {"name": "upper.MP3", "size": 3},
+        "newest_file": {"name": "upper.MP3", "ts": 4_000},
+        "oldest_file": {"name": "Ferrari.f40.mp3", "ts": 500},
+        "linked_playlists": 2,
+    }
+
+
+def test_folder_stats_sees_a_file_added_or_removed_on_the_next_call(tmp_path):
+    root = _stats_folder(tmp_path)
+    assert vault.get_folder_stats(str(root), [])["media_count"] == 5
+    _write(root / "sub" / "new.m4a", 100)
+    after_add = vault.get_folder_stats(str(root), [])
+    assert (after_add["media_count"], after_add["largest_file"]) == (6, {"name": "new.m4a", "size": 100})
+    (root / "sub" / "new.m4a").unlink()
+    (root / "a.mp4").unlink()
+    after_delete = vault.get_folder_stats(str(root), [])
+    assert (after_delete["media_count"], after_delete["video_count"]) == (4, 1)
+
+
+def test_folder_stats_of_an_empty_or_missing_folder(tmp_path):
+    (tmp_path / "Empty").mkdir()
+    for path in (tmp_path / "Empty", tmp_path / "Gone"):
+        stats = vault.get_folder_stats(str(path), [])
+        assert (stats["file_count"], stats["media_count"], stats["total_size_bytes"],
+                stats["avg_size_bytes"], stats["formats"]) == (0, 0, 0, 0, {})
+        assert stats["largest_file"] is stats["smallest_file"] is None
+        assert stats["newest_file"] is stats["oldest_file"] is None
+
+
+def test_folder_stats_route_passes_the_folders_linked_playlists(client, tmp_path):
+    from mellow.config import update_config
+    root = _stats_folder(tmp_path)
+    update_config(lambda c: c.update(vault_playlists={str(root): ["https://a"]}))
+    r = client.get("/api/vault/folder-stats", query_string={"path": str(root)})
+    assert r.status_code == 200
+    assert (r.get_json()["media_count"], r.get_json()["linked_playlists"]) == (5, 1)
+    missing = client.get("/api/vault/folder-stats", query_string={"path": str(tmp_path / "Gone")})
+    assert missing.status_code == 400
