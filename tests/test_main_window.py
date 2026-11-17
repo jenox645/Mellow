@@ -235,10 +235,27 @@ def test_a_second_shell_launch_attaches_to_the_running_copy(capsys):
 
 def test_the_shell_backend_quits_when_its_shell_closes_stdin():
     import io
-    with patch('main._stop_instance') as stop, patch('main.os._exit') as exit_:
+    with patch('main._stop_instance') as stop, patch('main._end_own_group') as end_group, \
+            patch('main.os._exit') as exit_:
         main._exit_with_parent(io.StringIO('a line the shell wrote\n'))
     stop.assert_called_once()
+    end_group.assert_called_once()
     exit_.assert_called_once_with(0)
     with patch('main.os._exit') as exit_:
         main._exit_with_parent(None)                    # pythonw: nothing to watch
     exit_.assert_not_called()
+
+
+@pytest.mark.parametrize('pgrp, ends', [(4321, True), (1, False)])
+def test_a_backend_leading_its_own_process_group_ends_it_on_the_way_out(pgrp, ends):
+    # The Tauri shell starts the backend as a group leader (pgrp == pid); from a
+    # terminal or a test it shares its parent's group, which must survive
+    with patch('main.os.getpid', return_value=4321), \
+            patch('main.os.getpgrp', return_value=pgrp, create=True), \
+            patch('main.os.killpg', create=True) as killpg, patch('main.logging.shutdown'), \
+            patch('main.signal.SIGKILL', 9, create=True):      # Windows has no SIGKILL
+        main._end_own_group()
+    if ends:
+        killpg.assert_called_once_with(4321, 9)
+    else:
+        killpg.assert_not_called()

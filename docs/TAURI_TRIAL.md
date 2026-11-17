@@ -2,11 +2,13 @@
 
 Does a Tauri window work for MellowDLP, and what does it cost and gain compared with today's
 FlaskWebGUI window (Chrome/Edge started with `--app`)? Flask and the React UI stay as they are.
-This trial ran on Windows 11 (WebView2 157, Chrome 157), Python 3.14, Rust 1.99, Tauri 2.12.
+This trial ran on Windows 11 (WebView2 157, Chrome 157), Python 3.14, Rust 1.99, Tauri 2.12;
+a second run on Linux (Ubuntu 24.04, WebKitGTK 2.52, GStreamer 1.24) is in [Linux run](#linux-run).
 
 - [What was built](#what-was-built)
 - [How to run it](#how-to-run-it)
 - [Checks](#checks)
+  - [Linux run](#linux-run)
 - [Numbers](#numbers)
 - [What Tauri gives us next](#what-tauri-gives-us-next)
 - [Risks](#risks)
@@ -46,7 +48,8 @@ the pipe and points stdin itself at the null device (`main._detach_stdin`).
 - closing the window closes the backend's stdin, waits up to 3 s, then kills whatever is left.
   The backend runs in a Windows **job object** with KILL_ON_JOB_CLOSE, so its children (ffmpeg,
   deno…) die with it, and if the shell itself crashes or is killed, Windows ends the whole tree
-  (Unix: the backend leads its own process group, killed with `killpg`; not tested here);
+  (Unix: the backend leads its own process group, killed with `killpg`; checked on Linux, and
+  if the shell itself is killed the backend ends that group on its way out, see [Linux run](#linux-run));
 - `tauri-plugin-single-instance`: a second launch of the Tauri app focuses the open window;
 - the window may only go to the bundled page and 127.0.0.1/localhost; new-window requests are
   refused (there's one `target="_blank"` link, in the signed-out screen);
@@ -82,6 +85,19 @@ npx @tauri-apps/cli@2 build                    # → src-tauri/target/release/me
 root `package.json` (`npx` fetches it). Rust (stable) and, on Windows, the WebView2 runtime
 (part of Windows 11) are needed; on Linux the `webkit2gtk-4.1` development packages.
 
+Linux (Debian/Ubuntu), from the repo root:
+
+```bash
+sudo apt-get install libwebkit2gtk-4.1-dev build-essential libssl-dev libayatana-appindicator3-dev librsvg2-dev \
+  gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-libav gstreamer1.0-gl
+(cd src-tauri && cargo build --release)       # → src-tauri/target/release/mellowdlp-shell
+HOME=/tmp/mellow-trial MELLOW_PYTHON=$PWD/.venv/bin/python ./src-tauri/target/release/mellowdlp-shell
+```
+
+The single-instance plugin talks over the D-Bus session bus, which every desktop session has; a
+bare X server (Xvfb) needs one started (`dbus-run-session`), or a second launch opens a second
+window (see [Linux run](#linux-run)).
+
 To try it without touching your own config, database and downloads, start it with a throwaway
 home, as the checks below did (PowerShell):
 
@@ -105,22 +121,23 @@ progress shows; no network). The page was driven over the DevTools protocol
 `connect_over_cdp` drives WebView2, so the existing browser tests could later run against the
 Tauri window on Windows). Screenshots are pictures of the real window (`PrintWindow`).
 
-| | Check | Result |
-|---|---|---|
-| ✅ | Feed loads, signed in | Launch page → `/launch` → `/`; status bar, stats, yt-dlp / FFmpeg / disk all filled |
-| ✅ | Analyze + download, live progress over SSE | H.264/AAC mp4 and VP9/Opus webm, each analyzed and downloaded end to end. The progress panel moves (`▼ 42%`, speed, ETA) and the title bar follows. A second `EventSource` on `/api/progress` counted 17 events for one download: `starting`, `downloading`×n, `item_done`, `processing`, `item_saved`, `complete`, `queue_done` |
-| ✅ | Vault: open a folder, play in the built-in player | The folder opens with ffmpeg thumbnails. ⋯ → *Preview in App*: **H.264/AAC mp4** and **VP9/Opus webm** both play (`readyState` 4, no error, 640×360, 78 frames decoded in 3 s, audio bytes decoded). `canPlayType`: H.264/AAC, VP9/Opus and AV1 all `probably` |
-| ✅ | File download through the UI (Config → ⬇ BACKUP) | `mellowdlp_backup_<time>.zip` (the server's file name) lands in the Downloads folder without asking, as WebView2 does by default (its download flyout opens). An `on_download` handler could pick the folder or ask with a save dialog |
-| ✅ | Native file/folder dialogs (Tk, unchanged) | Config → BROWSE opens Windows' folder picker, Feed → IMPORT FILE the file picker (`Text files (*.txt)`). Like today they are separate windows of the Python process, not owned by the app window |
-| ✅ | Clipboard paste | Ctrl+V with the real keyboard into the link box works; the PASTE button (backend `/api/clipboard`, Tk) works |
-| ✅ | Closing the window | Backend logs "the desktop shell closed: quitting", removes its instance file; shell gone in 0.4 s; 0 processes left over in every measured run |
-| ✅ | Second launch | Tauri already open → the new process hands over to it (single-instance plugin) and exits; still one shell and one backend. Today's app (FlaskWebGUI) running → the Tauri window signs in to *that* copy (`attached`, the `--shell` process exits); closing the Tauri window leaves that copy running. The reverse (Tauri running, then today's app launched) is unchanged: main.py's guard opens a browser window on the running server |
-| ⚠️ | Drag and drop of a link / of files | Tauri's handler is off so the page gets HTML5 drop events (Tauri docs: required on Windows). Not tried with a real drag from another app |
-| ❌ | Desktop notifications (`new Notification`, Config opt-in) | `Notification.requestPermission()` answers `denied` at once, no prompt (asked from script; WebView2 leaves the permission to the host app and wry doesn't grant it). Today's Chrome window can ask. Needs `tauri-plugin-notification` or a permission handler |
-| ⚠️ | External links | Refused (logged). Today they open a browser tab; `tauri-plugin-opener` would open them in the default browser |
+| | Check | Windows 11 (WebView2) | Linux (WebKitGTK) |
+|---|---|---|---|
+| ✅ | Feed loads, signed in | Launch page → `/launch` → `/`; status bar, stats, yt-dlp / FFmpeg / disk all filled | ✅ Same: launch page → `/launch` → `/`, status bar filled (yt-dlp, FFmpeg OK, disk) |
+| ✅ | Analyze + download, live progress over SSE | H.264/AAC mp4 and VP9/Opus webm, each analyzed and downloaded end to end. The progress panel moves (`▼ 42%`, speed, ETA) and the title bar follows. A second `EventSource` on `/api/progress` counted 17 events for one download: `starting`, `downloading`×n, `item_done`, `processing`, `item_saved`, `complete`, `queue_done` | ✅ A VP9/Opus webm from the slow local site, analyzed and downloaded. The progress panel moves (14 %, 55 KB/s, ETA 12 s) and the title bar follows: sampled every 0.25 s it went `▼ 0%`, `▼ 2%` … `▼ 97%`, `⚙ processing — MellowDLP`, `MellowDLP`; *Download Complete* toast with OPEN FILE / FOLDER. Nothing changed for WebKit |
+| ✅ | Vault: open a folder, play in the built-in player | The folder opens with ffmpeg thumbnails. ⋯ → *Preview in App*: **H.264/AAC mp4** and **VP9/Opus webm** both play (`readyState` 4, no error, 640×360, 78 frames decoded in 3 s, audio bytes decoded). `canPlayType`: H.264/AAC, VP9/Opus and AV1 all `probably` | ✅ The folder opens with ffmpeg thumbnails (the cookie-only image route works). ⋯ → *Preview in App*: **H.264/AAC mp4** and **VP9/Opus webm** both play, started by the click with sound on (frames advance between screenshots). Codecs per package: [Linux run](#linux-run) |
+| ✅ | File download through the UI (Config → ⬇ BACKUP) | `mellowdlp_backup_<time>.zip` (the server's file name) lands in the Downloads folder without asking, as WebView2 does by default (its download flyout opens). An `on_download` handler could pick the folder or ask with a save dialog | ⚠️ No file appeared anywhere after a click on ⬇ BACKUP. wry connects WebKitGTK's download signals only when the app sets `on_download`; not investigated further. Plan an `on_download` handler on Linux |
+| ✅ | Native file/folder dialogs (Tk, unchanged) | Config → BROWSE opens Windows' folder picker, Feed → IMPORT FILE the file picker (`Text files (*.txt)`). Like today they are separate windows of the Python process, not owned by the app window | — not checked |
+| ✅ | Clipboard paste | Ctrl+V with the real keyboard into the link box works; the PASTE button (backend `/api/clipboard`, Tk) works | — not checked |
+| ✅ | Closing the window | Backend logs "the desktop shell closed: quitting", removes its instance file; shell gone in 0.4 s; 0 processes left over in every measured run | ✅ With ffmpeg running in the backend's group: shell, backend and ffmpeg gone in 1.4–1.9 s, instance file removed, 0 processes left. Shell killed with SIGKILL: the backend quit, but **its ffmpeg kept running** until the fix in this run (`main._end_own_group`); now all gone in ~2 s |
+| ✅ | Second launch | Tauri already open → the new process hands over to it (single-instance plugin) and exits; still one shell and one backend. Today's app (FlaskWebGUI) running → the Tauri window signs in to *that* copy (`attached`, the `--shell` process exits); closing the Tauri window leaves that copy running. The reverse (Tauri running, then today's app launched) is unchanged: main.py's guard opens a browser window on the running server | ✅ With a D-Bus session bus: the new process exits 0 in 55 ms, the first window comes back from minimized and takes focus; one shell, one backend. ⚠️ Without one (bare Xvfb) the plugin can't hand over: a second window opens, signed in to the running backend through main.py's guard |
+| ⚠️ | Drag and drop of a link / of files | Tauri's handler is off so the page gets HTML5 drop events (Tauri docs: required on Windows). Not tried with a real drag from another app | — not checked |
+| ❌ | Desktop notifications (`new Notification`, Config opt-in) | `Notification.requestPermission()` answers `denied` at once, no prompt (asked from script; WebView2 leaves the permission to the host app and wry doesn't grant it). Today's Chrome window can ask. Needs `tauri-plugin-notification` or a permission handler | — not checked (#69) |
+| ⚠️ | External links | Refused (logged). Today they open a browser tab; `tauri-plugin-opener` would open them in the default browser | — not checked (#69) |
 
-Not checked: Linux and macOS (no machine), the Unix kill path, an installer (`bundle.active`
-false), a first-ever start (WebView2 profile creation), Windows 10 without the WebView2 runtime.
+Not checked: macOS (no machine), an installer (`bundle.active` false), a first-ever start
+(WebView2 profile creation), Windows 10 without the WebView2 runtime; on Linux the rows marked —,
+Wayland and a full desktop (GNOME, KDE): the Linux run used Xvfb with openbox.
 
 Screenshots were kept outside the repo (a `shots` folder in the system temp folder; the trial
 report lists the full paths): `00_flaskwebgui_chrome_feed.png` (today's window, for size), `01_tauri_feed.png`,
@@ -129,6 +146,94 @@ report lists the full paths): `00_flaskwebgui_chrome_feed.png` (today's window, 
 `04_tauri_vault_play_webm.png`, `05_tauri_backup.png`, `06_tauri_tk_folder_dialog.png`,
 `06_tauri_tk_file_dialog.png`, `07_tauri_attached_to_flaskwebgui_copy.png`,
 `08_tauri_notification_permission.png` (the release build's window: 1100×780, page 1084×741).
+
+### Linux run
+
+Ubuntu 24.04 (cloud container, 4 vCPU, no GPU), Xvfb 1280×900 with openbox and a D-Bus session
+bus, WebKitGTK 2.52.6 (`libwebkit2gtk-4.1-0`), GStreamer 1.24.2, Rust 1.97, Python 3.12. Every
+package the doc asks for installed from apt without trouble: `libwebkit2gtk-4.1-dev build-essential
+libssl-dev libayatana-appindicator3-dev librsvg2-dev`, `gstreamer1.0-plugins-base/good/bad`,
+`gstreamer1.0-libav`, `gstreamer1.0-gl`.
+
+**Build.** `cargo build --release` in `src-tauri/` → `mellowdlp-shell`, **4.19 MiB** (4,394,136
+bytes; release, LTO, `opt-level = "s"`, stripped), 5 min from a cold cargo cache. Two fixes were
+needed before it built at all, on any machine:
+
+- `src-tauri/tauri.conf.json` had never been committed: the root `.gitignore` ignores `*.json`.
+  `tauri::generate_context!()` needs it, so it is recreated from this doc (product name
+  MellowDLP, version 2.14.2, `frontendDist: "ui"`, no windows in the config, `bundle.active` false,
+  CSP off, no global Tauri object) and `.gitignore` now lets it through. The identifier
+  (`io.github.jenox645.mellowdlp`) is a guess: replace the file with the original if it differs.
+- Linux needs a PNG window icon (`failed to open icon …/icons/icon.png`): `src-tauri/icons/icon.png`
+  is the 128 px image of `assets/mellow.ico`, listed before the `.ico` in `bundle.icon`.
+
+**How it was driven.** WebKitGTK has no DevTools protocol, so the real window was used with the
+real X input: `xdotool` for clicks and typing (and reading the window title), `import -window root`
+for screenshots, `wmctrl -c` to close the window as a user does (the window manager's close),
+`pgrep`/`ps` for the process tree. `tests/browser/test_shell_process.py` passes on Linux as it is.
+
+**Video in the Vault player.** Both test files play in the real window (⋯ → *Preview in App*). The
+package matrix was checked with a small PyGObject page in WebKit2 4.1, the same engine and the
+same GStreamer: it plays both files and reports `readyState`, the error code and decoded frames
+after 4 s (640×360, 25 fps).
+
+| GStreamer packages present | H.264/AAC mp4 | VP9/Opus webm |
+|---|---|---|
+| base, good, bad, libav, gl | ✅ plays (Constrained Baseline and High profile) | ✅ plays |
+| base, good, bad, gl (**no libav**) | ✅ plays, Baseline and High profile: `plugins-bad` on Ubuntu 24.04 has `openh264dec` and `faad` | ✅ plays |
+| base, good, gl (no libav, no bad) | ❌ `MEDIA_ERR_SRC_NOT_SUPPORTED`, `canPlayType` "" | ✅ plays |
+
+So `libav` *or* `plugins-bad` decodes H.264/AAC on Ubuntu 24.04; with neither, mp4/m4a files
+don't play while webm does. Distributions that ship `plugins-bad` without OpenH264 (Fedora's
+`-free`) need `libav` or OpenH264 explicitly. No sound device was there: WebKit still plays
+(its audio sink falls back), so sound itself wasn't heard. One WebKit rule to know: `play()` with
+sound and no click is refused (`NotAllowedError`); the Vault player starts on a click, so it plays.
+
+**The kill path (Unix).** The backend is its own process-group leader. To have a child that
+certainly runs at the moment of the close, the config's `external_downloader` was `ffmpeg` and the
+file came from the slow site, so ffmpeg downloads in the backend's group while the window closes.
+
+| | Before | After this run's fix |
+|---|---|---|
+| Close the window (window manager) | shell, backend, ffmpeg gone in 1.4–1.9 s; nothing left | same |
+| `kill -9` the shell | backend quits (stdin EOF), instance file removed, **ffmpeg keeps running** (orphaned, still downloading) | backend, ffmpeg gone in ~2 s; nothing left |
+
+The shell's `killpg` can't run when the shell is dead, and the backend's `os._exit` leaves its
+children behind. `main._exit_with_parent` now ends with `_end_own_group()`: a backend that leads
+its own group (the shell starts it so) kills that group as its last act, after removing its
+instance file; one started from a terminal or a test shares its parent's group and leaves it alone.
+Windows doesn't need it (the job object). Tests: `tests/test_main_window.py` (when it kills, when
+not) and `tests/browser/test_shell_process.py` (a real backend as group leader and a process in
+its group: stdin closed → both end).
+
+**Other things seen on Linux.**
+
+- **Window size:** `fit_outer_size` runs before the window is mapped, when X11 doesn't know the
+  frame yet, so nothing is subtracted: the page area is 1100×780 and the window 1102×805 with
+  openbox's frame (1, 1, 20, 5), a little larger than Chrome's 1100×780. Running it again once the
+  window is shown would match.
+- **Native `<select>`:** WebKitGTK draws selects with GTK's own light style (SORT BY in a vault
+  folder, Browser Cookies in Config): a white box on the dark theme. Chrome and WebView2 follow
+  the page's colours. A theme fix (`appearance: none` and our own arrow) belongs in `gui/`.
+- **Second launch needs D-Bus:** `tauri-plugin-single-instance` uses the session bus on Linux.
+  Every desktop session has one, so it's only a headless/CI concern; without it the second window
+  still works, as a second window.
+
+**Numbers (Linux).** Release shell, the same throwaway home, one unrecorded warm-up then 3 runs;
+times from the launcher, memory 12 s after launch summed over the shell's process tree
+(`/proc/<pid>/smaps_rollup`: PSS counts shared pages once).
+
+| | Tauri (WebKitGTK) |
+|---|---|
+| Shell process started | 28 / 31 / 36 ms |
+| `MELLOW_READY` (server listening) = window navigated | 539 / 540 / 506 ms |
+| PSS, whole tree | 511 / 509 / 515 MB |
+| RSS, whole tree | 686 / 684 / 690 MB |
+| Processes | 4: shell 85 MB, WebKitWebProcess ~295 MB, WebKitNetworkProcess 25 MB, python 108 MB (PSS) |
+| Shell binary | `mellowdlp-shell` 4.19 MiB |
+
+Not comparable with the Windows numbers (another machine, no GPU: WebKit renders in software
+under Xvfb, which inflates the web process). Today's Chrome window wasn't measured on Linux.
 
 ## Numbers
 
@@ -211,6 +316,10 @@ Without `libav`, H.264/AAC files show nothing (WebKit reports a decode error); h
   distribution brings the codecs. `packaging/build_linux_deb.py` would add the same.
 - **rpm** (if ever): `bundle.linux.rpm.depends`; Fedora's H.264 needs RPM Fusion or OpenH264.
 
+Measured on Ubuntu 24.04 ([Linux run](#linux-run)): `plugins-bad` alone (OpenH264 + faad) already
+plays High-profile H.264/AAC; with neither it nor `libav`, mp4 doesn't play and webm does.
+`libav` stays the dependency to name, as the decoder every distribution has.
+
 The Chrome `--app` window has none of this: Chrome brings its own decoders. On Windows WebView2
 uses the same decoders as Edge (H.264/AAC/VP9/Opus/AV1 all played here); on macOS WKWebView plays
 H.264/AAC everywhere and VP9/Opus webm only on recent macOS versions (Safari 14.1/15 era): check
@@ -218,7 +327,8 @@ the oldest macOS we'd support.
 
 **SSE in WebKitGTK.** `EventSource` is long supported by WebKit; the app's stream is plain
 `text/event-stream` over HTTP/1.1 to 127.0.0.1, which WebKit handles like Safari. Two things to
-check on a real Linux box: (1) the per-host connection limit (6) is shared by the SSE stream,
+check on a real Linux box (the [Linux run](#linux-run) saw live progress, thumbnails and video
+work in WebKitGTK 2.52 with no change): (1) the per-host connection limit (6) is shared by the SSE stream,
 video streams and thumbnails, as in Chrome today; (2) the session guard lets `/api/progress`,
 video and thumbnails through on the cookie with `Sec-Fetch-Site: same-origin` *or no header*
 (`server._session_guard`), so a WebKitGTK that doesn't send Fetch Metadata still works. The
@@ -277,8 +387,9 @@ Steps for "full Tauri":
    Windows to replace Inno Setup, AppImage + deb on Linux, dmg/app on macOS). Keep the
    `APP_ASSET_NAMES` contract or migrate installed copies with one last release of the old updater.
 3. Linux: `deb.depends` as above; AppImage with `bundleMediaFramework` (decide on bundling
-   `libav`); run the browser tests against WebKitGTK in CI (`xvfb`), including the Vault player
-   with an H.264 and a webm file.
+   `libav`); run the browser tests against WebKitGTK in CI (`xvfb` and a D-Bus session bus),
+   including the Vault player with an H.264 and a webm file. Also on Linux: an `on_download`
+   handler (a click on ⬇ BACKUP saved nothing) and size the window after it is mapped.
 4. Move OS integration to the shell, one at a time, over the stdin/stdout channel (no IPC on the
    page): dialogs (`plugin-dialog`, drop Tk), open/reveal (`plugin-opener`), clipboard
    (`plugin-clipboard-manager`), notifications (`plugin-notification`), save-as for downloads

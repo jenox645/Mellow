@@ -134,7 +134,8 @@ mod tree {
     use std::process::Child;
 
     /// The backend's process group (it leads its own: see configure()).
-    /// Untested in this trial (Windows only).
+    /// Checked on Linux (Xvfb + openbox): closing the window or killing the shell ends
+    /// the backend and its ffmpeg (main.py ends its own group when the shell dies).
     pub struct Tree(i32);
 
     impl Tree {

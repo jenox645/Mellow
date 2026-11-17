@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import secrets
+import signal
 import socket
 import sys
 import threading
@@ -208,7 +209,23 @@ def _exit_with_parent(stdin) -> None:
         pass
     log.info("the desktop shell closed: quitting")
     _stop_instance()
+    _end_own_group()
     os._exit(0)
+
+
+def _end_own_group() -> None:
+    """Unix: what this backend started (ffmpeg, deno…) ends with it.
+
+    The desktop shell starts the backend as the leader of its own process
+    group and kills that group when its window closes. A shell that died
+    (SIGKILL, a crash) can't, and the children would outlive the backend, so
+    the backend ends its group itself as its last act (Windows: the shell's
+    job object does it). Never when it shares its parent's group (started from
+    a terminal or a test): that would end the parent too."""
+    if not hasattr(os, "killpg") or os.getpgrp() != os.getpid():
+        return
+    logging.shutdown()
+    os.killpg(os.getpid(), signal.SIGKILL)
 
 
 def _run_window(flask_app, port: int) -> None:
