@@ -552,7 +552,8 @@ export const TOURS = {
     {
       target: 'config-appearance', title: 'Appearance',
       text: 'How MellowDLP looks. Click a theme and the whole app changes at once; it is saved right away, '
-        + 'without SAVE CONFIG. Classic is the look it has always had.',
+        + 'without SAVE CONFIG. Classic is the look it has always had; its DARK / LIGHT switch picks Classic Light, '
+        + 'the same app in light colours.',
       tip: 'RESET DEFAULTS goes back to Classic.',
     },
     {

@@ -13,9 +13,11 @@
     // applyTheme). This runs before the bundle, so the ids are repeated here: the same list as THEMES in
     // lib/constants.js and UI_THEMES in mellow/constants.py (tests/test_themes.py compares them).
     (function(){
-      var THEME_IDS = ['classic', 'whitetech', 'archive', 'tactical'];
+      var THEME_IDS = ['classic', 'classic-light', 'archive', 'tactical'];
+      var RENAMED = { whitetech: 'classic-light' };   // mellow/constants.py UI_THEME_RENAMED
       var theme = null;
       try { theme = localStorage.getItem('mellow-theme'); } catch (e) { /* storage blocked: Classic */ }
+      if (theme && Object.prototype.hasOwnProperty.call(RENAMED, theme)) theme = RENAMED[theme];
       // 'dark' (what older versions stored), nothing or an unknown id: Classic
       document.documentElement.dataset.theme = THEME_IDS.indexOf(theme) >= 0 ? theme : 'classic';
     })();
@@ -544,7 +546,7 @@
     .settings-ctrl{flex-shrink:0}
     .sel{background:var(--surface-input-2);border:1px solid var(--border);color:var(--t1);padding:7px 10px;font-family:var(--font-mono);font-size:10.5px;outline:none;cursor:pointer;min-width:130px}
     .sel:focus{border-color:var(--accent)}
-    /* APPEARANCE: one card per theme (Config) */
+    /* APPEARANCE: one card per theme (Config); Classic's card has a Dark / Light switch (Classic Light) */
     .theme-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px}
     .theme-card{display:flex;flex-direction:column;gap:8px;padding:10px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-panel);cursor:pointer;user-select:none;transition:border-color var(--dur-fast),background var(--dur-fast)}
     .theme-card:hover{border-color:var(--border2);background:var(--surface-hover-solid)}
@@ -554,6 +556,12 @@
     .theme-swatch{flex:1}
     .theme-name{font-family:var(--font-display);font-size:12.5px;font-weight:600;color:var(--t1);letter-spacing:0.06em}
     .theme-current{font-family:var(--font-mono);font-size:9.5px;letter-spacing:0.1em;color:var(--accent);min-height:12px}
+    .theme-mode{display:flex;border:1px solid var(--border2)}
+    .theme-mode-btn{flex:1;padding:3px 0;background:none;border:none;color:var(--t3);font-family:var(--font-mono);font-size:9.5px;letter-spacing:0.1em;cursor:pointer;transition:background var(--dur-fast),color var(--dur-fast)}
+    .theme-mode-btn + .theme-mode-btn{border-left:1px solid var(--border2)}
+    .theme-mode-btn:hover{color:var(--t1);background:var(--surface-hover)}
+    .theme-mode-btn.on{background:var(--accent);color:var(--on-accent)}
+    .theme-mode-btn:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
     .cfg-danger{border-color:rgba(var(--danger-rgb),0.3)}
     .sb-update{color:var(--warn);cursor:pointer;font-weight:700}
     .sb-update:hover{color:var(--t1);background:rgba(var(--warn-rgb),0.15)}
@@ -806,7 +814,7 @@
     @media (prefers-reduced-motion: reduce){*,*::before,*::after{animation-duration:0.01ms!important;animation-iteration-count:1!important;transition-duration:0.01ms!important;scroll-behavior:auto!important}}
   </style>
   <!-- The other themes: token overrides under :root[data-theme="<id>"], after the block above so they win -->
-  <link rel="stylesheet" href="themes/whitetech.css"/>
+  <link rel="stylesheet" href="themes/classic-light.css"/>
   <link rel="stylesheet" href="themes/archive.css"/>
   <link rel="stylesheet" href="themes/tactical.css"/>
 </head>

@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  applyTheme, estimateDownloadBytes, fmtBytes, fmtCount, fmtDuration, fmtWait, idxRanges, isLinkLike, matchFolders,
+  applyTheme, themeCards, estimateDownloadBytes, fmtBytes, fmtCount, fmtDuration, fmtWait, idxRanges, isLinkLike, matchFolders,
   parseClock, splitFolder, stepHistory, themeRgba, videoInPlaylist,
 } from '../../gui/lib/util.js';
 import { defaultToggles, togglesFor, togglesFrom } from '../../gui/lib/formats.js';
@@ -135,6 +135,19 @@ test('applyTheme switches the page and remembers the theme; an unknown id is Cla
   globalThis.localStorage = { setItem: () => { throw new Error('blocked'); } };
   assert.equal(applyTheme('tactical'), 'tactical');   // storage blocked: still applied
   assert.equal(document.documentElement.dataset.theme, 'tactical');
+});
+
+test('themeCards: Classic and Classic Light are one card showing the version in use', () => {
+  const ids = cards => cards.map(c => c.id);
+  assert.deepEqual(ids(themeCards('classic')), ['classic', 'archive', 'tactical']);
+  assert.deepEqual(ids(themeCards('archive')), ['classic', 'archive', 'tactical']);   // the dark one by default
+  const light = themeCards('classic-light');
+  assert.deepEqual(ids(light), ['classic-light', 'archive', 'tactical']);
+  assert.equal(light[0].name, 'Classic');
+  assert.deepEqual(light[0].pair, { dark: 'classic', light: 'classic-light' });
+  assert.equal(light[0].swatches[0], '#ECEEF1');                                      // the light version's colours
+  assert.equal(themeCards('classic')[0].swatches[0], '#07090F');
+  assert.equal(light[1].pair, null);
 });
 
 test('themeRgba builds a canvas colour from a channel token', () => {

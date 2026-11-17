@@ -1,0 +1,107 @@
+/* Theme "Classic Light": Classic in light colours (Config → APPEARANCE, Classic's Dark / Light switch).
+   Same layout, components, fonts, shapes and motion as Classic: only colours change, plus a few small
+   details from the White-Tech draft that draw on top of Classic's parts without moving or resizing
+   anything (a gridded off-white canvas, the panels' 45° corner, the ink line under the top edge, a
+   segmented progress bar with a sheen).
+   Colours have fixed jobs, as in Classic: blue = the core sections, live / progress / selected (Classic's
+   cyan); amber = the vault (Classic's amber); orange-red = cancel / danger; green = done.
+
+   Rules of this file (tests/test_themes.py):
+   - every selector starts with :root[data-theme="classic-light"];
+   - only tokens that exist on gui/index.html's :root are set; other values are written into the rules;
+   - no rule here may change a size, a margin, a padding or a position Classic gives: the dark and light
+     versions are the same page. */
+
+:root[data-theme="classic-light"]{
+  color-scheme:light;
+
+  /* Surfaces */
+  --bg:#ECEEF1;--bg1:#FFFFFF;--bg2:#F6F7F9;--bg3:#E3E6EA;
+  --surface-chrome:#FFFFFF;
+  --surface-statusbar:#FFFFFF;--border-statusbar:#D3D8DE;
+  --surface-input:var(--bg2);--surface-input-2:var(--bg2);
+  --surface-hover:var(--accent-faint);--surface-hover-solid:var(--bg3);--surface-hover-solid-2:var(--bg2);
+  --surface-selected:var(--accent-faint);--surface-selected-strong:rgba(var(--accent-rgb),0.12);
+  --surface-placeholder:#E3E6EA;
+  --scrim:rgba(20,23,28,0.55);--scrim-tour:rgba(20,23,28,0.6);--scrim-victory:rgba(236,238,241,0.97);
+  --scrim-menu:rgba(255,255,255,0.9);   /* the ⋯ chip over a thumbnail: light, so its --t2 dots show */
+  --media-bg:#000;
+  --shadow-rgb:20,23,28;
+
+  /* Text: each level keeps 4.5:1 against --bg, --bg1, --bg2 and --bg3 (tests/test_themes.py) */
+  --t1:#14171C;--t2:#3A424E;--t3:#4B5462;--t4:#586270;
+  --t1-rgb:20,23,28;--t2-rgb:58,66,78;
+  --t-bright:#14171C;--t-muted:#4B5462;--t-muted-2:#586270;--t-dim:#586270;
+  --on-accent:#FFFFFF;--on-accent-alt:#FFFFFF;
+  --on-media:#fff;
+
+  /* Accents. The colours themselves are also text colours: --accent, --accent-2, --accent-3, --warn,
+     --danger and --success keep 4.5:1 on every surface, small text included (tests/test_themes.py).
+     Their -rgb channels are the bright fills (soft backgrounds, borders, dots, charts) */
+  --accent:#185FCF;--accent-rgb:31,111,235;
+  --accent-soft:rgba(var(--accent-rgb),0.18);--accent-faint:rgba(var(--accent-rgb),0.07);
+  --accent-hover:#1558C0;
+  --accent-2:#995500;--accent-2-rgb:214,128,0;
+  --accent-2-soft:rgba(var(--accent-2-rgb),0.14);
+  --accent-3:#6E44C2;--accent-3-rgb:124,82,214;
+  --warn:#9A4600;--warn-rgb:200,110,10;--warn-soft:rgba(var(--warn-rgb),0.12);
+  --danger:#BF3312;--danger-rgb:240,78,35;--danger-soft:rgba(var(--danger-rgb),0.1);
+  --success:#0B6E46;--success-rgb:20,160,107;--success-soft:rgba(var(--success-rgb),0.12);
+  --chart-axis-rgb:88,98,112;--chart-track-rgb:211,216,222;
+
+  /* Borders: the 1px rule, and the stronger one for controls */
+  --border:#D3D8DE;--border2:#B9C0C8;
+
+  /* Effects: no glows (they turn to smudges on a light page), soft shadows only under things that float */
+  --glow-text:none;--glow-title-accent:none;--glow-stat:none;--glow-victory:none;
+  --glow-logo:none;--glow-splash:none;
+  --glow-accent:none;--glow-accent-soft:none;--glow-btn:none;--glow-check:none;--glow-toggle:none;
+  --glow-dot:none;--glow-success:none;
+  --ring-focus:0 0 0 2px rgba(var(--accent-rgb),0.28);--ring-focus-soft:0 0 0 2px rgba(var(--accent-rgb),0.22);
+  --shadow-card:0 6px 16px rgba(var(--shadow-rgb),0.1);
+  --shadow-card-hover:0 0 0 1px var(--accent),0 6px 16px rgba(var(--shadow-rgb),0.12);
+  --shadow-menu:0 8px 22px rgba(var(--shadow-rgb),0.14);
+  --shadow-popup:0 8px 22px rgba(var(--shadow-rgb),0.16);
+  --shadow-modal:0 16px 40px rgba(var(--shadow-rgb),0.24);
+  --shadow-tour-spot:0 0 0 9999px var(--scrim-tour);
+  --prog-fill:rgb(var(--accent-rgb));
+  --prog-shine:rgba(255,255,255,0.5);
+  --canvas-scanlines:none;
+  --canvas-grid:linear-gradient(#E2E5E9 1px,transparent 1px),linear-gradient(90deg,#E2E5E9 1px,transparent 1px);
+  /* Mascots: ink line art. The inline SVG is drawn in the text colour of its place (it follows --accent /
+     --accent-2 by itself); the pictures (PNG, light on dark) are turned dark */
+  --mascot-filter:none;
+  --mascot-idle:var(--t1);
+  --mascot-img-filter-accent:invert(1) grayscale(1);--mascot-img-filter-accent-2:invert(1) grayscale(1);
+  --tint-accent:invert(1) grayscale(1);--tint-accent-2:invert(1) grayscale(1);
+  --mascot-splash-filter:none;--mascot-splash-img-filter:invert(1) grayscale(1);
+  --mascot-blend:normal;   /* screen can't darken a light page: the dark art would vanish */
+  --overlay-blur:blur(4px);
+
+  /* Type: Classic's own families (shape, tracking and motion aren't set here: they stay Classic's) */
+  --font-display:'Oxanium',sans-serif;--font-body:'Exo 2',sans-serif;--font-mono:'Share Tech Mono',monospace;
+}
+
+/* ── DETAILS (drawn over Classic's parts, nothing moves) ─────────────────── */
+
+/* The top bar: a 2px ink line along its top edge */
+:root[data-theme="classic-light"] .topbar{box-shadow:inset 0 2px 0 #14171C}
+
+/* Panels: the top-right corner cut at 45°, a corner piece in the canvas colour with the rule across it.
+   It's a pseudo-element, not a clip-path: a clip-path would also cut off the fixed menus that open out of
+   a panel (the Feed's SAVE TO history). Nested panels and panels inside modals keep their square corner; Config's
+   panels have none (they aren't positioned, and making them so is a change Classic doesn't have) */
+:root[data-theme="classic-light"] .panel::after,:root[data-theme="classic-light"] .chart-panel::after{content:'';position:absolute;top:0;right:0;width:14px;height:14px;pointer-events:none;z-index:3;
+  background:linear-gradient(to top right,transparent calc(50% - 1px),var(--border2) calc(50% - 1px),var(--border2) calc(50% + 0.5px),var(--bg) calc(50% + 0.5px))}
+:root[data-theme="classic-light"] .modal-box .panel::after,:root[data-theme="classic-light"] .panel .panel::after,:root[data-theme="classic-light"] .modal-box .chart-panel::after{display:none}
+
+/* The download bar: a segmented track, and a sheen running along the fill while it's live (not while
+   paused: the page sets the fill's colour to --warn then) */
+:root[data-theme="classic-light"] .prog-bar{background-image:repeating-linear-gradient(90deg,transparent 0 9px,var(--border) 9px 10px)}
+:root[data-theme="classic-light"] .prog-bar-fill{background-image:repeating-linear-gradient(90deg,transparent 0 9px,rgba(255,255,255,0.55) 9px 10px)}
+:root[data-theme="classic-light"] .prog-bar-fill::after{left:0;right:auto;width:100%;background:linear-gradient(90deg,transparent 30%,var(--prog-shine) 50%,transparent 70%);animation:cl-sheen var(--dur-loop-ping) var(--ease-linear) infinite}
+:root[data-theme="classic-light"] .prog-bar-fill[style*="warn"]::after{animation:none;opacity:0}
+@keyframes cl-sheen{from{transform:translateX(-100%)}to{transform:translateX(100%)}}
+
+/* Toasts: a small ink notch in the bottom-right corner */
+:root[data-theme="classic-light"] .notif::after{content:'';position:absolute;right:0;bottom:0;width:9px;height:9px;background:#14171C;clip-path:polygon(100% 0,100% 100%,0 100%);pointer-events:none}

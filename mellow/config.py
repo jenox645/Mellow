@@ -20,7 +20,7 @@ import threading
 from pathlib import Path
 from typing import Callable
 
-from .constants import RECENT_OUTPUT_DIRS_KEEP
+from .constants import RECENT_OUTPUT_DIRS_KEEP, UI_THEME_RENAMED
 
 log = logging.getLogger(__name__)
 
@@ -102,6 +102,10 @@ def load_config() -> dict:
                 cfg.update(saved)
             except Exception:
                 _backup_corrupt()
+        # a theme id an older build saved: the theme it became
+        theme = cfg.get("ui_theme")
+        if isinstance(theme, str) and theme in UI_THEME_RENAMED:
+            cfg["ui_theme"] = UI_THEME_RENAMED[theme]
         return cfg
 
 

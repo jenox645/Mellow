@@ -23,7 +23,11 @@ VIDEO_CONTAINERS: tuple[str, ...] = ("mp4", "mkv", "webm")
 # Themes the UI can wear (config `ui_theme`, Config → APPEARANCE). "classic" is the look MellowDLP has
 # always had; each other id has a gui/themes/<id>.css. The frontend keeps the same list (THEMES in
 # gui/lib/constants.js, and index.html's early script): tests/test_themes.py fails when they disagree
-UI_THEMES: tuple[str, ...] = ("classic", "whitetech", "archive", "tactical")
+# "classic-light" is Classic in light colours (one card with a Dark / Light switch in Config).
+UI_THEMES: tuple[str, ...] = ("classic", "classic-light", "archive", "tactical")
+# Ids a saved config may still hold, and the theme each became (config.load_config, index.html's early
+# script): "whitetech" (picked in a build of the theme foundation) is Classic Light now
+UI_THEME_RENAMED: dict[str, str] = {"whitetech": "classic-light"}
 
 # MIME types for streaming/preview
 MEDIA_MIME: dict[str, str] = {
