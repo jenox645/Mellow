@@ -97,7 +97,9 @@
 
 /* ── BASE ───────────────────────────────────────────────────────────────── */
 :root[data-theme="tactical"] ::selection{background:var(--accent);color:var(--on-accent)}
-:root[data-theme="tactical"] *{scrollbar-color:var(--border2) transparent}
+@supports not selector(::-webkit-scrollbar){
+  :root[data-theme="tactical"] *{scrollbar-color:var(--border2) transparent;scrollbar-width:thin}
+}
 :root[data-theme="tactical"] ::-webkit-scrollbar{width:8px;height:8px}
 :root[data-theme="tactical"] ::-webkit-scrollbar-track{background:transparent}
 :root[data-theme="tactical"] ::-webkit-scrollbar-thumb{background:var(--border2);border-radius:0}
@@ -107,8 +109,9 @@
 :root[data-theme="tactical"] .content::-webkit-scrollbar-thumb{border-radius:0}
 /* Keyboard focus: a hard accent frame (inside the shape where a cut corner would clip an outline) */
 :root[data-theme="tactical"] :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-:root[data-theme="tactical"] input:focus-visible,:root[data-theme="tactical"] textarea:focus-visible,:root[data-theme="tactical"] select:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
-:root[data-theme="tactical"] .info-title-input:focus-visible{outline:none}
+/* !important: a few fields switch their outline off inline */
+:root[data-theme="tactical"] input:focus-visible,:root[data-theme="tactical"] textarea:focus-visible,:root[data-theme="tactical"] select:focus-visible,:root[data-theme="tactical"] input[type=time]:focus-within{outline:2px solid var(--accent)!important;outline-offset:-2px}
+:root[data-theme="tactical"] .info-title-input:focus-visible{outline:none!important}
 :root[data-theme="tactical"] input[type=checkbox],:root[data-theme="tactical"] input[type=radio],:root[data-theme="tactical"] input[type=range]{accent-color:var(--t1)}
 :root[data-theme="tactical"] .btn:focus-visible,:root[data-theme="tactical"] .tac-tab:focus-visible{outline:none;box-shadow:inset 0 0 0 2px var(--t1)}
 :root[data-theme="tactical"] .tac-tab.on:focus-visible,:root[data-theme="tactical"] .btn-secondary.active-btn:focus-visible,:root[data-theme="tactical"] .btn-amber:focus-visible{box-shadow:inset 0 0 0 2px var(--accent)}
@@ -170,6 +173,7 @@
 :root[data-theme="tactical"] .tac-gauge-val{margin-top:8px}
 :root[data-theme="tactical"] .tac-gauge-val span,:root[data-theme="tactical"] .tac-read-val span{margin-left:4px;font-size:8.5px;font-weight:400;letter-spacing:0.08em;color:var(--t3)}
 :root[data-theme="tactical"] .tac-gauge.live .tac-gauge-val{color:var(--accent)}
+:root[data-theme="tactical"] .tac-read-val{animation:tac-tick var(--dur-reveal) steps(3,end)}
 :root[data-theme="tactical"] .tac-rail-graph canvas{display:block;width:100%;height:30px}
 :root[data-theme="tactical"] .tac-rail-fill{flex:1;min-height:0;margin:8px 10px;background:repeating-linear-gradient(0deg,var(--border) 0 1px,transparent 1px 8px) right top/10px 100% no-repeat,repeating-linear-gradient(0deg,var(--border2) 0 1px,transparent 1px 40px) right top/18px 100% no-repeat}
 :root[data-theme="tactical"] .tac-portrait{flex-shrink:0;padding:9px 10px 10px;border-top:1px solid var(--border)}
@@ -177,6 +181,8 @@
 :root[data-theme="tactical"] .tac-portrait-art{width:92%;max-width:none;height:auto;max-height:92%;object-fit:contain;cursor:default;animation:tac-rise var(--dur-slower) var(--ease-spring);transition:transform var(--dur-mid) var(--ease-spring)}
 :root[data-theme="tactical"] img.tac-portrait-art{filter:grayscale(1);mix-blend-mode:screen}
 :root[data-theme="tactical"] .tac-portrait-art svg{width:100%;height:auto;display:block}
+:root[data-theme="tactical"] .tac-portrait-frame{position:relative}
+:root[data-theme="tactical"] .tac-portrait-frame::after{content:'';position:absolute;left:0;right:0;top:0;height:1px;pointer-events:none;background:var(--t1);opacity:0.35;animation:tac-scan-down var(--dur-loop-float) var(--ease-linear) infinite}
 :root[data-theme="tactical"] .tac-portrait-frame:hover{color:var(--t1)}
 :root[data-theme="tactical"] .tac-portrait-frame:hover .tac-portrait-art,:root[data-theme="tactical"] .tac-portrait-frame .mascot-wrap.tac-portrait-art:hover{transform:scale(1.08)}
 
@@ -289,7 +295,7 @@
 
 /* Choices: a segmented strip, the chosen one in bone white */
 :root[data-theme="tactical"] .pills{gap:0;row-gap:4px}
-:root[data-theme="tactical"] .pill{min-height:30px;margin-left:-1px;padding:6px 13px;border-color:var(--border2);background:var(--bg1);font-size:10.5px;letter-spacing:0.12em;transition:none}
+:root[data-theme="tactical"] .pill{min-height:30px;margin-left:-1px;padding:6px 13px;gap:6px;border-color:var(--border2);background:var(--bg1);font-size:10.5px;letter-spacing:0.12em;transition:none}
 :root[data-theme="tactical"] .pills .pill:first-child{margin-left:0}
 :root[data-theme="tactical"] .pill:hover{border-color:var(--border2);background:var(--bg3);color:var(--t1)}
 :root[data-theme="tactical"] .pill.active{position:relative;border-color:var(--t1);background:var(--t1);color:var(--bg);box-shadow:none}
@@ -391,7 +397,10 @@
 :root[data-theme="tactical"] .vfc-meta-text,:root[data-theme="tactical"] .lib-meta,:root[data-theme="tactical"] .vfc-synced,:root[data-theme="tactical"] .vfc-sync-failed{font-size:10px;font-weight:400}
 :root[data-theme="tactical"] .vfc-lib-tag{color:var(--accent-2)}
 :root[data-theme="tactical"] .vfc-watched-badge{top:0;right:auto;left:0;background:var(--bg);color:var(--accent-2);font-size:8.5px}
-:root[data-theme="tactical"] .vfc-menu-btn,:root[data-theme="tactical"] .vfc-sync-btn{border-radius:0;background:var(--bg);color:var(--t1)}
+/* The card's two buttons sit on the picture's lower edge, clear of the text */
+:root[data-theme="tactical"] .vfc-menu-btn,:root[data-theme="tactical"] .vfc-sync-btn{top:calc(var(--vault-card-width,200px) * 0.5625 - 28px);bottom:auto;border-radius:0;background:var(--bg);color:var(--t1);transition:opacity var(--dur-fast) var(--ease-linear)}
+:root[data-theme="tactical"] .vfc-menu-btn{right:6px}
+:root[data-theme="tactical"] .vfc-sync-btn{left:6px}
 :root[data-theme="tactical"] .vfc-menu-btn:hover,:root[data-theme="tactical"] .vfc-sync-btn:hover{background:var(--t1);color:var(--bg)}
 :root[data-theme="tactical"] .lib-body{padding:7px 9px 8px}
 :root[data-theme="tactical"] .lib-fmt{top:0;left:0;font-weight:500}
@@ -484,6 +493,7 @@
 /* Empty states */
 :root[data-theme="tactical"] .empty-state{padding:32px 24px;gap:12px;color:var(--t3)}
 :root[data-theme="tactical"] .empty-mascot-wrap{color:var(--t3)}
+:root[data-theme="tactical"] .empty-mascot-wrap,:root[data-theme="tactical"] .empty-mascot{animation:mascot-float var(--dur-loop-float) var(--ease-in-out) infinite}
 :root[data-theme="tactical"] .empty-title{font-size:14px;letter-spacing:0.16em;text-transform:uppercase;color:var(--t2)}
 :root[data-theme="tactical"] .empty-sub:hover{color:var(--t1);text-decoration:underline}
 
@@ -551,7 +561,7 @@
   :root[data-theme="tactical"] .tac-annun-state{font-size:9.5px}
 }
 @media (max-width:900px){
-  :root[data-theme="tactical"] .tac-annun-state{font-size:0;gap:0}
+  :root[data-theme="tactical"] .tac-annun-state span{display:none}
   :root[data-theme="tactical"] .tac-tab-num,:root[data-theme="tactical"] .tac-cmd-opr{display:none}
 }
 
@@ -568,10 +578,12 @@
 @keyframes tac-rule{from{transform:scaleX(0)}}
 @keyframes tac-sweep{0%{transform:scaleX(0);opacity:1}70%{transform:none;opacity:1}100%{transform:none;opacity:0}}
 @keyframes tac-blink{0%{opacity:1}50%{opacity:0.25}}
-@keyframes tac-blink-soft{0%{opacity:1}50%{opacity:0.6}}
+@keyframes tac-blink-soft{0%{opacity:1}50%{opacity:0.8}}
 @keyframes tac-spin{to{transform:rotate(360deg)}}
 @keyframes tac-chase{0%{opacity:1}45%{opacity:0}}
 @keyframes tac-stamp{from{opacity:0;transform:scale(1.5)}}
+@keyframes tac-tick{0%{opacity:0.2}}
+@keyframes tac-scan-down{0%{transform:translateY(0);opacity:0}10%{opacity:0.35}60%{opacity:0.35}70%,100%{transform:translateY(71px);opacity:0}}
 @keyframes tac-march{to{transform:translateX(-34.18px)}}
 @keyframes tac-scan{0%{transform:translateX(-100%)}100%{transform:translateX(455%)}}
 @keyframes tac-scan-card{0%{transform:translateX(-90px)}60%,100%{transform:translateX(1400px)}}

@@ -108,9 +108,9 @@ export function TacticalSidebar({ page, setPage, appState, stats, speedHistory, 
           ))}
         </nav>
 
-        <div className={'tac-annun' + (trouble ? ' warn' : '')} title="System status">
+        <div className={'tac-annun' + (trouble ? ' warn' : '')} title={'System status: ' + statusText}>
           <div className="tac-annun-cap">SYS STATUS</div>
-          <div className="tac-annun-state"><i className="tac-lamp" />{statusText}</div>
+          <div className="tac-annun-state"><i className="tac-lamp" /><span>{statusText}</span></div>
         </div>
       </header>
 
@@ -131,17 +131,18 @@ export function TacticalSidebar({ page, setPage, appState, stats, speedHistory, 
           <canvas ref={canvasRef} />
         </div>
 
+        {/* keyed by their value: a readout that changes ticks (tactical.css tac-tick) */}
         <div className="tac-read" title="Downloads recorded">
           <div className="tac-rail-label">RECORDS</div>
-          <div className="tac-read-val">{(stats.total_downloads || 0).toLocaleString()}</div>
+          <div className="tac-read-val" key={stats.total_downloads || 0}>{(stats.total_downloads || 0).toLocaleString()}</div>
         </div>
         <div className="tac-read" title="Size of everything recorded">
           <div className="tac-rail-label">TOTAL DB</div>
-          <div className="tac-read-val">{dbNum}<span>{dbUnit}</span></div>
+          <div className="tac-read-val" key={dbNum + dbUnit}>{dbNum}<span>{dbUnit}</span></div>
         </div>
         <div className="tac-read" title="Playlists the library tracks">
           <div className="tac-rail-label">LIBRARY</div>
-          <div className="tac-read-val">{stats.library_playlists || 0}</div>
+          <div className="tac-read-val" key={stats.library_playlists || 0}>{stats.library_playlists || 0}</div>
         </div>
 
         <div className="tac-rail-fill" aria-hidden="true" />
