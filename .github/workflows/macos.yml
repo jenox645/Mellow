@@ -1,0 +1,41 @@
+name: macOS tests
+
+# The unit tests on macOS, kept out of validate.yml on purpose: MellowDLP ships no
+# macOS build, and GitHub's macOS runners (macos-latest and macos-15 alike) are
+# often so scarce that the job waits 15 minutes for a machine and is cancelled
+# without starting. Inside validate.yml that failed the whole call, and with it
+# ci.yml's build-linux and release.yml's builds. Here it still runs on every pull
+# request and on main and shows its result, but nothing waits for it.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: macos-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  test-macos:
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: requirements*.txt
+      - name: Install dependencies
+        run: pip install -r requirements.txt -r requirements-dev.txt
+      - name: Lint
+        run: ruff check .
+      # e2e/slow tests download from real sites and are run by hand
+      - name: Run tests
+        run: python -m pytest tests/ -m "not e2e and not slow and not browser" --timeout=60
