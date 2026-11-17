@@ -24,7 +24,7 @@
   --surface-selected:var(--accent-faint);--surface-selected-strong:rgba(var(--accent-rgb),0.12);
   --surface-placeholder:#E3E6EA;
   --scrim:rgba(20,23,28,0.55);--scrim-tour:rgba(20,23,28,0.6);--scrim-victory:rgba(236,238,241,0.97);
-  --scrim-menu:rgba(20,23,28,0.82);
+  --scrim-menu:rgba(255,255,255,0.9);   /* the ⋯ chip over a thumbnail: light, so its --t2 dots show */
   --media-bg:#000;
   --shadow-rgb:20,23,28;
 

@@ -186,6 +186,18 @@ def test_a_themes_text_is_readable_on_its_backgrounds(theme):
     assert steps == sorted(steps, reverse=True), f"{theme}: the text levels step down"
 
 
+@pytest.mark.parametrize("theme", constants.UI_THEMES)
+def test_the_file_menu_chip_shows_its_dots(theme):
+    """The vault's ⋯ chip (.lib-menu) draws --t2 dots on --scrim-menu over a thumbnail of any colour:
+    composited over black and over white, the dots keep 3:1 (an icon, WCAG 1.4.11)."""
+    css = (GUI / "index.html").read_text(encoding="utf-8") if theme == "classic" else _css(theme)
+    tokens = dict(re.findall(r"--(t2|scrim-menu):([^;]+);", css))
+    r, g, b, a = (float(x) for x in re.fullmatch(r"rgba\((\d+),(\d+),(\d+),([\d.]+)\)", tokens["scrim-menu"].strip()).groups())
+    for under in (0, 255):
+        chip = "#" + "".join(f"{round(c * a + under * (1 - a)):02x}" for c in (r, g, b))
+        assert _contrast(tokens["t2"], chip) >= 3, f"{theme}: ⋯ dots {tokens['t2']} on {chip}"
+
+
 def test_classic_lights_colours_are_readable_as_text():
     """Classic Light writes its accents as text too (links, tags, ERROR / DONE words, the vault's amber):
     4.5:1 on every background, --danger included."""
