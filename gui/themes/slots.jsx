@@ -2,8 +2,13 @@
 // components keeps them in gui/themes/<id>/ and adds one line to THEME_SLOTS, e.g.
 //   import { TacticalSidebar } from './tactical/chrome.jsx';
 //   tactical: { Sidebar: TacticalSidebar },
+// A theme can draw a page its own way too: `pages: { feed: TacticalFeedView }`. The view gets
+// what the page's hook returns (useFeedPage in pages/feed-logic.js, useVaultPage in
+// pages/vault-logic.js); Classic's views (ClassicFeedView, ClassicVaultView) show how.
 import { Sidebar, TopBar, StatusBar } from '../components/chrome.jsx';
 import { LoadingScreen } from '../components/loading.jsx';
+import { ClassicFeedView } from '../pages/feed.jsx';
+import { ClassicVaultView } from '../pages/vault.jsx';
 import { THEMES } from '../lib/constants.js';
 import { resolveSlots, registryProblems } from '../lib/slots.js';
 import { TacticalSidebar, TacticalTopBar, TacticalStatusBar, TacticalPageFrame } from './tactical/chrome.jsx';
@@ -14,7 +19,10 @@ function PageFrame({ children }) {
   return children;
 }
 
-export const DEFAULT_SLOTS = { Sidebar, TopBar, StatusBar, LoadingScreen, PageFrame };
+export const DEFAULT_SLOTS = {
+  Sidebar, TopBar, StatusBar, LoadingScreen, PageFrame,
+  pages: { feed: ClassicFeedView, vault: ClassicVaultView },
+};
 
 export const THEME_SLOTS = {
   tactical: {
