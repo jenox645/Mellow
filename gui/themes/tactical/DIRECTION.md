@@ -26,7 +26,8 @@ No sidebar. The window is three bands and a rail:
    the keys 1–6), system state on the right. The chosen tab is a raised bone plate; the others sit lower.
 2. **Command bar** (30 px): section number, path, a tick ruler, the key hints, GUIDE, date, clock.
 3. **Page**, with the **instrument rail** (92 px) on its right: speed gauge, speed history, records,
-   database size, library count, the mascot as the operator on duty.
+   database size, library count, then a scale to the bottom. (The mascot as the operator on duty
+   was here, but 92 px left it a 71 px box nobody could read; Mellow is on the splash.)
 4. **Annunciator row** (24 px): link, yt-dlp, FFmpeg, disk, the update offer, a strip chart, the folder.
 
 Pages keep their structure; they gain the 210 px the sidebar took and lose 16 px of padding per side.
