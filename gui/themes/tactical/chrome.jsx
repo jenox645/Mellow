@@ -6,12 +6,6 @@
 
 import { fmtBytes, fmtSpeed, themeRgba } from '../../lib/util.js';
 import { SVG } from '../../components/icons.jsx';
-import { Mascot } from '../../components/common.jsx';
-import {
-  MASCOT_DJ, MASCOT_VIBING, MASCOT_CHILLING,
-  MASCOT_COMFY_SAFE, MASCOT_SUCCESS_SAFE, MASCOT_TROUBLESHOOTING_SAFE,
-} from '../../lib/mascots.js';
-
 import {
   TACTICAL_GAUGE_SEGMENTS as GAUGE_SEGMENTS, TACTICAL_RAIL_GRAPH_BARS as RAIL_GRAPH_BARS,
   TACTICAL_RAIL_GRAPH_H as RAIL_GRAPH_H, TACTICAL_STATUS_GRAPH_H as STATUS_GRAPH_H,
@@ -26,15 +20,6 @@ const PAGES = [
   { id: 'signal', label: 'SIGNAL API', num: '05', icon: 'signal', path: 'SIGNAL API', role: 'DATA LINK', lake: true },
   { id: 'config', label: 'CONFIG', num: '06', icon: 'config', path: 'CONFIG', role: 'SYSTEM SETUP', lake: true },
 ];
-
-const PAGE_MASCOT = {
-  feed:      MASCOT_VIBING,
-  queue:     MASCOT_DJ,
-  vault:     MASCOT_COMFY_SAFE || MASCOT_CHILLING,
-  analytics: MASCOT_CHILLING,
-  signal:    MASCOT_SUCCESS_SAFE || MASCOT_VIBING,
-  config:    MASCOT_TROUBLESHOOTING_SAFE || MASCOT_VIBING,
-};
 
 // A canvas sized to its box, cleared, with the device's pixel ratio applied
 function prepare(canvas, height) {
@@ -145,14 +130,9 @@ export function TacticalSidebar({ page, setPage, appState, stats, speedHistory, 
           <div className="tac-read-val" key={stats.library_playlists || 0}>{stats.library_playlists || 0}</div>
         </div>
 
+        {/* The rail is 92 px wide: too narrow for a mascot to be seen (it was a 71 px box), so the
+            scale runs to the bottom; Tactical's Mellow is on the splash */}
         <div className="tac-rail-fill" aria-hidden="true" />
-
-        <div className="tac-portrait">
-          <div className="tac-rail-label">OPR</div>
-          <div className="tac-portrait-frame">
-            <Mascot key={page} src={PAGE_MASCOT[page] || MASCOT_VIBING} className="tac-portrait-art" />
-          </div>
-        </div>
       </aside>
     </>
   );
