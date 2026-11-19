@@ -51,11 +51,23 @@ the pipe and points stdin itself at the null device (`main._detach_stdin`).
   (Unix: the backend leads its own process group, killed with `killpg`; checked on Linux, and
   if the shell itself is killed the backend ends that group on its way out, see [Linux run](#linux-run));
 - `tauri-plugin-single-instance`: a second launch of the Tauri app focuses the open window;
-- the window may only go to the bundled page and 127.0.0.1/localhost; new-window requests are
-  refused (there's one `target="_blank"` link, in the signed-out screen);
+- the window may only go to the bundled page and 127.0.0.1/localhost. Any other `http(s)` or
+  `mailto` link, followed or opened in a new window (`target="_blank"`, `window.open`), goes to the
+  default browser through `tauri-plugin-opener` (`open_url`, called from Rust); other schemes
+  (`file:`, `javascript:`, `ftp:`, custom ones) and a new window for the app itself are refused and
+  logged (`route()` in `main.rs`, with unit tests). See [Links and notifications](#links-and-notifications-69);
+- desktop notifications: the shell answers the page's permission requests (`on_permission_request`):
+  **Notifications → allow, only for the backend's page; everything else (camera, microphone,
+  location, clipboard read…) → deny**. Each time the backend's page has loaded, the shell runs
+  `Notification.requestPermission()` in it, so `Notification.permission` is `granted` from the
+  first load (the engine forgets a grant when the app exits, and the port, part of the origin,
+  changes every launch). Config → Desktop Notifications still decides whether the page notifies;
 - Tauri's own drag-and-drop handler is off (`disable_drag_drop_handler`): with it on, Windows never
   gives the page drop events, and the app uses them (a link dropped anywhere, files on the Vault);
-- no Tauri IPC is exposed: the remote page has no capabilities, the bundled page needs none;
+- no Tauri IPC is exposed: the remote page has no capabilities, the bundled page needs none.
+  The opener plugin's click script is turned off (`open_js_links_on_click(false)`): it sends
+  `target="_blank"` links to the plugin's IPC command, which the page can't call, so with it on
+  those clicks did nothing at all;
 - `MELLOW_TIMING_LOG=<file>` appends `shell_start` / `backend_spawned` / `ready` / `navigated`
   timestamps (epoch ms), for the numbers below.
 
@@ -132,10 +144,10 @@ Tauri window on Windows). Screenshots are pictures of the real window (`PrintWin
 | ✅ | Closing the window | Backend logs "the desktop shell closed: quitting", removes its instance file; shell gone in 0.4 s; 0 processes left over in every measured run | ✅ With ffmpeg running in the backend's group: shell, backend and ffmpeg gone in 1.4–1.9 s, instance file removed, 0 processes left. Shell killed with SIGKILL: the backend quit, but **its ffmpeg kept running** until the fix in this run (`main._end_own_group`); now all gone in ~2 s |
 | ✅ | Second launch | Tauri already open → the new process hands over to it (single-instance plugin) and exits; still one shell and one backend. Today's app (FlaskWebGUI) running → the Tauri window signs in to *that* copy (`attached`, the `--shell` process exits); closing the Tauri window leaves that copy running. The reverse (Tauri running, then today's app launched) is unchanged: main.py's guard opens a browser window on the running server | ✅ With a D-Bus session bus: the new process exits 0 in 55 ms, the first window comes back from minimized and takes focus; one shell, one backend. ⚠️ Without one (bare Xvfb) the plugin can't hand over: a second window opens, signed in to the running backend through main.py's guard |
 | ⚠️ | Drag and drop of a link / of files | Tauri's handler is off so the page gets HTML5 drop events (Tauri docs: required on Windows). Not tried with a real drag from another app | — not checked |
-| ❌ | Desktop notifications (`new Notification`, Config opt-in) | `Notification.requestPermission()` answers `denied` at once, no prompt (asked from script; WebView2 leaves the permission to the host app and wry doesn't grant it). Today's Chrome window can ask. Needs `tauri-plugin-notification` or a permission handler | — not checked (#69) |
-| ⚠️ | External links | Refused (logged). Today they open a browser tab; `tauri-plugin-opener` would open them in the default browser | — not checked (#69) |
+| ⚠️ | Desktop notifications (`new Notification`, Config opt-in) | Before #69: `Notification.requestPermission()` answered `denied` at once, no prompt (WebView2 leaves the permission to the host app and wry didn't grant it). #69's permission handler answers WebView2's `PermissionRequested` the same way as on Linux (built and type-checked for `x86_64-pc-windows-msvc`); **not yet run on Windows** | ✅ A finished download with the window minimized and Config's toggle on: the app's own `new Notification` reached the notification daemon (`Notify` "Download complete" / "clip" on D-Bus). `Notification.permission` is `granted` right after every launch, without a click; geolocation is denied. [Details](#links-and-notifications-69) |
+| ⚠️ | External links | Before #69: refused (logged). #69 opens them in the default browser through `tauri-plugin-opener`; same code on Windows, **not yet run there** | ✅ The signed-out screen's `target="_blank"` link opened `https://github.com/jenox645/Mellow/releases/latest` in the default browser; `mailto:`, links and `window.open` too; `file:`, `ftp:` and a new window for the app refused. [Details](#links-and-notifications-69) |
 
-Not checked: macOS (no machine), an installer (`bundle.active` false), a first-ever start
+Not checked: macOS (no machine), #69's links and notifications on Windows, an installer (`bundle.active` false), a first-ever start
 (WebView2 profile creation), Windows 10 without the WebView2 runtime; on Linux the rows marked —,
 Wayland and a full desktop (GNOME, KDE): the Linux run used Xvfb with openbox.
 
@@ -156,7 +168,7 @@ libssl-dev libayatana-appindicator3-dev librsvg2-dev`, `gstreamer1.0-plugins-bas
 `gstreamer1.0-libav`, `gstreamer1.0-gl`.
 
 **Build.** `cargo build --release` in `src-tauri/` → `mellowdlp-shell`, **4.19 MiB** (4,394,136
-bytes; release, LTO, `opt-level = "s"`, stripped), 5 min from a cold cargo cache. Two fixes were
+bytes; release, LTO, `opt-level = "s"`, stripped; 4.46 MiB with #69's opener plugin), 5 min from a cold cargo cache. Two fixes were
 needed before it built at all, on any machine:
 
 - `src-tauri/tauri.conf.json` had never been committed: the root `.gitignore` ignores `*.json`.
@@ -230,10 +242,59 @@ times from the launcher, memory 12 s after launch summed over the shell's proces
 | PSS, whole tree | 511 / 509 / 515 MB |
 | RSS, whole tree | 686 / 684 / 690 MB |
 | Processes | 4: shell 85 MB, WebKitWebProcess ~295 MB, WebKitNetworkProcess 25 MB, python 108 MB (PSS) |
-| Shell binary | `mellowdlp-shell` 4.19 MiB |
+| Shell binary | `mellowdlp-shell` 4.19 MiB; 4.46 MiB (4,675,512 bytes) with #69's `tauri-plugin-opener` |
 
 Not comparable with the Windows numbers (another machine, no GPU: WebKit renders in software
 under Xvfb, which inflates the web process). Today's Chrome window wasn't measured on Linux.
+
+### Links and notifications (#69)
+
+Linux only (same container and setup as the [Linux run](#linux-run), plus `dunst` as the
+notification daemon on the session bus and `dbus-monitor` watching `org.freedesktop.Notifications`).
+The default browser was a stand-in `xdg-open` first on `PATH` that logs what it is given, which is
+also what `tauri-plugin-opener` calls on Linux.
+
+**A test page first.** `MELLOW_ROOT` pointed at a stand-in backend (a `main.py` that serves one
+page on 127.0.0.1 and prints the ready line), so every case could be clicked with `xdotool` in the
+real window and read back from the window title:
+
+| Click | Shell log | Default browser got |
+|---|---|---|
+| `<a href="https://…">` | opened … (a navigation); the window stays on the page | `https://example.com/nav` |
+| `<a target="_blank" rel="noreferrer" href="https://…">`, the same without `rel`, `target="other"` | opened … (a new window) | each URL once |
+| `window.open("https://…")` from a click | opened … (a new window) | the URL |
+| `<a href="mailto:…">` | opened … (a navigation) | `mailto:someone@example.com` |
+| `<a target="_blank" href="ftp://…">` | refused a new window to `ftp://…` | — |
+| `<a target="_blank" href="/test.html#again">` (the app itself) | refused a new window to `http://127.0.0.1:…` | — |
+| `<a href="file:///etc/hostname">` | nothing: WebKit itself refuses `file:` from an http page before asking the shell | — |
+| `Notification.requestPermission()` + `new Notification` | permission Notifications for `http://127.0.0.1:…`: Allow | (D-Bus `Notify` "MellowDLP test") |
+| `navigator.geolocation.getCurrentPosition` | permission Geolocation …: Deny | (`PERMISSION_DENIED`) |
+
+Two findings on the way:
+- **The opener plugin's own click script broke `target="_blank"`.** With `tauri_plugin_opener::init()`
+  a click on an http(s) `_blank` link did nothing at all and the shell never heard of it: the
+  plugin injects a click handler that sends those links to its `plugin:opener|open_url` command,
+  and the page has no IPC. `Builder::new().open_js_links_on_click(false)` keeps that script out;
+  the link then reaches `on_new_window` like any other.
+- **A grant doesn't outlive the run.** After a restart `Notification.permission` was `default`
+  again, and the app only notifies when it is `granted` (Config's toggle asks once). WebKitGTK's
+  `initialize_notification_permissions` for the backend's origin made no difference: it reaches
+  only web processes started after it, and the page's process already exists when the port is
+  known. Asking `Notification.requestPermission()` from the shell once the backend's page has
+  loaded works the same on both engines: right after each of 2 launches (each on a new port) the
+  page read `granted` without a click, and a notification showed.
+
+**The real app.** The real backend (`MELLOW_PYTHON` = a venv, throwaway home, config
+`desktop_notifications: true`) in the debug shell:
+- **Notifications.** The window was minimized and a 3 s H.264/AAC clip queued through the API
+  (signed in from the instance file). The page's own `new Notification` arrived as D-Bus
+  `Notify` "Download complete" / "clip" from `mellowdlp-shell`.
+- **External links.** The signed-out screen (a stand-in backend that sends the window to `/`
+  instead of `/launch`): a click on its link handed
+  `https://github.com/jenox645/Mellow/releases/latest` to the default browser, and the window
+  stayed. Closing the window left no backend running.
+- **Windows.** Built and type-checked for `x86_64-pc-windows-msvc` (`cargo check`); the code has
+  no per-platform part. Not run on Windows.
 
 ## Numbers
 
@@ -283,9 +344,9 @@ All Tauri v2, Rust crate / JS package:
 | Tray icon (keep downloading with the window closed) | Built in: `tray-icon` feature, `TrayIconBuilder` + `tauri::menu` | Close-to-tray changes the "close = quit" rule; the job object makes either safe |
 | Single instance | `tauri-plugin-single-instance` (used here) | Could replace main.py's guard once Tauri is the only launcher; with `deep-link` it passes on `mellowdlp://` links |
 | Self-update | `tauri-plugin-updater` / `@tauri-apps/plugin-updater` | Signed update manifests (its own minisign key). Would replace `app_update.py`'s installer swap; the Python sidecar is inside the bundle, so one update moves both |
-| Open files, folders, links | `tauri-plugin-opener` (`open_url`, `open_path`, `reveal_item_in_dir`) | Replaces desktop.py's explorer/xdg-open/open calls and fixes external links |
+| Open files, folders, links | `tauri-plugin-opener` (`open_url`, `open_path`, `reveal_item_in_dir`) | In since #69 for the page's external links (Rust side, its click script off). `open_path` / `reveal_item_in_dir` could replace desktop.py's explorer/xdg-open/open calls |
 | Clipboard | `tauri-plugin-clipboard-manager` | Replaces Tk's clipboard |
-| Notifications | `tauri-plugin-notification` | Desktop notifications that work in the webview |
+| Notifications | `tauri-plugin-notification` | Not needed for the page: its own web notifications work once the shell answers the permission (#69). Only for notifications the backend would raise itself |
 | Remember window size/place | `tauri-plugin-window-state` | |
 | Start with the system | `tauri-plugin-autostart` | For scheduled "later" downloads |
 | Spawning the sidecar | `tauri-plugin-shell` (`Command::sidecar`) | std::process is enough (this trial); the plugin adds nothing we need except the sidecar path lookup |
@@ -370,9 +431,9 @@ bundled page and the app are different origins; nothing is shared between them, 
 **Go**, in steps. On Windows the trial window does what today's window does (sign-in, SSE,
 downloads, both video formats, file downloads, dialogs, paste, single instance) with ~125 MB
 less memory, about the same startup, a 3 MB shell, and a process tree that can't outlive it.
-It needed one backend flag and no UI change. Two gaps to close before shipping it: desktop
-notifications (denied in WebView2 until the shell handles them) and external links (refused
-until the shell opens them in the browser), both one plugin each. What it buys later (native dialogs, tray, real
+It needed one backend flag and no UI change. The two gaps found here, desktop notifications
+(denied in WebView2) and external links (refused), are closed in the shell (#69, no UI change):
+checked on Linux, still to be run once on Windows. What it buys later (native dialogs, tray, real
 drag-and-drop paths, a signed updater, no dependence on an installed Chrome/Edge, which is today's
 "no Chromium browser → default browser tab" fallback) is the real gain. The cost is on Linux
 (GStreamer codecs to depend on or bundle) and in packaging (sidecar layout, signing two kinds of
@@ -391,9 +452,9 @@ Steps for "full Tauri":
    including the Vault player with an H.264 and a webm file. Also on Linux: an `on_download`
    handler (a click on ⬇ BACKUP saved nothing) and size the window after it is mapped.
 4. Move OS integration to the shell, one at a time, over the stdin/stdout channel (no IPC on the
-   page): dialogs (`plugin-dialog`, drop Tk), open/reveal (`plugin-opener`), clipboard
-   (`plugin-clipboard-manager`), notifications (`plugin-notification`), save-as for downloads
-   (`on_download`).
+   page): dialogs (`plugin-dialog`, drop Tk), open/reveal (`plugin-opener`, already in for
+   links), clipboard (`plugin-clipboard-manager`), save-as for downloads (`on_download`).
+   Notifications need nothing more: the page's own `new Notification` works since #69.
 5. Replace `app_update.py`'s installer swap with `tauri-plugin-updater` (signed manifest on GitHub
    releases); keep yt-dlp's overlay update as is.
 6. Signing: Windows (Trusted Signing via `signCommand`, the sidecar's exes included), macOS
