@@ -200,6 +200,11 @@ def _enqueue_vault_sync(path: str, data: dict | None = None,
         return None
     lib = _library_entry_for(path, cfg)
     opts = _vault.build_sync_opts(data, lib, cfg, path)
+    # Every sync job only adds. A folder saved as MIRROR mirrors from its sync
+    # dialog (preview, then confirm), which sends a mode; a sync without one
+    # (the folder's SYNC NOW, SYNC ALL, auto-sync) says at its end it only added.
+    if _library.wants_mirror(lib) and not data.get("mode"):
+        opts["mirror_not_applied"] = True
     library_id = lib["id"] if lib else None
     if any(k in data for k in _vault.SYNC_FORMAT_KEYS):
         update_config(lambda c: _vault.remember_sync_format(c, path, data))
@@ -1081,11 +1086,15 @@ def api_vault_folder_previews() -> Response:
 def api_vault_playlists_get() -> Response:
     path = request.args.get("path", "")
     cfg = load_config()
+    lib = _library_entry_for(path, cfg) if path else None
     return jsonify({
         "playlists": cfg.get("vault_playlists", {}).get(path, []),
         # What a sync of this folder will use unless told otherwise — the
         # sync dialog starts from it instead of always offering 1080p video
-        "sync_format": _vault.default_sync_format(path, _library_entry_for(path, cfg), cfg) if path else {},
+        "sync_format": _vault.default_sync_format(path, lib, cfg) if path else {},
+        # ADD PLAYLIST's SYNC MODE: the sync dialog opens on it (MIRROR shows
+        # the mirror preview before anything is deleted)
+        "sync_mode": "mirror" if _library.wants_mirror(lib) else "add",
     })
 
 
@@ -1477,13 +1486,17 @@ def api_library_delete(entry_id: str) -> Response:
 
 @app.route("/api/library/<entry_id>/sync", methods=["POST"])
 def api_library_sync(entry_id: str) -> Response:
-    data = request.get_json(force=True) or {}
-    sync_mode = data.get("mode", "add")
+    """Sync a library entry's own URL into its folder: always add-only.
+
+    A ``mode`` in the request (older pages send the entry's ``sync_mode``) is
+    ignored: ``"mirror"`` is an ordinary add-only sync too. Deleting files is
+    only done by the folder's sync dialog, through /api/vault/mirror-preview
+    and /api/vault/mirror-confirm, after the user saw the list."""
     entry = analytics.get_library_entry(entry_id)
     if not entry:
         return jsonify({"error": "Not found"}), 404
     cfg = load_config()
-    opts, output_dir = _library.build_sync_opts(entry, cfg, sync_mode)
+    opts, output_dir = _library.build_sync_opts(entry, cfg)
     # last_synced is stamped by the worker when the sync completes
     job = _enqueue_job(entry["url"], output_dir, opts, entry_id,
                        job_type="sync", label=f"Library sync — {entry.get('name','')}")

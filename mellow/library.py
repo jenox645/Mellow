@@ -55,8 +55,17 @@ def folder_path_for_entry(entry: dict, default_root: str = "") -> str:
     return folder
 
 
-def build_sync_opts(entry: dict, cfg: dict, sync_mode: str) -> tuple[dict, str]:
-    """Return (yt-dlp opts dict, output_dir) for a library entry sync."""
+def wants_mirror(entry: dict | None) -> bool:
+    """Whether the entry was saved as MIRROR (ADD PLAYLIST's SYNC MODE)."""
+    return bool(entry) and (entry.get("sync_mode") or "add") == "mirror"
+
+
+def build_sync_opts(entry: dict, cfg: dict) -> tuple[dict, str]:
+    """Return (yt-dlp opts dict, output_dir) for a library entry sync.
+
+    Always an add-only sync. The entry's saved ``sync_mode`` is only a
+    preference: a mirror deletes files, so it runs from the folder's SYNC
+    OPTIONS (mirror preview, then confirm), never from a job."""
     output_dir = folder_path_for_entry(entry, download_root(cfg))
     is_audio = (entry.get("mode") or "").upper() == "AUDIO"
     opts = {
@@ -69,7 +78,9 @@ def build_sync_opts(entry: dict, cfg: dict, sync_mode: str) -> tuple[dict, str]:
         "audio_quality": cfg.get("default_audio_quality", "best"),
         # Same naming as every other download unless the entry sets its own
         "filename_template": entry.get("filename_template") or cfg.get("filename_template", ""),
-        "sync_mode": sync_mode,
         **download_settings(cfg),
     }
+    if wants_mirror(entry):
+        # The sync's end says it only added (sync_summary.mirror_not_applied)
+        opts["mirror_not_applied"] = True
     return opts, output_dir

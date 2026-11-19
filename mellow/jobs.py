@@ -498,6 +498,9 @@ class JobManager:
             complete["sync_summary"] = {"new": job["counts"]["new"],
                                         "already": job["report"]["archived"],
                                         "failed": job["counts"]["errors"]}
+            if job["opts"].get("mirror_not_applied"):
+                # A MIRROR folder synced without its preview: only added
+                complete["sync_summary"]["mirror_not_applied"] = True
         push(complete)
         return "complete"
 
