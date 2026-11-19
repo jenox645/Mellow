@@ -576,6 +576,57 @@ def test_sync_options_picked_in_the_dialog_stay_with_the_folder(page, media_site
     assert media == [".wav"] * 3
 
 
+def _mirror_folder(downloads, url):
+    """A folder whose playlist was added with SYNC MODE: MIRROR."""
+    from mellow import analytics, config
+    folder = downloads / "Mirrored"
+    folder.mkdir()
+    config.update_config(lambda c: c.update(vault_playlists={str(folder): [url]}))
+    analytics.upsert_library_entry({"id": "mir", "name": "Mirrored", "url": url, "folder": str(downloads),
+                                    "folder_name": "Mirrored", "mode": "VIDEO", "quality": "1080p",
+                                    "container": "mp4", "sync_mode": "mirror"})
+    return folder
+
+
+def test_a_mirror_playlist_opens_its_sync_options_on_mirror_and_previews_first(page, media_site, downloads):
+    """ADD PLAYLIST saved MIRROR and nothing read it: the dialog opened on ADD
+    ONLY and its SYNC NOW downloaded. Now it opens on MIRROR and shows the diff."""
+    from mellow import jobs
+    folder = _mirror_folder(downloads, f"{media_site}/playlist")
+    (folder / "Gone from the playlist.mp4").write_bytes(b"\0" * 64)
+    _open_folder(page, "Mirrored")
+    with patch("mellow.server._enqueue_job") as enqueued:
+        page.get_by_role("button", name="SYNC OPTIONS").click()
+        dialog = page.locator(".modal-box")
+        expect(dialog.locator(".pill.active", has_text="MIRROR")).to_have_count(1)
+        dialog.get_by_role("button", name="PREVIEW MIRROR").click()
+        expect(dialog).to_contain_text("MIRROR DIFF", timeout=30_000)
+        expect(dialog).to_contain_text("new item(s) will be downloaded")
+        expect(dialog.get_by_role("button", name="APPLY MIRROR")).to_be_visible()
+        enqueued.assert_not_called()                  # a diff, not a download
+    assert sorted(p.name for p in folder.iterdir()) == ["Gone from the playlist.mp4"]
+    assert jobs.manager.wait_idle(5)
+
+
+def test_a_mirror_playlist_synced_with_sync_now_says_it_only_added(page, media_site, downloads):
+    """The folder's plain SYNC NOW stays add-only for a MIRROR playlist, and says so."""
+    from mellow import jobs
+    folder = _mirror_folder(downloads, f"{media_site}/playlist")
+    (folder / "Gone from the playlist.mp4").write_bytes(b"\0" * 64)
+    page.locator(".nav-item", has_text="VAULT").click()
+    page.locator("[data-tour=vault-add]").click()
+    expect(page.get_by_test_id("mirror-hint")).to_contain_text("asks first")
+    page.locator(".modal-box").get_by_role("button", name="CANCEL").click()
+    _open_folder(page, "Mirrored")
+    page.locator("[data-tour=vault-sync]").click()
+    text = _notification(page, "Sync Complete")
+    assert "mirror runs from SYNC OPTIONS" in text
+    assert jobs.manager.wait_idle(DOWNLOAD_TIMEOUT_MS / 1000)
+    assert (folder / "Gone from the playlist.mp4").exists()     # nothing deleted
+    assert len([p for p in folder.iterdir() if p.suffix == ".mp4"]) == 4
+    expect(page.locator(".notif", has_text="mirror runs from SYNC OPTIONS")).to_have_count(1)
+
+
 def test_type_how_many_to_randomize_and_play_the_whole_folder(page, downloads, monkeypatch):
     from mellow import vault
     played = []

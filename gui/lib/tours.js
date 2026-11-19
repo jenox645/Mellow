@@ -217,7 +217,8 @@ export const TOURS = {
       text: 'Each linked folder syncs one of two ways. ADD ONLY never deletes anything: videos removed from the '
         + 'playlist stay on your disk. MIRROR makes the folder match the playlist exactly, so a video removed from the '
         + 'playlist is deleted here too — after it shows you the list and you confirm.',
-      tip: 'Choose it in SYNC OPTIONS (the ⋮ menu → Sync). Not sure? ADD ONLY.',
+      tip: 'Choose it in SYNC OPTIONS (the ⋮ menu → Sync); a playlist added as MIRROR opens there on MIRROR. '
+        + 'SYNC NOW and auto-sync only ever add. Not sure? ADD ONLY.',
       example: { kind: 'rows', rows: [
         { text: 'video removed from the playlist', badge: 'ADD ONLY: kept', tone: 'green' },
         { text: 'video removed from the playlist', badge: 'MIRROR: deleted', tone: 'red' },

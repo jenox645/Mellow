@@ -133,6 +133,9 @@ export function AddVaultModal({ onClose, onSaved, showNotif }) {
             MIRROR <span style={{ color: 'var(--warn)', fontSize: 9.5 }}> DESTRUCTIVE</span>
           </div>
         </div>
+        <div data-testid="mirror-hint" style={{ fontFamily: 'var(--font-mono)', fontSize: 10.5, color: 'var(--t3)', marginTop: 6 }}>
+          MIRROR runs from the folder&apos;s SYNC OPTIONS: it lists what it would delete and asks first. SYNC NOW and auto-sync only add.
+        </div>
       </div>
       <div className="form-row">
         <div className="form-label">OPTIONS</div>
@@ -256,6 +259,8 @@ export function SyncPlaylistModal({ folder, onClose, showNotif, onRefreshVault, 
         const pls = d.playlists || [];
         setPlaylists(pls);
         setSelectedPlaylists(new Set(pls));
+        // A playlist added as MIRROR opens on MIRROR: SYNC NOW previews first
+        if (d.sync_mode === 'mirror') setSyncMode('mirror');
         const f = d.sync_format || {};
         if (f.sync_audio !== undefined) setSyncMediaType(f.sync_audio ? 'audio' : 'video');
         if (f.quality) setSyncQuality(f.quality);
