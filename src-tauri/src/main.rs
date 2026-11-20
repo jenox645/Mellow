@@ -18,10 +18,11 @@
 //! Links: the window stays on the loading page and the local backend. Any
 //! other http(s) or mailto link, followed or opened in a new window, goes to
 //! the default browser (tauri-plugin-opener); other schemes are refused and
-//! logged. Permissions: the backend's page may show desktop notifications (the
-//! shell asks for that permission each time the page loads; Config → Desktop
-//! Notifications still decides whether the page notifies); every other
-//! permission (camera, microphone, location…) is denied.
+//! logged. Permissions: the backend's page (its exact origin, port included,
+//! from the ready line) may show desktop notifications (the shell asks for that
+//! permission each time the page loads; Config → Desktop Notifications still
+//! decides whether the page notifies); every other page, another local port
+//! too, and every other permission (camera, microphone, location…) is denied.
 //!
 //! MELLOW_TIMING_LOG=<file> appends `<event> <epoch ms>` lines (shell_start,
 //! backend_spawned, ready, navigated) for the startup measurements.
@@ -131,15 +132,23 @@ fn follow(app: &AppHandle, url: &Url, route: Route, what: &str) -> bool {
 const ASK_NOTIFICATIONS: &str = "typeof Notification !== 'undefined' \
     && Notification.permission === 'default' && Notification.requestPermission()";
 
-/// The backend's own page (not the loading page, not another site).
-fn is_backend_page(url: &Url) -> bool {
-    matches!(url.scheme(), "http" | "https") && matches!(url.host_str(), Some("127.0.0.1" | "localhost"))
+/// The origin (`http://127.0.0.1:<port>`) of the backend the window was sent
+/// to by the ready line; None until then.
+fn backend_origin(launch_url: &Url) -> Option<String> {
+    let origin = launch_url.origin();
+    (origin.is_tuple() && matches!(launch_url.scheme(), "http" | "https")).then(|| origin.ascii_serialization())
+}
+
+/// The backend's own page: its exact origin, port included (not the loading
+/// page, not another site, not another service on this computer).
+fn is_backend_page(url: &Url, backend: Option<&str>) -> bool {
+    backend.is_some_and(|origin| backend_origin(url).as_deref() == Some(origin))
 }
 
 /// Permission requests from a page: only desktop notifications, and only for
 /// the backend's own page (never the loading page, never anything else).
-fn permission(page: Option<&Url>, kind: &PermissionKind) -> PermissionResponse {
-    let backend_page = page.is_some_and(is_backend_page);
+fn permission(page: Option<&Url>, backend: Option<&str>, kind: &PermissionKind) -> PermissionResponse {
+    let backend_page = page.is_some_and(|url| is_backend_page(url, backend));
     if backend_page && matches!(kind, PermissionKind::Notifications) {
         PermissionResponse::Allow
     } else {
@@ -244,6 +253,14 @@ struct Backend {
     child: Mutex<Option<Child>>,
     stdin: Mutex<Option<ChildStdin>>,
     tree: Mutex<Option<tree::Tree>>,
+    /// backend_origin() of the ready line's URL: the one page that may notify
+    origin: Mutex<Option<String>>,
+}
+
+impl Backend {
+    fn origin(&self) -> Option<String> {
+        self.origin.lock().unwrap().clone()
+    }
 }
 
 impl Backend {
@@ -318,8 +335,9 @@ fn start_backend(app: &AppHandle) -> Result<(), String> {
             let url = words.next().and_then(|u| Url::parse(u).ok());
             attached = words.next() == Some("attached");
             match (url, app.get_webview_window(WINDOW_LABEL)) {
-                (Some(url), Some(window)) if is_local(&url) => {
+                (Some(url), Some(window)) if is_local(&url) && backend_origin(&url).is_some() => {
                     ready = true;
+                    *app.state::<Backend>().origin.lock().unwrap() = backend_origin(&url);
                     if window.navigate(url).is_ok() {
                         timing("navigated");
                     }
@@ -368,7 +386,12 @@ fn main() {
         // plugin's IPC command, which this remote page can't call (no capability), so
         // those clicks did nothing at all
         .plugin(tauri_plugin_opener::Builder::new().open_js_links_on_click(false).build())
-        .manage(Backend { child: Mutex::new(None), stdin: Mutex::new(None), tree: Mutex::new(None) })
+        .manage(Backend {
+            child: Mutex::new(None),
+            stdin: Mutex::new(None),
+            tree: Mutex::new(None),
+            origin: Mutex::new(None),
+        })
         .setup(|app| {
             let window = WebviewWindowBuilder::new(app, WINDOW_LABEL, WebviewUrl::App("index.html".into()))
                 .title(WINDOW_TITLE)
@@ -392,16 +415,26 @@ fn main() {
                         NewWindowResponse::Deny
                     }
                 })
-                .on_page_load(|webview, load| {
-                    if matches!(load.event(), PageLoadEvent::Finished) && is_backend_page(load.url()) {
-                        let _ = webview.eval(ASK_NOTIFICATIONS);
+                .on_page_load({
+                    let app = app.handle().clone();
+                    move |webview, load| {
+                        let backend = app.state::<Backend>().origin();
+                        if matches!(load.event(), PageLoadEvent::Finished)
+                            && is_backend_page(load.url(), backend.as_deref())
+                        {
+                            let _ = webview.eval(ASK_NOTIFICATIONS);
+                        }
                     }
                 })
-                .on_permission_request(|webview, kind| {
-                    let page = webview.url().ok();
-                    let answer = permission(page.as_ref(), &kind);
-                    eprintln!("MellowDLP shell: permission {kind:?} for {page:?}: {answer:?}");
-                    answer
+                .on_permission_request({
+                    let app = app.handle().clone();
+                    move |webview, kind| {
+                        let page = webview.url().ok();
+                        let backend = app.state::<Backend>().origin();
+                        let answer = permission(page.as_ref(), backend.as_deref(), &kind);
+                        eprintln!("MellowDLP shell: permission {kind:?} for {page:?}: {answer:?}");
+                        answer
+                    }
                 })
                 .build()?;
             fit_outer_size(&window);
@@ -481,27 +514,60 @@ mod tests {
         assert_eq!(route_new_window(&url("tauri://localhost/index.html")), Route::Refuse);
     }
 
+    /// What the ready line gives: the backend's /launch URL
+    fn ready_origin() -> Option<String> {
+        backend_origin(&url("http://127.0.0.1:5123/launch?t=abc"))
+    }
+
+    #[test]
+    fn the_backend_origin_comes_from_the_ready_line() {
+        assert_eq!(ready_origin().as_deref(), Some("http://127.0.0.1:5123"));
+        assert_eq!(backend_origin(&url("tauri://localhost/index.html")), None);
+        assert_eq!(backend_origin(&url("data:text/html,hi")), None);
+    }
+
     #[test]
     fn only_the_backend_page_may_notify() {
-        let backend = url("http://127.0.0.1:5123/");
-        assert_eq!(permission(Some(&backend), &PermissionKind::Notifications), PermissionResponse::Allow);
-        assert_eq!(
-            permission(Some(&url("http://localhost:5123/")), &PermissionKind::Notifications),
-            PermissionResponse::Allow
-        );
+        let backend = ready_origin();
+        for page in ["http://127.0.0.1:5123/", "http://127.0.0.1:5123/launch?t=abc", "http://127.0.0.1:5123/#vault"] {
+            assert_eq!(
+                permission(Some(&url(page)), backend.as_deref(), &PermissionKind::Notifications),
+                PermissionResponse::Allow,
+                "{page}"
+            );
+        }
         for page in [
+            // another service on this computer: same host, another port
+            Some(url("http://127.0.0.1:8080/")),
+            Some(url("http://127.0.0.1/")),
+            // the same port under another name or scheme is another origin too
+            Some(url("http://localhost:5123/")),
+            Some(url("https://127.0.0.1:5123/")),
             Some(url("tauri://localhost/index.html")),
             Some(url("http://tauri.localhost/index.html")),
             Some(url("https://example.com/")),
             None,
         ] {
-            assert_eq!(permission(page.as_ref(), &PermissionKind::Notifications), PermissionResponse::Deny, "{page:?}");
+            assert_eq!(
+                permission(page.as_ref(), backend.as_deref(), &PermissionKind::Notifications),
+                PermissionResponse::Deny,
+                "{page:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn nothing_may_notify_before_the_backend_is_ready() {
+        for page in ["http://127.0.0.1:5123/", "tauri://localhost/index.html"] {
+            assert_eq!(permission(Some(&url(page)), None, &PermissionKind::Notifications), PermissionResponse::Deny);
+            assert!(!is_backend_page(&url(page), None));
         }
     }
 
     #[test]
     fn no_other_permission_is_ever_granted() {
         let backend = url("http://127.0.0.1:5123/");
+        let origin = ready_origin();
         for kind in [
             PermissionKind::Microphone,
             PermissionKind::Camera,
@@ -511,7 +577,7 @@ mod tests {
             PermissionKind::PointerLock,
             PermissionKind::Other,
         ] {
-            assert_eq!(permission(Some(&backend), &kind), PermissionResponse::Deny, "{kind:?}");
+            assert_eq!(permission(Some(&backend), origin.as_deref(), &kind), PermissionResponse::Deny, "{kind:?}");
         }
     }
 }

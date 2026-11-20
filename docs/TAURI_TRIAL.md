@@ -57,8 +57,9 @@ the pipe and points stdin itself at the null device (`main._detach_stdin`).
   (`file:`, `javascript:`, `ftp:`, custom ones) and a new window for the app itself are refused and
   logged (`route()` in `main.rs`, with unit tests). See [Links and notifications](#links-and-notifications-69);
 - desktop notifications: the shell answers the page's permission requests (`on_permission_request`):
-  **Notifications → allow, only for the backend's page; everything else (camera, microphone,
-  location, clipboard read…) → deny**. Each time the backend's page has loaded, the shell runs
+  **Notifications → allow, only for the backend's page (its exact origin, port included, taken
+  from the ready line: another service on 127.0.0.1 is denied); everything else (camera,
+  microphone, location, clipboard read…) → deny**. Each time the backend's page has loaded, the shell runs
   `Notification.requestPermission()` in it, so `Notification.permission` is `granted` from the
   first load (the engine forgets a grant when the app exits, and the port, part of the origin,
   changes every launch). Config → Desktop Notifications still decides whether the page notifies;
