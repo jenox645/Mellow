@@ -1,6 +1,7 @@
 """Start a built MellowDLP and check that it serves the app.
 
     python scripts/smoke_binary.py dist/MellowDLP     (or dist/MellowDLP/MellowDLP.exe)
+    python scripts/smoke_binary.py --shell dist/MellowDLP-backend/mellowdlp-backend[.exe]
 
 Runs it with --no-window and a throwaway home folder, waits for its
 instance file, signs in with it (as the app signs its own window in), then
@@ -8,17 +9,26 @@ checks /api/system (version, yt-dlp importable inside the bundle), the page,
 the bundled fonts and React. Exits non-zero on the first
 failure. Used by CI after every build and by the release workflow before it
 publishes anything.
+
+--shell: the backend the Tauri app carries (build_setup.py --tauri), started
+the way its shell starts it (src-tauri/src/backend.rs: `--shell`, pipes,
+MELLOW_SHELL=tauri): the ready line, its one-time launch link, the same
+checks, then stdin closed as when the window closes: it must exit 0 and
+remove its instance file.
 """
 from __future__ import annotations
 
 import json
 import os
+import queue
 import signal
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from pathlib import Path
+from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -32,6 +42,8 @@ for _stream in (sys.stdout, sys.stderr):
 
 START_TIMEOUT_SECS = 90     # a one-file build unpacks itself first
 REQUEST_TIMEOUT_SECS = 15
+SHELL_EXIT_TIMEOUT_SECS = 10   # stdin closed → the backend is gone
+READY_PREFIX = "MELLOW_READY "   # main.py READY_PREFIX
 
 
 def app_env(home: str) -> dict:
@@ -113,43 +125,100 @@ def _stop(proc: subprocess.Popen) -> None:
         proc.wait()
 
 
-def main(binary: str) -> int:
+def _serve_and_check(proc: subprocess.Popen, env: dict) -> None:
+    """Wait for the instance file, sign in with it and check what it serves."""
+    deadline = time.monotonic() + START_TIMEOUT_SECS
+    while not (found := running_apps(env)):
+        if proc.poll() is not None:
+            raise AssertionError(f"exited with code {proc.returncode} before it served anything")
+        if time.monotonic() > deadline:
+            raise AssertionError(f"no instance file after {START_TIMEOUT_SECS}s")
+        time.sleep(0.5)
+    base, info = found[0]
+    print(f"  serving at {base}")
+    # The instance file is written just before the server binds
+    for attempt in range(20):
+        try:
+            _check(base, sign_in(base, info))
+            break
+        except (ConnectionError, OSError) as exc:
+            if attempt == 19:
+                raise
+            print(f"  not up yet ({exc})")
+            time.sleep(0.5)
+
+
+def _ready_line(proc: subprocess.Popen) -> str:
+    """The backend's first stdout line, as the shell reads it (main.py _print_ready)."""
+    lines: queue.Queue = queue.Queue()
+    threading.Thread(target=lambda: lines.put(proc.stdout.readline()), daemon=True).start()
+    try:
+        line = lines.get(timeout=START_TIMEOUT_SECS).decode("utf-8", "replace").strip()
+    except queue.Empty:
+        raise AssertionError(f"no ready line after {START_TIMEOUT_SECS}s") from None
+    if not line.startswith(READY_PREFIX):
+        raise AssertionError(f"the first line isn't the ready line: {line!r}")
+    return line[len(READY_PREFIX):]
+
+
+def _check_shell(proc: subprocess.Popen, env: dict) -> None:
+    """--shell: the ready line, a launch link that works once, the app, then
+    stdin closed (the window closed) ends it."""
+    url = _ready_line(proc)
+    assert url.startswith("http://127.0.0.1:") and "/launch?t=" in url and " " not in url, url
+    print(f"  ready line: {url.split('?')[0]}?t=…")
+    with urlopen(url, timeout=REQUEST_TIMEOUT_SECS) as resp:
+        assert resp.status == 200 and "Set-Cookie" in resp.headers, "/launch didn't sign the window in"
+    try:
+        urlopen(url, timeout=REQUEST_TIMEOUT_SECS)
+        raise AssertionError("the launch link worked twice")
+    except HTTPError as exc:
+        assert exc.code == 403, f"a used launch link answered {exc.code}"
+    print("  launch link: signs in once, then 403")
+    _serve_and_check(proc, env)
+    proc.stdin.close()
+    try:
+        code = proc.wait(timeout=SHELL_EXIT_TIMEOUT_SECS)
+    except subprocess.TimeoutExpired:
+        raise AssertionError(f"still running {SHELL_EXIT_TIMEOUT_SECS}s after its stdin closed") from None
+    assert code == 0, f"exited with code {code} after its stdin closed"
+    assert not running_apps(env), "its instance file is still there"
+    print("  stdin closed: exited 0, instance file removed")
+
+
+def main(binary: str, shell: bool = False) -> int:
     exe = Path(binary).resolve()
     if not exe.exists():
         print(f"no such file: {exe}")
         return 1
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as home:
         env = app_env(home)
-        # Its own process group: a one-file build (and an AppImage) runs the
-        # app as a child that outlives the launcher's terminate()
-        proc = subprocess.Popen([str(exe), "--no-window"], env=env, **_NEW_GROUP)
         try:
-            deadline = time.monotonic() + START_TIMEOUT_SECS
-            while not (found := running_apps(env)):
-                if proc.poll() is not None:
-                    print(f"exited with code {proc.returncode} before it served anything")
-                    return 1
-                if time.monotonic() > deadline:
-                    print(f"no instance file after {START_TIMEOUT_SECS}s")
-                    return 1
-                time.sleep(0.5)
-            base, info = found[0]
-            print(f"  serving at {base}")
-            # The instance file is written just before the server binds
-            for attempt in range(20):
-                try:
-                    _check(base, sign_in(base, info))
-                    break
-                except (ConnectionError, OSError) as exc:
-                    if attempt == 19:
-                        raise
-                    print(f"  not up yet ({exc})")
-                    time.sleep(0.5)
+            if shell:
+                # As the Tauri shell starts it: pipes, no console, its own process group
+                env["MELLOW_SHELL"] = "tauri"
+                flags = ({"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW}
+                         if sys.platform == "win32" else {"start_new_session": True})
+                proc = subprocess.Popen([str(exe), "--shell"], env=env, cwd=str(exe.parent),
+                                        stdin=subprocess.PIPE, stdout=subprocess.PIPE, **flags)
+            else:
+                # Its own process group: a one-file build (and an AppImage) runs the
+                # app as a child that outlives the launcher's terminate()
+                proc = subprocess.Popen([str(exe), "--no-window"], env=env, **_NEW_GROUP)
+        except OSError as exc:
+            print(f"FAILED: couldn't start {exe}: {exc}")
+            return 1
+        try:
+            if shell:
+                _check_shell(proc, env)
+            else:
+                _serve_and_check(proc, env)
         except AssertionError as exc:
             print(f"FAILED: {exc}")
             return 1
         finally:
-            _stop(proc)
+            if proc.poll() is None:
+                _stop(proc)
             log = Path(home) / ".mellow_dlp.log"
             if log.exists():
                 print("-- app log --")
@@ -159,7 +228,10 @@ def main(binary: str) -> int:
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2:
+    args = sys.argv[1:]
+    shell_mode = "--shell" in args
+    args = [a for a in args if a != "--shell"]
+    if len(args) != 1:
         print(__doc__)
         sys.exit(2)
-    sys.exit(main(sys.argv[1]))
+    sys.exit(main(args[0], shell=shell_mode))
