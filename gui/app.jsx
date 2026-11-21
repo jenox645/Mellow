@@ -470,6 +470,7 @@ function App() {
 
         {page === 'feed' && (
           <FeedPage
+            View={S.pages.feed}
             dlState={dlState}
             stats={stats}
             sysInfo={sysInfo}
@@ -523,6 +524,7 @@ function App() {
         )}
         {page === 'vault' && (
           <VaultPage
+            View={S.pages.vault}
             vaultFolders={vaultFolders}
             selectedFolder={selectedVaultFolder}
             setSelectedFolder={setSelectedVaultFolder}
