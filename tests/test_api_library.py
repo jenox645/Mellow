@@ -85,7 +85,7 @@ def test_entry_without_folder_syncs_where_the_vault_shows_it(client, tmp_path):
     analytics.upsert_library_entry({'id': 'e1', 'name': 'Lofi', 'url': 'https://x/pl',
                                     'folder': '', 'folder_name': 'Lofi', 'use_subfolder': True})
     entry = analytics.get_library_entry('e1')
-    _, output_dir = library.build_sync_opts(entry, load_config(), 'add')
+    _, output_dir = library.build_sync_opts(entry, load_config())
     assert output_dir == str(root / 'Lofi')
     folders = client.get('/api/vault').get_json()['folders']
     assert [(f['path'], f.get('library_id')) for f in folders] == [(str(root / 'Lofi'), 'e1')]
