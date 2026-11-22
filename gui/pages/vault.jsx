@@ -1,13 +1,11 @@
 // VAULT page — folder grid, folder view, file actions.
+// The logic is useVaultPage (vault-logic.js); this file is Classic's view of it. A theme can
+// register its own view of the Vault (gui/themes/slots.jsx, `pages: { vault: … }`).
 'use strict';
 
-import { API } from '../lib/api.js';
 import { fmtBytes, fmtDate, fmtWait, timeAgo } from '../lib/util.js';
 import { Ico } from '../components/icons.jsx';
-import { TAGGABLE_AUDIO } from '../lib/constants.js';
-import { Modal, Mascot, useFitInWindow } from '../components/common.jsx';
-import { useMarquee } from '../components/marquee.jsx';
-import { clickSelect } from '../lib/selection.js';
+import { Modal, Mascot } from '../components/common.jsx';
 import {
   MASCOT_CHILLING, MASCOT_TIRED, MASCOT_FRUSTRATED, MASCOT_COMFY_SAFE,
 } from '../lib/mascots.js';
@@ -15,20 +13,18 @@ import {
   LinkPlaylistModal, SyncPlaylistModal,
   RenameVaultModal, DuplicatesModal,
 } from '../components/vault-modals.jsx';
+import { isVideoExt, mediaStreamUrl, useVaultPage } from './vault-logic.js';
 
-const BYTES_PER_GB = 1024 ** 3;
-const VIDEO_PREVIEW_EXTS = ['mp4', 'webm', 'mkv', 'avi', 'mov'];
-
-// In-app preview — streams through /api/vault/stream (Range-aware, seekable)
+// In-app preview: the file streamed by the server (seekable)
 function MediaPreviewModal({ file, onClose }) {
-  const src = '/api/vault/stream?path=' + encodeURIComponent(file.path);
-  const isVideo = VIDEO_PREVIEW_EXTS.includes((file.ext || '').toLowerCase());
+  const src = mediaStreamUrl(file.path);
+  const isVideo = isVideoExt(file.ext);
   return (
     <Modal title={'PREVIEW — ' + file.name.toUpperCase().slice(0, 40)} onClose={onClose} footer={
       <button className="btn btn-secondary btn-sm" onClick={onClose}>CLOSE</button>
     }>
       {isVideo ? (
-        <video src={src} controls autoPlay style={{ width: '100%', maxHeight: 380, background: '#000' }} />
+        <video src={src} controls autoPlay style={{ width: '100%', maxHeight: 380, background: 'var(--media-bg)' }} />
       ) : (
         <audio src={src} controls autoPlay style={{ width: '100%' }} />
       )}
@@ -38,7 +34,7 @@ function MediaPreviewModal({ file, onClose }) {
 
 // Last sync of a folder: counts, then (on demand) what was added, what failed
 // and why. Failed items with a link can be downloaded again from here.
-function SyncReport({ report, folder, showNotif }) {
+function SyncReport({ report, onRetry }) {
   const [open, setOpen] = React.useState(false);
   const added = report.added || [], failed = report.failed || [], filtered = report.filtered || [];
   const parts = [
@@ -47,12 +43,8 @@ function SyncReport({ report, folder, showNotif }) {
     filtered.length ? filtered.length + ' skipped (Shorts / live)' : null,
     failed.length ? failed.length + ' failed' : null,
   ].filter(Boolean);
-  const mono = { fontFamily: 'Share Tech Mono, monospace', fontSize: 10.5 };
-  const statusColor = report.status === 'complete' ? 'var(--green)' : report.status === 'failed' ? 'var(--red)' : 'var(--t3)';
-  // Into this folder, in the format it syncs with
-  const retry = (url) => API.post('/api/vault/retry-item', { path: folder, url })
-    .then(() => showNotif('Re-queued', url))
-    .catch(e => showNotif('Error', e.message, 'error'));
+  const mono = { fontFamily: 'var(--font-mono)', fontSize: 10.5 };
+  const statusColor = report.status === 'complete' ? 'var(--success)' : report.status === 'failed' ? 'var(--danger)' : 'var(--t3)';
   return (
     <div style={{ padding: '8px 14px', borderTop: '1px solid var(--border)', ...mono }}>
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', color: 'var(--t2)' }}>
@@ -60,29 +52,29 @@ function SyncReport({ report, folder, showNotif }) {
         <span>{parts.join(' · ')}</span>
         <span style={{ color: 'var(--t4)' }}>{timeAgo(report.finished_at)}</span>
         {(added.length || failed.length || filtered.length || report.error) ? (
-          <span style={{ marginLeft: 'auto', cursor: 'pointer', color: 'var(--cyan)' }} onClick={() => setOpen(o => !o)}>
+          <span style={{ marginLeft: 'auto', cursor: 'pointer', color: 'var(--accent)' }} onClick={() => setOpen(o => !o)}>
             {open ? 'HIDE' : 'DETAILS'}
           </span>
         ) : null}
       </div>
       {open && (
         <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 260, overflowY: 'auto' }}>
-          {report.error && <div style={{ color: 'var(--red)' }}>{report.error}</div>}
+          {report.error && <div style={{ color: 'var(--danger)' }}>{report.error}</div>}
           {failed.map((f, i) => (
             <div key={'f' + i} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-              <span style={{ color: 'var(--red)', minWidth: 52 }}>FAILED</span>
+              <span style={{ color: 'var(--danger)', minWidth: 52 }}>FAILED</span>
               <span style={{ flex: 1, minWidth: 0, color: 'var(--t2)' }} title={f.message}>
                 {f.title ? <span style={{ color: 'var(--t1)' }}>{f.title} — {f.hint} </span> : null}
                 <span style={{ color: f.title ? 'var(--t4)' : undefined }}>{f.message}</span>
               </span>
-              {f.url && <button className="btn btn-secondary btn-sm" style={{ padding: '2px 7px', fontSize: 9.5 }} onClick={() => retry(f.url)}>↻ RETRY</button>}
+              {f.url && <button className="btn btn-secondary btn-sm" style={{ padding: '2px 7px', fontSize: 9.5 }} onClick={() => onRetry(f.url)}>↻ RETRY</button>}
             </div>
           ))}
           {added.map((t, i) => (
-            <div key={'a' + i}><span style={{ color: 'var(--green)', display: 'inline-block', minWidth: 60 }}>NEW</span>{t}</div>
+            <div key={'a' + i}><span style={{ color: 'var(--success)', display: 'inline-block', minWidth: 60 }}>NEW</span>{t}</div>
           ))}
           {filtered.map((t, i) => (
-            <div key={'s' + i}><span style={{ color: 'var(--amber)', display: 'inline-block', minWidth: 60 }}>SKIPPED</span>{t}</div>
+            <div key={'s' + i}><span style={{ color: 'var(--warn)', display: 'inline-block', minWidth: 60 }}>SKIPPED</span>{t}</div>
           ))}
         </div>
       )}
@@ -90,352 +82,30 @@ function SyncReport({ report, folder, showNotif }) {
   );
 }
 
-export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, config, setConfig, showNotif, onAddVault, onRefreshVault, isDownloading, onSyncStart }) {
-  const [files, setFiles] = React.useState([]);
-  const [loading, setLoading] = React.useState(false);
-  const [ctxMenu, setCtxMenu] = React.useState(null);
-  const [libraryEntries, setLibraryEntries] = React.useState([]);
-  const [syncingId, setSyncingId] = React.useState(null);
-  const [deleteConfirm, setDeleteConfirm] = React.useState(null);
-  const [dragOver, setDragOver] = React.useState(false);
-  const [dropModal, setDropModal] = React.useState(null);
-  const [vaultSearch, setVaultSearch] = React.useState('');
-  const [vaultSort, setVaultSort] = React.useState('name');
-  const [folderMosaics, setFolderMosaics] = React.useState({});
-  const [cardMenuData, setCardMenuData] = React.useState(null); // { folder, top, right }
-  const ctxMenuRef = useFitInWindow(ctxMenu);
-  const cardMenuRef = useFitInWindow(cardMenuData);
-  const [linkPlModal, setLinkPlModal] = React.useState(null);
-  const [renameModal, setRenameModal] = React.useState(null);
-  const [moveModal, setMoveModal] = React.useState(null);   // {folder, into, moving}
-  const [syncModal, setSyncModal] = React.useState(null);
-  const [retagOpen, setRetagOpen] = React.useState(false);
-  const [retagging, setRetagging] = React.useState(false);
-  const [folderStatsModal, setFolderStatsModal] = React.useState(null); // folder stats modal
-  const [folderStatsData, setFolderStatsData] = React.useState(null);
-  // path → thumbnail URL for the open folder; null until known, so a card
-  // doesn't fetch a guessed URL first and the right one after
-  const [fileThumbs, setFileThumbs] = React.useState(null);
-  const [vaultScale, setVaultScale] = React.useState(() => { try { return localStorage.getItem('vault_scale') || 'md'; } catch { return 'md'; } });
-  const [selectedFiles, setSelectedFiles] = React.useState(new Set());
-  const [selectionMode, setSelectionMode] = React.useState(false);
-  const [deleteManyConfirm, setDeleteManyConfirm] = React.useState(false);
-  const selectAnchor = React.useRef(null);     // where a Shift-click range starts
-  const filesBoxRef = React.useRef(null);
-  const marquee = useMarquee(filesBoxRef, selectedFiles, setSelectedFiles);
-  // LIST is for an open folder; the folder cards use SM there
-  const gridScale = vaultScale === 'list' ? 'sm' : vaultScale;
-  const [randomizerCount, setRandomizerCount] = React.useState(5);
-  const [randomizedFiles, setRandomizedFiles] = React.useState(null);
-  const [watchArchivePrompt, setWatchArchivePrompt] = React.useState(null); // { path }
-  const [dupModal, setDupModal] = React.useState(false);
-  const [previewFile, setPreviewFile] = React.useState(null);
-  const [budgetInput, setBudgetInput] = React.useState('');
-  const [cleanupData, setCleanupData] = React.useState(null);
+// The Vault: its logic, drawn by the theme's view (Classic's unless the theme has one)
+export function VaultPage({ View = ClassicVaultView, ...props }) {
+  const vault = useVaultPage(props);
+  return <View {...vault} />;
+}
 
-  const budgets = config.vault_budgets || {};
-
-  const handleSetBudget = React.useCallback((folderPath, gb) => {
-    const bytes = gb ? Math.round(parseFloat(gb) * BYTES_PER_GB) : null;
-    if (gb && (!Number.isFinite(parseFloat(gb)) || parseFloat(gb) <= 0)) {
-      showNotif('Invalid budget', 'Enter a size in GB (e.g. 25)', 'error');
-      return;
-    }
-    API.post('/api/vault/budget', { path: folderPath, budget_bytes: bytes })
-      .then(d => {
-        setConfig && setConfig(c => ({ ...c, vault_budgets: d.budgets }));
-        const folderName = folderPath.split(/[\\/]/).pop();
-        showNotif(bytes ? 'Budget Set' : 'Budget Cleared',
-          bytes ? fmtBytes(bytes) + ' for ' + folderName : folderName, 'success');
-        setCleanupData(null);
-      })
-      .catch(e => showNotif('Error', e.message, 'error'));
-  }, [setConfig, showNotif]);
-
-  const loadCleanupCandidates = React.useCallback((folderPath) => {
-    setCleanupData('loading');
-    API.get('/api/vault/cleanup-candidates?path=' + encodeURIComponent(folderPath))
-      .then(setCleanupData)
-      .catch(e => { showNotif('Error', e.message, 'error'); setCleanupData(null); });
-  }, [showNotif]);
-
-  const refreshLibraryEntries = React.useCallback(() => {
-    API.get('/api/library').then(setLibraryEntries).catch(() => {});
-  }, []);
-
-  React.useEffect(() => {
-    refreshLibraryEntries();
-  }, []);
-
-  const loadFolder = React.useCallback((folder) => {
-    setLoading(true);
-    setFileThumbs(null);
-    API.get('/api/vault/folder?path=' + encodeURIComponent(folder))
-      .then(d => {
-        const loaded = d.files || [];
-        setFiles(loaded);
-        if (!loaded.length) { setFileThumbs({}); return; }
-        API.post('/api/vault/file-thumbs', { paths: loaded.map(f => f.path) })
-          .then(r => setFileThumbs(r.thumbs || {}))
-          .catch(() => setFileThumbs({}));
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, []);
-
-  // Reloaded when the folder changes on disk too: a sync (or a move) that
-  // finished while it was open refreshes the vault, and its counts with it
-  const openFolderMeta = vaultFolders.find(f => f.path === selectedFolder);
-  const openFolderStamp = openFolderMeta ? [openFolderMeta.item_count, openFolderMeta.size_bytes, openFolderMeta.modified_at].join('|') : '';
-  React.useEffect(() => {
-    if (selectedFolder) loadFolder(selectedFolder);
-  }, [selectedFolder, loadFolder, openFolderStamp]);
-
-  // A selection belongs to its folder: kept, DELETE in the next folder would
-  // remove files of the one before
-  React.useEffect(() => {
-    setSelectedFiles(new Set());
-    selectAnchor.current = null;
-  }, [selectedFolder]);
-
-  // Load thumbnail mosaics for all vault folder cards
-  React.useEffect(() => {
-    if (!vaultFolders.length) return;
-    vaultFolders.forEach(folder => {
-      if (folderMosaics[folder.path] !== undefined) return;
-      API.get('/api/vault/folder-previews?path=' + encodeURIComponent(folder.path))
-        .then(d => setFolderMosaics(prev => ({ ...prev, [folder.path]: d.thumbs || [] })))
-        .catch(() => setFolderMosaics(prev => ({ ...prev, [folder.path]: [] })));
-    });
-  }, [vaultFolders]);
-
-  const selectedFolderMeta = vaultFolders.find(f => f.path === selectedFolder);
-  // The server links a folder to its library entry (library_id); matching on
-  // the folder name here attached "My Music" to an entry called "Music"
-  const libEntry = selectedFolderMeta && selectedFolderMeta.library_id
-    ? libraryEntries.find(e => e.id === selectedFolderMeta.library_id)
-    : null;
-
-  // Same sync as the folder card: every linked playlist, in the format the
-  // folder remembers. (It used to sync only the library entry's first URL,
-  // with the entry's settings.) Library sync is the fallback for entries
-  // made before playlists were linked to folders.
-  const handleSync = React.useCallback(() => {
-    if (!selectedFolder) return;
-    if (isDownloading) showNotif('Note', 'Sync will queue after current download', 'info');
-    setSyncingId(selectedFolder);
-    const label = libEntry ? libEntry.name : selectedFolder.split(/[\\/]/).pop();
-    API.post('/api/vault/sync', { path: selectedFolder })
-      .catch(e => {
-        if (!libEntry || e.status !== 400) throw e;
-        return API.post('/api/library/' + libEntry.id + '/sync', { mode: libEntry.sync_mode || 'add' });
-      })
-      .then(() => showNotif('Sync started', label))
-      .catch(e => showNotif('Error', e.message, 'error'))
-      .finally(() => setSyncingId(null));
-  }, [selectedFolder, libEntry, isDownloading, showNotif]);
-
-  // The card and this view read different stamps; show whichever is newer
-  const lastSynced = [libEntry && libEntry.last_synced, selectedFolderMeta && selectedFolderMeta.last_synced]
-    .filter(Boolean)
-    .sort((a, b) => new Date(b) - new Date(a))[0] || null;
-  // A folder with linked playlists can sync before its first sync, too
-  const canSync = !!(libEntry || (selectedFolderMeta && selectedFolderMeta.playlist_count > 0));
-  const taggableCount = files.filter(f => TAGGABLE_AUDIO.includes((f.ext || '').toLowerCase())).length;
-
-  // RE-TAG: album, track numbers (the linked playlist's current order) and
-  // artists for the audio files already here, as a download now writes them
-  const handleRetag = React.useCallback(() => {
-    if (!selectedFolder) return;
-    setRetagging(true);
-    API.post('/api/vault/retag', { path: selectedFolder })
-      .then(r => {
-        setRetagOpen(false);
-        const numbered = r.numbered ? `, numbered in playlist order (${r.numbered})` : '';
-        showNotif('Tags Updated', `${r.tagged} file${r.tagged === 1 ? '' : 's'} tagged as the album "${r.album}"${numbered}`
-          + (r.unchanged ? ` · ${r.unchanged} already right` : '') + (r.failed ? ` · ${r.failed} couldn't be written` : ''),
-          r.failed ? 'warn' : 'success');
-      })
-      .catch(e => showNotif('Re-tag Failed', e.message, 'error'))
-      .finally(() => setRetagging(false));
-  }, [selectedFolder, showNotif]);
-
-  // What the folder's last sync did; refetched when a sync finishes (lastSynced moves)
-  const [syncReport, setSyncReport] = React.useState(null);
-  React.useEffect(() => {
-    setSyncReport(null);
-    if (!selectedFolder) return;
-    API.get('/api/vault/sync-report?path=' + encodeURIComponent(selectedFolder))
-      .then(d => setSyncReport(d.report))
-      .catch(() => {});
-  }, [selectedFolder, lastSynced, vaultFolders]);
-
-  const handleRandomize = React.useCallback(() => {
-    // The folder listing holds media files only
-    if (!files.length) { showNotif('No media', 'No media files in this folder', 'error'); return; }
-    // Fisher–Yates: sort() with a random comparator favours some orders
-    const shuffled = [...files];
-    for (let i = shuffled.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-    }
-    setRandomizedFiles(shuffled.slice(0, Math.min(Number(randomizerCount) || 1, shuffled.length)));
-    setSelectedFiles(new Set());
-    setSelectionMode(true);
-  }, [files, randomizerCount, showNotif]);
-
-  // The open folder's files as shown: searched, then sorted
-  const shownFiles = React.useMemo(() => files
-    .filter(f => !vaultSearch || f.name.toLowerCase().includes(vaultSearch.toLowerCase()))
-    .sort((a, b) => {
-      if (vaultSort === 'size') return (b.size_bytes || 0) - (a.size_bytes || 0);
-      if (vaultSort === 'date') return (b.created || 0) - (a.created || 0);
-      return a.name.localeCompare(b.name);
-    }), [files, vaultSearch, vaultSort]);
-
-  // Keys in an open folder, as in a file explorer: Ctrl/⌘+A selects every file
-  // shown, Esc clears the selection, Delete asks to delete the selected files
-  React.useEffect(() => {
-    if (!selectedFolder) return undefined;
-    const onKey = (e) => {
-      if (e.target.closest && e.target.closest('input, textarea, select, [contenteditable]')) return;
-      if (document.querySelector('.modal-box')) return;
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a' && shownFiles.length) {
-        e.preventDefault();
-        setSelectedFiles(new Set(shownFiles.map(f => f.path)));
-      } else if (e.key === 'Escape' && selectedFiles.size) {
-        setSelectedFiles(new Set());
-      } else if (e.key === 'Delete' && selectedFiles.size) {
-        setDeleteManyConfirm(true);
-      }
-    };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [selectedFolder, shownFiles, selectedFiles]);
-
-  const handlePlayAll = React.useCallback(() => {
-    const paths = shownFiles.map(f => f.path);
-    if (!paths.length) return;
-    API.post('/api/vault/play-files', { paths })
-      .then(() => showNotif('Playing', paths.length + ' files opened in player', 'success'))
-      .catch(e => showNotif('Error', e.message, 'error'));
-  }, [shownFiles, showNotif]);
-
-  const handlePlayRandom = React.useCallback(() => {
-    const randPaths = (randomizedFiles || []).map(f => f.path);
-    const manualPaths = files.filter(f => selectedFiles.has(f.path)).map(f => f.path);
-    const paths = [...new Set([...randPaths, ...manualPaths])];
-    if (!paths.length) return;
-    API.post('/api/vault/play-files', { paths })
-      .then(() => showNotif('Playing', paths.length + ' files opened in player', 'success'))
-      .catch(e => showNotif('Error', e.message, 'error'));
-  }, [randomizedFiles, selectedFiles, files, showNotif]);
-
-  const handlePlaySelected = React.useCallback(() => {
-    if (!selectedFiles.size) return;
-    const paths = files.filter(f => selectedFiles.has(f.path)).map(f => f.path);
-    API.post('/api/vault/play-files', { paths })
-      .then(() => showNotif('Playing', paths.length + ' files opened in player', 'success'))
-      .catch(e => showNotif('Error', e.message, 'error'));
-  }, [selectedFiles, files, showNotif]);
-
-  const handleDeleteSelected = React.useCallback(() => {
-    if (!selectedFiles.size) return;
-    const paths = [...selectedFiles];
-    Promise.all(paths.map(p => API.del('/api/vault/file', { path: p }).then(() => p, () => null)))
-      .then(results => {
-        const deleted = new Set(results.filter(Boolean));
-        setFiles(f => f.filter(x => !deleted.has(x.path)));
-        const failed = paths.length - deleted.size;
-        if (deleted.size) showNotif('Deleted', deleted.size + ' file(s)');
-        if (failed) showNotif('Not Deleted', failed + ' file(s) could not be deleted (in use or read-only?)', 'error');
-        setSelectedFiles(new Set());
-        setSelectionMode(false);
-        setDeleteManyConfirm(false);
-      });
-  }, [selectedFiles, showNotif]);
-
-  const handleOpenFile = React.useCallback((path) => {
-    API.post('/api/vault/open-file', { path }).catch(() => {});
-  }, []);
-
-  const handleOpenFolder = React.useCallback((path) => {
-    API.post('/api/open-folder', { path }).catch(() => {});
-  }, []);
-
-  const handleDeleteFile = React.useCallback((file) => {
-    setDeleteConfirm(file);
-    setCtxMenu(null);
-  }, []);
-
-  const confirmDelete = React.useCallback(() => {
-    if (!deleteConfirm) return;
-    API.del('/api/vault/file', { path: deleteConfirm.path })
-      .then(() => {
-        setFiles(f => f.filter(x => x.path !== deleteConfirm.path));
-        showNotif('Deleted', deleteConfirm.name);
-      })
-      .catch(e => showNotif('Error', e.message, 'error'))
-      .finally(() => setDeleteConfirm(null));
-  }, [deleteConfirm, showNotif]);
-
-  const isVideoExt = (ext) => VIDEO_PREVIEW_EXTS.includes((ext || '').toLowerCase());
-
-  React.useEffect(() => {
-    const close = () => { setCtxMenu(null); setCardMenuData(null); };
-    document.addEventListener('click', close);
-    return () => document.removeEventListener('click', close);
-  }, []);
-
-  const handleVaultRemove = React.useCallback((folder) => {
-    API.post('/api/vault/remove', { path: folder.path })
-      .then(() => {
-        showNotif('Removed', folder.name);
-        if (selectedFolder === folder.path) setSelectedFolder(null);
-        setFolderMosaics(prev => { const next = { ...prev }; delete next[folder.path]; return next; });
-        onRefreshVault && onRefreshVault();
-        refreshLibraryEntries();
-      })
-      .catch(e => showNotif('Error', e.message, 'error'));
-    setCardMenuData(null);
-  }, [showNotif, onRefreshVault, selectedFolder, setSelectedFolder, refreshLibraryEntries]);
-
-  const handleVaultRename = React.useCallback((folder, name) => {
-    API.post('/api/vault/rename', { path: folder.path, name })
-      .then(() => {
-        setFolderMosaics(prev => { const next = { ...prev }; delete next[folder.path]; return next; });
-        onRefreshVault && onRefreshVault();
-        refreshLibraryEntries();
-      })
-      .catch(e => showNotif('Error', e.message, 'error'));
-    setRenameModal(null);
-  }, [showNotif, onRefreshVault, refreshLibraryEntries]);
-
-  // Move a folder elsewhere (the wrong one was picked): choose where, then confirm
-  const pickMoveTarget = React.useCallback((folder) => {
-    setCardMenuData(null);
-    const parent = folder.path.replace(/[\\/][^\\/]+[\\/]?$/, '');
-    API.post('/api/browse-folder', { initial: parent })
-      .then(d => { if (d.path) setMoveModal({ folder, into: d.path }); })
-      .catch(() => {});
-  }, []);
-
-  const handleMove = React.useCallback(() => {
-    const { folder, into } = moveModal;
-    setMoveModal(m => ({ ...m, moving: true }));
-    API.post('/api/vault/move', { path: folder.path, into })
-      .then(d => {
-        showNotif('Folder Moved', folder.name + ' → ' + d.path, 'success');
-        setFolderMosaics(prev => { const next = { ...prev }; delete next[folder.path]; return next; });
-        if (selectedFolder === folder.path) setSelectedFolder(d.path);
-        onRefreshVault && onRefreshVault();
-        refreshLibraryEntries();
-        setMoveModal(null);
-      })
-      .catch(e => { showNotif('Not Moved', e.message, 'error'); setMoveModal(m => m && { ...m, moving: false }); });
-  }, [moveModal, showNotif, selectedFolder, setSelectedFolder, onRefreshVault, refreshLibraryEntries]);
-
-  const moveDialog = moveModal && (
+export function ClassicVaultView({
+  vaultFolders, selectedFolder, setSelectedFolder, showNotif, onAddVault, onRefreshVault, isDownloading, onSyncStart,
+  budgets, folderMosaics, gridScale, vaultScale, setScale, refreshAll, syncAll, cardMenuData, setCardMenuData,
+  cardMenuRef, openFolderStats, generateArchive, handleVaultRemove, handleVaultRename, pickMoveTarget,
+  handleWatchFolder, confirmWatchFolder, watchArchivePrompt, setWatchArchivePrompt, dragOver, handleDragOver,
+  handleDragLeave, handleDrop, dropModal, setDropModal, linkPlModal, setLinkPlModal, syncModal, setSyncModal,
+  renameModal, setRenameModal, dupModal, setDupModal, moveModal, setMoveModal, handleMove, folderStatsModal,
+  setFolderStatsModal, folderStatsData, budgetInput, setBudgetInput, handleSetBudget, cleanupData,
+  loadCleanupCandidates, deleteCleanupCandidate, folderName, selectedFolderMeta, libEntry, lastSynced, canSync,
+  syncingId, handleSync, syncReport, retrySyncItem, taggableCount, retagOpen, setRetagOpen, retagging, handleRetag,
+  files, shownFiles, loading, loadFolder, fileThumbs, fileThumbUrl, vaultSearch, setVaultSearch, vaultSort,
+  setVaultSort, handleOpenFile, handleOpenFolder, handleDeleteFile, deleteConfirm, setDeleteConfirm, confirmDelete,
+  ctxMenu, setCtxMenu, ctxMenuRef, previewFile, setPreviewFile, randomizerCount, setRandomizerCount,
+  randomizedFiles, setRandomizedFiles, handleRandomize, handlePlayAll, handlePlayRandom, filesBoxRef, marquee,
+  onFileClick, selectedFiles, setSelectedFiles, selectionMode, setSelectionMode, showChecks, handlePlaySelected,
+  deleteManyConfirm, setDeleteManyConfirm, handleDeleteSelected,
+}) {
+  const moveDialog = () => moveModal && (
     <Modal title="MOVE FOLDER" onClose={() => !moveModal.moving && setMoveModal(null)}
       footer={<>
         <button className="btn btn-secondary btn-sm" disabled={moveModal.moving} onClick={() => setMoveModal(null)}>CANCEL</button>
@@ -456,34 +126,6 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
     </Modal>
   );
 
-  const handleWatchFolder = React.useCallback(() => {
-    API.post('/api/browse-folder', {}).then(d => {
-      if (!d.path) return;
-      setWatchArchivePrompt({ path: d.path });
-    }).catch(() => {});
-  }, []);
-
-  const confirmWatchFolder = React.useCallback((folderPath, createArchive) => {
-    setWatchArchivePrompt(null);
-    API.post('/api/vault/watch', { path: folderPath, create_archive: createArchive })
-      .then(() => {
-        showNotif('Watch Folder Added', folderPath.split(/[\\/]/).pop() + (createArchive ? ' · mellow_archive.txt created' : ''), 'success');
-        onRefreshVault && onRefreshVault();
-      })
-      .catch(e => showNotif('Error', e.message, 'error'));
-  }, [showNotif, onRefreshVault]);
-
-  const handleDragOver = (e) => { e.preventDefault(); e.stopPropagation(); setDragOver(true); };
-  const handleDragLeave = (e) => { e.preventDefault(); setDragOver(false); };
-  const handleDrop = (e) => {
-    e.preventDefault(); e.stopPropagation(); setDragOver(false);
-    const droppedFiles = Array.from(e.dataTransfer.files || []);
-    if (droppedFiles.length > 0) {
-      const first = droppedFiles[0];
-      setDropModal({ name: first.name });
-    }
-  };
-
   // ── ROOT VIEW — folder grid ──────────────────────────────────────────────────
   if (!selectedFolder) {
     return (
@@ -502,19 +144,15 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
             <div className="pills" style={{ marginBottom: 0 }}>
               {['sm','md','lg'].map(s => (
                 <div key={s} className={'pill' + (gridScale === s ? ' active' : '')}
-                  onClick={() => { setVaultScale(s); try { localStorage.setItem('vault_scale', s); } catch {} }}>
+                  onClick={() => setScale(s)}>
                   {s.toUpperCase()}
                 </div>
               ))}
             </div>
-            <button className="btn btn-secondary btn-sm" onClick={() => { onRefreshVault && onRefreshVault(); refreshLibraryEntries(); }} title="Refresh vault">↻ REFRESH</button>
+            <button className="btn btn-secondary btn-sm" onClick={refreshAll} title="Refresh vault">↻ REFRESH</button>
             {vaultFolders.some(f => f.playlist_count > 0) && (
               <button className="btn btn-secondary btn-sm" title="Sync all folders with linked playlists"
-                onClick={() => {
-                  API.post('/api/vault/sync-all', {})
-                    .then(d => showNotif('Sync All Queued', d.count + ' folder(s) queued', 'success'))
-                    .catch(e => showNotif('Sync Error', e.message, 'error'));
-                }} data-tour="vault-sync-all">↻ SYNC ALL</button>
+                onClick={syncAll} data-tour="vault-sync-all">↻ SYNC ALL</button>
             )}
             <button className="btn btn-secondary btn-sm" data-tour="vault-dupes" onClick={() => setDupModal(true)} title="Find duplicate files across folders">⧉ FIND DUPES</button>
             <button className="btn btn-secondary btn-sm" data-tour="vault-watch" onClick={handleWatchFolder}>
@@ -578,7 +216,7 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
 
                   {folder.watched && <span className="vfc-watched-badge">WATCHED</span>}
                   {budgets[folder.path] && folder.size_bytes > budgets[folder.path] && (
-                    <span className="vfc-watched-badge" style={{ background: 'var(--red)', top: 6, left: 6, right: 'auto' }} title={'Over the ' + fmtBytes(budgets[folder.path]) + ' budget'}>
+                    <span className="vfc-watched-badge" style={{ background: 'var(--danger)', top: 6, left: 6, right: 'auto' }} title={'Over the ' + fmtBytes(budgets[folder.path]) + ' budget'}>
                       OVER BUDGET
                     </span>
                   )}
@@ -615,28 +253,14 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
             style={{ top: cardMenuData.top, right: cardMenuData.right }}
             onClick={e => e.stopPropagation()}
           >
-            <div className="vfc-menu-item" onClick={() => {
-              const f = cardMenuData.folder;
-              setCardMenuData(null);
-              setFolderStatsData(null);
-              setCleanupData(null);
-              setBudgetInput(budgets[f.path] ? String(budgets[f.path] / BYTES_PER_GB) : '');
-              setFolderStatsModal(f);
-              API.get('/api/vault/folder-stats?path=' + encodeURIComponent(f.path)).then(setFolderStatsData).catch(() => {});
-            }}>Stats &amp; Budget</div>
+            <div className="vfc-menu-item" onClick={() => openFolderStats(cardMenuData.folder)}>Stats &amp; Budget</div>
             <div className="vfc-menu-item" onClick={() => { setCardMenuData(null); setLinkPlModal(cardMenuData.folder); }}>Link Playlist</div>
             <div className="vfc-menu-item" onClick={() => { setCardMenuData(null); setSyncModal(cardMenuData.folder); }}>Sync</div>
-            <div className="vfc-menu-item" onClick={() => { setCardMenuData(null); API.post('/api/open-folder', { path: cardMenuData.folder.path }).catch(() => {}); }}>Open in Explorer</div>
+            <div className="vfc-menu-item" onClick={() => { setCardMenuData(null); handleOpenFolder(cardMenuData.folder.path); }}>Open in Explorer</div>
             <div className="vfc-menu-item" onClick={() => { setCardMenuData(null); setRenameModal({ folder: cardMenuData.folder, name: cardMenuData.folder.name }); }}>Rename</div>
             <div className="vfc-menu-item" onClick={() => pickMoveTarget(cardMenuData.folder)}
               title="Move the folder somewhere else; its playlists, sync settings and history follow">Move to…</div>
-            <div className="vfc-menu-item" onClick={() => {
-              const f = cardMenuData.folder;
-              setCardMenuData(null);
-              API.post('/api/vault/archive-generate', { path: f.path })
-                .then(d => showNotif('Archive Ready', d.migrated ? 'Migrated old archive → mellow_archive.txt' : 'mellow_archive.txt ready in ' + f.name, 'success'))
-                .catch(e => showNotif('Error', e.message, 'error'));
-            }}>Generate Archive File</div>
+            <div className="vfc-menu-item" onClick={() => generateArchive(cardMenuData.folder)}>Generate Archive File</div>
             <div className="vfc-menu-item danger" onClick={() => handleVaultRemove(cardMenuData.folder)}>Remove from Vault</div>
           </div>
         )}
@@ -651,8 +275,8 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
               </>
             }
           >
-            <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 11, color: 'var(--t2)', textAlign: 'center', lineHeight: 2 }}>
-              Dropped: <span style={{ color: 'var(--cyan)' }}>{dropModal.name}</span><br />
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--t2)', textAlign: 'center', lineHeight: 2 }}>
+              Dropped: <span style={{ color: 'var(--accent)' }}>{dropModal.name}</span><br />
               <span style={{ color: 'var(--t4)', fontSize: 10.5 }}>What would you like to do?</span>
             </div>
           </Modal>
@@ -663,7 +287,7 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
         {dupModal && <DuplicatesModal onClose={() => setDupModal(false)} showNotif={showNotif} onRefreshVault={onRefreshVault} />}
 
         {syncModal && <SyncPlaylistModal folder={syncModal} onClose={() => setSyncModal(null)} showNotif={showNotif} onRefreshVault={onRefreshVault} isDownloading={isDownloading} onSyncStart={onSyncStart} />}
-        {moveDialog}
+        {moveDialog()}
 
         {renameModal && (
           <RenameVaultModal
@@ -684,9 +308,9 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
               </>
             }
           >
-            <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 11, color: 'var(--t2)', lineHeight: 2 }}>
-              <div style={{ color: 'var(--cyan)', marginBottom: 6 }}>{watchArchivePrompt.path}</div>
-              <div>Create a <span style={{ color: 'var(--amber)' }}>mellow_archive.txt</span> in this folder?</div>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--t2)', lineHeight: 2 }}>
+              <div style={{ color: 'var(--accent)', marginBottom: 6 }}>{watchArchivePrompt.path}</div>
+              <div>Create a <span style={{ color: 'var(--accent-2)' }}>mellow_archive.txt</span> in this folder?</div>
               <div style={{ color: 'var(--t4)', fontSize: 10.5, marginTop: 4 }}>
                 This file tracks downloaded items so syncs skip duplicates,<br />
                 and can be imported as a URL list in the Feed section.
@@ -698,11 +322,11 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
         {folderStatsModal && (
           <Modal title={'STATS — ' + folderStatsModal.name.toUpperCase()} onClose={() => setFolderStatsModal(null)}>
             {!folderStatsData ? (
-              <div style={{ padding: 24, textAlign: 'center', color: 'var(--t3)', fontFamily: 'Share Tech Mono, monospace', fontSize: 11 }}>Loading...</div>
+              <div style={{ padding: 24, textAlign: 'center', color: 'var(--t3)', fontFamily: 'var(--font-mono)', fontSize: 11 }}>Loading...</div>
             ) : folderStatsData.error ? (
-              <div style={{ padding: 24, color: 'var(--red)', fontFamily: 'Share Tech Mono, monospace', fontSize: 11 }}>{folderStatsData.error}</div>
+              <div style={{ padding: 24, color: 'var(--danger)', fontFamily: 'var(--font-mono)', fontSize: 11 }}>{folderStatsData.error}</div>
             ) : (
-              <div style={{ padding: '8px 0', fontFamily: 'Share Tech Mono, monospace', fontSize: 11 }}>
+              <div style={{ padding: '8px 0', fontFamily: 'var(--font-mono)', fontSize: 11 }}>
                 {(() => {
                   const s = folderStatsData;
                   const rows = [
@@ -720,13 +344,13 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
                   return rows.map(([label, val]) => (
                     <div key={label} style={{ display: 'flex', gap: 12, padding: '5px 0', borderBottom: '1px solid var(--border)' }}>
                       <span style={{ color: 'var(--t3)', minWidth: 120, flexShrink: 0 }}>{label}</span>
-                      <span style={{ color: 'var(--cyan)', wordBreak: 'break-all', fontSize: 11 }}>{val || '—'}</span>
+                      <span style={{ color: 'var(--accent)', wordBreak: 'break-all', fontSize: 11 }}>{val || '—'}</span>
                     </div>
                   ));
                 })()}
                 {/* STORAGE BUDGET */}
                 <div style={{ marginTop: 14, paddingTop: 10, borderTop: '1px solid var(--border)' }}>
-                  <div style={{ color: 'var(--amber)', fontSize: 10.5, letterSpacing: '0.1em', marginBottom: 6 }}>STORAGE BUDGET</div>
+                  <div style={{ color: 'var(--accent-2)', fontSize: 10.5, letterSpacing: '0.1em', marginBottom: 6 }}>STORAGE BUDGET</div>
                   <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                     <input
                       className="inp-sm" type="number" min="0" step="0.5" style={{ width: 90 }}
@@ -741,7 +365,7 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
                   </div>
                   {budgets[folderStatsModal.path] && folderStatsData.total_size_bytes > budgets[folderStatsModal.path] && (
                     <div style={{ marginTop: 8 }}>
-                      <div style={{ color: 'var(--red)', fontSize: 11 }}>
+                      <div style={{ color: 'var(--danger)', fontSize: 11 }}>
                         ⚠ {fmtBytes(folderStatsData.total_size_bytes - budgets[folderStatsModal.path])} over budget
                       </div>
                       <button className="btn btn-secondary btn-sm" style={{ marginTop: 6 }}
@@ -763,11 +387,7 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
                           <span style={{ flex: 1, color: 'var(--t2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</span>
                           <span style={{ color: 'var(--t4)', flexShrink: 0 }}>{fmtBytes(f.size)} · {fmtDate(f.mtime * 1000)}</span>
                           <button className="btn btn-danger btn-sm" style={{ padding: '1px 6px', fontSize: 9.5, flexShrink: 0 }}
-                            onClick={() => {
-                              API.del('/api/vault/file', { path: f.path })
-                                .then(() => { showNotif('Deleted', f.name); loadCleanupCandidates(folderStatsModal.path); onRefreshVault && onRefreshVault(); })
-                                .catch(e => showNotif('Error', e.message, 'error'));
-                            }}>✕</button>
+                            onClick={() => deleteCleanupCandidate(f)}>✕</button>
                         </div>
                       ))}
                     </div>
@@ -775,7 +395,7 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
                 </div>
 
                 <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
-                  <button className="btn btn-secondary btn-sm" onClick={() => { setFolderStatsModal(null); API.post('/api/open-folder', { path: folderStatsModal.path }).catch(() => {}); }}>OPEN IN EXPLORER</button>
+                  <button className="btn btn-secondary btn-sm" onClick={() => { setFolderStatsModal(null); handleOpenFolder(folderStatsModal.path); }}>OPEN IN EXPLORER</button>
                 </div>
               </div>
             )}
@@ -786,18 +406,6 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
   }
 
   // ── FOLDER VIEW ──────────────────────────────────────────────────────────────
-  // A click opens the file; with SELECT on, Ctrl/⌘ or Shift it selects instead
-  // (Shift: the range from the last file clicked), like a file explorer
-  const onFileClick = (e, file) => {
-    if (marquee.consumeClick()) return;
-    const add = e.ctrlKey || e.metaKey;
-    if (!(selectionMode || add || e.shiftKey)) { handleOpenFile(file.path); return; }
-    const r = clickSelect(selectedFiles, shownFiles.map(f => f.path), file.path,
-      { add: add || selectionMode, shift: e.shiftKey }, selectAnchor.current);
-    selectAnchor.current = r.anchor;
-    setSelectedFiles(r.selected);
-  };
-  const showChecks = selectionMode || selectedFiles.size > 0;
   const fileMarks = (file) => {
     const picked = selectedFiles.has(file.path);
     const rand = randomizedFiles && randomizedFiles.some(f => f.path === file.path);
@@ -810,7 +418,7 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
       <span style={{ position: 'relative', zIndex: 0 }}>{isVideoExt(file.ext) ? '▶' : '♫'}</span>
       {fileThumbs && (
         <img
-          src={fileThumbs[file.path] || '/api/vault/thumb?path=' + encodeURIComponent(file.path)}
+          src={fileThumbUrl(file)}
           loading="lazy" decoding="async" draggable={false}
           style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', zIndex: 1 }}
           alt=""
@@ -838,7 +446,6 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
     </div>
   );
 
-  const folderName = selectedFolder.split(/[\\/]/).pop();
 
   return (
     <div
@@ -857,7 +464,7 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
             {['list','sm','md','lg'].map(s => (
               <div key={s} className={'pill' + (vaultScale === s ? ' active' : '')}
                 title={s === 'list' ? 'One line per file: name, type, size, date' : 'Cards, ' + { sm: 'small', md: 'medium', lg: 'large' }[s]}
-                onClick={() => { setVaultScale(s); try { localStorage.setItem('vault_scale', s); } catch {} }}>
+                onClick={() => setScale(s)}>
                 {s === 'list' ? '☰ LIST' : s.toUpperCase()}
               </div>
             ))}
@@ -903,7 +510,7 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
               {lastSynced ? 'Last sync: ' + timeAgo(lastSynced) : 'Never synced'}
             </span>
           </div>
-          {syncReport && <SyncReport report={syncReport} folder={selectedFolder} showNotif={showNotif} />}
+          {syncReport && <SyncReport report={syncReport} onRetry={retrySyncItem} />}
         </div>
       )}
 
@@ -949,7 +556,7 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
             </button>
             {randomizedFiles && (
               <>
-                <span style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 10.5, color: 'var(--cyan)' }}>
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10.5, color: 'var(--accent)' }}>
                   {new Set([...randomizedFiles.map(f => f.path), ...selectedFiles]).size} selected
                 </span>
                 <button className="btn btn-primary btn-sm" onClick={handlePlayRandom}>
@@ -1019,7 +626,7 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
                     <div className="lib-title">{file.name.replace(/\.[^.]+$/, '')}</div>
                     <div className="lib-meta">{fmtBytes(file.size_bytes)}</div>
                     {file.created && (
-                      <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 9.5, color: 'var(--t4)', marginTop: 2 }}>{fmtDate(file.created * 1000)}</div>
+                      <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9.5, color: 'var(--t4)', marginTop: 2 }}>{fmtDate(file.created * 1000)}</div>
                     )}
                   </div>
                   {fileMenu(file)}
@@ -1083,8 +690,8 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
         >
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14 }}>
             <Mascot src={MASCOT_FRUSTRATED} className="error-mascot" wrapClass="error-mascot" style={{ width: 80 }} />
-            <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 11, color: 'var(--t2)', textAlign: 'center' }}>
-              Delete <span style={{ color: 'var(--red)' }}>{deleteConfirm.name}</span>?<br />
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--t2)', textAlign: 'center' }}>
+              Delete <span style={{ color: 'var(--danger)' }}>{deleteConfirm.name}</span>?<br />
               <span style={{ color: 'var(--t4)', fontSize: 10.5 }}>This cannot be undone.</span>
             </div>
           </div>
@@ -1102,8 +709,8 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
         >
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14 }}>
             <Mascot src={MASCOT_FRUSTRATED} className="error-mascot" wrapClass="error-mascot" style={{ width: 80 }} />
-            <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 11, color: 'var(--t2)', textAlign: 'center' }}>
-              Delete <span style={{ color: 'var(--red)' }}>{selectedFiles.size} file{selectedFiles.size === 1 ? '' : 's'}</span>?<br />
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--t2)', textAlign: 'center' }}>
+              Delete <span style={{ color: 'var(--danger)' }}>{selectedFiles.size} file{selectedFiles.size === 1 ? '' : 's'}</span>?<br />
               <span style={{ color: 'var(--t4)', fontSize: 10.5 }}>This cannot be undone.</span>
             </div>
           </div>
@@ -1119,8 +726,8 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
             </>
           }
         >
-          <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 11, color: 'var(--t2)', textAlign: 'center', lineHeight: 2 }}>
-            Dropped: <span style={{ color: 'var(--cyan)' }}>{dropModal.name}</span><br />
+          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--t2)', textAlign: 'center', lineHeight: 2 }}>
+            Dropped: <span style={{ color: 'var(--accent)' }}>{dropModal.name}</span><br />
             <span style={{ color: 'var(--t4)', fontSize: 10.5 }}>Open the folder to manage files directly.</span>
           </div>
         </Modal>
@@ -1131,7 +738,7 @@ export function VaultPage({ vaultFolders, selectedFolder, setSelectedFolder, con
       {/* Opened by SYNC OPTIONS; it was only mounted in the grid view, so the
           button in this view did nothing */}
       {syncModal && <SyncPlaylistModal folder={syncModal} onClose={() => setSyncModal(null)} showNotif={showNotif} onRefreshVault={onRefreshVault} isDownloading={isDownloading} onSyncStart={onSyncStart} />}
-      {moveDialog}
+      {moveDialog()}
     </div>
   );
 }

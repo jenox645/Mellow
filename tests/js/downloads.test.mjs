@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { applyEvent, downloadsReducer, initialDownloads } from '../../gui/lib/downloads.js';
+import { MIRROR_NOT_APPLIED, applyEvent, downloadsReducer, initialDownloads } from '../../gui/lib/downloads.js';
 
 const run = (events, state = initialDownloads()) =>
   events.reduce((s, data) => downloadsReducer(s, { type: 'event', data, now: 1000 }), state);
@@ -310,4 +310,21 @@ test('resync: a background job that ended leaves the main panel to the primary o
 test('a duplicate terminal event for the same job is ignored', () => {
   const done = run([{ status: 'complete', job_id: 'j1', title: 'Song' }], running());
   assert.equal(run([{ status: 'error', job_id: 'j1', message: 'x' }], done), done);
+});
+
+test("a MIRROR folder synced without its preview says, once, that it only added", () => {
+  const label = 'Sync — Lofi Beats (1 playlist(s))';
+  const ev = (status, extra = {}) => ({ status, job_id: 's', job_type: 'sync', job_label: label, ...extra });
+  let s = run([ev('starting'), ev('item_done', { video_id: 'b', title: 'B' }),
+    ev('complete', { sync_summary: { new: 1, already: 2, failed: 0, mirror_not_applied: true } })]);
+  const toasts = s.effects.filter(fx => fx.type === 'notify');
+  assert.equal(toasts.length, 1);
+  assert.equal(toasts[0].body, 'Lofi Beats: 1 new · 2 already in the folder · ' + MIRROR_NOT_APPLIED);
+  assert.match(MIRROR_NOT_APPLIED, /SYNC OPTIONS/);
+  // Nothing new (auto-sync): the quiet toast still says it
+  s = run([ev('complete', { sync_summary: { new: 0, already: 3, failed: 0, mirror_not_applied: true } })]);
+  assert.equal(s.effects[0].body, 'Lofi Beats: up to date, nothing new (3 already in the folder) · ' + MIRROR_NOT_APPLIED);
+  // An add-only folder: no note
+  s = run([ev('complete', { sync_summary: { new: 0, already: 3, failed: 0 } })]);
+  assert.ok(!s.effects[0].body.includes('SYNC OPTIONS'));
 });

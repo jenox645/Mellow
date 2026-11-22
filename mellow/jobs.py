@@ -500,6 +500,9 @@ class JobManager:
                                         "failed": job["counts"]["errors"]}
             if job["opts"].get("auto_sync"):
                 complete["auto"] = True      # the scheduler started it (the tray says so)
+            if job["opts"].get("mirror_not_applied"):
+                # A MIRROR folder synced without its preview: only added
+                complete["sync_summary"]["mirror_not_applied"] = True
         push(complete)
         return "complete"
 

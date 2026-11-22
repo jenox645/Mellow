@@ -1,7 +1,7 @@
 // App chrome: sidebar navigation, top bar, bottom status bar.
 'use strict';
 
-import { fmtBytes, fmtSpeed } from '../lib/util.js';
+import { fmtBytes, fmtSpeed, themeRgba } from '../lib/util.js';
 import { SVG } from './icons.jsx';
 import { Mascot } from './common.jsx';
 import {
@@ -9,7 +9,7 @@ import {
   MASCOT_COMFY_SAFE, MASCOT_SUCCESS_SAFE, MASCOT_TROUBLESHOOTING_SAFE,
 } from '../lib/mascots.js';
 
-export function Sidebar({ page, setPage, appState, stats, speedHistory, sysInfo }) {
+export function Sidebar({ page, setPage, appState, stats, speedHistory, theme, sysInfo }) {
   const canvasRef = React.useRef(null);
 
   React.useEffect(() => {
@@ -23,7 +23,7 @@ export function Sidebar({ page, setPage, appState, stats, speedHistory, sysInfo 
     const pts = speedHistory.length ? speedHistory.slice(-20) : Array(20).fill(0);
     const maxV = Math.max(...pts, 1);
     ctx.clearRect(0, 0, w, h);
-    ctx.strokeStyle = 'rgba(0,216,255,0.6)';
+    ctx.strokeStyle = themeRgba('--accent-rgb', 0.6);   // a canvas can't resolve var()
     ctx.lineWidth = 1;
     ctx.beginPath();
     pts.forEach((v, i) => {
@@ -32,7 +32,7 @@ export function Sidebar({ page, setPage, appState, stats, speedHistory, sysInfo 
       i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
     });
     ctx.stroke();
-  }, [speedHistory]);
+  }, [speedHistory, theme]);   // the line's colour is the theme's
 
   const CORE_PAGES = [
     { id: 'feed', label: 'FEED', num: '01', icon: 'feed' },
@@ -163,7 +163,7 @@ export function TopBar({ page, onGuide }) {
   );
 }
 
-export function StatusBar({ sysInfo, speedHistory, config, appUpdate, onAppUpdate, ffmpegInstall, onGetFfmpeg }) {
+export function StatusBar({ sysInfo, speedHistory, theme, config, appUpdate, onAppUpdate, ffmpegInstall, onGetFfmpeg }) {
   const canvasRef = React.useRef(null);
 
   React.useEffect(() => {
@@ -179,7 +179,7 @@ export function StatusBar({ sysInfo, speedHistory, config, appUpdate, onAppUpdat
     ctx.clearRect(0, 0, w, 16);
     const pts = speedHistory.length ? speedHistory : Array(60).fill(0);
     const maxV = Math.max(...pts, 1);
-    ctx.strokeStyle = 'rgba(249,169,0,0.7)';
+    ctx.strokeStyle = themeRgba('--accent-2-rgb', 0.7);
     ctx.lineWidth = 1;
     ctx.beginPath();
     pts.forEach((v, i) => {
@@ -188,7 +188,7 @@ export function StatusBar({ sysInfo, speedHistory, config, appUpdate, onAppUpdat
       i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
     });
     ctx.stroke();
-  }, [speedHistory]);
+  }, [speedHistory, theme]);   // the line's colour is the theme's
 
   const currentSpeed = speedHistory.length ? speedHistory[speedHistory.length - 1] : 0;
   const isActive = currentSpeed > 0;
@@ -223,7 +223,7 @@ export function StatusBar({ sysInfo, speedHistory, config, appUpdate, onAppUpdat
       )}
       {sysInfo.disk_free_bytes != null && (
         <div className="sb-seg" title="Free space on the download drive"
-          style={sysInfo.disk_low ? { color: 'var(--red)' } : undefined}>
+          style={sysInfo.disk_low ? { color: 'var(--danger)' } : undefined}>
           <div className={'sb-dot' + (sysInfo.disk_low ? ' err' : ' ok')} />
           {sysInfo.disk_low ? 'DISK LOW ' : 'DISK '}{fmtBytes(sysInfo.disk_free_bytes)} FREE
         </div>

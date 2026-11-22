@@ -23,6 +23,17 @@ def test_library_crud(client, tmp_dir):
     assert not any(e['name'] == 'Test' for e in r4.get_json())
 
 
+
+def test_a_library_entry_cant_be_overwritten_with_put(client):
+    """PUT /api/library/<id> wrote any JSON into every column; nothing used it.
+    The URL is still there for DELETE, so Flask answers 405."""
+    from mellow import analytics
+    analytics.upsert_library_entry({'id': 'p1', 'name': 'Lofi', 'url': 'https://x/pl', 'folder': '', 'folder_name': 'Lofi'})
+    r = client.put('/api/library/p1', json={'name': 'Hacked', 'url': 'https://evil/pl'})
+    assert r.status_code == 405
+    assert analytics.get_library_entry('p1')['name'] == 'Lofi'
+
+
 def test_library_sync_requires_library(client):
     r = client.post('/api/library/nonexistent-id/sync', json={})
     assert r.status_code in (400, 404)
@@ -74,7 +85,7 @@ def test_entry_without_folder_syncs_where_the_vault_shows_it(client, tmp_path):
     analytics.upsert_library_entry({'id': 'e1', 'name': 'Lofi', 'url': 'https://x/pl',
                                     'folder': '', 'folder_name': 'Lofi', 'use_subfolder': True})
     entry = analytics.get_library_entry('e1')
-    _, output_dir = library.build_sync_opts(entry, load_config(), 'add')
+    _, output_dir = library.build_sync_opts(entry, load_config())
     assert output_dir == str(root / 'Lofi')
     folders = client.get('/api/vault').get_json()['folders']
     assert [(f['path'], f.get('library_id')) for f in folders] == [(str(root / 'Lofi'), 'e1')]

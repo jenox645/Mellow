@@ -17,7 +17,7 @@ permissions:
   contents: read
 
 jobs:
-  # Lint, unit tests (Windows/Linux/macOS), frontend and browser tests, all on
+  # Lint, unit tests (Windows/Linux; macOS runs in macos.yml), frontend and browser tests, all on
   # this run's commit (the same workflow release.yml runs before publishing)
   validate:
     uses: ./.github/workflows/validate.yml

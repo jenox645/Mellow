@@ -314,7 +314,11 @@ if not src_html.exists():
 shutil.copy2(src_html, STATIC / "index.html")
 # Bundled web fonts: the app never fetches them from Google
 shutil.copytree(GUI / "fonts", STATIC / "fonts", dirs_exist_ok=True)
-print("  static/index.html, static/fonts/ — OK")
+# The themes index.html links (token overrides; Classic is index.html itself) and their assets;
+# their components (gui/themes/slots.jsx, gui/themes/<id>/*.jsx) are in the bundle, not copied
+shutil.copytree(GUI / "themes", STATIC / "themes", dirs_exist_ok=True,
+                ignore=shutil.ignore_patterns("*.jsx", "*.js"))
+print("  static/index.html, static/fonts/, static/themes/ — OK")
 
 
 # ── Step 9: Bundle app.jsx with esbuild ───────────────────────────────────────
