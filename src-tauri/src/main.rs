@@ -222,11 +222,15 @@ fn show_main(app: &AppHandle) {
         let _ = window.set_focus();
         return;
     }
-    match build_window(app) {
+    // Not here: show_main runs in event handlers (the tray, a second launch, a
+    // notification's click), and building a webview there deadlocks on Windows
+    // (wry #583); seen with --background → Show
+    let app = app.clone();
+    std::thread::spawn(move || match build_window(&app) {
         // The ready line's link has long expired (one use, a minute): ask for another
-        Ok(_) => send(app, "launch", Value::Null),
+        Ok(_) => send(&app, "launch", Value::Null),
         Err(e) => eprintln!("MellowDLP shell: couldn't open the window: {e}"),
-    }
+    });
 }
 
 /// The window's close button: hide to the tray when the backend says there is
