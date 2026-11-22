@@ -104,8 +104,11 @@ export function ConfigPage({ config, setConfig, showNotif, installAppUpdate, onA
     API.post('/api/browse-folder', {}).then(d => {
       if (!d.path) return;
       set('output_dir', d.path);
-      API.post('/api/config', { output_dir: d.path }).catch(() => {});
-    });
+      // Saved at once, so the rest of the app (status bar OUT, the Feed's default folder) follows now
+      API.post('/api/config', { output_dir: d.path })
+        .then(() => setConfig(c => ({ ...c, output_dir: d.path })))
+        .catch(e => showNotif('Error', e.message, 'error'));
+    }).catch(e => showNotif('Error', e.message, 'error'));
   };
 
   // What a download would be named with the template being typed
