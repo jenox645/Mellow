@@ -357,6 +357,17 @@ def test_the_shells_commands_are_read_from_its_pipe():
         '{"cmd": "pause"}', '{"cmd": "download", "url": "https://x/v"}']
 
 
+def test_the_shells_commands_are_read_as_utf8():
+    import subprocess
+    import sys
+    code = "import main; f = main._detach_stdin(); print(ascii(f.readline().strip()))"
+    line = '{"cmd": "download", "url": "https://example.com/caf\u00e9/\u6771\u4eac"}'
+    done = subprocess.run([sys.executable, "-c", code], input=(line + "\n").encode("utf-8"),
+                          capture_output=True, timeout=60, cwd=str(Path(main.__file__).parent))
+    assert done.returncode == 0, done.stderr
+    assert done.stdout.decode("ascii").strip() == ascii(line)
+
+
 def test_nothing_else_written_to_stdout_reaches_the_shells_pipe():
     # A print (or a library) writing to stdout would break the line the shell is reading
     import subprocess

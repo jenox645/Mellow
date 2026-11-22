@@ -87,6 +87,8 @@ SYNC_DAILY_MIN_GAP_SECS: int = 6 * 3600
 # ── Desktop shell (shell.py, src-tauri/) ──────────────────────────────────────
 SHELL_STATE_MIN_INTERVAL_SECS: float = 0.25   # the tray and taskbar get a new state at most this often
 SHELL_STATE_REFRESH_SECS: int = 30            # ...and this often anyway (a scheduled time comes)
+SHELL_TITLE_MAX_CHARS: int = 80              # a title in the tray's tooltip or a notification
+SHELL_NOTIFY_BODY_MAX_CHARS: int = 300       # a notification's text
 
 # ── History / API limits ──────────────────────────────────────────────────────
 HISTORY_MAX_LIMIT: int = 500

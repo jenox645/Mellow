@@ -177,7 +177,7 @@ def _queue_finished(done: list[dict]) -> None:
         desktop.show_in_folder(done[-1]["output_dir"], bring_forward=False)
 
 
-jobs.manager.start(_push_progress, on_idle=_queue_finished)
+jobs.manager.start(_push_progress, on_idle=_queue_finished, on_change=shell.changed)
 
 
 def _library_entry_for(path: str, cfg: dict) -> dict | None:

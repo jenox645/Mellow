@@ -248,7 +248,8 @@ def _detach_stdin():
         import ctypes
         import msvcrt
         ctypes.windll.kernel32.SetStdHandle(STD_INPUT_HANDLE, msvcrt.get_osfhandle(0))
-    return os.fdopen(fd, "r", encoding="ascii", errors="replace")
+    # UTF-8: the shell sends links as they are (café, 東京)
+    return os.fdopen(fd, "r", encoding="utf-8", errors="replace")
 
 
 def _exit_with_parent(stdin) -> None:

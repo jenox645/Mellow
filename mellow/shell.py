@@ -31,13 +31,16 @@ from typing import Callable, TextIO
 
 from . import scheduler
 from .config import load_config
-from .constants import SHELL_STATE_MIN_INTERVAL_SECS, SHELL_STATE_REFRESH_SECS
+from .constants import (
+    SHELL_NOTIFY_BODY_MAX_CHARS,
+    SHELL_STATE_MIN_INTERVAL_SECS,
+    SHELL_STATE_REFRESH_SECS,
+    SHELL_TITLE_MAX_CHARS,
+)
 
 log = logging.getLogger(__name__)
 
 EVENT_PREFIX = "MELLOW_EVENT "
-# Window titles and file names can be long; the tray's tooltip can't
-TITLE_MAX_CHARS = 80
 
 _out: TextIO | None = None
 _out_lock = threading.Lock()
@@ -178,7 +181,7 @@ def _short(text: str | None) -> str | None:
     if not text:
         return None
     text = " ".join(str(text).split())
-    return text if len(text) <= TITLE_MAX_CHARS else text[:TITLE_MAX_CHARS - 1] + "…"
+    return text if len(text) <= SHELL_TITLE_MAX_CHARS else text[:SHELL_TITLE_MAX_CHARS - 1] + "…"
 
 
 def daily_sync(cfg: dict) -> dict | None:
@@ -254,9 +257,10 @@ class _Pump:
     def start(self, open_pages: Callable[[], int]) -> None:
         self.open_pages = open_pages
         with self._cv:
-            self._dirty, self._last = True, None
+            # Running again before the check: a pump detach() stopped may not have
+            # woken up yet, and it would then quit with nobody left to send
+            self._dirty, self._last, self._running = True, None, True
             if self._thread is None or not self._thread.is_alive():
-                self._running = True
                 self._thread = threading.Thread(target=self._run, name="shell-state", daemon=True)
                 self._thread.start()
             self._cv.notify()
@@ -318,7 +322,7 @@ def notify(title: str, body: str = "") -> bool:
     title = _short(title) or "MellowDLP"
     if active():
         log.info(f"notification: {title}")
-    return send("notify", title=title, body=str(body or "")[:300])
+    return send("notify", title=title, body=str(body or "")[:SHELL_NOTIFY_BODY_MAX_CHARS])
 
 
 def background_notifications(cfg: dict | None = None) -> bool:

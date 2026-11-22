@@ -162,5 +162,8 @@ mod tests {
         assert!(!line.contains('\n'));
         let back: Value = serde_json::from_str(&line).unwrap();
         assert_eq!(back, json!({"cmd": "download", "url": "https://x/v?a=1\nb"}));
+        // Links go as they are, in UTF-8 (main.py reads the pipe as UTF-8)
+        let line = command("download", json!({"url": "https://x/caf\u{e9}/\u{6771}\u{4eac}"}));
+        assert!(line.contains("caf\u{e9}/\u{6771}\u{4eac}"));
     }
 }

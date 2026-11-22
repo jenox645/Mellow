@@ -230,7 +230,14 @@ fn show_main(app: &AppHandle) {
     let app = app.clone();
     std::thread::spawn(move || match build_window(&app) {
         // The ready line's link has long expired (one use, a minute): ask for another
-        Ok(_) => send(&app, "launch", Value::Null),
+        Ok(_) if app.state::<Backend>().is_alive() => send(&app, "launch", Value::Null),
+        // No backend of ours any more (it attached to another MellowDLP, or it stopped):
+        // a new one prints a fresh link, to that copy or to itself
+        Ok(_) => {
+            if let Err(e) = start_backend(&app, false) {
+                show_error(&app, &e);
+            }
+        }
         Err(e) => eprintln!("MellowDLP shell: couldn't open the window: {e}"),
     });
 }
@@ -369,6 +376,13 @@ fn start_backend(app: &AppHandle, background: bool) -> Result<(), String> {
                     timing("ready");
                     ready = true;
                     attached = other_copy;
+                    // Started at login while another MellowDLP (the FlaskWebGUI app) runs:
+                    // that copy does the work, and this tray would have no backend to talk to
+                    if other_copy && app.get_webview_window(WINDOW_LABEL).is_none() {
+                        eprintln!("MellowDLP shell: another MellowDLP is running: nothing to do in the tray");
+                        app.exit(0);
+                        return;
+                    }
                     go_to(&app, &url);
                 }
                 Line::Event(Event::State(state)) => apply_state(&app, state),

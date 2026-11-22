@@ -229,6 +229,12 @@ impl Backend {
         Ok(stdout)
     }
 
+    /// Whether the backend we started still runs (it exits at once when it
+    /// attached to another MellowDLP).
+    pub fn is_alive(&self) -> bool {
+        self.child.lock().unwrap().as_mut().is_some_and(|child| matches!(child.try_wait(), Ok(None)))
+    }
+
     /// One line to the backend's stdin (a command, channel::command).
     pub fn send(&self, line: &str) {
         let mut stdin = self.stdin.lock().unwrap();

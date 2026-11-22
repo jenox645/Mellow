@@ -11,6 +11,7 @@ import pytest
 
 from mellow import jobs, shell
 from mellow.config import load_config, update_config
+from mellow.constants import SHELL_TITLE_MAX_CHARS
 
 
 @pytest.fixture
@@ -113,7 +114,7 @@ def test_a_daily_sync_keeps_it_running_unless_background_is_off():
 def test_long_titles_are_cut_for_the_tooltip():
     shell._progress.observe({"status": "downloading", "job_id": "t", "pct": 1, "current_item_title": "x" * 300})
     st = shell.state(_queue({"id": "t", "status": "active"}), paused=False, cfg=load_config())
-    assert len(st["title"]) == shell.TITLE_MAX_CHARS and st["title"].endswith("…")
+    assert len(st["title"]) == SHELL_TITLE_MAX_CHARS and st["title"].endswith("…")
     shell._progress.observe({"status": "error", "job_id": "t"})
 
 
@@ -123,6 +124,31 @@ def test_the_shell_gets_the_state_when_something_changes(channel):
     update_config(lambda c: c.update(start_with_system=True))
     shell.changed()
     assert wait_for(lambda: any(m["type"] == "state" and m["start_with_system"] for m in sent(channel)[before:]))
+
+
+def test_attached_again_at_once_the_shell_still_gets_its_state():
+    # detach() then attach() at once (one test after another; a shell restart):
+    # the old pump hadn't woken up yet and quit, and no state came any more
+    for _ in range(5):
+        out = io.StringIO()
+        shell.attach(out, open_pages=lambda: 0)
+        try:
+            assert wait_for(lambda: any(m["type"] == "state" for m in sent(out)))
+        finally:
+            shell.detach()
+
+
+def test_a_queue_change_reaches_the_shell_at_once(channel):
+    # A download for later emits no progress: without this the tray (and the close
+    # button's "keep running") learned of it only at the next refresh
+    from mellow import server  # noqa: F401  (wires the queue to the shell)
+    later = time.time() + 3600
+    job = jobs.manager.enqueue("https://example.com/later", "/tmp/x", {}, not_before=later)
+    try:
+        assert wait_for(lambda: any(m["type"] == "state" and m["scheduled"] == 1 and m["keep_running"]
+                                    for m in sent(channel)), 2.0)
+    finally:
+        jobs.manager.cancel(job["id"])
 
 
 def _notes(out):
