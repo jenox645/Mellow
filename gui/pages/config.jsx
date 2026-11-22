@@ -1,219 +1,28 @@
 // CONFIG page — storage, auth, network, database, behavior, danger zone.
+// The logic is useConfigPage (config-logic.js); this file is Classic's view of it. A theme can
+// register its own view of the page (gui/themes/slots.jsx, `pages: { config: … }`).
 'use strict';
 
-import { API, authHeaders, download } from '../lib/api.js';
 import { fmtBytes, themeCards } from '../lib/util.js';
 import { Toggle, Modal, Mascot } from '../components/common.jsx';
 import { ApiAccessPanel } from '../components/api-access.jsx';
 import { MASCOT_FRUSTRATED } from '../lib/mascots.js';
-import {
-  AUDIO_FORMATS, AUDIO_QUALITIES, CONTAINERS, DEFAULT_THEME, QUALITIES, TEMPLATE_PREVIEW_DEBOUNCE_MS, THEMES,
-} from '../lib/constants.js';
+import { AUDIO_FORMATS, AUDIO_QUALITIES, CONTAINERS, QUALITIES } from '../lib/constants.js';
+import { useConfigPage } from './config-logic.js';
 
-export function ConfigPage({ config, setConfig, showNotif, installAppUpdate, onAppUpdateChecked, installFfmpeg, ffmpegInstall, showWhatsNew, sysInfo, refreshStats }) {
-  const [local, setLocal] = React.useState({ ...config });
-  const [updateInfo, setUpdateInfo] = React.useState(null);
-  const [appUpdate, setAppUpdate] = React.useState(null);
-  const [checkingApp, setCheckingApp] = React.useState(false);
-  const [checking, setChecking] = React.useState(false);
-  const [updating, setUpdating] = React.useState(false);
-  const [vacuuming, setVacuuming] = React.useState(false);
-  const [dangerModal, setDangerModal] = React.useState(null);
+// The Config page: its logic, drawn by the theme's view (Classic's unless the theme has one)
+export function ConfigPage({ View = ClassicConfigView, ...props }) {
+  const cfg = useConfigPage(props);
+  return <View {...cfg} />;
+}
 
-  // The form follows the saved config, but a change to one setting (picking a theme saves at once)
-  // must not wipe what was typed here and not saved yet: an edited key stays unless that key changed
-  const prevConfig = React.useRef(config);
-  React.useEffect(() => {
-    const prev = prevConfig.current;
-    prevConfig.current = config;
-    setLocal(l => {
-      const next = { ...config };
-      for (const k of Object.keys(l)) {
-        if (l[k] !== prev[k] && config[k] === prev[k]) next[k] = l[k];
-      }
-      return next;
-    });
-  }, [config]);
-
-  const set = (key, val) => setLocal(l => ({ ...l, [key]: val }));
-
-  // Only the keys this page edits — sending the whole stale `local` copy
-  // clobbered vault_playlists/webhooks changes made since the page mounted
-  const CONFIG_PAGE_KEYS = [
-    'output_dir', 'filename_template',
-    'cookies_browser', 'cookies_browser_profile', 'cookies_file',
-    'rate_limit', 'proxy', 'force_ipv4', 'external_downloader',
-    'concurrent_fragments', 'sleep_interval', 'retries',
-    'write_metadata', 'skip_shorts', 'skip_live', 'sub_langs', 'auto_subs', 'keep_sub_files',
-    'ui_victory_animation', 'ui_victory_sync',
-    'default_mode', 'default_quality', 'default_container', 'default_audio_format', 'default_audio_quality',
-    'download_workers', 'schedule_start', 'on_queue_done', 'keep_awake', 'auto_sync_enabled', 'auto_sync_default_interval',
-    'update_check_on_launch', 'clipboard_watch', 'completion_sound', 'desktop_notifications',
-    'api_port',
-  ];
-  const NUMERIC_DEFAULTS = { concurrent_fragments: 4, sleep_interval: 0, retries: 3, download_workers: 1, api_port: 0 };
-
-  const handleSave = () => {
-    const toSave = {};
-    CONFIG_PAGE_KEYS.forEach(k => {
-      if (local[k] === undefined) return;
-      let v = local[k];
-      if (k in NUMERIC_DEFAULTS) {
-        const n = parseInt(v, 10);
-        v = Number.isFinite(n) ? n : NUMERIC_DEFAULTS[k];
-      }
-      toSave[k] = v;
-    });
-    API.post('/api/config', toSave)
-      .then(() => { setConfig(c => ({ ...c, ...toSave })); showNotif('Saved', 'Configuration updated', 'success'); })
-      .catch(e => showNotif('Error', e.message, 'error'));
-  };
-
-  // APPEARANCE: a theme applies and saves when picked (the App follows config.ui_theme), no SAVE needed
-  const currentTheme = THEMES.some(t => t.id === config.ui_theme) ? config.ui_theme : DEFAULT_THEME;
-  // Quick picks save one after another, in click order; `saved` is the last theme the server took
-  const themeSaves = React.useRef({ chain: Promise.resolve(), pending: 0, last: 0, saved: null });
-  const pickTheme = id => {
-    if (id === currentTheme) return;
-    const s = themeSaves.current;
-    if (!s.pending) s.saved = currentTheme;   // nothing on its way: what's shown is what's saved
-    s.pending++;
-    const pick = ++s.last;
-    setConfig(c => ({ ...c, ui_theme: id }));
-    s.chain = s.chain
-      .then(() => API.post('/api/config', { ui_theme: id }))
-      .then(() => { s.saved = id; }, e => {
-        // Not saved: if it's still the latest pick, back to the saved theme so the next launch doesn't disagree
-        if (pick === s.last) setConfig(c => (c.ui_theme === id ? { ...c, ui_theme: s.saved } : c));
-        showNotif('Error', e.message, 'error');
-      })
-      .finally(() => { s.pending--; });
-  };
-
-  // Every setting back to the server's defaults (a list kept here missed
-  // most of them); vault playlists, schedules, budgets and presets stay
-  const handleReset = () => {
-    API.post('/api/config/reset', {})
-      .then(c => { setLocal(c); setConfig(c); showNotif('Reset', 'Defaults restored', 'success'); })
-      .catch(e => showNotif('Error', e.message, 'error'));
-  };
-
-  const browseFolder = () => {
-    API.post('/api/browse-folder', {}).then(d => {
-      if (!d.path) return;
-      set('output_dir', d.path);
-      // Saved at once, so the rest of the app (status bar OUT, the Feed's default folder) follows now
-      API.post('/api/config', { output_dir: d.path })
-        .then(() => setConfig(c => ({ ...c, output_dir: d.path })))
-        .catch(e => showNotif('Error', e.message, 'error'));
-    }).catch(e => showNotif('Error', e.message, 'error'));
-  };
-
-  // What a download would be named with the template being typed
-  const [namePreview, setNamePreview] = React.useState(null);
-  React.useEffect(() => {
-    const template = local.filename_template || '';
-    const t = setTimeout(() => {
-      API.post('/api/filename-preview', { template })
-        .then(d => setNamePreview(d))
-        .catch(e => setNamePreview({ ok: false, error: e.message }));
-    }, TEMPLATE_PREVIEW_DEBOUNCE_MS);
-    return () => clearTimeout(t);
-  }, [local.filename_template]);
-
-  // Reads the cookies with the values on screen, before they are saved
-  const [testingCookies, setTestingCookies] = React.useState(false);
-  const testCookies = () => {
-    setTestingCookies(true);
-    API.post('/api/cookies/test', {
-      cookies_browser: local.cookies_browser, cookies_browser_profile: local.cookies_browser_profile,
-      cookies_file: local.cookies_file,
-    })
-      .then(d => {
-        const yt = d.youtube_signed_in ? 'signed in to YouTube' : 'not signed in to YouTube';
-        if (d.undecryptable) {
-          showNotif('Cookies Partly Readable', `${d.count} cookies read, ${d.undecryptable} encrypted by the browser — ${yt}. Firefox or a cookies.txt avoids this.`, 'warn');
-        } else if (!d.count) {
-          showNotif('No Cookies', 'The source is readable but empty — sign in with that browser/profile first.', 'warn');
-        } else {
-          showNotif('Cookies OK', `${d.count} cookies read — ${yt}.`, d.youtube_signed_in ? 'success' : 'info');
-        }
-      })
-      .catch(e => {
-        const d = e.data || {};
-        // The hint says what to do. yt-dlp's own words follow, except where the hint already
-        // says it all (encrypted cookies: the raw text repeats a DPAPI error and an issue link)
-        const body = !d.hint ? e.message : d.code === 'cookies_encrypted' ? d.hint : d.hint + ' (' + e.message + ')';
-        showNotif(d.title || 'Cookies Not Readable', body, 'error');
-      })
-      .finally(() => setTestingCookies(false));
-  };
-
-  const browseCookies = () => {
-    API.post('/api/browse-file', { filter: '.txt' }).then(d => { if (d.path) set('cookies_file', d.path); });
-  };
-
-  const checkUpdate = () => {
-    setChecking(true);
-    API.get('/api/check-ytdlp-update')
-      .then(setUpdateInfo)
-      .catch(e => setUpdateInfo({ error: e.message }))
-      .finally(() => setChecking(false));
-  };
-
-  const checkAppUpdate = () => {
-    setCheckingApp(true);
-    API.get('/api/check-app-update')
-      .then(u => { setAppUpdate(u); if (onAppUpdateChecked) onAppUpdateChecked(u); })
-      .catch(e => setAppUpdate({ error: e.message }))
-      .finally(() => setCheckingApp(false));
-  };
-
-  const doVacuum = () => {
-    setVacuuming(true);
-    API.post('/api/analytics/vacuum', {})
-      .then(d => showNotif('Vacuum complete', 'DB size: ' + fmtBytes(d.db_size_bytes), 'success'))
-      .catch(e => showNotif('Error', e.message, 'error'))
-      .finally(() => setVacuuming(false));
-  };
-
-  const doPurge = () => {
-    API.del('/api/history', { all: true })
-      .then(d => {
-        showNotif('Purged', d.deleted + ' records deleted', 'success');
-        setDangerModal(null);
-        if (refreshStats) refreshStats();
-        API.get('/api/config').then(c => { setLocal(c); setConfig(c); }).catch(() => {});
-      })
-      .catch(e => showNotif('Error', e.message, 'error'));
-  };
-
-  // ── Backup / restore ────────────────────────────────────────────────────────
-  const restoreInputRef = React.useRef(null);
-  const [restoring, setRestoring] = React.useState(false);
-
-  const handleRestoreFile = (e) => {
-    const file = e.target.files && e.target.files[0];
-    e.target.value = '';
-    if (!file) return;
-    const form = new FormData();
-    form.append('file', file);
-    setRestoring(true);
-    fetch('/api/backup/restore', { method: 'POST', body: form, headers: authHeaders() })
-      .then(r => r.json())
-      .then(d => {
-        if (d.ok) {
-          showNotif('Backup Restored', (d.restored || []).join(' + ') + ' — restart recommended', 'success');
-          API.get('/api/config').then(c => { setLocal(c); setConfig(c); }).catch(() => {});
-          refreshStats && refreshStats();
-        } else {
-          showNotif('Restore Failed', d.error || 'Unknown error', 'error');
-        }
-      })
-      .catch(err => showNotif('Restore Failed', err.message, 'error'))
-      .finally(() => setRestoring(false));
-  };
-
+export function ClassicConfigView({
+  showNotif, installAppUpdate, installFfmpeg, ffmpegInstall, showWhatsNew, sysInfo, local, set, handleSave,
+  handleReset, browseFolder, namePreview, openArchiveFolder, browseCookiesProfile, browseCookies, testCookies,
+  testingCookies, vacuuming, doVacuum, openLog, downloadBackup, restoreInputRef, restoring, handleRestoreFile,
+  appUpdate, checkingApp, checkAppUpdate, updateInfo, checking, checkUpdate, updating, updateYtdlp, openReleasePage,
+  currentTheme, pickTheme, dangerModal, setDangerModal, doPurge, setDesktopNotifications,
+}) {
   return (
     <div className="content active">
       <div className="vhead">
@@ -281,11 +90,7 @@ export function ConfigPage({ config, setConfig, showNotif, installAppUpdate, onA
                   <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10.5, color: 'var(--t3)' }}>
                     {local.output_dir ? (local.output_dir.replace(/\\/g, '/').split('/').pop() || local.output_dir) + '/mellow_archive.txt' : 'mellow_archive.txt (in download folder)'}
                   </span>
-                  <button className="btn btn-secondary btn-sm" onClick={() => {
-                    const dir = local.output_dir;
-                    if (dir) API.post('/api/open-folder', { path: dir }).catch(() => {});
-                    else showNotif('No folder', 'Set a download path first', 'info');
-                  }}>OPEN FOLDER</button>
+                  <button className="btn btn-secondary btn-sm" onClick={openArchiveFolder}>OPEN FOLDER</button>
                 </div>
               </div>
             </div>
@@ -437,7 +242,7 @@ export function ConfigPage({ config, setConfig, showNotif, installAppUpdate, onA
                 </div>
                 <div className="settings-ctrl" style={{ display: 'flex', gap: 6 }}>
                   <input className="inp-sm" style={{ width: 200 }} value={local.cookies_browser_profile || ''} onChange={e => set('cookies_browser_profile', e.target.value)} placeholder="Leave empty for auto-detect" />
-                  <button className="btn btn-secondary btn-sm" onClick={() => API.post('/api/browse-folder', {}).then(d => { if (d.path) set('cookies_browser_profile', d.path); })}>BROWSE</button>
+                  <button className="btn btn-secondary btn-sm" onClick={browseCookiesProfile}>BROWSE</button>
                 </div>
               </div>
               <div className="settings-row">
@@ -608,15 +413,7 @@ export function ConfigPage({ config, setConfig, showNotif, installAppUpdate, onA
                   <div className="sl-sub">System notification when a download finishes or fails while the window is in the background</div>
                 </div>
                 <div className="settings-ctrl">
-                  <Toggle checked={local.desktop_notifications === true} onChange={v => {
-                    set('desktop_notifications', v);
-                    // Ask on this click: browsers only prompt from a user action
-                    if (v && typeof Notification !== 'undefined' && Notification.permission === 'default') {
-                      Notification.requestPermission().then(p => {
-                        if (p !== 'granted') { set('desktop_notifications', false); showNotif('Notifications blocked', 'Allow notifications for this app to use this', 'warn'); }
-                      });
-                    }
-                  }} />
+                  <Toggle checked={local.desktop_notifications === true} onChange={setDesktopNotifications} />
                 </div>
               </div>
               <div className="settings-row">
@@ -680,10 +477,7 @@ export function ConfigPage({ config, setConfig, showNotif, installAppUpdate, onA
                   <div className="sl-sub">{sysInfo.log_path || 'What happened, for troubleshooting or a bug report'}</div>
                 </div>
                 <div className="settings-ctrl">
-                  <button className="btn btn-secondary btn-sm" onClick={() => API.post('/api/open-log', {})
-                    .catch(e => e.status === 404
-                      ? showNotif('No log yet', e.message, 'info')
-                      : showNotif('Error', e.message, 'error'))}>OPEN LOG</button>
+                  <button className="btn btn-secondary btn-sm" onClick={openLog}>OPEN LOG</button>
                 </div>
               </div>
               <div className="settings-row">
@@ -703,7 +497,7 @@ export function ConfigPage({ config, setConfig, showNotif, installAppUpdate, onA
                   <div className="sl-sub">Zip of config + analytics DB; restore keeps .pre-restore copies</div>
                 </div>
                 <div className="settings-ctrl" style={{ display: 'flex', gap: 6 }}>
-                  <button className="btn btn-secondary btn-sm" onClick={() => download('/api/backup').catch(e => showNotif('Backup Failed', e.message, 'error'))}>
+                  <button className="btn btn-secondary btn-sm" onClick={downloadBackup}>
                     ⬇ BACKUP
                   </button>
                   <button className="btn btn-secondary btn-sm" disabled={restoring}
@@ -755,14 +549,14 @@ export function ConfigPage({ config, setConfig, showNotif, installAppUpdate, onA
                 <div className="settings-ctrl" style={{ display: 'flex', gap: 6 }}>
                   <button className="btn btn-secondary btn-sm" onClick={showWhatsNew}>WHAT'S NEW</button>
                   <button className="btn btn-secondary btn-sm" title="The project on GitHub: releases, source and issues (opens in your browser)"
-                    onClick={() => API.post('/api/open-release', { page: 'repo' }).catch(() => {})}>GITHUB</button>
+                    onClick={() => openReleasePage('repo')}>GITHUB</button>
                   <button className="btn btn-secondary btn-sm" onClick={checkAppUpdate} disabled={checkingApp}>{checkingApp ? '...' : 'CHECK'}</button>
                   {appUpdate && appUpdate.update_available && (appUpdate.can_install
                     ? <button className="btn btn-amber btn-sm" onClick={() => installAppUpdate()}
                         title={appUpdate.download_size ? fmtBytes(appUpdate.download_size) + ', checked against its published checksum' : undefined}>
                         UPDATE TO v{appUpdate.latest}
                       </button>
-                    : <button className="btn btn-amber btn-sm" onClick={() => API.post('/api/open-release', {}).catch(() => {})}>GET v{appUpdate.latest}</button>
+                    : <button className="btn btn-amber btn-sm" onClick={() => openReleasePage()}>GET v{appUpdate.latest}</button>
                   )}
                 </div>
               </div>
@@ -784,7 +578,7 @@ export function ConfigPage({ config, setConfig, showNotif, installAppUpdate, onA
                 <div className="settings-ctrl">
                   {!(sysInfo.js_runtime && sysInfo.js_runtime.supported) && (
                     <button className="btn btn-secondary btn-sm" title="Opens nodejs.org in your browser. Once it is installed, restart MellowDLP: it finds Node.js by itself"
-                      onClick={() => API.post('/api/open-release', { page: 'nodejs' }).catch(() => {})}>GET NODE.JS</button>
+                      onClick={() => openReleasePage('nodejs')}>GET NODE.JS</button>
                   )}
                 </div>
               </div>
@@ -804,13 +598,7 @@ export function ConfigPage({ config, setConfig, showNotif, installAppUpdate, onA
                 <div className="settings-ctrl" style={{ display: 'flex', gap: 6 }}>
                   <button className="btn btn-secondary btn-sm" onClick={checkUpdate} disabled={checking}>{checking ? '...' : 'CHECK'}</button>
                   {updateInfo && updateInfo.update_available && (
-                    <button className="btn btn-amber btn-sm" disabled={updating} onClick={() => {
-                      setUpdating(true);
-                      API.post('/api/update-ytdlp', {})
-                        .then(() => showNotif('Updating', 'yt-dlp update started'))
-                        .catch(e => showNotif('Error', e.message, 'error'))
-                        .finally(() => setUpdating(false));
-                    }}>{updating ? 'UPDATING...' : 'UPDATE'}</button>
+                    <button className="btn btn-amber btn-sm" disabled={updating} onClick={updateYtdlp}>{updating ? 'UPDATING...' : 'UPDATE'}</button>
                   )}
                 </div>
               </div>

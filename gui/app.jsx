@@ -501,6 +501,7 @@ function App() {
         )}
         {page === 'queue' && (
           <QueuePage
+            View={S.pages.queue}
             dlState={dlState}
             showNotif={showNotif}
             activeJobs={activeJobs}
@@ -538,11 +539,12 @@ function App() {
           />
         )}
         {page === 'analytics' && (
-          <AnalyticsPage stats={stats} refreshStats={refreshStats} showNotif={showNotif} />
+          <AnalyticsPage View={S.pages.analytics} stats={stats} refreshStats={refreshStats} showNotif={showNotif} />
         )}
-        {page === 'signal' && <SignalApiPage />}
+        {page === 'signal' && <SignalApiPage View={S.pages.signal} />}
         {page === 'config' && (
           <ConfigPage
+            View={S.pages.config}
             config={config}
             setConfig={setConfig}
             showNotif={showNotif}
