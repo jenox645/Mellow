@@ -837,3 +837,16 @@ def test_classic_has_a_light_version_that_changes_only_the_colours(page, app_url
     page.mouse.move(0, 0)                                           # no hover left on the card
     page.wait_for_timeout(500)
     assert page.evaluate(_SNAPSHOT_JS) == classic                   # back to Classic, no trace left
+
+
+def test_a_download_folder_picked_in_config_shows_in_the_status_bar_at_once(page, app_url, tmp_path):
+    """BROWSE saved the new folder but the App kept the old one: the status bar's OUT
+    (and the Feed's default folder) showed it until the next launch."""
+    picked = str(tmp_path / "Picked Folder")
+    page.route("**/api/browse-folder", lambda r: r.fulfill(
+        status=200, content_type="application/json", body=json.dumps({"path": picked})))
+    page.locator(".nav-item").first.wait_for()
+    page.locator(".nav-item", has_text=re.compile("config", re.I)).first.click()
+    page.locator(".settings-row", has_text="Download Path").get_by_role("button", name="BROWSE", exact=True).click()
+    expect(page.locator(".statusbar .sb-path")).to_have_text(picked)
+    assert _get(app_url, "/api/config")["output_dir"] == picked

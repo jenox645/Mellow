@@ -99,6 +99,7 @@ class JobManager:
         self._active_count = 0
         self._push: Callable[[dict], None] = lambda event: None
         self._on_idle: Callable[[list[dict]], None] = lambda done: None
+        self._on_change: Callable[[], None] = lambda: None
         # Jobs that saved something since the queue was last idle
         self._done_since_idle: list[dict] = []
         self._started = False
@@ -108,7 +109,8 @@ class JobManager:
     # ── Lifecycle ──────────────────────────────────────────────────────────────
 
     def start(self, push_fn: Callable[[dict], None],
-              on_idle: Callable[[list[dict]], None] | None = None) -> None:
+              on_idle: Callable[[list[dict]], None] | None = None,
+              on_change: Callable[[], None] | None = None) -> None:
         """Attach the SSE broadcast function and spawn the worker pool.
 
         on_idle(done) runs (on its own thread) each time the queue runs dry,
@@ -117,6 +119,10 @@ class JobManager:
         self._push = push_fn
         if on_idle is not None:
             self._on_idle = on_idle
+        if on_change is not None:
+            # Every change of the queue (the desktop shell's tray: a download for
+            # later emits no progress event)
+            self._on_change = on_change
         if self._started:
             return
         self._started = True
@@ -315,6 +321,10 @@ class JobManager:
                     QUEUE_STATE_PATH.unlink()
         except OSError as exc:
             log.warning(f"queue persist failed: {exc}")
+        try:
+            self._on_change()
+        except Exception as exc:
+            log.warning(f"queue change not reported: {exc}")
 
     def _load_restorable(self) -> None:
         try:
@@ -498,6 +508,8 @@ class JobManager:
             complete["sync_summary"] = {"new": job["counts"]["new"],
                                         "already": job["report"]["archived"],
                                         "failed": job["counts"]["errors"]}
+            if job["opts"].get("auto_sync"):
+                complete["auto"] = True      # the scheduler started it (the tray says so)
             if job["opts"].get("mirror_not_applied"):
                 # A MIRROR folder synced without its preview: only added
                 complete["sync_summary"]["mirror_not_applied"] = True

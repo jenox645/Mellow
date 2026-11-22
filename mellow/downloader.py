@@ -114,6 +114,10 @@ def pause() -> None:
 def resume() -> None:
     _pause_event.clear()
 
+
+def is_paused() -> bool:
+    return _pause_event.is_set()
+
 QUALITY_MAP: dict[str, str] = {
     "best":  "bestvideo+bestaudio[ext=m4a]/bestvideo+bestaudio/best",
     "4k":    "bestvideo[height<=2160]+bestaudio[ext=m4a]/bestvideo[height<=2160]+bestaudio/best",

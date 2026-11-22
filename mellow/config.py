@@ -66,6 +66,13 @@ _DEFAULTS: dict = {
     "keep_awake": True,               # no idle sleep while downloads run or wait (power.py)
     "auto_sync_enabled": False,       # vault auto-sync scheduler master switch
     "auto_sync_default_interval": "daily",
+    "auto_sync_time": "03:00",        # "daily" folders sync at this local time (or as soon as the app runs after it)
+    # The desktop app (src-tauri/, shell.py): closing the window keeps it in the
+    # tray while it has work; starting with the system; notifying from the tray
+    "run_in_background": True,
+    "start_with_system": False,
+    "background_notifications": True,
+    "tray_notice_seen": False,        # the first close-to-tray was explained
     "vault_sync_schedule": {},        # per-folder interval overrides
     "vault_budgets": {},              # per-folder storage caps (bytes)
     "update_check_on_launch": True,   # yt-dlp staleness toast on startup
@@ -83,7 +90,7 @@ _DEFAULTS: dict = {
 # Defaults that hold the user's own data rather than a setting: RESET
 # DEFAULTS leaves them alone
 _USER_DATA_KEYS = frozenset({"vault_sync_schedule", "vault_budgets", "download_presets",
-                             "recent_output_dirs", "last_seen_version"})
+                             "recent_output_dirs", "last_seen_version", "tray_notice_seen"})
 
 
 def load_config() -> dict:

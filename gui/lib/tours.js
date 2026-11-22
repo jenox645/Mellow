@@ -513,6 +513,12 @@ export const TOURS = {
         + 'the folders\' sync schedules to run.',
     },
     {
+      target: 'config-background', title: 'In the background',
+      text: 'Daily Sync Time: folders set to Daily sync then, or as soon as MellowDLP runs after it. In the '
+        + 'desktop app, Run in the Background keeps it in the tray when you close the window while downloads run '
+        + 'or wait or folders sync by themselves, and Start with Windows starts it there when you log in.',
+    },
+    {
       target: 'config-backup', title: 'Backup',
       text: '⬇ BACKUP saves your settings and download history as one zip; ⬆ RESTORE brings them back, here or on '
         + 'another computer. The current ones are kept as .pre-restore copies.',

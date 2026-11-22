@@ -5,6 +5,7 @@ import { API, authHeaders, download } from '../lib/api.js';
 import { fmtBytes, themeCards } from '../lib/util.js';
 import { Toggle, Modal, Mascot } from '../components/common.jsx';
 import { ApiAccessPanel } from '../components/api-access.jsx';
+import { DesktopAppPanel } from '../components/desktop-app.jsx';
 import { MASCOT_FRUSTRATED } from '../lib/mascots.js';
 import {
   AUDIO_FORMATS, AUDIO_QUALITIES, CONTAINERS, DEFAULT_THEME, QUALITIES, TEMPLATE_PREVIEW_DEBOUNCE_MS, THEMES,
@@ -49,6 +50,7 @@ export function ConfigPage({ config, setConfig, showNotif, installAppUpdate, onA
     'default_mode', 'default_quality', 'default_container', 'default_audio_format', 'default_audio_quality',
     'download_workers', 'schedule_start', 'on_queue_done', 'keep_awake', 'auto_sync_enabled', 'auto_sync_default_interval',
     'update_check_on_launch', 'clipboard_watch', 'completion_sound', 'desktop_notifications',
+    'run_in_background', 'start_with_system', 'background_notifications', 'auto_sync_time',
     'api_port',
   ];
   const NUMERIC_DEFAULTS = { concurrent_fragments: 4, sleep_interval: 0, retries: 3, download_workers: 1, api_port: 0 };
@@ -102,8 +104,11 @@ export function ConfigPage({ config, setConfig, showNotif, installAppUpdate, onA
     API.post('/api/browse-folder', {}).then(d => {
       if (!d.path) return;
       set('output_dir', d.path);
-      API.post('/api/config', { output_dir: d.path }).catch(() => {});
-    });
+      // Saved at once, so the rest of the app (status bar OUT, the Feed's default folder) follows now
+      API.post('/api/config', { output_dir: d.path })
+        .then(() => setConfig(c => ({ ...c, output_dir: d.path })))
+        .catch(e => showNotif('Error', e.message, 'error'));
+    }).catch(e => showNotif('Error', e.message, 'error'));
   };
 
   // What a download would be named with the template being typed
@@ -893,6 +898,8 @@ export function ConfigPage({ config, setConfig, showNotif, installAppUpdate, onA
               </div>
             </div>
           </div>
+
+          <DesktopAppPanel local={local} set={set} sysInfo={sysInfo} />
 
           <ApiAccessPanel local={local} set={set} showNotif={showNotif} />
 

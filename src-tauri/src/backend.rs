@@ -18,6 +18,7 @@
 //! window (app_update: the bundle can't be replaced by the old updater).
 
 use std::ffi::OsString;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 use std::sync::Mutex;
@@ -211,8 +212,12 @@ impl Backend {
     }
 
     /// Start the backend; returns its stdout, where the ready line comes.
-    pub fn spawn(&self, launch: &Launch) -> Result<ChildStdout, String> {
+    /// background: the system started the app at login (main.py --background).
+    pub fn spawn(&self, launch: &Launch, background: bool) -> Result<ChildStdout, String> {
         let mut cmd = launch.command();
+        if background {
+            cmd.arg("--background");
+        }
         cmd.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::inherit());
         tree::configure(&mut cmd);
         let mut child = cmd.spawn().map_err(|e| format!("couldn't start {}: {e}", launch.describe()))?;
@@ -222,6 +227,22 @@ impl Backend {
         *self.tree.lock().unwrap() = tree;
         *self.child.lock().unwrap() = Some(child);
         Ok(stdout)
+    }
+
+    /// Whether the backend we started still runs (it exits at once when it
+    /// attached to another MellowDLP).
+    pub fn is_alive(&self) -> bool {
+        self.child.lock().unwrap().as_mut().is_some_and(|child| matches!(child.try_wait(), Ok(None)))
+    }
+
+    /// One line to the backend's stdin (a command, channel::command).
+    pub fn send(&self, line: &str) {
+        let mut stdin = self.stdin.lock().unwrap();
+        if let Some(pipe) = stdin.as_mut() {
+            if let Err(e) = pipe.write_all(format!("{line}\n").as_bytes()).and_then(|_| pipe.flush()) {
+                eprintln!("MellowDLP shell: couldn't reach the backend: {e}");
+            }
+        }
     }
 
     /// Ask the backend to exit (stdin EOF), then kill whatever is left.
