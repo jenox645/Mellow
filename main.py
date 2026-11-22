@@ -73,6 +73,12 @@ def _running_instance() -> dict | None:
     info = session.read_instance()
     if info is None:
         return None
+    # The usual case after closing the window: the file is left behind (FlaskWebGUI ends the
+    # process) and its copy is gone. Probing its port costs ~2 s on Windows: don't
+    if info["pid"] is not None and not session.process_alive(info["pid"]):
+        log.info(f"the last MellowDLP (pid {info['pid']}) isn't running: starting a new one")
+        session.drop_stale_instance(info["pid"])
+        return None
     url = f"http://127.0.0.1:{info['port']}"
     nonce = secrets.token_urlsafe(24)
     try:
@@ -236,6 +242,8 @@ def _run_window(flask_app, port: int) -> None:
         port=port,
         width=WINDOW_WIDTH,
         height=WINDOW_HEIGHT,
+        # Closing the window ends this process with a signal (no atexit): forget the instance first
+        on_shutdown=_stop_instance,
     )
     url = f"http://127.0.0.1:{port}"
     # The window opens the launch page, not the URL: the sign-in token must

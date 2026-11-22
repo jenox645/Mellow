@@ -13,31 +13,18 @@ const _SPLASH_POOL = [
   MASCOT_COMFY_SAFE, MASCOT_SUCCESS_SAFE, MASCOT_TROUBLESHOOTING_SAFE, MASCOT_VICTORY_SAFE,
 ].filter(Boolean);
 
-export function LoadingScreen({ onReady }) {
-  const [text, setText] = React.useState('');
+// What every splash does, whatever it looks like (a theme's own LoadingScreen uses it too): a short
+// floor, click to skip, and waiting for the server. `signedOut` is the 401 answer, once refused.
+export function useSplash(onReady) {
   const [attempts, setAttempts] = React.useState(0);
   const [appVersion, setAppVersion] = React.useState('');
-  const [signedOut, setSignedOut] = React.useState(null);   // the 401 answer, once refused
+  const [signedOut, setSignedOut] = React.useState(null);
   const serverReadyRef = React.useRef(false);
   const minElapsedRef = React.useRef(false);
-  const TARGET = 'WELCOME, ADMINISTRATOR';
-  const splashMascot = React.useRef(_SPLASH_POOL[Math.floor(Math.random() * _SPLASH_POOL.length)]).current;
-  const splashIsSvg = typeof splashMascot === 'string' && (splashMascot.trimStart().startsWith('<svg') || splashMascot.trimStart().startsWith('<?xml'));
-  const splashSvgHtml = splashIsSvg ? splashMascot.replace(/^<\?xml[^?]*\?>\s*/i, '') : null;
 
   const tryReady = React.useCallback(() => {
     if (serverReadyRef.current && minElapsedRef.current) onReady();
   }, [onReady]);
-
-  React.useEffect(() => {
-    let i = 0;
-    const timer = setInterval(() => {
-      i++;
-      setText(TARGET.slice(0, i));
-      if (i >= TARGET.length) clearInterval(timer);
-    }, 60);
-    return () => clearInterval(timer);
-  }, []);
 
   // Minimum display duration — ensures animation completes
   React.useEffect(() => {
@@ -88,6 +75,27 @@ export function LoadingScreen({ onReady }) {
     tryReady();
   }, [tryReady]);
 
+  return { attempts, appVersion, signedOut, skip };
+}
+
+export function LoadingScreen({ onReady }) {
+  const [text, setText] = React.useState('');
+  const { attempts, appVersion, signedOut, skip } = useSplash(onReady);
+  const TARGET = 'WELCOME, ADMINISTRATOR';
+  const splashMascot = React.useRef(_SPLASH_POOL[Math.floor(Math.random() * _SPLASH_POOL.length)]).current;
+  const splashIsSvg = typeof splashMascot === 'string' && (splashMascot.trimStart().startsWith('<svg') || splashMascot.trimStart().startsWith('<?xml'));
+  const splashSvgHtml = splashIsSvg ? splashMascot.replace(/^<\?xml[^?]*\?>\s*/i, '') : null;
+
+  React.useEffect(() => {
+    let i = 0;
+    const timer = setInterval(() => {
+      i++;
+      setText(TARGET.slice(0, i));
+      if (i >= TARGET.length) clearInterval(timer);
+    }, 60);
+    return () => clearInterval(timer);
+  }, []);
+
   if (signedOut) {
     return (
       <div className="loading-screen">
@@ -99,7 +107,7 @@ export function LoadingScreen({ onReady }) {
         {signedOut.download && (
           <div className="loading-sub" style={{ maxWidth: 520, textAlign: 'center', lineHeight: 1.8 }}>
             Still not working? Get the latest MellowDLP:{' '}
-            <a href={signedOut.download} target="_blank" rel="noreferrer" style={{ color: 'var(--cyan)' }}>
+            <a href={signedOut.download} target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }}>
               {signedOut.download.replace(/^https:\/\//, '')}
             </a>
           </div>
@@ -111,15 +119,15 @@ export function LoadingScreen({ onReady }) {
   return (
     <div className="loading-screen" onClick={skip} style={{ cursor: 'pointer' }} title="Click to skip">
       {splashIsSvg ? (
-        <div className="loading-mascot" style={{ filter: 'drop-shadow(0 0 24px rgba(0,216,255,0.35))' }} dangerouslySetInnerHTML={{ __html: splashSvgHtml }} />
+        <div className="loading-mascot" style={{ filter: 'var(--mascot-splash-filter)' }} dangerouslySetInnerHTML={{ __html: splashSvgHtml }} />
       ) : splashMascot ? (
-        <img src={splashMascot} className="loading-mascot" style={{ filter: 'sepia(1) saturate(6.7) hue-rotate(151deg) brightness(0.87) drop-shadow(0 0 24px rgba(0,216,255,0.35))', mixBlendMode: 'screen' }} alt="" />
+        <img src={splashMascot} className="loading-mascot" style={{ filter: 'var(--mascot-splash-img-filter)', mixBlendMode: 'var(--mascot-blend)' }} alt="" />
       ) : null}
       <div className="loading-title">{text}<span style={{ opacity: 0.5, animation: 'pulse 1s infinite' }}>_</span></div>
       <div className="loading-sub">MELLOW // DATA LAKE COMMANDER{appVersion ? ' v' + appVersion : ''}</div>
       <div className="loading-bar"><div className="loading-bar-fill" /></div>
       {attempts > 0 && (
-        <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: '9px', color: 'var(--t4)' }}>
+        <div style={{ fontFamily: 'var(--font-mono)', fontSize: '9px', color: 'var(--t4)' }}>
           CONNECTING... ATTEMPT {attempts}/5
         </div>
       )}

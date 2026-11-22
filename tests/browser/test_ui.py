@@ -576,6 +576,57 @@ def test_sync_options_picked_in_the_dialog_stay_with_the_folder(page, media_site
     assert media == [".wav"] * 3
 
 
+def _mirror_folder(downloads, url):
+    """A folder whose playlist was added with SYNC MODE: MIRROR."""
+    from mellow import analytics, config
+    folder = downloads / "Mirrored"
+    folder.mkdir()
+    config.update_config(lambda c: c.update(vault_playlists={str(folder): [url]}))
+    analytics.upsert_library_entry({"id": "mir", "name": "Mirrored", "url": url, "folder": str(downloads),
+                                    "folder_name": "Mirrored", "mode": "VIDEO", "quality": "1080p",
+                                    "container": "mp4", "sync_mode": "mirror"})
+    return folder
+
+
+def test_a_mirror_playlist_opens_its_sync_options_on_mirror_and_previews_first(page, media_site, downloads):
+    """ADD PLAYLIST saved MIRROR and nothing read it: the dialog opened on ADD
+    ONLY and its SYNC NOW downloaded. Now it opens on MIRROR and shows the diff."""
+    from mellow import jobs
+    folder = _mirror_folder(downloads, f"{media_site}/playlist")
+    (folder / "Gone from the playlist.mp4").write_bytes(b"\0" * 64)
+    _open_folder(page, "Mirrored")
+    with patch("mellow.server._enqueue_job") as enqueued:
+        page.get_by_role("button", name="SYNC OPTIONS").click()
+        dialog = page.locator(".modal-box")
+        expect(dialog.locator(".pill.active", has_text="MIRROR")).to_have_count(1)
+        dialog.get_by_role("button", name="PREVIEW MIRROR").click()
+        expect(dialog).to_contain_text("MIRROR DIFF", timeout=30_000)
+        expect(dialog).to_contain_text("new item(s) will be downloaded")
+        expect(dialog.get_by_role("button", name="APPLY MIRROR")).to_be_visible()
+        enqueued.assert_not_called()                  # a diff, not a download
+    assert sorted(p.name for p in folder.iterdir()) == ["Gone from the playlist.mp4"]
+    assert jobs.manager.wait_idle(5)
+
+
+def test_a_mirror_playlist_synced_with_sync_now_says_it_only_added(page, media_site, downloads):
+    """The folder's plain SYNC NOW stays add-only for a MIRROR playlist, and says so."""
+    from mellow import jobs
+    folder = _mirror_folder(downloads, f"{media_site}/playlist")
+    (folder / "Gone from the playlist.mp4").write_bytes(b"\0" * 64)
+    page.locator(".nav-item", has_text="VAULT").click()
+    page.locator("[data-tour=vault-add]").click()
+    expect(page.get_by_test_id("mirror-hint")).to_contain_text("asks first")
+    page.locator(".modal-box").get_by_role("button", name="CANCEL").click()
+    _open_folder(page, "Mirrored")
+    page.locator("[data-tour=vault-sync]").click()
+    text = _notification(page, "Sync Complete")
+    assert "mirror runs from SYNC OPTIONS" in text
+    assert jobs.manager.wait_idle(DOWNLOAD_TIMEOUT_MS / 1000)
+    assert (folder / "Gone from the playlist.mp4").exists()     # nothing deleted
+    assert len([p for p in folder.iterdir() if p.suffix == ".mp4"]) == 4
+    expect(page.locator(".notif", has_text="mirror runs from SYNC OPTIONS")).to_have_count(1)
+
+
 def test_type_how_many_to_randomize_and_play_the_whole_folder(page, downloads, monkeypatch):
     from mellow import vault
     played = []
@@ -729,3 +780,60 @@ def test_rename_the_file_before_downloading(page, media_site, downloads):
     name.fill("Something else")                              # Esc goes back too
     name.press("Escape")
     expect(name).to_have_value("Intro (1)")
+
+
+# Every element's box and look, to compare two moments of the same page (scrolled back to the top first:
+# focusing a control scrolls it into view)
+_UNSCROLL = "document.querySelectorAll('*').forEach(e => { if (e.scrollTop) e.scrollTop = 0; });"
+_SNAPSHOT_JS = """() => { """ + _UNSCROLL + """ return [...document.querySelectorAll('.app *')].map(e => {
+  const r = e.getBoundingClientRect(), s = getComputedStyle(e);
+  return [e.tagName, e.className && String(e.className), Math.round(r.x), Math.round(r.y), Math.round(r.width),
+          Math.round(r.height), s.color, s.backgroundColor, s.backgroundImage, s.boxShadow, s.borderColor, s.fontFamily];
+}); }"""
+_LAYOUT_JS = "() => { " + _UNSCROLL + " return [...document.querySelectorAll('.app *')].map(e => { " \
+             "const r = e.getBoundingClientRect(); " \
+             "return [e.tagName, Math.round(r.x), Math.round(r.y), Math.round(r.width), Math.round(r.height)]; }); }"
+
+
+def test_classic_has_a_light_version_that_changes_only_the_colours(page, app_url):
+    from mellow import config
+    page.locator(".nav-item", has_text=re.compile("config", re.I)).first.click()
+    card = page.locator(".theme-card", has_text="Classic")
+    expect(card).to_have_count(1)                                   # one card for the two versions
+    expect(page.locator(".theme-card", has_text="Classic Light")).to_have_count(0)
+    dark, light = card.get_by_role("button", name="Classic dark"), card.get_by_role("button", name="Classic light")
+    expect(dark).to_have_attribute("aria-pressed", "true")
+    page.mouse.move(0, 0)
+    page.wait_for_timeout(500)                                      # the page has settled (counts, toasts)
+    classic = page.evaluate(_SNAPSHOT_JS)
+    classic_layout = page.evaluate(_LAYOUT_JS)
+
+    light.focus()                                                   # the keyboard can switch
+    page.keyboard.press("Enter")
+    expect(page.locator("html")).to_have_attribute("data-theme", "classic-light")
+    expect(light).to_have_attribute("aria-pressed", "true")
+    for _ in range(50):                                             # saved at once, no SAVE CONFIG
+        if config.load_config()["ui_theme"] == "classic-light":
+            break
+        page.wait_for_timeout(100)
+    assert config.load_config()["ui_theme"] == "classic-light"
+    assert page.evaluate("localStorage.getItem('mellow-theme')") == "classic-light"
+    page.wait_for_timeout(500)
+    # Same page, other colours: every element where it was, at its size
+    assert page.evaluate(_LAYOUT_JS) == classic_layout
+    assert page.evaluate("getComputedStyle(document.body).backgroundColor") != "rgb(7, 9, 15)"
+
+    page.reload()                                                   # kept across a restart
+    page.locator(".nav-item").first.wait_for()
+    expect(page.locator("html")).to_have_attribute("data-theme", "classic-light")
+    page.locator(".nav-item", has_text=re.compile("config", re.I)).first.click()
+    dark.click()
+    expect(page.locator("html")).to_have_attribute("data-theme", "classic")
+    expect(dark).to_have_attribute("aria-pressed", "true")
+    for _ in range(50):
+        if config.load_config()["ui_theme"] == "classic":
+            break
+        page.wait_for_timeout(100)
+    page.mouse.move(0, 0)                                           # no hover left on the card
+    page.wait_for_timeout(500)
+    assert page.evaluate(_SNAPSHOT_JS) == classic                   # back to Classic, no trace left

@@ -79,12 +79,16 @@ const withoutPlan = (s, jobId) => {
   return s.playlistJobId && s.playlistJobId === jobId ? { ...s, playlistJobId: null } : s;
 };
 
+export const MIRROR_NOT_APPLIED = 'only added new items, nothing deleted: mirror runs from SYNC OPTIONS (it asks before deleting)';
+
 // "Lofi Beats: 2 new · 63 already in the folder" for a sync's end
 export function syncSummaryText(name, summary) {
   const parts = summary.new > 0
     ? [summary.new + ' new', summary.already + ' already in the folder']
     : ['up to date, nothing new' + (summary.already ? ' (' + summary.already + ' already in the folder)' : '')];
   if (summary.failed > 0) parts.push(summary.failed + ' failed');
+  // A folder saved as MIRROR, synced without its preview (SYNC NOW, auto-sync)
+  if (summary.mirror_not_applied) parts.push(MIRROR_NOT_APPLIED);
   return (name ? name + ': ' : '') + parts.join(' · ');
 }
 
