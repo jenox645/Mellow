@@ -21,6 +21,17 @@ pub fn is_local(url: &Url) -> bool {
             && matches!(url.host_str(), Some("tauri.localhost" | "127.0.0.1" | "localhost")))
 }
 
+/// The splash page's buttons (the window has no frame on Windows, and the
+/// bundled page has no IPC either): links to `/__window/<op>` on the bundled
+/// page, caught as navigations and done by the shell.
+pub fn splash_op(url: &Url) -> Option<&str> {
+    let bundled = url.scheme() == "tauri" || url.host_str() == Some("tauri.localhost");
+    match url.path().strip_prefix("/__window/") {
+        Some(op @ ("minimize" | "close")) if bundled => Some(op),
+        _ => None,
+    }
+}
+
 /// What to do with a link the page follows or opens in a new window.
 #[derive(Debug, PartialEq, Eq)]
 pub enum Route {
@@ -154,6 +165,16 @@ mod tests {
         ] {
             assert_eq!(route(&url(u)), Route::Refuse, "{u}");
             assert_eq!(route_new_window(&url(u)), Route::Refuse, "{u}");
+        }
+    }
+
+    #[test]
+    fn the_splash_buttons_and_nothing_else() {
+        assert_eq!(splash_op(&url("http://tauri.localhost/__window/close")), Some("close"));
+        assert_eq!(splash_op(&url("tauri://localhost/__window/minimize")), Some("minimize"));
+        for u in ["http://127.0.0.1:5123/__window/close", "http://tauri.localhost/__window/maximize",
+                  "https://example.com/__window/close", "http://tauri.localhost/index.html"] {
+            assert_eq!(splash_op(&url(u)), None, "{u}");
         }
     }
 

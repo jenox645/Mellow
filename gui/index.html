@@ -27,7 +27,7 @@
     /* ── THEME TOKENS ────────────────────────────────────────────────────────
        Everything a theme changes is a custom property here; these values are theme Classic (the default).
        The other themes (gui/themes/<id>.css) override them under :root[data-theme="<id>"]. */
-    :root{
+    :root{--titlebar-h:0px;--titlebar-bg:#020306;--titlebar-fg:var(--t3);--titlebar-rule:rgba(var(--accent-rgb),.24);--titlebar-hover:rgba(var(--accent-rgb),.10);
       /* Surfaces */
       --bg:#07090F;--bg1:#0C1118;--bg2:#111928;--bg3:#162035;
       --surface-chrome:var(--bg1);                 /* sidebar, top bar */
@@ -127,7 +127,24 @@
     body::before{content:'';position:fixed;inset:0;background:var(--canvas-scanlines);pointer-events:none;z-index:9999}
     body::after{content:'';position:fixed;inset:0;background-image:var(--canvas-grid);background-size:var(--canvas-grid-size);pointer-events:none;z-index:0}
     #root{height:100%;position:relative;z-index:1}
-    .app{display:flex;height:100vh}
+    .app{display:flex;height:calc(100vh - var(--titlebar-h));margin-top:var(--titlebar-h)}
+    /* The desktop app's title bar (frameless window, gui/components/titlebar.jsx) */
+    html.has-titlebar{--titlebar-h:32px}
+    .titlebar{position:fixed;top:0;left:0;right:0;height:var(--titlebar-h);z-index:10002;display:flex;align-items:stretch;background:var(--titlebar-bg);color:var(--titlebar-fg);font-family:var(--font-mono);font-size:10px;letter-spacing:var(--label-tracking);user-select:none;-webkit-app-region:drag;app-region:drag}
+    .titlebar-mark{width:40px;display:flex;align-items:center;justify-content:center;color:var(--accent)}
+    .titlebar-name{display:flex;align-items:center;gap:10px}
+    .titlebar-name b{font-family:var(--font-display);font-weight:700;font-size:10.5px;letter-spacing:var(--logo-tracking);color:var(--t2)}
+    .titlebar-name i{font-style:normal;color:var(--t4)}
+    .titlebar-fill{flex:1}
+    .titlebar-btn{-webkit-app-region:no-drag;app-region:no-drag;width:46px;border:0;border-radius:0;background:transparent;color:var(--titlebar-fg);display:flex;align-items:center;justify-content:center;transition:background var(--dur-fast),color var(--dur-fast)}
+    .titlebar-btn:hover{background:var(--titlebar-hover);color:var(--t1)}
+    .titlebar-btn:active svg{transform:scale(.88)}
+    .titlebar-close:hover{background:var(--danger);color:var(--t1)}
+    .titlebar-rule,.titlebar-progress{position:absolute;left:0;right:0;bottom:0;height:1px;transform-origin:left;pointer-events:none}
+    .titlebar-rule{background:var(--titlebar-rule);animation:titlebar-draw var(--dur-reveal) var(--ease-out)}
+    .titlebar-progress{background:var(--accent);transition:transform var(--dur-base) var(--ease-out)}
+    .titlebar-progress.paused{background:var(--warn)}
+    @keyframes titlebar-draw{from{transform:scaleX(0)}to{transform:scaleX(1)}}
     /* LOADING */
     .loading-screen{position:fixed;inset:0;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:10000;gap:20px}
     .loading-mascot{width:280px;height:auto;filter:var(--mascot-filter);animation:mascot-float var(--dur-loop-float) var(--ease-in-out) infinite;color:var(--accent)}

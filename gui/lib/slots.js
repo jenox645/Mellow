@@ -1,7 +1,8 @@
 // Theme slots: the parts of the window a theme may replace with its own component
 // (a top navigation instead of the sidebar, another status bar, its own splash...).
 // App logic stays shared: a slot's component gets exactly the props Classic's gets.
-export const SLOT_NAMES = ['Sidebar', 'TopBar', 'StatusBar', 'LoadingScreen', 'PageFrame'];
+// TitleBar: the desktop app's own title bar (a frameless window: sysInfo.window_frame === 'custom')
+export const SLOT_NAMES = ['Sidebar', 'TopBar', 'StatusBar', 'LoadingScreen', 'PageFrame', 'TitleBar'];
 
 // Pages a theme may draw its own way. The page's logic stays shared: a view gets what the
 // page's hook returns (useFeedPage, useVaultPage) and calls its handlers, never the API.

@@ -590,3 +590,6 @@
   :root[data-theme="tactical"] .tac-frame-sweep,:root[data-theme="tactical"] .tac-head-scan,:root[data-theme="tactical"] .dl-card::after,:root[data-theme="tactical"] .btn::after{display:none}
   :root[data-theme="tactical"] .tac-boot-bar i::after{opacity:1}
 }
+
+/* The desktop app's title bar (titlebar.jsx): this theme's own surface */
+:root[data-theme="tactical"]{--titlebar-bg:var(--bg2);}

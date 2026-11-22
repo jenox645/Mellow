@@ -153,6 +153,10 @@ fn build_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
         .title(WINDOW_TITLE)
         .inner_size(WINDOW_WIDTH, WINDOW_HEIGHT)
         .visible(false) // shown once sized (window-state, or fit_outer_size)
+        // Windows: no system frame; the page draws the title bar (backend::CUSTOM_FRAME).
+        // Classic's background from the first frame: no white flash before a page paints
+        .decorations(!backend::CUSTOM_FRAME)
+        .background_color(tauri::window::Color(7, 9, 15, 255))
         // The page's own drag and drop (a link dropped anywhere, files dropped on
         // the Vault): with Tauri's handler on, Windows never gives the page drop events
         .disable_drag_drop_handler()
@@ -162,7 +166,13 @@ fn build_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
         })
         .on_navigation({
             let app = app.clone();
-            move |url| follow(&app, url, route(url), "a navigation")
+            move |url| {
+                if let Some(op) = links::splash_op(url) {
+                    window_op(&app, op);
+                    return false;
+                }
+                follow(&app, url, route(url), "a navigation")
+            }
         })
         .on_new_window({
             let app = app.clone();
@@ -290,6 +300,47 @@ fn show_progress(window: &WebviewWindow, state: &State) {
     let _ = window.set_progress_bar(ProgressBarState { status: Some(status), progress });
 }
 
+/// The title bar's buttons (the page's, through the backend; the splash's).
+fn window_op(app: &AppHandle, op: &str) {
+    let Some(window) = app.get_webview_window(WINDOW_LABEL) else { return };
+    let done = match op {
+        "minimize" => window.minimize(),
+        "maximize" if window.is_maximized().unwrap_or(false) => window.unmaximize(),
+        "maximize" => window.maximize(),
+        // As the system's close button: the tray decides (close_to_tray)
+        "close" => window.close(),
+        _ => Ok(()),
+    };
+    if let Err(e) = done {
+        eprintln!("MellowDLP shell: window {op}: {e}");
+    }
+}
+
+/// A native file or folder dialog owned by the window (rfd), on its own thread;
+/// the answer (the path, "" when cancelled) goes back to the backend.
+fn dialog(app: &AppHandle, id: u64, kind: String, initial: Option<String>, extension: Option<String>) {
+    let app = app.clone();
+    std::thread::spawn(move || {
+        let mut picker = rfd::FileDialog::new();
+        if let Some(window) = app.get_webview_window(WINDOW_LABEL) {
+            picker = picker.set_parent(&window);
+        }
+        if let Some(dir) = initial.filter(|d| !d.is_empty()) {
+            picker = picker.set_directory(dir);
+        }
+        let path = if kind == "folder" {
+            picker.pick_folder()
+        } else {
+            if let Some(ext) = extension.as_deref().map(|e| e.trim_start_matches('.')).filter(|e| !e.is_empty()) {
+                picker = picker.add_filter(format!("{} files", ext.to_uppercase()), &[ext]).add_filter("All files", &["*"]);
+            }
+            picker.pick_file()
+        };
+        let path = path.map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
+        send(&app, "answer", json!({ "id": id, "path": path }));
+    });
+}
+
 // ── The tray ────────────────────────────────────────────────────────────────
 
 fn on_menu(app: &AppHandle, id: &str) {
@@ -388,6 +439,10 @@ fn start_backend(app: &AppHandle, background: bool) -> Result<(), String> {
                 Line::Event(Event::State(state)) => apply_state(&app, state),
                 Line::Event(Event::Notify { title, body }) => system::notify(&app, &title, &body, show_main),
                 Line::Event(Event::Launch { url }) => go_to(&app, &url),
+                Line::Event(Event::WindowOp { op }) => window_op(&app, &op),
+                Line::Event(Event::Dialog { id, kind, initial, extension }) => {
+                    dialog(&app, id, kind, initial, extension)
+                }
                 Line::Event(Event::Unknown) => {}
                 _ => println!("{line}"),
             }

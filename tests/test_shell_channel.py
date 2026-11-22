@@ -292,3 +292,40 @@ def test_the_schedulers_syncs_are_marked_automatic():
         server._enqueue_vault_sync("/music/A")
     assert enqueue.call_args_list[0].args[2]["auto_sync"] is True
     assert "auto_sync" not in enqueue.call_args_list[1].args[2]
+
+
+# ── Phase 3: the title bar and native dialogs ─────────────────────────────────
+
+def test_a_native_dialog_is_asked_of_the_shell(channel):
+    from mellow import desktop
+
+    def shell_side():
+        assert wait_for(lambda: any(m["type"] == "dialog" for m in sent(channel)))
+        q = next(m for m in sent(channel) if m["type"] == "dialog")
+        assert (q["kind"], q["initial"]) == ("folder", "/music")
+        shell.dispatch(json.dumps({"cmd": "answer", "id": q["id"], "path": "/music/Lo-fi"}))
+    t = threading.Thread(target=shell_side)
+    t.start()
+    assert desktop.dialogs_available() and desktop.ask_folder("/music") == "/music/Lo-fi"
+    t.join()
+
+
+def test_a_dialog_nobody_answers_gives_up(channel):
+    assert shell.ask("dialog", 0.2, kind="file") is None
+    shell.dispatch('{"cmd": "answer", "id": 999999, "path": "x"}')     # an answer nobody asked for
+
+
+def test_the_title_bar_buttons_go_to_the_shell(client, channel):
+    for op in ("minimize", "maximize", "close"):
+        assert client.post("/api/window", json={"op": op}).status_code == 200
+        assert {"type": "window_op", "op": op} in sent(channel)
+    assert client.post("/api/window", json={"op": "explode"}).status_code == 400
+
+
+def test_the_title_bar_buttons_without_a_shell(client):
+    assert client.post("/api/window", json={"op": "close"}).status_code == 409
+
+
+def test_the_page_learns_its_window_has_no_frame(client, channel, monkeypatch):
+    monkeypatch.setenv("MELLOW_SHELL_FRAME", "custom")
+    assert client.get("/api/system").get_json()["window_frame"] == "custom"
