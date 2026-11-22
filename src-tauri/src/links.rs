@@ -32,6 +32,19 @@ pub fn splash_op(url: &Url) -> Option<&str> {
     }
 }
 
+/// The link a `mellowdlp://download?url=<link>` (or `mellowdlp://open?url=`) asks
+/// the app to analyze: one http(s) link, else nothing. It goes to the Feed,
+/// never straight to a download: a web page can start these links.
+pub fn deep_link_target(link: &Url) -> Option<String> {
+    if link.scheme() != "mellowdlp" || !matches!(link.host_str(), Some("download" | "open")) {
+        return None;
+    }
+    let target = link.query_pairs().find(|(key, _)| key == "url")?.1.into_owned();
+    let parsed = Url::parse(&target).ok()?;
+    (matches!(parsed.scheme(), "http" | "https") && parsed.host_str().is_some() && target.len() <= 2048)
+        .then_some(target)
+}
+
 /// What to do with a link the page follows or opens in a new window.
 #[derive(Debug, PartialEq, Eq)]
 pub enum Route {
@@ -165,6 +178,18 @@ mod tests {
         ] {
             assert_eq!(route(&url(u)), Route::Refuse, "{u}");
             assert_eq!(route_new_window(&url(u)), Route::Refuse, "{u}");
+        }
+    }
+
+    #[test]
+    fn deep_links() {
+        let ok = "https://www.youtube.com/watch?v=abc&list=x";
+        let link = "mellowdlp://download?url=https%3A%2F%2Fwww.youtube.com%2Fwatch%3Fv%3Dabc%26list%3Dx";
+        assert_eq!(deep_link_target(&url(link)).as_deref(), Some(ok));
+        assert_eq!(deep_link_target(&url("mellowdlp://open?url=http://example.com/v")).as_deref(), Some("http://example.com/v"));
+        for bad in ["mellowdlp://download?url=javascript:alert(1)", "mellowdlp://download?url=file:///etc/passwd",
+                    "mellowdlp://download", "mellowdlp://delete?url=https://x.com/", "https://example.com/?url=https://x.com/"] {
+            assert_eq!(deep_link_target(&url(bad)), None, "{bad}");
         }
     }
 

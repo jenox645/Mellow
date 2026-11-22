@@ -328,3 +328,12 @@ test("a MIRROR folder synced without its preview says, once, that it only added"
   s = run([ev('complete', { sync_summary: { new: 0, already: 3, failed: 0 } })]);
   assert.ok(!s.effects[0].body.includes('SYNC OPTIONS'));
 });
+
+
+test('a mellowdlp:// link asks the Feed to analyze it and changes nothing else', () => {
+  const before = initialDownloads();
+  const after = applyEvent(before, { status: 'open_link', url: 'https://example.com/watch?v=1' });
+  assert.deepEqual(after.effects, [{ type: 'open_link', url: 'https://example.com/watch?v=1' }]);
+  assert.equal(after.dlState, before.dlState);
+  assert.equal(after.appState, before.appState);
+});

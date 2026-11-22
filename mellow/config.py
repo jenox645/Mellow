@@ -73,6 +73,7 @@ _DEFAULTS: dict = {
     "start_with_system": False,
     "background_notifications": True,
     "tray_notice_seen": False,        # the first close-to-tray was explained
+    "global_shortcut": "Ctrl+Alt+D",  # desktop app: download the copied link from anywhere ("" = off)
     "vault_sync_schedule": {},        # per-folder interval overrides
     "vault_budgets": {},              # per-folder storage caps (bytes)
     "update_check_on_launch": True,   # yt-dlp staleness toast on startup

@@ -49,6 +49,8 @@ use serde_json::{json, Value};
 use tauri::webview::{NewWindowResponse, PageLoadEvent};
 use tauri::window::ProgressBarState;
 use tauri::{AppHandle, Manager, RunEvent, Url, WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent};
+use tauri_plugin_deep_link::DeepLinkExt;
+use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 use tauri_plugin_window_state::{AppHandleExt, StateFlags};
 
 use backend::{Backend, Launch};
@@ -385,10 +387,41 @@ fn apply_state(app: &AppHandle, new: State) {
     if let Some(window) = app.get_webview_window(WINDOW_LABEL) {
         show_progress(&window, &new);
     }
+    if first || old.global_shortcut != new.global_shortcut {
+        set_global_shortcut(app, &old.global_shortcut, &new.global_shortcut);
+    }
     if first || old.start_with_system != new.start_with_system {
         let now = system::start_with_system(app, new.start_with_system);
         if now != new.start_with_system {
             send(app, "start_with_system", json!({ "value": now }));
+        }
+    }
+}
+
+/// Config's key combination for "download the copied link", from anywhere.
+fn set_global_shortcut(app: &AppHandle, old: &str, new: &str) {
+    let shortcuts = app.global_shortcut();
+    if !old.is_empty() {
+        let _ = shortcuts.unregister(old);
+    }
+    if new.trim().is_empty() {
+        return;
+    }
+    if let Err(e) = shortcuts.register(new.trim()) {
+        eprintln!("MellowDLP shell: shortcut {new}: {e}");
+        system::notify(app, "Shortcut not set", &format!("{new} can't be used ({e}). Config → In the background."), show_main);
+    }
+}
+
+/// mellowdlp://download?url=<link>: the window comes up and the Feed analyzes the link.
+fn open_deep_links(app: &AppHandle, links: &[Url]) {
+    for link in links {
+        match links::deep_link_target(link) {
+            Some(target) => {
+                show_main(app);
+                send(app, "open_link", json!({ "url": target }));
+            }
+            None => eprintln!("MellowDLP shell: ignored the link {link}"),
         }
     }
 }
@@ -475,6 +508,19 @@ fn main() {
         .plugin(tauri_plugin_opener::Builder::new().open_js_links_on_click(false).build())
         // The window opens where and as big as it was left (not hidden or shown: we decide)
         .plugin(tauri_plugin_window_state::Builder::default().with_state_flags(state_flags()).build())
+        // Config's key combination: the tray's "download the copied link", from any app
+        .plugin(
+            tauri_plugin_global_shortcut::Builder::new()
+                .with_handler(|app, _shortcut, event| {
+                    if event.state() == ShortcutState::Pressed {
+                        on_menu(app, "paste");
+                    }
+                })
+                .build(),
+        )
+        // mellowdlp:// links (the installer registers the scheme; a second launch
+        // with one hands it over through the single-instance plugin)
+        .plugin(tauri_plugin_deep_link::init())
         // Config's "Start with Windows": the system starts it with --background
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
@@ -485,6 +531,10 @@ fn main() {
         .setup(move |app| {
             let handle = app.handle().clone();
             let (_icon, menu) = tray::build(&handle, on_menu, show_main)?;
+            {
+                let links = handle.clone();
+                app.deep_link().on_open_url(move |event| open_deep_links(&links, &event.urls()));
+            }
             *app.state::<Shell>().menu.lock().unwrap() = Some(menu);
             if background {
                 app.state::<Shell>().in_tray.store(true, SeqCst);
@@ -493,6 +543,10 @@ fn main() {
             }
             if let Err(e) = start_backend(&handle, background) {
                 show_error(&handle, &e);
+            }
+            // Started by a mellowdlp:// link: once the backend listens (the command waits in its pipe)
+            if let Ok(Some(links)) = app.deep_link().get_current() {
+                open_deep_links(&handle, &links);
             }
             Ok(())
         })

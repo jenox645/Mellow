@@ -72,6 +72,8 @@ pub struct State {
     pub tray_notice_seen: bool,
     /// Closing the window keeps MellowDLP in the tray
     pub keep_running: bool,
+    /// Config's key combination for "download the copied link" ("" = none)
+    pub global_shortcut: String,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]

@@ -297,6 +297,22 @@ def _shell_setting(key: str):
     return _set
 
 
+# A mellowdlp:// link (the shell): the Feed analyzes it. With no page connected
+# yet (the window is still opening) it waits for the next one (api_progress)
+_pending_open_link: list[str] = []
+
+
+def _shell_open_link(message: dict) -> None:
+    url = _link(message.get("url", ""))
+    if url is None:
+        return
+    if open_pages():
+        _push_progress({"status": "open_link", "url": url})
+    else:
+        _pending_open_link[:] = [url]
+
+
+shell.register("open_link", _shell_open_link)
 shell.register("pause", _pause_all)
 shell.register("resume", _resume_all)
 shell.register("download", _shell_download)
@@ -925,6 +941,8 @@ def api_resume() -> Response:
 def api_progress() -> Response:
     def generate():
         q = _sse_subscribe()
+        if _pending_open_link:
+            q.put_nowait({"status": "open_link", "url": _pending_open_link.pop()})
         try:
             while True:
                 try:

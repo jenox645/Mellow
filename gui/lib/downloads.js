@@ -176,6 +176,10 @@ export function resync(state, jobs, now = Date.now()) {
 }
 
 export function applyEvent(state, data, now = Date.now()) {
+  // A mellowdlp:// link (the desktop app): the Feed analyzes it, nothing else changes
+  if (data && data.status === 'open_link') {
+    return { ...state, effects: [...state.effects, { type: 'open_link', url: data.url }] };
+  }
   const jobId = data.job_id || null;
   const isPrimary = state.primaryJob === null || jobId === null || jobId === state.primaryJob;
   const fx = [];

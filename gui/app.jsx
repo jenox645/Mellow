@@ -446,6 +446,9 @@ function App() {
         refreshVault();
       } else if (fx.type === 'victory') {
         celebrate(fx);
+      } else if (fx.type === 'open_link') {
+        setClipboardSuggestion({ url: fx.url, ts: Date.now() });
+        setPage('feed');
       }
     }
     dispatch({ type: 'effects_done', count: effects.length });

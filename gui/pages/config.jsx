@@ -50,7 +50,7 @@ export function ConfigPage({ config, setConfig, showNotif, installAppUpdate, onA
     'default_mode', 'default_quality', 'default_container', 'default_audio_format', 'default_audio_quality',
     'download_workers', 'schedule_start', 'on_queue_done', 'keep_awake', 'auto_sync_enabled', 'auto_sync_default_interval',
     'update_check_on_launch', 'clipboard_watch', 'completion_sound', 'desktop_notifications',
-    'run_in_background', 'start_with_system', 'background_notifications', 'auto_sync_time',
+    'run_in_background', 'start_with_system', 'background_notifications', 'auto_sync_time', 'global_shortcut',
     'api_port',
   ];
   const NUMERIC_DEFAULTS = { concurrent_fragments: 4, sleep_interval: 0, retries: 3, download_workers: 1, api_port: 0 };

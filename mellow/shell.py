@@ -238,6 +238,7 @@ def state(queue: dict, paused: bool, cfg: dict | None = None) -> dict:
         "run_in_background": bool(cfg.get("run_in_background", True)),
         "start_with_system": bool(cfg.get("start_with_system", False)),
         "tray_notice_seen": bool(cfg.get("tray_notice_seen", False)),
+        "global_shortcut": str(cfg.get("global_shortcut") or ""),
         "keep_running": bool(cfg.get("run_in_background", True)) and has_work,
     }
 

@@ -329,3 +329,28 @@ def test_the_title_bar_buttons_without_a_shell(client):
 def test_the_page_learns_its_window_has_no_frame(client, channel, monkeypatch):
     monkeypatch.setenv("MELLOW_SHELL_FRAME", "custom")
     assert client.get("/api/system").get_json()["window_frame"] == "custom"
+
+
+def test_a_mellowdlp_link_goes_to_the_page(channel):
+    from mellow import server
+    q = server._sse_subscribe()
+    try:
+        _run("open_link", url="https://example.com/watch?v=1")
+        assert q.get(timeout=2) == {"status": "open_link", "url": "https://example.com/watch?v=1"}
+    finally:
+        server._sse_unsubscribe(q)
+
+
+def test_a_mellowdlp_link_waits_for_the_window_to_connect(channel):
+    from mellow import server
+    _run("open_link", url="https://example.com/watch?v=2")
+    _run("open_link", url="javascript:alert(1)")              # never a page
+    q = server._sse_subscribe()
+    server._sse_unsubscribe(q)
+    assert server._pending_open_link == ["https://example.com/watch?v=2"]
+    server._pending_open_link.clear()
+
+
+def test_the_shell_gets_the_global_shortcut(channel):
+    update_config(lambda c: c.update(global_shortcut="Ctrl+Alt+M"))
+    assert shell.state({"jobs": []}, paused=False)["global_shortcut"] == "Ctrl+Alt+M"
