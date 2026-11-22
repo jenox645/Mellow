@@ -181,9 +181,13 @@ def _check_shell(proc: subprocess.Popen, env: dict) -> None:
         code = proc.wait(timeout=SHELL_EXIT_TIMEOUT_SECS)
     except subprocess.TimeoutExpired:
         raise AssertionError(f"still running {SHELL_EXIT_TIMEOUT_SECS}s after its stdin closed") from None
-    assert code == 0, f"exited with code {code} after its stdin closed"
+    # Unix: started as its own process group's leader (as the shell starts it), the
+    # backend ends that group, itself included, with SIGKILL as its last act
+    # (main._end_own_group), after removing its instance file
+    clean = (0,) if sys.platform == "win32" else (0, -signal.SIGKILL)
+    assert code in clean, f"exited with code {code} after its stdin closed"
     assert not running_apps(env), "its instance file is still there"
-    print("  stdin closed: exited 0, instance file removed")
+    print(f"  stdin closed: exited ({code}), instance file removed")
 
 
 def main(binary: str, shell: bool = False) -> int:
