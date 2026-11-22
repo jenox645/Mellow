@@ -54,6 +54,8 @@ log = logging.getLogger(__name__)
 
 # Inno Setup's log of the silent install, for a bug report
 INSTALLER_LOG_PATH = Path.home() / ".mellow_dlp_update.log"
+# Set by the Tauri shell (src-tauri/src/backend.rs) for the backend it starts
+TAURI_SHELL_ENV = "MELLOW_SHELL"
 _HEADERS = {"User-Agent": f"MellowDLP/{APP_VERSION}"}
 
 _installing = threading.Lock()
@@ -69,6 +71,11 @@ def install_kind() -> tuple[str | None, str | None]:
     """(kind, None) when this copy can update itself, else (None, why not)."""
     if not getattr(sys, "frozen", False):
         return None, "Running from source: pull the new version and rebuild."
+    if os.environ.get(TAURI_SHELL_ENV) == "tauri":
+        # The Tauri app (src-tauri/) carries this backend inside its bundle, next to
+        # its shell: swapping this exe alone would leave a shell of one version
+        # around a backend of another. Its own updater isn't there yet
+        return None, "The Tauri desktop app doesn't update itself yet: download the new version."
     exe = Path(sys.executable)
     if sys.platform == "win32":
         if any(exe.parent.glob("unins*.exe")):

@@ -7,6 +7,7 @@
 'use strict';
 
 import { API } from './lib/api.js';
+import { applyTheme } from './lib/util.js';
 import {
   CLIPBOARD_URL_RE,
   NOTIF_ACTION_TIMEOUT_MS,
@@ -27,8 +28,7 @@ import { playCompletionChime } from './lib/sound.js';
 import { downloadsReducer, initialDownloads } from './lib/downloads.js';
 import { MASCOT_VICTORY_SAFE } from './lib/mascots.js';
 import { Modal, Notif, Mascot, AppUpdateOverlay, WhatsNewModal } from './components/common.jsx';
-import { LoadingScreen } from './components/loading.jsx';
-import { Sidebar, TopBar, StatusBar } from './components/chrome.jsx';
+import { themeSlots } from './themes/slots.jsx';
 import { FeedPage } from './pages/feed.jsx';
 import { QueuePage } from './pages/queue.jsx';
 import { VaultPage } from './pages/vault.jsx';
@@ -53,10 +53,10 @@ function ShortcutHelpOverlay({ onClose }) {
     <Modal title="KEYBOARD SHORTCUTS" onClose={onClose} footer={
       <button className="btn btn-secondary btn-sm" onClick={onClose}>CLOSE</button>
     }>
-      <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 11 }}>
+      <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11 }}>
         {KEYBOARD_SHORTCUTS.map(([key, desc]) => (
           <div key={key} style={{ display: 'flex', gap: 14, padding: '6px 0', borderBottom: '1px solid var(--border)' }}>
-            <span style={{ color: 'var(--cyan)', minWidth: 90 }}>{key}</span>
+            <span style={{ color: 'var(--accent)', minWidth: 90 }}>{key}</span>
             <span style={{ color: 'var(--t2)' }}>{desc}</span>
           </div>
         ))}
@@ -270,6 +270,16 @@ function App() {
       .catch(() => {});
   }, []);
 
+  // The theme follows config ui_theme (Config → APPEARANCE changes it live); before the config has
+  // loaded, index.html's early script has applied the one remembered in localStorage
+  // `theme` is the one applied: the sidebar and status-bar graphs redraw with its colours once it is
+  const [theme, setTheme] = React.useState(() => document.documentElement.dataset.theme || '');
+  React.useEffect(() => {
+    if (config.ui_theme !== undefined) setTheme(applyTheme(config.ui_theme));
+  }, [config.ui_theme]);
+  // The window's parts for this theme: its own components where it has them (gui/themes/slots.jsx)
+  const S = React.useMemo(() => themeSlots(theme), [theme]);
+
   // Initial load: stats, config, vault — then the once-a-day yt-dlp check
   React.useEffect(() => {
     refreshStats();
@@ -438,25 +448,29 @@ function App() {
   const switchPage = React.useCallback((p) => setPage(p), []);
 
   if (loading) {
-    return <LoadingScreen onReady={() => setLoading(false)} />;
+    return <S.LoadingScreen onReady={() => setLoading(false)} />;
   }
 
   return (
     <div className="app">
-      <Sidebar
+      <S.Sidebar
         page={page}
         setPage={setPage}
         appState={appState}
         stats={stats}
         speedHistory={speedHistory}
+        theme={theme}
         sysInfo={sysInfo}
       />
 
       <div className="main">
-        <TopBar page={page} onGuide={startGuide} />
+        <S.TopBar page={page} onGuide={startGuide} />
+
+        <S.PageFrame page={page}>
 
         {page === 'feed' && (
           <FeedPage
+            View={S.pages.feed}
             dlState={dlState}
             stats={stats}
             sysInfo={sysInfo}
@@ -510,6 +524,7 @@ function App() {
         )}
         {page === 'vault' && (
           <VaultPage
+            View={S.pages.vault}
             vaultFolders={vaultFolders}
             selectedFolder={selectedVaultFolder}
             setSelectedFolder={setSelectedVaultFolder}
@@ -540,8 +555,9 @@ function App() {
             refreshStats={refreshStats}
           />
         )}
+        </S.PageFrame>
 
-        <StatusBar sysInfo={sysInfo} speedHistory={speedHistory} config={config}
+        <S.StatusBar sysInfo={sysInfo} speedHistory={speedHistory} theme={theme} config={config}
           appUpdate={appUpdateOffer} onAppUpdate={() => takeAppUpdate(appUpdateOffer)}
           ffmpegInstall={ffmpegInstall} onGetFfmpeg={installFfmpeg} />
       </div>
@@ -582,12 +598,12 @@ function App() {
           <Mascot src={MASCOT_VICTORY_SAFE} className="victory-mascot" wrapClass="victory-mascot" />
           <div className="victory-text">✦ PLAYLIST COMPLETE ✦</div>
           {victoryData && victoryData.playlistName && (
-            <div style={{ fontFamily: "'Exo 2', sans-serif", fontSize: 16, color: '#e0e8f0', fontStyle: 'italic', textAlign: 'center', maxWidth: 400 }}>
+            <div style={{ fontFamily: 'var(--font-body)', fontSize: 16, color: 'var(--t-bright)', fontStyle: 'italic', textAlign: 'center', maxWidth: 400 }}>
               "{victoryData.playlistName}"
             </div>
           )}
           {victoryData && (victoryData.itemCount > 0) && (
-            <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 13, color: '#8899aa', letterSpacing: '0.1em' }}>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 13, color: 'var(--t-muted)', letterSpacing: '0.1em' }}>
               {victoryData.itemCount} ITEMS DOWNLOADED
             </div>
           )}
@@ -629,14 +645,14 @@ function App() {
             </>
           }
         >
-          <div style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 11, color: 'var(--t2)' }}>
+          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--t2)' }}>
             <div style={{ marginBottom: 8, color: 'var(--t3)' }}>
               {restorableJobs.length} download(s) hadn't finished when the app last closed:
             </div>
             {restorableJobs.slice(0, 8).map(j => (
               <div key={j.id} style={{ padding: '3px 0', borderBottom: '1px solid var(--border)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                <span style={{ color: 'var(--amber)', marginRight: 8 }}>{(j.type || 'feed').toUpperCase()}</span>
-                <span style={{ color: 'var(--cyan)' }}>{j.label || j.url}</span>
+                <span style={{ color: 'var(--accent-2)', marginRight: 8 }}>{(j.type || 'feed').toUpperCase()}</span>
+                <span style={{ color: 'var(--accent)' }}>{j.label || j.url}</span>
               </div>
             ))}
             {restorableJobs.length > 8 && (

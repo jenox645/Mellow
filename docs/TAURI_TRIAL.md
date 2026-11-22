@@ -9,6 +9,7 @@ a second run on Linux (Ubuntu 24.04, WebKitGTK 2.52, GStreamer 1.24) is in [Linu
 - [How to run it](#how-to-run-it)
 - [Checks](#checks)
   - [Linux run](#linux-run)
+  - [Packaged mode](#packaged-mode)
 - [Numbers](#numbers)
 - [What Tauri gives us next](#what-tauri-gives-us-next)
 - [Risks](#risks)
@@ -36,9 +37,12 @@ the pipe and points stdin itself at the null device (`main._detach_stdin`).
 
 **`src-tauri/`**, a Tauri v2 app (product name MellowDLP, `assets/mellow.ico`):
 
-- shows `src-tauri/ui/index.html` ("Starting MellowDLP…") and spawns `python main.py --shell`
-  (repo root = `MELLOW_ROOT`, else the folder above `src-tauri`; interpreter = `MELLOW_PYTHON`,
-  else `python`), without a console window;
+- shows `src-tauri/ui/index.html` ("Starting MellowDLP…") and starts the backend with `--shell`,
+  without a console window (`backend.rs`): the installed app runs the PyInstaller build it carries
+  (`backend/mellowdlp-backend[.exe]` in its resources, see [Packaged mode](#packaged-mode)); from a
+  checkout it runs `python main.py --shell` (repo root = `MELLOW_ROOT`, else the folder above
+  `src-tauri`; interpreter = `MELLOW_PYTHON`, else `python`). `MELLOW_BACKEND=<exe>` runs a built
+  backend with any shell (e.g. the debug one). The backend gets `MELLOW_SHELL=tauri`;
 - reads the ready line and navigates the window to the launch URL; if the backend dies first,
   the window says so;
 - the window is 1100×780 like today's: Chrome's `--window-size` is the whole window, Tauri's size
@@ -55,7 +59,7 @@ the pipe and points stdin itself at the null device (`main._detach_stdin`).
   `mailto` link, followed or opened in a new window (`target="_blank"`, `window.open`), goes to the
   default browser through `tauri-plugin-opener` (`open_url`, called from Rust); other schemes
   (`file:`, `javascript:`, `ftp:`, custom ones) and a new window for the app itself are refused and
-  logged (`route()` in `main.rs`, with unit tests). See [Links and notifications](#links-and-notifications-69);
+  logged (`route()` in `links.rs`, with unit tests). See [Links and notifications](#links-and-notifications-69);
 - desktop notifications: the shell answers the page's permission requests (`on_permission_request`):
   **Notifications → allow, only for the backend's page (its exact origin, port included, taken
   from the ready line: another service on 127.0.0.1 is denied); everything else (camera,
@@ -94,9 +98,18 @@ cd src-tauri
 npx @tauri-apps/cli@2 build                    # → src-tauri/target/release/mellowdlp-shell.exe
 ```
 
-`bundle.active` is `false`: no installer is made in this trial. The Tauri CLI wasn't added to the
-root `package.json` (`npx` fetches it). Rust (stable) and, on Windows, the WebView2 runtime
-(part of Windows 11) are needed; on Linux the `webkit2gtk-4.1` development packages.
+`bundle.active` is `false` in `tauri.conf.json`, so `cargo build` / `cargo test` never need a
+backend build. Rust (stable) and, on Windows, the WebView2 runtime (part of Windows 11) are
+needed; on Linux the `webkit2gtk-4.1` development packages. The installable app:
+
+```bash
+python build_setup.py --tauri    # → dist/tauri/: MellowDLP_<v>_x64-setup.exe (Windows), .AppImage + .deb (Linux)
+```
+
+It builds the backend with PyInstaller as for today's app, then `tauri build` with
+`src-tauri/tauri.bundle.conf.json` (bundles on, the backend as resources) and the version from
+`mellow/version.py`. The Tauri CLI is pinned in `package.json` (`@tauri-apps/cli`, installed by
+`npm ci`). See [Packaged mode](#packaged-mode).
 
 Linux (Debian/Ubuntu), from the repo root:
 
@@ -146,9 +159,10 @@ Tauri window on Windows). Screenshots are pictures of the real window (`PrintWin
 | ✅ | Second launch | Tauri already open → the new process hands over to it (single-instance plugin) and exits; still one shell and one backend. Today's app (FlaskWebGUI) running → the Tauri window signs in to *that* copy (`attached`, the `--shell` process exits); closing the Tauri window leaves that copy running. The reverse (Tauri running, then today's app launched) is unchanged: main.py's guard opens a browser window on the running server | ✅ With a D-Bus session bus: the new process exits 0 in 55 ms, the first window comes back from minimized and takes focus; one shell, one backend. ⚠️ Without one (bare Xvfb) the plugin can't hand over: a second window opens, signed in to the running backend through main.py's guard |
 | ⚠️ | Drag and drop of a link / of files | Tauri's handler is off so the page gets HTML5 drop events (Tauri docs: required on Windows). Not tried with a real drag from another app | — not checked |
 | ⚠️ | Desktop notifications (`new Notification`, Config opt-in) | Before #69: `Notification.requestPermission()` answered `denied` at once, no prompt (WebView2 leaves the permission to the host app and wry didn't grant it). #69's permission handler answers WebView2's `PermissionRequested` the same way as on Linux (built and type-checked for `x86_64-pc-windows-msvc`); **not yet run on Windows** | ✅ A finished download with the window minimized and Config's toggle on: the app's own `new Notification` reached the notification daemon (`Notify` "Download complete" / "clip" on D-Bus). `Notification.permission` is `granted` right after every launch, without a click; geolocation is denied. [Details](#links-and-notifications-69) |
+| ✅ | Installed app (NSIS installer) | `MellowDLP_2.14.2_x64-setup.exe` installed silently; started with a throwaway home and **no Python, ffmpeg or node on `PATH`**: shell, `mellowdlp-backend.exe`, 6 WebView2 processes, no python.exe; signed in, a clip analyzed and downloaded with live progress (`▼ 22%` → `▼ 80%` → `⚙ processing`); the window's X → shell gone in 0.09 s, nothing left after 0.5 s, instance file removed. [Packaged mode](#packaged-mode) | 🔧 Built and smoke-tested in CI (`tauri.yml`, ubuntu-22.04): AppImage + deb, the bundled backend started as the shell starts it. Not run in a window |
 | ⚠️ | External links | Before #69: refused (logged). #69 opens them in the default browser through `tauri-plugin-opener`; same code on Windows, **not yet run there** | ✅ The signed-out screen's `target="_blank"` link opened `https://github.com/jenox645/Mellow/releases/latest` in the default browser; `mailto:`, links and `window.open` too; `file:`, `ftp:` and a new window for the app refused. [Details](#links-and-notifications-69) |
 
-Not checked: macOS (no machine), #69's links and notifications on Windows, an installer (`bundle.active` false), a first-ever start
+Not checked: macOS (no machine), #69's links and notifications on Windows, the Linux bundles in a window, a first-ever start
 (WebView2 profile creation), Windows 10 without the WebView2 runtime; on Linux the rows marked —,
 Wayland and a full desktop (GNOME, KDE): the Linux run used Xvfb with openbox.
 
@@ -297,6 +311,108 @@ Two findings on the way:
 - **Windows.** Built and type-checked for `x86_64-pc-windows-msvc` (`cargo check`); the code has
   no per-platform part. Not run on Windows.
 
+### Packaged mode
+
+The installed app carries its own backend: the PyInstaller **one-folder** build (`dist/MellowDLP-app/`,
+what today's installer installs) goes into the Tauri bundle as resources, and the shell starts its exe
+by path (option (c) of the [risks](#risks)). No Python, no `externalBin`.
+
+**Layout.** `build_setup.py --tauri` copies `dist/MellowDLP-app/` to `dist/MellowDLP-backend/` with
+the exe renamed `mellowdlp-backend[.exe]` (one MellowDLP exe to start in the installed folder, and the
+backend says what it is in the task manager); `tauri.bundle.conf.json` maps that folder to `backend/`:
+
+| | Where the backend lands | Tauri's `resource_dir()` |
+|---|---|---|
+| Windows (NSIS, per user) | `%LOCALAPPDATA%\MellowDLP\backend\` next to `mellowdlp-shell.exe` | the exe's folder |
+| Linux deb | `/usr/lib/MellowDLP/backend/` | `/usr/lib/MellowDLP` |
+| Linux AppImage | `usr/lib/MellowDLP/backend/` inside the image | the same, mounted |
+| macOS (from Tauri's docs, not built) | `MellowDLP.app/Contents/Resources/backend/` | `Contents/Resources` |
+| `target/release/` (`tauri build` copies resources next to the binary) | `target/release/backend/` | the exe's folder |
+
+**Which backend** (`Launch::resolve`, unit-tested): `MELLOW_BACKEND` > `MELLOW_ROOT`/`MELLOW_PYTHON`
+(source) > the bundle's `backend/` > the checkout the shell was built from. Development is unchanged.
+
+**The old updater.** In the bundle the backend's folder is writable and has no Inno uninstaller, so
+`app_update.install_kind()` would have said "windows-portable" and swapped the backend's exe alone
+for the FlaskWebGUI app's portable exe. With `MELLOW_SHELL=tauri` (set by the shell) a frozen backend
+now answers "no self-update" and the page offers the release page, until the Tauri updater replaces
+the whole bundle (`tests/test_app_update.py`).
+
+**Linux packages.** deb: `depends` on `gstreamer1.0-plugins-base`, `-good`, `-libav`, `-gl`,
+`recommends` `-plugins-bad` (the [risks](#risks)' table). AppImage: `bundleMediaFramework: true`, which
+copies the build machine's GStreamer; `tauri.yml` installs base, good, bad and gl there, **not libav**
+(on Ubuntu `plugins-bad` decodes H.264/AAC through OpenH264 and faad, see [Linux run](#linux-run)).
+Bundling libav is the owner's call.
+
+**Checked on Windows 11** (the installer, not the build folder): `dist/tauri/MellowDLP_2.14.2_x64-setup.exe /S`
+into a scratch folder (5.4 s), then the installed shell started with a throwaway home (`USERPROFILE`,
+`LOCALAPPDATA`, `APPDATA`, `TEMP`) and `PATH` = System32, Wbem and PowerShell only (no `python`,
+`py`, `ffmpeg`, `node`, `deno` on it, asserted), the window driven over WebView2's DevTools port:
+
+- process tree: `mellowdlp-shell.exe` → `mellowdlp-backend.exe` + 6 × `msedgewebview2.exe`; no python.exe;
+- signed in (`/launch` → `/`), `/api/system` answered (app 2.14.2, yt-dlp 2026.10.26);
+- a 12 s 640×360 H.264/AAC clip from a slow local site analyzed and downloaded: the progress panel
+  moved and the title bar went `▼ 22%`, `▼ 43%`, `▼ 80%`, `⚙ processing`, `MellowDLP`; the file
+  (1,206,263 bytes) in the throwaway `Downloads\MellowDLP`; the backend answered "no self-update"
+  in its update check;
+- the window's X (`WM_CLOSE`): the shell exited 0 after 0.09 s, no process of the run left after
+  0.5 s, the instance file removed;
+- `scripts/smoke_binary.py --shell dist/MellowDLP-backend/mellowdlp-backend.exe`: ready line, the
+  launch link works once then 403, app and assets served, stdin closed → exit 0, instance file gone
+  (CI runs the same on both systems).
+
+Screenshots (`PrintWindow` of the real window, kept outside the repo): `10_tauri_packaged_feed.png`,
+`11_tauri_packaged_analyzed.png`, `12_tauri_packaged_downloading.png`, `13_tauri_packaged_complete.png`.
+
+**Found on the way.**
+
+- **Install folder = data folder.** The per-user NSIS install goes to `%LOCALAPPDATA%\MellowDLP`,
+  which is also MellowDLP's own data folder (`datadir.py`: instance file, launch pages, API keys).
+  It works: the uninstaller removes the files it installed and the folder only if empty, and the app
+  only ever deletes its own `launch-*.html` there. Today's installer uses `%LOCALAPPDATA%\Programs\MellowDLP`;
+  the switch decides (a custom NSIS template or hook).
+- **Shortcuts.** The NSIS installer writes `Start Menu\Programs\MellowDLP.lnk` and `Desktop\MellowDLP.lnk`,
+  the names today's installer uses: installed next to today's app, it takes those shortcuts over
+  (seen on the test machine; put back by hand). Its uninstaller removes a shortcut only when it points
+  at its own exe. Try the Tauri app on an account without today's app, or re-point the shortcuts.
+- **The shell's file name** stays `mellowdlp-shell.exe`: NSIS's "is it running?" check looks for the
+  main binary's name, and named `MellowDLP.exe` it would find (and offer to close) today's app.
+- **The icon** is the mascot's line art (`assets/mellow.ico`): at 16 px in the title bar and taskbar
+  it reads as grey noise. Today's Chrome window shows the same icon as its favicon.
+
+**Sizes** (Windows, this machine's build):
+
+| | Tauri app | Today (FlaskWebGUI) |
+|---|---|---|
+| Installer | `MellowDLP_2.14.2_x64-setup.exe` **36.4 MB** (36,372,951 bytes; NSIS, LZMA) | `MellowDLP_Setup.exe` **35.3 MB** (35,272,593 bytes; Inno Setup, LZMA2 ultra) |
+| Installed | 90.3 MB: backend 89 MB (1,128 files), shell 3.3 MB, uninstaller 0.2 MB | 89 MB |
+| Shell | `mellowdlp-shell.exe` 3.34 MB (3,337,216 bytes) | — (uses the installed Chrome/Edge) |
+| `build_setup.py` | `--tauri`: 4 min 13 s (PyInstaller 1 min, release shell 2 min 36 s from a warm cargo cache, NSIS) | — |
+
+**Start times** (Windows 11, the same machine as the earlier numbers): today = the one-folder build
+`dist/MellowDLP-app/MellowDLP.exe` (what today's installer installs; FlaskWebGUI picks Chrome), Tauri =
+the installed app. Same throwaway home per kind, stripped `PATH`, one unrecorded warm-up, then 3
+runs. Measured from the launch: *window* = the app's top-level window is on screen; *app screen* =
+the first `PrintWindow` capture (polled every ~40 ms) that shows the app's own loading screen (its
+cyan mascot and bar: the shell's splash and a blank browser window have none), the same test for
+both windows; *first data* = the page's first `/api/` answer over DevTools (Tauri only: FlaskWebGUI's
+Chrome has no DevTools port without changing the app); memory = working set of the whole process
+tree 12 s after the launch.
+
+| | Tauri app (installed) | Today, clean start | Today, after a normal close |
+|---|---|---|---|
+| Window on screen | **0.50 / 0.40 / 0.43 s** (the splash) | 1.06 / 1.08 / 1.21 s | 3.14 / 3.08 / 3.07 s |
+| App screen | **1.69 / 1.43 / 1.89 s** | 1.97 / 2.05 / 2.05 s | 3.99 / — / 4.31 s |
+| First data | 1.44 / 1.33 / 1.55 s | — | — |
+| Working set, whole tree | **546 / 538 / 533 MB**, 8 processes (shell 28, WebView2 ×6 ~390, backend ~119) | 795 / 799 / 804 MB, 13 processes (Chrome ×12 ~680, backend 117) | 676 / 663 / 813 MB, 11–13 processes |
+
+"Clean start" deletes the instance file FlaskWebGUI leaves behind (it ends its server with a kill),
+which otherwise costs every later start a 2 s probe (see [Numbers](#numbers)); the Tauri backend exits
+cleanly, so every Tauri start is a clean one. — = the capture missed it in that run. An earlier set
+with a stricter colour threshold gave Tauri 1.49 / 1.64 / 1.49 s (app screen) and 1.42 / 1.41 / 1.42 s
+(first data). The packaged backend is faster than the trial's `python main.py` (first data 1.4 s vs
+1.8 s): the frozen build doesn't scan site-packages.
+
 ## Numbers
 
 Both from source with the same Python and the same throwaway home; Tauri = release shell; today =
@@ -442,12 +558,13 @@ binaries).
 
 Steps for "full Tauri":
 
-1. Keep `--shell` as the backend's contract; give the shell a packaged mode that spawns the
+1. ✅ Keep `--shell` as the backend's contract; give the shell a packaged mode that spawns the
    PyInstaller one-folder backend (resources, spawned by path) instead of `python main.py`;
-   `MELLOW_ROOT`/`MELLOW_PYTHON` stay for development.
-2. `build_setup.py`: build the backend one-folder, then `tauri build` with bundles on (NSIS on
-   Windows to replace Inno Setup, AppImage + deb on Linux, dmg/app on macOS). Keep the
-   `APP_ASSET_NAMES` contract or migrate installed copies with one last release of the old updater.
+   `MELLOW_ROOT`/`MELLOW_PYTHON` stay for development. Done: [Packaged mode](#packaged-mode).
+2. ✅ `build_setup.py`: build the backend one-folder, then `tauri build` with bundles on (NSIS on
+   Windows to replace Inno Setup, AppImage + deb on Linux, dmg/app on macOS). Done (`--tauri`);
+   still to decide: keep the `APP_ASSET_NAMES` contract or migrate installed copies with one last
+   release of the old updater, and the install folder (see [Packaged mode](#packaged-mode)).
 3. Linux: `deb.depends` as above; AppImage with `bundleMediaFramework` (decide on bundling
    `libav`); run the browser tests against WebKitGTK in CI (`xvfb` and a D-Bus session bus),
    including the Vault player with an H.264 and a webm file. Also on Linux: an `on_download`

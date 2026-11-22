@@ -3,8 +3,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  estimateDownloadBytes, fmtBytes, fmtCount, fmtDuration, fmtWait, idxRanges, isLinkLike, matchFolders, parseClock,
-  splitFolder, stepHistory, videoInPlaylist,
+  applyTheme, themeCards, estimateDownloadBytes, fmtBytes, fmtCount, fmtDuration, fmtWait, idxRanges, isLinkLike, matchFolders,
+  parseClock, splitFolder, stepHistory, themeRgba, videoInPlaylist,
 } from '../../gui/lib/util.js';
 import { defaultToggles, togglesFor, togglesFrom } from '../../gui/lib/formats.js';
 
@@ -112,4 +112,45 @@ test('fmtWait says how long until auto-sync tries again', () => {
   assert.equal(fmtWait(3 * 3600 - 1), '3 H');
   assert.equal(fmtWait(26 * 3600), '2 D');
   assert.equal(fmtWait(null), '1 MIN');
+});
+
+// The theme helpers touch `document` only when called: stand-ins for the page
+function fakePage(tokens = {}) {
+  const stored = {};
+  globalThis.document = { documentElement: { dataset: {} } };
+  globalThis.localStorage = { setItem: (k, v) => { stored[k] = v; } };
+  globalThis.window = { getComputedStyle: () => ({ getPropertyValue: name => tokens[name] || '' }) };
+  return stored;
+}
+
+test('applyTheme switches the page and remembers the theme; an unknown id is Classic', () => {
+  const stored = fakePage();
+  assert.equal(applyTheme('archive'), 'archive');
+  assert.equal(document.documentElement.dataset.theme, 'archive');
+  assert.equal(stored['mellow-theme'], 'archive');
+  for (const unknown of ['dark', 'neon', '', null, undefined]) {
+    assert.equal(applyTheme(unknown), 'classic');
+    assert.equal(document.documentElement.dataset.theme, 'classic');
+  }
+  globalThis.localStorage = { setItem: () => { throw new Error('blocked'); } };
+  assert.equal(applyTheme('tactical'), 'tactical');   // storage blocked: still applied
+  assert.equal(document.documentElement.dataset.theme, 'tactical');
+});
+
+test('themeCards: Classic and Classic Light are one card showing the version in use', () => {
+  const ids = cards => cards.map(c => c.id);
+  assert.deepEqual(ids(themeCards('classic')), ['classic', 'archive', 'tactical']);
+  assert.deepEqual(ids(themeCards('archive')), ['classic', 'archive', 'tactical']);   // the dark one by default
+  const light = themeCards('classic-light');
+  assert.deepEqual(ids(light), ['classic-light', 'archive', 'tactical']);
+  assert.equal(light[0].name, 'Classic');
+  assert.deepEqual(light[0].pair, { dark: 'classic', light: 'classic-light' });
+  assert.equal(light[0].swatches[0], '#ECEEF1');                                      // the light version's colours
+  assert.equal(themeCards('classic')[0].swatches[0], '#07090F');
+  assert.equal(light[1].pair, null);
+});
+
+test('themeRgba builds a canvas colour from a channel token', () => {
+  fakePage({ '--accent-rgb': ' 0,216,255 ' });
+  assert.equal(themeRgba('--accent-rgb', 0.85), 'rgba(0,216,255,0.85)');
 });

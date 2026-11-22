@@ -55,6 +55,6 @@ def test_the_option_reaches_vault_syncs_and_library_entries(tmp_dir):
                                     'mode': 'AUDIO', 'normalize_audio': True})
     entry = analytics.get_library_entry('n1')
     assert entry['normalize_audio'] is True
-    opts, _ = library.build_sync_opts(entry, cfg, 'add')
+    opts, _ = library.build_sync_opts(entry, cfg)
     assert opts['normalize_audio'] is True
     assert vault.default_sync_format('', entry, cfg)['normalize_audio'] is True

@@ -9,6 +9,7 @@
     "bundle": "esbuild gui/app.jsx --bundle --outfile=static/app.bundle.js --loader:.jsx=jsx --target=es2020 --platform=browser --format=iife --global-name=MellowApp --jsx=transform --jsx-factory=React.createElement --jsx-fragment=React.Fragment"
   },
   "devDependencies": {
+    "@tauri-apps/cli": "2.12.6",
     "esbuild": "0.28.2",
     "eslint": "10.13.0",
     "react": "18.3.1",

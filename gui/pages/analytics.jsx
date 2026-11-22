@@ -3,7 +3,7 @@
 
 import { API, download } from '../lib/api.js';
 import {
-  fmtBytes, fmtSpeed, fmtEta, fmtDate, fmtTimestamp, timeAgo, platformTagClass,
+  cssVar, fmtBytes, fmtSpeed, fmtEta, fmtDate, fmtTimestamp, timeAgo, platformTagClass, themeRgba,
 } from '../lib/util.js';
 import { Ico } from '../components/icons.jsx';
 import { EditableStat, LineChart, Modal } from '../components/common.jsx';
@@ -35,17 +35,17 @@ function WrappedModal({ onClose }) {
       </>
     }>
       {!data ? (
-        <div style={{ padding: 24, textAlign: 'center', fontFamily: 'Share Tech Mono, monospace', fontSize: 11, color: 'var(--t3)' }}>CRUNCHING THE NUMBERS...</div>
+        <div style={{ padding: 24, textAlign: 'center', fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--t3)' }}>CRUNCHING THE NUMBERS...</div>
       ) : data.error ? (
-        <div style={{ padding: 24, textAlign: 'center', fontFamily: 'Share Tech Mono, monospace', fontSize: 11, color: 'var(--t3)' }}>
+        <div style={{ padding: 24, textAlign: 'center', fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--t3)' }}>
           COULDN'T LOAD {year}. TRY AGAIN IN A MOMENT.
         </div>
       ) : !data.total_downloads ? (
-        <div style={{ padding: 24, textAlign: 'center', fontFamily: 'Share Tech Mono, monospace', fontSize: 11, color: 'var(--t3)' }}>
+        <div style={{ padding: 24, textAlign: 'center', fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--t3)' }}>
           NOTHING DOWNLOADED IN {year} — A QUIET YEAR.
         </div>
       ) : (
-        <div style={{ fontFamily: 'Share Tech Mono, monospace' }}>
+        <div style={{ fontFamily: 'var(--font-mono)' }}>
           <div className="g2" style={{ marginBottom: 10 }}>
             <div className="stat">
               <div className="stat-label">DOWNLOADS</div>
@@ -68,22 +68,22 @@ function WrappedModal({ onClose }) {
           </div>
           {(data.top_uploaders || []).length > 0 && (
             <div style={{ marginBottom: 10 }}>
-              <div style={{ fontSize: 10.5, color: 'var(--amber)', letterSpacing: '0.1em', marginBottom: 4 }}>TOP CHANNELS</div>
+              <div style={{ fontSize: 10.5, color: 'var(--accent-2)', letterSpacing: '0.1em', marginBottom: 4 }}>TOP CHANNELS</div>
               {data.top_uploaders.map((u, i) => (
                 <div key={u.uploader} style={{ display: 'flex', gap: 8, fontSize: 11, padding: '2px 0' }}>
                   <span style={{ color: 'var(--t4)', minWidth: 18 }}>#{i + 1}</span>
-                  <span style={{ flex: 1, color: i === 0 ? 'var(--cyan)' : 'var(--t2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.uploader}</span>
+                  <span style={{ flex: 1, color: i === 0 ? 'var(--accent)' : 'var(--t2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.uploader}</span>
                   <span style={{ color: 'var(--t3)' }}>{u.count}</span>
                 </div>
               ))}
             </div>
           )}
           <div style={{ marginBottom: 10 }}>
-            <div style={{ fontSize: 10.5, color: 'var(--amber)', letterSpacing: '0.1em', marginBottom: 4 }}>MONTH BY MONTH</div>
+            <div style={{ fontSize: 10.5, color: 'var(--accent-2)', letterSpacing: '0.1em', marginBottom: 4 }}>MONTH BY MONTH</div>
             <div style={{ display: 'flex', alignItems: 'flex-end', gap: 3, height: 50 }}>
               {(data.monthly || []).map((v, i) => (
                 <div key={i} style={{ flex: 1, textAlign: 'center' }} title={`${v} downloads`}>
-                  <div style={{ height: Math.max(2, (v / maxMonthly) * 40), background: 'var(--cyan)', opacity: 0.35 + (v / maxMonthly) * 0.65 }} />
+                  <div style={{ height: Math.max(2, (v / maxMonthly) * 40), background: 'var(--accent)', opacity: 0.35 + (v / maxMonthly) * 0.65 }} />
                   <div style={{ fontSize: 8.5, color: 'var(--t4)', marginTop: 2 }}>{MONTH_LABELS[i]}</div>
                 </div>
               ))}
@@ -91,7 +91,7 @@ function WrappedModal({ onClose }) {
           </div>
           {data.busiest_day && (
             <div style={{ fontSize: 10.5, color: 'var(--t3)' }}>
-              Busiest day: <span style={{ color: 'var(--cyan)' }}>{data.busiest_day.day}</span> with {data.busiest_day.count} downloads
+              Busiest day: <span style={{ color: 'var(--accent)' }}>{data.busiest_day.day}</span> with {data.busiest_day.count} downloads
             </div>
           )}
         </div>
@@ -154,7 +154,7 @@ function HistoryPanel({ showNotif, refreshStats }) {
           <option value="video">VIDEO</option>
           <option value="audio">AUDIO</option>
         </select>
-        <span style={{ marginLeft: 'auto', fontFamily: 'Share Tech Mono, monospace', fontSize: 10.5, color: 'var(--t4)' }}>
+        <span style={{ marginLeft: 'auto', fontFamily: 'var(--font-mono)', fontSize: 10.5, color: 'var(--t4)' }}>
           {offset + 1}–{offset + rows.length}
         </span>
         <button className="btn btn-secondary btn-sm" disabled={offset === 0} onClick={() => setOffset(o => Math.max(0, o - HISTORY_LIMIT))}>‹ PREV</button>
@@ -174,7 +174,7 @@ function HistoryPanel({ showNotif, refreshStats }) {
               <td className="mono">{fmtBytes(r.file_size_bytes)}</td>
               <td className="mono">{fmtDate(r.timestamp)}</td>
               <td>
-                <span style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 9.5, padding: '2px 6px', color: r.status === 'success' ? 'var(--green)' : 'var(--red)', border: '1px solid', borderColor: r.status === 'success' ? 'rgba(0,255,148,0.3)' : 'rgba(255,59,97,0.3)' }}
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9.5, padding: '2px 6px', color: r.status === 'success' ? 'var(--success)' : 'var(--danger)', border: '1px solid', borderColor: r.status === 'success' ? 'rgba(var(--success-rgb),0.3)' : 'rgba(var(--danger-rgb),0.3)' }}
                   title={r.error_message || ''}>
                   {(r.status || '').toUpperCase()}
                 </span>
@@ -189,7 +189,7 @@ function HistoryPanel({ showNotif, refreshStats }) {
         </tbody>
       </table>
       {!rows.length && !loading && (
-        <div style={{ padding: '20px', textAlign: 'center', fontFamily: 'Share Tech Mono, monospace', fontSize: 10.5, color: 'var(--t4)' }}>
+        <div style={{ padding: '20px', textAlign: 'center', fontFamily: 'var(--font-mono)', fontSize: 10.5, color: 'var(--t4)' }}>
           NO MATCHING RECORDS
         </div>
       )}
@@ -258,15 +258,18 @@ export function AnalyticsPage({ stats, refreshStats, showNotif }) {
     const pad = { l: 80, r: 40, t: 8, b: 8 };
     const cw = w - pad.l - pad.r;
     ctx.clearRect(0, 0, w, c.height);
-    const colors = ['rgba(0,216,255,0.85)','rgba(249,169,0,0.85)','rgba(192,132,252,0.85)','rgba(0,255,148,0.7)','rgba(255,59,97,0.7)','rgba(61,96,112,0.7)'];
+    // A canvas can't resolve var(): the colours and fonts are read from the theme at draw time
+    const colors = [themeRgba('--accent-rgb', 0.85), themeRgba('--accent-2-rgb', 0.85), themeRgba('--accent-3-rgb', 0.85),
+      themeRgba('--success-rgb', 0.7), themeRgba('--danger-rgb', 0.7), themeRgba('--chart-axis-rgb', 0.7)];
+    const mono = cssVar('--font-mono');
     data.forEach((p, i) => {
       const y = pad.t + i * 22;
-      ctx.fillStyle = 'rgba(138,171,184,0.5)'; ctx.font = '9px Share Tech Mono'; ctx.textAlign = 'right';
+      ctx.fillStyle = themeRgba('--t2-rgb', 0.5); ctx.font = '9px ' + mono; ctx.textAlign = 'right';
       ctx.fillText(p.platform || '—', pad.l - 6, y + 12);
       const bw = (p.count / maxV) * cw;
-      ctx.fillStyle = 'rgba(30,58,72,0.5)'; ctx.fillRect(pad.l, y, cw, 14);
+      ctx.fillStyle = themeRgba('--chart-track-rgb', 0.5); ctx.fillRect(pad.l, y, cw, 14);
       ctx.fillStyle = colors[i % colors.length]; ctx.fillRect(pad.l, y, bw, 14);
-      ctx.fillStyle = 'rgba(216,236,245,0.8)'; ctx.textAlign = 'left'; ctx.font = '8px Share Tech Mono';
+      ctx.fillStyle = themeRgba('--t1-rgb', 0.8); ctx.textAlign = 'left'; ctx.font = '8px ' + mono;
       ctx.fillText(p.count, pad.l + bw + 4, y + 11);
     });
   }, [localStats.by_platform]);
@@ -281,7 +284,7 @@ export function AnalyticsPage({ stats, refreshStats, showNotif }) {
     const ctx = c.getContext('2d');
     const cx = 70, cy = 70, r = 52, ri = 34;
     const total = data.reduce((s, d) => s + d.bytes, 0) || 1;
-    const colors = ['rgba(0,216,255,0.9)','rgba(249,169,0,0.9)','rgba(192,132,252,0.9)','rgba(0,255,148,0.7)'];
+    const colors = [themeRgba('--accent-rgb', 0.9), themeRgba('--accent-2-rgb', 0.9), themeRgba('--accent-3-rgb', 0.9), themeRgba('--success-rgb', 0.7)];
     let start = -Math.PI / 2;
     data.forEach((d, i) => {
       const sweep = (d.bytes / total) * Math.PI * 2;
@@ -292,10 +295,10 @@ export function AnalyticsPage({ stats, refreshStats, showNotif }) {
     });
     ctx.beginPath(); ctx.arc(cx, cy, ri, 0, Math.PI * 2);
     // A canvas can't resolve var(): read the panel colour (else the hole kept the last slice's colour)
-    ctx.fillStyle = window.getComputedStyle(c).getPropertyValue('--bg1').trim() || '#0C1118'; ctx.fill();
-    ctx.fillStyle = 'rgba(0,216,255,0.9)'; ctx.font = 'bold 14px Oxanium'; ctx.textAlign = 'center';
+    ctx.fillStyle = cssVar('--bg1', c) || '#0C1118'; ctx.fill();
+    ctx.fillStyle = themeRgba('--accent-rgb', 0.9); ctx.font = 'bold 14px ' + cssVar('--font-display'); ctx.textAlign = 'center';
     ctx.fillText(fmtBytes(total), cx, cy + 2);
-    ctx.fillStyle = 'rgba(61,96,112,0.9)'; ctx.font = '8px Share Tech Mono';
+    ctx.fillStyle = themeRgba('--chart-axis-rgb', 0.9); ctx.font = '8px ' + cssVar('--font-mono');
     ctx.fillText('TOTAL', cx, cy + 14);
   }, [localStats.storage_by_format]);
 
@@ -420,9 +423,9 @@ export function AnalyticsPage({ stats, refreshStats, showNotif }) {
             <canvas ref={donutRef} width={140} height={140} />
             <div style={{ flex: 1 }}>
               {(localStats.storage_by_format || []).slice(0, 4).map((f, i) => (
-                <div key={f.format} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6, fontFamily: 'Share Tech Mono, monospace', fontSize: 10.5, color: 'var(--t2)' }}>
+                <div key={f.format} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6, fontFamily: 'var(--font-mono)', fontSize: 10.5, color: 'var(--t2)' }}>
                   <span>{(f.format || '—').toUpperCase()}</span>
-                  <span style={{ color: 'var(--cyan)' }}>{fmtBytes(f.bytes)}</span>
+                  <span style={{ color: 'var(--accent)' }}>{fmtBytes(f.bytes)}</span>
                 </div>
               ))}
             </div>
@@ -445,7 +448,7 @@ export function AnalyticsPage({ stats, refreshStats, showNotif }) {
                 key={i}
                 className="hm-cell"
                 title={`${String(i).padStart(2,'0')}:00 — ${v} downloads`}
-                style={{ background: `rgba(0,216,255,${(0.06 + (v / maxHour) * 0.9).toFixed(2)})` }}
+                style={{ background: `rgba(var(--accent-rgb),${(0.06 + (v / maxHour) * 0.9).toFixed(2)})` }}
               />
             ))}
           </div>
@@ -462,7 +465,7 @@ export function AnalyticsPage({ stats, refreshStats, showNotif }) {
           <div className="chart-sub">CUMULATIVE DISK USAGE OVER TIME</div>
           <LineChart
             data={(localStats.storage_growth || []).map(d => ({ x: d.day, y: d.bytes }))}
-            color="rgba(249,169,0,0.85)"
+            color="--accent-2-rgb"
             yFormat={v => fmtBytes(v)}
           />
         </div>
@@ -471,7 +474,7 @@ export function AnalyticsPage({ stats, refreshStats, showNotif }) {
           <div className="chart-sub">AVERAGE DOWNLOAD SPEED PER DAY</div>
           <LineChart
             data={(localStats.speed_by_day || []).map(d => ({ x: d.day, y: d.avg_bps }))}
-            color="rgba(0,216,255,0.85)"
+            color="--accent-rgb"
             yFormat={v => fmtSpeed(v)}
           />
         </div>
@@ -485,10 +488,10 @@ export function AnalyticsPage({ stats, refreshStats, showNotif }) {
           {(localStats.failures_by_day || []).length ? (
             <LineChart
               data={dailySeries(localStats.failures_by_day, range)}
-              color="rgba(255,59,97,0.85)"
+              color="--danger-rgb"
             />
           ) : (
-            <div style={{ padding: '30px 0', textAlign: 'center', fontFamily: 'Share Tech Mono, monospace', fontSize: 10.5, color: 'var(--t4)' }}>
+            <div style={{ padding: '30px 0', textAlign: 'center', fontFamily: 'var(--font-mono)', fontSize: 10.5, color: 'var(--t4)' }}>
               NO FAILURES IN RANGE
             </div>
           )}
@@ -504,12 +507,12 @@ export function AnalyticsPage({ stats, refreshStats, showNotif }) {
               <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 6 }}>
                 {days.map((d, di) => (
                   <div key={d} style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                    <span style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 8.5, color: 'var(--t4)', width: 24, flexShrink: 0 }}>{d}</span>
+                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: 8.5, color: 'var(--t4)', width: 24, flexShrink: 0 }}>{d}</span>
                     {Array.from({ length: 24 }, (_, h) => {
                       const v = (grid[di] || [])[h] || 0;
                       return (
                         <div key={h} title={`${d} ${String(h).padStart(2,'0')}:00 — ${v}`}
-                          style={{ flex: 1, height: 12, background: `rgba(0,216,255,${(0.05 + (v / maxC) * 0.9).toFixed(2)})` }} />
+                          style={{ flex: 1, height: 12, background: `rgba(var(--accent-rgb),${(0.05 + (v / maxC) * 0.9).toFixed(2)})` }} />
                       );
                     })}
                   </div>
@@ -537,15 +540,15 @@ export function AnalyticsPage({ stats, refreshStats, showNotif }) {
                 <tr key={i}>
                   <td className="mono">{fmtTimestamp(s.synced_at)}</td>
                   <td>{s.name || '—'}</td>
-                  <td className="mono" style={{ color: 'var(--green)' }}>{s.new_items ?? 0}</td>
-                  <td className="mono" style={{ color: s.errors ? 'var(--red)' : 'var(--t4)' }}>{s.errors ?? 0}</td>
+                  <td className="mono" style={{ color: 'var(--success)' }}>{s.new_items ?? 0}</td>
+                  <td className="mono" style={{ color: s.errors ? 'var(--danger)' : 'var(--t4)' }}>{s.errors ?? 0}</td>
                   <td className="mono">{fmtEta(s.duration_seconds || 0)}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         ) : (
-          <div style={{ padding: '20px', textAlign: 'center', fontFamily: 'Share Tech Mono, monospace', fontSize: 10.5, color: 'var(--t4)' }}>
+          <div style={{ padding: '20px', textAlign: 'center', fontFamily: 'var(--font-mono)', fontSize: 10.5, color: 'var(--t4)' }}>
             NO SYNC RUNS LOGGED YET — RUN A VAULT OR LIBRARY SYNC
           </div>
         )}
@@ -577,7 +580,7 @@ export function AnalyticsPage({ stats, refreshStats, showNotif }) {
                 <td className="mono">{fmtBytes(r.file_size_bytes)}</td>
                 <td className="mono">{fmtDate(r.timestamp)}</td>
                 <td>
-                  <span style={{ fontFamily: 'Share Tech Mono, monospace', fontSize: 9.5, padding: '2px 6px', color: r.status === 'success' ? 'var(--green)' : 'var(--red)', border: '1px solid', borderColor: r.status === 'success' ? 'rgba(0,255,148,0.3)' : 'rgba(255,59,97,0.3)' }}>
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9.5, padding: '2px 6px', color: r.status === 'success' ? 'var(--success)' : 'var(--danger)', border: '1px solid', borderColor: r.status === 'success' ? 'rgba(var(--success-rgb),0.3)' : 'rgba(var(--danger-rgb),0.3)' }}>
                     {(r.status || '').toUpperCase()}
                   </span>
                 </td>
@@ -586,7 +589,7 @@ export function AnalyticsPage({ stats, refreshStats, showNotif }) {
           </tbody>
         </table>
         {!(localStats.recent_records || []).length && (
-          <div style={{ padding: '24px', textAlign: 'center', fontFamily: 'Share Tech Mono, monospace', fontSize: 10.5, color: 'var(--t4)' }}>
+          <div style={{ padding: '24px', textAlign: 'center', fontFamily: 'var(--font-mono)', fontSize: 10.5, color: 'var(--t4)' }}>
             NO RECORDS YET — START DOWNLOADING TO POPULATE THE DATA LAKE
           </div>
         )}

@@ -29,6 +29,9 @@ DESKTOP_SHORTCUT = "--desktop-shortcut" in sys.argv
 FRONTEND_ONLY = "--frontend-only" in sys.argv
 # Install deps into .venv and run the test suite instead of building.
 RUN_TESTS = "--run-tests" in sys.argv
+# The Tauri app (src-tauri/) instead of the FlaskWebGUI one: the one-folder
+# backend goes into the Tauri bundle (NSIS installer, AppImage + deb)
+TAURI = "--tauri" in sys.argv
 SYSTEM = platform.system()   # 'Windows' | 'Linux' | 'Darwin'
 IS_WINDOWS = SYSTEM == "Windows"
 IS_LINUX   = SYSTEM == "Linux"
@@ -311,7 +314,11 @@ if not src_html.exists():
 shutil.copy2(src_html, STATIC / "index.html")
 # Bundled web fonts: the app never fetches them from Google
 shutil.copytree(GUI / "fonts", STATIC / "fonts", dirs_exist_ok=True)
-print("  static/index.html, static/fonts/ — OK")
+# The themes index.html links (token overrides; Classic is index.html itself) and their assets;
+# their components (gui/themes/slots.jsx, gui/themes/<id>/*.jsx) are in the bundle, not copied
+shutil.copytree(GUI / "themes", STATIC / "themes", dirs_exist_ok=True,
+                ignore=shutil.ignore_patterns("*.jsx", "*.js"))
+print("  static/index.html, static/fonts/, static/themes/ — OK")
 
 
 # ── Step 9: Bundle app.jsx with esbuild ───────────────────────────────────────
@@ -390,7 +397,60 @@ print("  dist/MellowDLP-app/ (installed / AppImage build) — OK")
 
 
 # ── Step 12: Installer / AppImage / Desktop shortcut ─────────────────────────
-if IS_LINUX:
+TAURI_DIR = HERE / "src-tauri"
+# The one-folder build as the Tauri bundle carries it (tauri.bundle.conf.json's
+# resources): its exe renamed, so the installed folder has one MellowDLP exe to
+# start (the shell) and the backend says what it is in the task manager
+TAURI_BACKEND = HERE / "dist" / "MellowDLP-backend"
+TAURI_BACKEND_EXE = "mellowdlp-backend.exe" if IS_WINDOWS else "mellowdlp-backend"  # backend.rs BACKEND_EXE
+TAURI_OUT = HERE / "dist" / "tauri"
+
+
+def build_tauri() -> list[Path]:
+    """Stage the backend, run `tauri build`, copy the bundles to dist/tauri/."""
+    cargo = shutil.which("cargo")
+    if not cargo:
+        fail("Rust not found (cargo). Install it from https://rustup.rs and restart your terminal"
+             + ("; on Linux also: sudo apt-get install libwebkit2gtk-4.1-dev build-essential libssl-dev "
+                "libayatana-appindicator3-dev librsvg2-dev" if IS_LINUX else ""))
+    tauri_cli = NODE_MODULES / ".bin" / ("tauri.cmd" if IS_WINDOWS else "tauri")
+    if not tauri_cli.exists():
+        fail(f"{tauri_cli} is missing — delete node_modules and run the build again")
+
+    shutil.rmtree(TAURI_BACKEND, ignore_errors=True)
+    shutil.copytree(app_dir, TAURI_BACKEND, symlinks=True)
+    (TAURI_BACKEND / exe_name).rename(TAURI_BACKEND / TAURI_BACKEND_EXE)
+    print(f"  dist/MellowDLP-backend/{TAURI_BACKEND_EXE} (the backend, staged for the bundle) — OK")
+
+    # APP_VERSION is the only version: the bundle takes it from here, not from tauri.conf.json
+    version_conf = HERE / "build" / "tauri-version.conf.json"
+    version_conf.parent.mkdir(exist_ok=True)
+    version_conf.write_text(json.dumps({"version": VERSION}), encoding="utf-8")
+    bundles = "nsis" if IS_WINDOWS else "deb,appimage" if IS_LINUX else "app,dmg"
+    run([str(tauri_cli), "build", "--bundles", bundles,
+         "--config", str(TAURI_DIR / "tauri.bundle.conf.json"), "--config", str(version_conf)],
+        cwd=str(HERE))
+
+    bundle_dir = TAURI_DIR / "target" / "release" / "bundle"
+    made = [p for pattern in ("nsis/*.exe", "deb/*.deb", "appimage/*.AppImage", "dmg/*.dmg")
+            for p in bundle_dir.glob(pattern) if VERSION in p.name]
+    if not made:
+        fail(f"tauri build finished but no bundle for {VERSION} is in {bundle_dir}")
+    shutil.rmtree(TAURI_OUT, ignore_errors=True)
+    TAURI_OUT.mkdir(parents=True)
+    out = []
+    for bundle in made:
+        shutil.copy2(bundle, TAURI_OUT / bundle.name)
+        out.append(TAURI_OUT / bundle.name)
+        print(f"  dist/tauri/{bundle.name} ({bundle.stat().st_size:,} bytes) — OK")
+    return out
+
+
+if TAURI:
+    step("12/12 · Building the Tauri app (src-tauri/)")
+    tauri_bundles = build_tauri()
+
+elif IS_LINUX:
     step("12/12 · Building AppImage")
 
     appdir = HERE / "dist" / "MellowDLP.AppDir"
@@ -526,7 +586,9 @@ else:
 step("Build complete")
 print("\n  Output files:")
 candidates = [HERE / "static" / "app.bundle.js"]
-if IS_WINDOWS:
+if TAURI:
+    candidates += [TAURI_BACKEND / TAURI_BACKEND_EXE, *tauri_bundles]
+elif IS_WINDOWS:
     candidates += [HERE / "dist" / "MellowDLP.exe", HERE / "dist" / "MellowDLP_Setup.exe"]
 elif IS_LINUX:
     candidates += [HERE / "dist" / "MellowDLP"]

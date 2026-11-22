@@ -1,6 +1,8 @@
 // Shared formatting helpers.
 'use strict';
 
+import { DEFAULT_THEME, THEME_PAIRS, THEME_STORAGE_KEY, THEMES } from './constants.js';
+
 export function fmtBytes(b) {
   if (!b && b !== 0) return '—';
   if (b === 0) return '0 B';
@@ -177,4 +179,39 @@ export function splitFolder(path) {
   const p = String(path || '').replace(/[\\/]+$/, '');
   const i = Math.max(p.lastIndexOf('/'), p.lastIndexOf('\\'));
   return i < 0 ? { name: p, parent: '' } : { name: p.slice(i + 1) || p, parent: p.slice(0, i + 1) };
+}
+
+// ── Theme (gui/index.html :root, gui/themes/*.css) ────────────────────────────
+// Switch the page to a theme (config `ui_theme`) and remember it for index.html's early script, which
+// applies it before the next launch's first paint. An unknown id is Classic. Returns the id applied.
+export function applyTheme(id) {
+  const theme = THEMES.some(t => t.id === id) ? id : DEFAULT_THEME;
+  document.documentElement.dataset.theme = theme;
+  try { localStorage.setItem(THEME_STORAGE_KEY, theme); } catch { /* storage blocked: applied for this session */ }
+  return theme;
+}
+
+// Config → APPEARANCE's cards: one per theme, except that a pair's two versions (THEME_PAIRS: Classic and
+// Classic Light) share the dark one's card, which shows the version in use (the dark one otherwise).
+// Each card: { id, name, swatches, pair }: `id` is what picking the card applies, `pair` null or
+// { dark, light } for its Dark / Light switch
+export function themeCards(current) {
+  const cards = [];
+  for (const t of THEMES) {
+    const pair = THEME_PAIRS.find(p => p.dark === t.id || p.light === t.id) || null;
+    if (pair && t.id !== pair.dark) continue;
+    const shown = pair && current === pair.light ? THEMES.find(x => x.id === pair.light) : t;
+    cards.push({ id: shown.id, name: t.name, swatches: shown.swatches, pair });
+  }
+  return cards;
+}
+
+// A canvas can't resolve var(--x): read the token's value when drawing
+export function cssVar(name, el) {
+  return window.getComputedStyle(el || document.documentElement).getPropertyValue(name).trim();
+}
+
+// rgba() from a channel token: themeRgba('--accent-rgb', 0.85) → 'rgba(0,216,255,0.85)' in Classic
+export function themeRgba(name, alpha) {
+  return `rgba(${cssVar(name)},${alpha})`;
 }

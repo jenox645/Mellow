@@ -44,7 +44,7 @@ def test_every_toggle_reaches_downloads_syncs_and_library_entries(client, tmp_di
     analytics.upsert_library_entry(entry)
     stored = analytics.get_library_entry('e9')
     assert {k: stored[k] for k in formats.TOGGLES} == on
-    opts, _ = library.build_sync_opts(stored, {}, 'add')
+    opts, _ = library.build_sync_opts(stored, {})
     assert {k: opts[k] for k in formats.TOGGLES} == on
 
 
