@@ -18,6 +18,7 @@ import subprocess
 import threading
 import time
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 from flask import Flask, Response, abort, send_from_directory
@@ -196,11 +197,16 @@ def media_site(tmp_path_factory):
 
 
 @pytest.fixture(scope="session")
-def app_url():
+def app_url(tmp_path_factory):
     if not (ROOT / "static" / "app.bundle.js").exists():
         pytest.fail("static/ isn't built: run `python build_setup.py --frontend-only` first")
     from mellow import server, session
-    url, stop = _serve(server.init_app())
+    # This session-scoped fixture runs before the per-test isolation (tests/conftest.py), so
+    # init_app()'s init_db() would migrate the developer's real ~/.mellow_dlp.duckdb (and fail
+    # while MellowDLP is open, which holds it locked). Each test gets its own DB afterwards.
+    with patch("mellow.analytics.DB_PATH", tmp_path_factory.mktemp("app") / "analytics.duckdb"):
+        flask_app = server.init_app()
+    url, stop = _serve(flask_app)
     session.start_instance(int(url.rsplit(":", 1)[1]), publish=False)
     yield url
     stop()
