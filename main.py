@@ -197,7 +197,7 @@ def _run_shell(flask_app, port: int, stdin=None, background: bool = False) -> No
     threading.Thread(target=_exit_with_parent, args=(watched,), daemon=True).start()
     log.info(f"serving for a desktop shell at {base}" + (" (started in the background)" if background else ""))
     _print_ready(base, session.launch_token(), out=channel)
-    shell.attach(channel, open_pages=app_server.open_pages)
+    shell.attach(channel, open_pages=app_server.open_pages, window_visible=not background)
     if background and jobs.manager.restorable:
         resumed = jobs.manager.restore_pending()
         log.info(f"started in the background: {len(resumed)} unfinished download(s) queued again")

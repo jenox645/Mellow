@@ -216,6 +216,8 @@ fn show_main(app: &AppHandle) {
     let shell = app.state::<Shell>();
     shell.shown.fetch_add(1, SeqCst);
     shell.in_tray.store(false, SeqCst);
+    // On screen again: the page shows its own toasts (mellow/shell.py)
+    send(app, "window", json!({ "visible": true }));
     if let Some(window) = app.get_webview_window(WINDOW_LABEL) {
         let _ = window.unminimize();
         let _ = window.show();
@@ -249,6 +251,8 @@ fn close_to_tray(app: &AppHandle) -> bool {
     if let Some(window) = app.get_webview_window(WINDOW_LABEL) {
         let _ = window.hide();
     }
+    // Its page stays connected, but nobody sees it: the backend notifies through us
+    send(app, "window", json!({ "visible": false }));
     if !state.tray_notice_seen && !shell.notice_shown.swap(true, SeqCst) {
         system::notify(app, TRAY_NOTICE_TITLE, TRAY_NOTICE_BODY, show_main);
         send(app, "tray_notice_seen", json!({ "value": true }));

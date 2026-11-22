@@ -10,8 +10,8 @@ Tauri IPC:
     state   what the shell shows and does: progress for the taskbar button
             and the tray's tooltip, pause, and whether closing the window
             keeps MellowDLP in the tray (state())
-    notify  a system notification ("title", "body"), sent when no window
-            shows the app (a page shows its own)
+    notify  a system notification ("title", "body"), sent when no visible
+            window shows the app (a page on screen shows its own)
     launch  a fresh one-time sign-in link ("url"), for a new window
 - shell → backend: one JSON object per line on stdin, {"cmd": ...}. The
   module that owns an action registers its handler (server.py); each runs on
@@ -42,16 +42,31 @@ TITLE_MAX_CHARS = 80
 _out: TextIO | None = None
 _out_lock = threading.Lock()
 _handlers: dict[str, Callable[[dict], None]] = {}
+# The shell's window is on screen (its {"cmd": "window", "visible": …}). Hidden
+# in the tray its page is still connected, but nobody sees its toasts
+_window_visible = threading.Event()
+_window_visible.set()
 
 
 # ── The channel ─────────────────────────────────────────────────────────────
 
-def attach(out: TextIO, open_pages: Callable[[], int] = lambda: 0) -> None:
-    """Send the shell's messages to `out` (the pipe it reads) from now on."""
+def attach(out: TextIO, open_pages: Callable[[], int] = lambda: 0, window_visible: bool = True) -> None:
+    """Send the shell's messages to `out` (the pipe it reads) from now on.
+    window_visible: False when the shell started with no window (at login)."""
     global _out
     with _out_lock:
         _out = out
+    set_window_visible(window_visible)
     _pump.start(open_pages)
+
+
+def set_window_visible(visible: bool) -> None:
+    (_window_visible.set if visible else _window_visible.clear)()
+
+
+def nobody_sees_the_page(open_pages: int) -> bool:
+    """No page on screen: none connected, or the shell's window is hidden."""
+    return open_pages == 0 or not _window_visible.is_set()
 
 
 def detach() -> None:
@@ -292,7 +307,7 @@ def observe(event: dict) -> None:
         return
     _progress.observe(event)
     _pump.changed()
-    if _pump.open_pages() == 0:
+    if nobody_sees_the_page(_pump.open_pages()):
         _notify_for(event)
 
 
@@ -300,7 +315,10 @@ def observe(event: dict) -> None:
 
 def notify(title: str, body: str = "") -> bool:
     """A system notification through the shell (no-op without one)."""
-    return send("notify", title=_short(title) or "MellowDLP", body=str(body or "")[:300])
+    title = _short(title) or "MellowDLP"
+    if active():
+        log.info(f"notification: {title}")
+    return send("notify", title=title, body=str(body or "")[:300])
 
 
 def background_notifications(cfg: dict | None = None) -> bool:
@@ -336,10 +354,14 @@ def _notify_for(event: dict) -> None:
 
 
 def queue_finished(done: list[dict], open_pages: int) -> None:
-    """The queue ran dry (server._queue_finished): with no window, say what the
-    downloads saved. A sync already said what it found."""
-    if not active() or open_pages or not background_notifications():
+    """The queue ran dry (server._queue_finished): with no window on screen, say
+    what the downloads saved. A sync already said what it found."""
+    if not active() or not nobody_sees_the_page(open_pages) or not background_notifications():
         return
     saved = [j for j in done if j.get("type") != "sync"]
     if saved:
         notify("Downloads finished", "1 download saved." if len(saved) == 1 else f"{len(saved)} downloads saved.")
+
+
+# The shell's window shown or hidden (to the tray, or closed there for good)
+register("window", lambda message: set_window_visible(bool(message.get("visible", True))))

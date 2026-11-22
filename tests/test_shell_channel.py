@@ -145,6 +145,29 @@ def test_quiet_when_nothing_new_a_page_is_open_or_notifications_are_off(channel)
     assert _notes(channel) == []
 
 
+def test_a_window_hidden_in_the_tray_lets_the_shell_notify(channel):
+    # Its page is still connected, but nobody sees it: the shell notifies
+    with patch.object(shell._pump, "open_pages", lambda: 1):
+        shell.dispatch('{"cmd": "window", "visible": false}')
+        assert wait_for(lambda: not shell._window_visible.is_set())
+        shell.observe({"status": "error", "job_id": "e", "title": "x"})
+        shell.queue_finished([{"type": "feed"}], open_pages=1)
+        shell.dispatch('{"cmd": "window", "visible": true}')
+        assert wait_for(lambda: shell._window_visible.is_set())
+        shell.observe({"status": "error", "job_id": "e", "title": "y"})
+    assert [n["title"] for n in _notes(channel)] == ["Download failed", "Downloads finished"]
+
+
+def test_started_with_no_window_the_shell_notifies_at_once():
+    out = io.StringIO()
+    shell.attach(out, open_pages=lambda: 0, window_visible=False)
+    try:
+        assert shell.nobody_sees_the_page(1)
+    finally:
+        shell.detach()
+        shell.set_window_visible(True)
+
+
 def test_a_failed_download_notifies_with_its_hint(channel):
     shell.observe({"status": "error", "job_id": "e", "title": "Video unavailable",
                    "hint": "It was removed or made private."})
