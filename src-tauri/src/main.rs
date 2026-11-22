@@ -1,37 +1,58 @@
-//! MellowDLP's Tauri shell: one window around the Flask backend.
+//! MellowDLP's Tauri shell: the window around the Flask backend, and the tray.
 //!
 //! The shell starts the backend (backend.rs: the bundle's PyInstaller build,
 //! or `python main.py` in a checkout) with `--shell`. The backend serves on
-//! 127.0.0.1 and prints one line on stdout, `MELLOW_READY <launch-url>
-//! [attached]`, where <launch-url> is the server's `/launch?t=<one-time token>`
-//! (mellow/session.py). The window, which shows ui/index.html meanwhile, then
-//! goes there and is signed in exactly like FlaskWebGUI's window. `attached`:
-//! another MellowDLP already served this account, the backend we started has
-//! exited, and the window uses that one.
+//! 127.0.0.1 and prints `MELLOW_READY <launch-url> [attached]`, where
+//! <launch-url> is the server's `/launch?t=<one-time token>` (mellow/session.py).
+//! The window, which shows ui/index.html meanwhile, then goes there and is
+//! signed in like FlaskWebGUI's window. `attached`: another MellowDLP already
+//! served this account, the backend we started has exited, and the window
+//! uses that one.
 //!
-//! Closing the window ends the backend and everything it started: its stdin
-//! closes (main.py's --shell watcher exits on EOF), and after a grace period
-//! the rest is killed (Windows: a job object, which the OS also closes if this
-//! process dies; Unix: the backend's process group).
+//! After the ready line the backend and the shell keep talking over the same
+//! pipes (channel.rs, mellow/shell.py), never through the page: the backend
+//! sends what the tray and the taskbar button show and whether closing the
+//! window keeps MellowDLP running, notifications for when no window is open,
+//! and fresh sign-in links; the tray sends its commands (pause, the copied
+//! link, sync, the download folder).
 //!
-//! Links and permissions: links.rs.
+//! Closing the window: with something to do (a download running or waiting,
+//! a sync that runs by itself) and Config's "Run in the background" on, the
+//! window hides and MellowDLP stays in the tray (a notice says so the first
+//! time); after TRAY_RELEASE_AFTER hidden it is closed for real, freeing
+//! WebView2, and "Show" opens a new one. Otherwise, and with the tray's Quit,
+//! the app exits: the backend's stdin closes (main.py quits on EOF) and after
+//! a grace period the rest is killed (Windows: a job object, which the OS also
+//! closes if this process dies; Unix: the backend's process group).
 //!
-//! MELLOW_TIMING_LOG=<file> appends `<event> <epoch ms>` lines (shell_start,
-//! backend_spawned, ready, navigated) for the startup measurements.
+//! Started with --background (the system starting it at login,
+//! tauri-plugin-autostart): no window, only the tray.
+//!
+//! Links and permissions: links.rs. MELLOW_TIMING_LOG=<file> appends
+//! `<event> <epoch ms>` lines (shell_start, backend_spawned, ready, navigated).
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod backend;
+mod channel;
 mod links;
+mod system;
+mod tray;
 
 use std::fs::OpenOptions;
 use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering::SeqCst};
+use std::sync::Mutex;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use serde_json::{json, Value};
 use tauri::webview::{NewWindowResponse, PageLoadEvent};
-use tauri::{AppHandle, Manager, RunEvent, Url, WebviewUrl, WebviewWindowBuilder};
+use tauri::window::ProgressBarState;
+use tauri::{AppHandle, Manager, RunEvent, Url, WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent};
+use tauri_plugin_window_state::{AppHandleExt, StateFlags};
 
 use backend::{Backend, Launch};
+use channel::{Event, Line, State};
 use links::{backend_origin, follow, is_backend_page, is_local, permission, route, route_new_window};
 
 const WINDOW_LABEL: &str = "main";
@@ -39,7 +60,31 @@ const WINDOW_TITLE: &str = "MellowDLP";
 // main.py's WINDOW_WIDTH / WINDOW_HEIGHT (FlaskWebGUI's --window-size)
 const WINDOW_WIDTH: f64 = 1100.0;
 const WINDOW_HEIGHT: f64 = 780.0;
-const READY_PREFIX: &str = "MELLOW_READY ";
+/// The system started it at login: the tray only
+const BACKGROUND_FLAG: &str = "--background";
+/// A window hidden in the tray this long is closed for real
+const TRAY_RELEASE_AFTER: Duration = Duration::from_secs(10 * 60);
+const TRAY_NOTICE_TITLE: &str = "MellowDLP is still running";
+const TRAY_NOTICE_BODY: &str =
+    "Downloads and the daily sync go on from the tray. Right-click its icon to quit; Config → Run in the background changes this.";
+
+/// What the shell knows and decides (Tauri state).
+#[derive(Default)]
+struct Shell {
+    /// The backend's latest state (channel::State)
+    state: Mutex<State>,
+    got_state: AtomicBool,
+    /// The tray's Quit: the next exit is for real
+    quitting: AtomicBool,
+    /// No window, on purpose: hidden to the tray, closed after a while there, or started at login
+    in_tray: AtomicBool,
+    /// Counts the times the window was shown: a release timer started before does nothing
+    shown: AtomicU64,
+    notice_shown: AtomicBool,
+    /// What the tray's picture shows (whole percent, paused)
+    tray_picture: Mutex<(Option<f64>, bool)>,
+    menu: Mutex<Option<tray::TrayMenu>>,
+}
 
 fn timing(event: &str) {
     let Ok(path) = std::env::var("MELLOW_TIMING_LOG") else { return };
@@ -54,66 +99,43 @@ fn checkout() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..")
 }
 
+fn state_flags() -> StateFlags {
+    StateFlags::SIZE | StateFlags::POSITION | StateFlags::MAXIMIZED
+}
+
+/// A command for the backend (mellow/shell.py's handlers).
+fn send(app: &AppHandle, cmd: &str, extra: Value) {
+    app.state::<Backend>().send(&channel::command(cmd, extra));
+}
+
 fn show_error(app: &AppHandle, text: &str) {
     eprintln!("MellowDLP shell: {text}");
-    if let Some(window) = app.get_webview_window(WINDOW_LABEL) {
-        let text = format!("{text:?}"); // a JS string literal
-        let _ = window.eval(format!(
-            "(window.mellowShellError || function (t) {{ document.body.innerText = t; }})({text})"
-        ));
+    match app.get_webview_window(WINDOW_LABEL) {
+        Some(window) => {
+            let text = format!("{text:?}"); // a JS string literal
+            let _ = window.eval(format!(
+                "(window.mellowShellError || function (t) {{ document.body.innerText = t; }})({text})"
+            ));
+        }
+        None => system::notify(app, "MellowDLP stopped", text, show_main),
     }
 }
 
-fn start_backend(app: &AppHandle) -> Result<(), String> {
-    let resources = app.path().resource_dir().ok();
-    let launch = Launch::resolve(|name| std::env::var_os(name), resources.as_deref(), &checkout());
-    eprintln!("MellowDLP shell: starting the backend: {}", launch.describe());
-    let stdout = app.state::<Backend>().spawn(&launch)?;
-    timing("backend_spawned");
+// ── The window ──────────────────────────────────────────────────────────────
 
-    let app = app.clone();
-    std::thread::spawn(move || {
-        let mut ready = false;
-        let mut attached = false;
-        for line in BufReader::new(stdout).lines() {
-            let Ok(line) = line else { break };
-            if ready {
-                println!("{line}");
-                continue;
-            }
-            let Some(rest) = line.strip_prefix(READY_PREFIX) else {
-                println!("{line}");
-                continue;
-            };
-            timing("ready");
-            let mut words = rest.split_whitespace();
-            let url = words.next().and_then(|u| Url::parse(u).ok());
-            attached = words.next() == Some("attached");
-            match (url, app.get_webview_window(WINDOW_LABEL)) {
-                (Some(url), Some(window)) if is_local(&url) && backend_origin(&url).is_some() => {
-                    ready = true;
-                    *app.state::<Backend>().origin.lock().unwrap() = backend_origin(&url);
-                    if window.navigate(url).is_ok() {
-                        timing("navigated");
-                    }
-                }
-                _ => show_error(&app, &format!("unexpected ready line: {line}")),
-            }
-        }
-        // stdout closed: the backend exited
-        if !ready {
-            show_error(&app, "The MellowDLP backend stopped before it was ready: see ~/.mellow_dlp.log");
-        } else if !attached {
-            show_error(&app, "The MellowDLP backend stopped: see ~/.mellow_dlp.log");
-        }
-    });
-    Ok(())
+/// Whether window-state has a saved size and place for the window.
+fn has_saved_state(app: &AppHandle) -> bool {
+    let Ok(dir) = app.path().app_config_dir() else { return false };
+    std::fs::read_to_string(dir.join(app.filename()))
+        .ok()
+        .and_then(|text| serde_json::from_str::<Value>(&text).ok())
+        .is_some_and(|saved| saved.get(WINDOW_LABEL).is_some())
 }
 
 /// Chrome's --window-size (FlaskWebGUI) is the whole window, frame included;
-/// Tauri sizes the page area. Shrink the page area by the frame so the window
-/// is as big as today's.
-fn fit_outer_size(window: &tauri::WebviewWindow) {
+/// Tauri sizes the page area. Shrink the page area by the frame so a first
+/// window is as big as today's (later ones open as they were left).
+fn fit_outer_size(window: &WebviewWindow) {
     let (Ok(scale), Ok(outer), Ok(inner)) = (window.scale_factor(), window.outer_size(), window.inner_size())
     else {
         return;
@@ -125,15 +147,248 @@ fn fit_outer_size(window: &tauri::WebviewWindow) {
     let _ = window.set_size(tauri::PhysicalSize::new(width, height));
 }
 
+fn build_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
+    let saved = has_saved_state(app);
+    let window = WebviewWindowBuilder::new(app, WINDOW_LABEL, WebviewUrl::App("index.html".into()))
+        .title(WINDOW_TITLE)
+        .inner_size(WINDOW_WIDTH, WINDOW_HEIGHT)
+        .visible(false) // shown once sized (window-state, or fit_outer_size)
+        // The page's own drag and drop (a link dropped anywhere, files dropped on
+        // the Vault): with Tauri's handler on, Windows never gives the page drop events
+        .disable_drag_drop_handler()
+        // The page's title (download progress) shows in the taskbar, like the --app window
+        .on_document_title_changed(|window, title| {
+            let _ = window.set_title(if title.is_empty() { WINDOW_TITLE } else { &title });
+        })
+        .on_navigation({
+            let app = app.clone();
+            move |url| follow(&app, url, route(url), "a navigation")
+        })
+        .on_new_window({
+            let app = app.clone();
+            move |url, _features| {
+                follow(&app, &url, route_new_window(&url), "a new window");
+                NewWindowResponse::Deny
+            }
+        })
+        .on_page_load({
+            let app = app.clone();
+            move |webview, load| {
+                let backend = app.state::<Backend>().origin();
+                if matches!(load.event(), PageLoadEvent::Finished) && is_backend_page(load.url(), backend.as_deref()) {
+                    let _ = webview.eval(links::ASK_NOTIFICATIONS);
+                }
+            }
+        })
+        .on_permission_request({
+            let app = app.clone();
+            move |webview, kind| {
+                let page = webview.url().ok();
+                let backend = app.state::<Backend>().origin();
+                let answer = permission(page.as_ref(), backend.as_deref(), &kind);
+                eprintln!("MellowDLP shell: permission {kind:?} for {page:?}: {answer:?}");
+                answer
+            }
+        })
+        .build()?;
+    if !saved {
+        fit_outer_size(&window);
+    }
+    window.on_window_event({
+        let app = app.clone();
+        move |event| {
+            if let WindowEvent::CloseRequested { api, .. } = event {
+                if close_to_tray(&app) {
+                    api.prevent_close();
+                }
+            }
+        }
+    });
+    let state = app.state::<Shell>().state.lock().unwrap().clone();
+    show_progress(&window, &state);
+    window.show()?;
+    let _ = window.set_focus();
+    Ok(window)
+}
+
+/// Bring the window up: the hidden one, or a new one (signed in with a fresh link).
+fn show_main(app: &AppHandle) {
+    let shell = app.state::<Shell>();
+    shell.shown.fetch_add(1, SeqCst);
+    shell.in_tray.store(false, SeqCst);
+    if let Some(window) = app.get_webview_window(WINDOW_LABEL) {
+        let _ = window.unminimize();
+        let _ = window.show();
+        let _ = window.set_focus();
+        return;
+    }
+    match build_window(app) {
+        // The ready line's link has long expired (one use, a minute): ask for another
+        Ok(_) => send(app, "launch", Value::Null),
+        Err(e) => eprintln!("MellowDLP shell: couldn't open the window: {e}"),
+    }
+}
+
+/// The window's close button: hide to the tray when the backend says there is
+/// something to do and Config allows it; false = let it close (the app exits).
+fn close_to_tray(app: &AppHandle) -> bool {
+    let shell = app.state::<Shell>();
+    if shell.quitting.load(SeqCst) {
+        return false;
+    }
+    let state = shell.state.lock().unwrap().clone();
+    if !state.keep_running {
+        return false;
+    }
+    shell.in_tray.store(true, SeqCst);
+    let _ = app.save_window_state(state_flags());
+    if let Some(window) = app.get_webview_window(WINDOW_LABEL) {
+        let _ = window.hide();
+    }
+    if !state.tray_notice_seen && !shell.notice_shown.swap(true, SeqCst) {
+        system::notify(app, TRAY_NOTICE_TITLE, TRAY_NOTICE_BODY, show_main);
+        send(app, "tray_notice_seen", json!({ "value": true }));
+    }
+    // Still hidden after a while: close it for real, WebView2 frees its memory
+    let generation = shell.shown.load(SeqCst);
+    let app = app.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(TRAY_RELEASE_AFTER);
+        let handle = app.clone();
+        let _ = app.run_on_main_thread(move || {
+            let shell = handle.state::<Shell>();
+            if shell.shown.load(SeqCst) != generation || !shell.in_tray.load(SeqCst) {
+                return;
+            }
+            if let Some(window) = handle.get_webview_window(WINDOW_LABEL) {
+                if !window.is_visible().unwrap_or(true) {
+                    let _ = window.destroy();
+                }
+            }
+        });
+    });
+    true
+}
+
+fn show_progress(window: &WebviewWindow, state: &State) {
+    let (status, progress) = tray::taskbar(state);
+    let _ = window.set_progress_bar(ProgressBarState { status: Some(status), progress });
+}
+
+// ── The tray ────────────────────────────────────────────────────────────────
+
+fn on_menu(app: &AppHandle, id: &str) {
+    match id {
+        "show" => show_main(app),
+        "pause" => {
+            let paused = app.state::<Shell>().state.lock().unwrap().phase == "paused";
+            send(app, if paused { "resume" } else { "pause" }, Value::Null);
+        }
+        // The backend checks it is a link (and says so when it isn't)
+        "paste" => send(app, "download", json!({ "url": system::clipboard_text().unwrap_or_default() })),
+        "sync" => send(app, "sync_all", Value::Null),
+        "folder" => send(app, "open_vault", Value::Null),
+        "quit" => {
+            app.state::<Shell>().quitting.store(true, SeqCst);
+            app.exit(0);
+        }
+        _ => {}
+    }
+}
+
+/// The backend's new state: the tray, the taskbar button, starting with the system.
+fn apply_state(app: &AppHandle, new: State) {
+    let shell = app.state::<Shell>();
+    let first = !shell.got_state.swap(true, SeqCst);
+    let old = std::mem::replace(&mut *shell.state.lock().unwrap(), new.clone());
+    if let Some(icon) = app.tray_by_id(tray::TRAY_ID) {
+        let _ = icon.set_tooltip(Some(tray::tooltip(&new)));
+        let picture = (tray::shown_pct(&new), new.phase == "paused");
+        let mut shown = shell.tray_picture.lock().unwrap();
+        if *shown != picture {
+            *shown = picture;
+            let _ = icon.set_icon(Some(tray::glyph(picture.0, picture.1)));
+        }
+    }
+    if let Some(menu) = shell.menu.lock().unwrap().as_ref() {
+        let (text, enabled) = tray::pause_item(&new);
+        let _ = menu.pause.set_text(text);
+        let _ = menu.pause.set_enabled(enabled);
+        let _ = menu.sync.set_enabled(new.linked_folders > 0);
+    }
+    if let Some(window) = app.get_webview_window(WINDOW_LABEL) {
+        show_progress(&window, &new);
+    }
+    if first || old.start_with_system != new.start_with_system {
+        let now = system::start_with_system(app, new.start_with_system);
+        if now != new.start_with_system {
+            send(app, "start_with_system", json!({ "value": now }));
+        }
+    }
+}
+
+// ── The backend ─────────────────────────────────────────────────────────────
+
+fn go_to(app: &AppHandle, url: &str) {
+    let Ok(url) = Url::parse(url) else { return };
+    if !(is_local(&url) && backend_origin(&url).is_some()) {
+        show_error(app, &format!("unexpected sign-in link: {url}"));
+        return;
+    }
+    *app.state::<Backend>().origin.lock().unwrap() = backend_origin(&url);
+    if let Some(window) = app.get_webview_window(WINDOW_LABEL) {
+        if window.navigate(url).is_ok() {
+            timing("navigated");
+        }
+    }
+}
+
+fn start_backend(app: &AppHandle, background: bool) -> Result<(), String> {
+    let resources = app.path().resource_dir().ok();
+    let launch = Launch::resolve(|name| std::env::var_os(name), resources.as_deref(), &checkout());
+    eprintln!("MellowDLP shell: starting the backend: {}", launch.describe());
+    let stdout = app.state::<Backend>().spawn(&launch, background)?;
+    timing("backend_spawned");
+
+    let app = app.clone();
+    std::thread::spawn(move || {
+        let mut ready = false;
+        let mut attached = false;
+        for line in BufReader::new(stdout).lines() {
+            let Ok(line) = line else { break };
+            match channel::parse(&line) {
+                Line::Ready { url, attached: other_copy } if !ready => {
+                    timing("ready");
+                    ready = true;
+                    attached = other_copy;
+                    go_to(&app, &url);
+                }
+                Line::Event(Event::State(state)) => apply_state(&app, state),
+                Line::Event(Event::Notify { title, body }) => system::notify(&app, &title, &body, show_main),
+                Line::Event(Event::Launch { url }) => go_to(&app, &url),
+                Line::Event(Event::Unknown) => {}
+                _ => println!("{line}"),
+            }
+        }
+        // stdout closed: the backend exited
+        if !ready {
+            show_error(&app, "The MellowDLP backend stopped before it was ready: see ~/.mellow_dlp.log");
+        } else if !attached && !app.state::<Shell>().quitting.load(SeqCst) {
+            show_error(&app, "The MellowDLP backend stopped: see ~/.mellow_dlp.log");
+        }
+    });
+    Ok(())
+}
+
 fn main() {
     timing("shell_start");
+    let background = std::env::args().any(|arg| arg == BACKGROUND_FLAG);
     let app = tauri::Builder::default()
-        // First: a second launch focuses this window instead of starting another backend
-        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-            if let Some(window) = app.get_webview_window(WINDOW_LABEL) {
-                let _ = window.unminimize();
-                let _ = window.show();
-                let _ = window.set_focus();
+        // First: a second launch shows this window instead of starting another backend;
+        // the system starting it at login while it already runs shows nothing
+        .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+            if !args.iter().any(|arg| arg == BACKGROUND_FLAG) {
+                show_main(app);
             }
         }))
         // Rust-side only: opens links in the browser for on_navigation / on_new_window.
@@ -141,65 +396,41 @@ fn main() {
         // plugin's IPC command, which this remote page can't call (no capability), so
         // those clicks did nothing at all
         .plugin(tauri_plugin_opener::Builder::new().open_js_links_on_click(false).build())
+        // The window opens where and as big as it was left (not hidden or shown: we decide)
+        .plugin(tauri_plugin_window_state::Builder::default().with_state_flags(state_flags()).build())
+        // Config's "Start with Windows": the system starts it with --background
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            Some(vec![BACKGROUND_FLAG]),
+        ))
         .manage(Backend::new())
-        .setup(|app| {
-            let window = WebviewWindowBuilder::new(app, WINDOW_LABEL, WebviewUrl::App("index.html".into()))
-                .title(WINDOW_TITLE)
-                .inner_size(WINDOW_WIDTH, WINDOW_HEIGHT)
-                .visible(false) // shown once sized like the --app window (fit_outer_size)
-                // The page's own drag and drop (a link dropped anywhere, files dropped on
-                // the Vault): with Tauri's handler on, Windows never gives the page drop events
-                .disable_drag_drop_handler()
-                // The page's title (download progress) shows in the taskbar, like the --app window
-                .on_document_title_changed(|window, title| {
-                    let _ = window.set_title(if title.is_empty() { WINDOW_TITLE } else { &title });
-                })
-                .on_navigation({
-                    let app = app.handle().clone();
-                    move |url| follow(&app, url, route(url), "a navigation")
-                })
-                .on_new_window({
-                    let app = app.handle().clone();
-                    move |url, _features| {
-                        follow(&app, &url, route_new_window(&url), "a new window");
-                        NewWindowResponse::Deny
-                    }
-                })
-                .on_page_load({
-                    let app = app.handle().clone();
-                    move |webview, load| {
-                        let backend = app.state::<Backend>().origin();
-                        if matches!(load.event(), PageLoadEvent::Finished)
-                            && is_backend_page(load.url(), backend.as_deref())
-                        {
-                            let _ = webview.eval(links::ASK_NOTIFICATIONS);
-                        }
-                    }
-                })
-                .on_permission_request({
-                    let app = app.handle().clone();
-                    move |webview, kind| {
-                        let page = webview.url().ok();
-                        let backend = app.state::<Backend>().origin();
-                        let answer = permission(page.as_ref(), backend.as_deref(), &kind);
-                        eprintln!("MellowDLP shell: permission {kind:?} for {page:?}: {answer:?}");
-                        answer
-                    }
-                })
-                .build()?;
-            fit_outer_size(&window);
-            window.show()?;
-            if let Err(e) = start_backend(app.handle()) {
-                show_error(app.handle(), &e);
+        .manage(Shell::default())
+        .setup(move |app| {
+            let handle = app.handle().clone();
+            let (_icon, menu) = tray::build(&handle, on_menu, show_main)?;
+            *app.state::<Shell>().menu.lock().unwrap() = Some(menu);
+            if background {
+                app.state::<Shell>().in_tray.store(true, SeqCst);
+            } else {
+                build_window(&handle)?;
+            }
+            if let Err(e) = start_backend(&handle, background) {
+                show_error(&handle, &e);
             }
             Ok(())
         })
         .build(tauri::generate_context!())
         .expect("error while building the MellowDLP shell");
 
-    app.run(|app, event| {
-        if let RunEvent::Exit = event {
-            app.state::<Backend>().shut_down();
+    app.run(|app, event| match event {
+        // The last window closed while MellowDLP lives in the tray: keep running
+        RunEvent::ExitRequested { code: None, api, .. } => {
+            let shell = app.state::<Shell>();
+            if shell.in_tray.load(SeqCst) && !shell.quitting.load(SeqCst) {
+                api.prevent_exit();
+            }
         }
+        RunEvent::Exit => app.state::<Backend>().shut_down(),
+        _ => {}
     });
 }
