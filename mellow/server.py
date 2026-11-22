@@ -31,6 +31,7 @@ from . import (
     js_runtime,
     scheduler,
     session,
+    shell,
     ytdlp_update,
 )
 from . import backup as _backup
@@ -145,6 +146,8 @@ def _push_progress(event: dict) -> None:
     status = event.get("status")
     if status in ("complete", "error"):
         threading.Thread(target=_fire_webhooks, args=(status, event), daemon=True).start()
+    # The desktop shell's tray and taskbar button, and its notifications when no window is open
+    shell.observe(event)
 
 
 # What /api/v1/events passes on: the progress of jobs, never file paths,
@@ -167,6 +170,7 @@ def _queue_finished(done: list[dict]) -> None:
     the folder when Config asks for it."""
     _push_progress({"status": "queue_done", "count": len(done),
                     "folders": sorted({j["output_dir"] for j in done})})
+    shell.queue_finished(done, open_pages())
     if load_config().get("on_queue_done") == "open_folder":
         # Not in front of whatever the user is doing when the queue runs dry
         desktop.show_in_folder(done[-1]["output_dir"], bring_forward=False)
@@ -183,11 +187,12 @@ def _library_entry_for(path: str, cfg: dict) -> dict | None:
 
 
 def _enqueue_vault_sync(path: str, data: dict | None = None,
-                        requested_urls: list | None = None) -> dict | None:
+                        requested_urls: list | None = None, auto: bool = False) -> dict | None:
     """Build sync opts and enqueue a sync job for a linked vault folder.
 
-    Shared by the sync endpoints and the auto-sync scheduler. Returns the
-    job, or None when the folder has no (matching) linked playlists.
+    Shared by the sync endpoints and the auto-sync scheduler (auto: its
+    `complete` event says so, for the tray's notification). Returns the job,
+    or None when the folder has no (matching) linked playlists.
     """
     data = data or {}
     cfg = load_config()
@@ -199,6 +204,8 @@ def _enqueue_vault_sync(path: str, data: dict | None = None,
         return None
     lib = _library_entry_for(path, cfg)
     opts = _vault.build_sync_opts(data, lib, cfg, path)
+    if auto:
+        opts["auto_sync"] = True
     library_id = lib["id"] if lib else None
     if any(k in data for k in _vault.SYNC_FORMAT_KEYS):
         update_config(lambda c: _vault.remember_sync_format(c, path, data))
@@ -209,9 +216,88 @@ def _enqueue_vault_sync(path: str, data: dict | None = None,
 
 
 scheduler.start(
-    sync_fn=lambda path: _enqueue_vault_sync(path) is not None,
+    sync_fn=lambda path: _enqueue_vault_sync(path, auto=True) is not None,
     is_syncing_fn=jobs.manager.has_sync_for,
 )
+
+
+# ── The desktop shell's tray (shell.py) ───────────────────────────────────────
+# The commands its tray menu and global shortcut send over the pipe
+
+def _pause_all(_message: dict | None = None) -> bool:
+    """Pause every running download; False when nothing runs."""
+    if not jobs.manager.has_active():
+        # Nothing to pause; a stray flag would only desync the UI
+        return False
+    downloader.pause()
+    _push_progress({"status": "paused"})
+    return True
+
+
+def _resume_all(_message: dict | None = None) -> None:
+    downloader.resume()
+    _push_progress({"status": "resumed"})
+
+
+def _link(text: str) -> str | None:
+    """One http(s) link, or None."""
+    url = str(text or "").strip()
+    parsed = urlparse(url)
+    if (parsed.scheme not in ("http", "https") or not parsed.netloc or len(url) > API_URL_MAX_CHARS
+            or any(c.isspace() for c in url)):
+        return None
+    return url
+
+
+def _feed_defaults(url: str, cfg: dict) -> dict:
+    """A download of `url` as the Feed starts it when nothing is changed."""
+    return {"url": url, "mode": cfg.get("default_mode", "video"), "quality": cfg.get("default_quality", "best"),
+            "container": cfg.get("default_container", "mp4"),
+            "audio_format": cfg.get("default_audio_format", "mp3"),
+            "audio_quality": cfg.get("default_audio_quality", "best")}
+
+
+def _shell_download(message: dict) -> None:
+    """Download a link (the tray's "download the copied link", the global
+    shortcut) with the Feed's defaults into the download folder."""
+    url = _link(message.get("url", ""))
+    if url is None:
+        shell.notify("No link to download", "Copy a video or playlist link, then try again.")
+        return
+    cfg = load_config()
+    _enqueue_job(url, download_root(cfg), _download_opts(_feed_defaults(url, cfg), cfg),
+                 job_type="feed", label=url)
+    log.info(f"download queued from the desktop shell: {url}")
+    shell.notify("Downloading", url)
+
+
+def _shell_sync_all(_message: dict) -> None:
+    linked = [path for path, urls in (load_config().get("vault_playlists") or {}).items() if urls]
+    queued = [path for path in linked if _enqueue_vault_sync(path) is not None]
+    if not queued:
+        shell.notify("Nothing to sync", "Link a playlist to a vault folder first (Vault → a folder → SYNC).")
+
+
+def _shell_open_vault(_message: dict) -> None:
+    desktop.show_in_folder(download_root(load_config()))
+
+
+def _shell_setting(key: str):
+    """A setting the shell reports back: the first close to the tray was
+    explained, or what "start with the system" really is."""
+    def _set(message: dict) -> None:
+        value = bool(message.get("value", True))
+        update_config(lambda cfg: cfg.update({key: value}))
+    return _set
+
+
+shell.register("pause", _pause_all)
+shell.register("resume", _resume_all)
+shell.register("download", _shell_download)
+shell.register("sync_all", _shell_sync_all)
+shell.register("open_vault", _shell_open_vault)
+shell.register("tray_notice_seen", _shell_setting("tray_notice_seen"))
+shell.register("start_with_system", _shell_setting("start_with_system"))
 
 
 # ── Cross-origin write protection ─────────────────────────────────────────────
@@ -485,6 +571,8 @@ def api_system() -> Response:
         "disk_free_bytes": disk_free,
         "disk_low": disk_free is not None and disk_free < LOW_DISK_WARN_BYTES,
         "log_path": str(applog.LOG_PATH),
+        # The desktop app (src-tauri/) is this page's window: Config shows its settings
+        "shell": "tauri" if shell.active() else None,
     })
 
 
@@ -581,6 +669,7 @@ def api_config_get() -> Response:
 def api_config_post() -> Response:
     data = request.get_json(force=True) or {}
     update_config(lambda cfg: cfg.update(data))
+    shell.changed()     # the tray's tooltip, "start with the system"…
     return jsonify({"ok": True})
 
 
@@ -602,7 +691,9 @@ def api_filename_preview() -> Response:
 
 @app.route("/api/config/reset", methods=["POST"])
 def api_config_reset() -> Response:
-    return jsonify(reset_settings())
+    cfg = reset_settings()
+    shell.changed()
+    return jsonify(cfg)
 
 
 # ── Download ──────────────────────────────────────────────────────────────────
@@ -797,18 +888,12 @@ def api_queue_restorable_discard() -> Response:
 
 @app.route("/api/download/pause", methods=["POST"])
 def api_pause() -> Response:
-    if not jobs.manager.has_active():
-        # Nothing to pause; a stray flag would only desync the UI
-        return jsonify({"status": "idle"})
-    downloader.pause()
-    _push_progress({"status": "paused"})
-    return jsonify({"status": "paused"})
+    return jsonify({"status": "paused" if _pause_all() else "idle"})
 
 
 @app.route("/api/download/resume", methods=["POST"])
 def api_resume() -> Response:
-    downloader.resume()
-    _push_progress({"status": "resumed"})
+    _resume_all()
     return jsonify({"status": "resumed"})
 
 

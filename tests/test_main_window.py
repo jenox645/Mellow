@@ -1,5 +1,6 @@
 """main.py: the window, or the default browser when there's no Chromium-based one."""
 import json
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -194,14 +195,74 @@ def test_the_shell_ready_line_comes_once_the_server_listens():
     server.serve_forever.side_effect = lambda: order.append('serving')
     with patch('werkzeug.serving.make_server',
                side_effect=lambda host, port, app, threaded: order.append(('bound', host, port)) or server), \
-            patch('main._print_ready', side_effect=lambda *a, **k: order.append('ready')), \
+            patch('main._print_ready', side_effect=lambda *a, **k: order.append(('ready', k['out']))), \
             patch('main._detach_stdin') as detach, \
+            patch('main._detach_stdout') as channel, \
+            patch('main.shell.attach', side_effect=lambda out, **k: order.append(('channel', out))), \
             patch('main.threading.Thread') as watcher:
         main._run_shell(MagicMock(), 5123)
-    assert order == [('bound', '127.0.0.1', 5123), 'ready', 'serving']
+    # The ready line first, then shell.py's messages, on the same pipe moved off stdout
+    assert order == [('bound', '127.0.0.1', 5123), ('ready', channel.return_value),
+                     ('channel', channel.return_value), 'serving']
     # The stdin watcher reads the shell's pipe, moved off stdin
     assert watcher.call_args.kwargs['args'] == (detach.return_value,)
     watcher.return_value.start.assert_called_once()
+
+
+def _run_shell_quietly(background, restorable):
+    from mellow import jobs, session
+    session.start_instance(5123, publish=False)
+    with patch('werkzeug.serving.make_server'), patch('main._print_ready'), \
+            patch('main._detach_stdin'), patch('main._detach_stdout'), patch('main.shell.attach'), \
+            patch('main.threading.Thread'), patch('main.shell.notify') as notify, \
+            patch.object(jobs.manager, 'restorable', restorable), \
+            patch.object(jobs.manager, 'restore_pending', return_value=['a', 'b']) as restore:
+        main._run_shell(MagicMock(), 5123, background=background)
+    return restore, notify
+
+
+def test_started_in_the_background_it_queues_the_unfinished_downloads_again():
+    # At login (the shell's tray only) nobody sees the "resume pending downloads?" prompt
+    restore, notify = _run_shell_quietly(True, [{'url': 'https://x/1'}, {'url': 'https://x/2'}])
+    restore.assert_called_once()
+    assert '2 unfinished' in notify.call_args.args[1]
+    # With a window the prompt asks, as before
+    restore, notify = _run_shell_quietly(False, [{'url': 'https://x/1'}])
+    restore.assert_not_called()
+    notify.assert_not_called()
+
+
+def test_a_new_window_gets_a_fresh_sign_in_link_from_the_shell_channel():
+    from mellow import session
+    _run_shell_quietly(False, [])
+    with patch('main.shell.send') as send:
+        main.shell._handlers['launch']({'cmd': 'launch'})
+    kind, url = send.call_args.args[0], send.call_args.kwargs['url']
+    assert kind == 'launch' and url.startswith('http://127.0.0.1:5123/launch?t=')
+    assert session.redeem(url.split('t=')[1]) is not None
+
+
+def test_the_shells_commands_are_read_from_its_pipe():
+    import io
+    lines = '{"cmd": "pause"}\n{"cmd": "download", "url": "https://x/v"}\n'
+    with patch('main.shell.dispatch') as dispatch, patch('main._stop_instance'), \
+            patch('main._end_own_group'), patch('main.os._exit'):
+        main._exit_with_parent(io.StringIO(lines))
+    assert [c.args[0].strip() for c in dispatch.call_args_list] == [
+        '{"cmd": "pause"}', '{"cmd": "download", "url": "https://x/v"}']
+
+
+def test_nothing_else_written_to_stdout_reaches_the_shells_pipe():
+    # A print (or a library) writing to stdout would break the line the shell is reading
+    import subprocess
+    import sys
+    code = ("import sys, main; ch = main._detach_stdout(); print('stray print'); "
+            "sys.stdout.flush(); ch.write('MELLOW_EVENT {}\\n'); ch.flush()")
+    done = subprocess.run([sys.executable, '-c', code], capture_output=True, text=True, timeout=60,
+                          cwd=str(Path(main.__file__).parent))
+    assert done.returncode == 0, done.stderr
+    assert done.stdout == 'MELLOW_EVENT {}\n'
+    assert 'stray print' in done.stderr
 
 
 def test_the_ready_line_signs_a_window_in_once(capsys):

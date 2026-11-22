@@ -498,6 +498,8 @@ class JobManager:
             complete["sync_summary"] = {"new": job["counts"]["new"],
                                         "already": job["report"]["archived"],
                                         "failed": job["counts"]["errors"]}
+            if job["opts"].get("auto_sync"):
+                complete["auto"] = True      # the scheduler started it (the tray says so)
         push(complete)
         return "complete"
 
