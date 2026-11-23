@@ -247,6 +247,7 @@ fn show_main(app: &AppHandle) {
     // On screen again: the page shows its own toasts (mellow/shell.py)
     send(app, "window", json!({ "visible": true }));
     if let Some(window) = app.get_webview_window(WINDOW_LABEL) {
+        system::webview_memory_low(&window, false);
         let _ = window.unminimize();
         let _ = window.show();
         let _ = window.set_focus();
@@ -285,6 +286,8 @@ fn close_to_tray(app: &AppHandle) -> bool {
     let _ = app.save_window_state(state_flags());
     if let Some(window) = app.get_webview_window(WINDOW_LABEL) {
         let _ = window.hide();
+        // Nobody sees it: WebView2 may give memory back until it's shown again
+        system::webview_memory_low(&window, true);
     }
     // Its page stays connected, but nobody sees it: the backend notifies through us
     send(app, "window", json!({ "visible": false }));

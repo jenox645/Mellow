@@ -38,6 +38,14 @@ libc = "0.2"
 [target.'cfg(windows)'.dependencies.tauri-winrt-notification]
 version = "0.8"
 
+# WebView2's memory target while the window is hidden in the tray (system.rs): the
+# versions wry already uses, so nothing is built twice
+[target.'cfg(windows)'.dependencies.webview2-com]
+version = "0.39"
+
+[target.'cfg(windows)'.dependencies.windows-core]
+version = "0.62"
+
 [target.'cfg(not(windows))'.dependencies]
 notify-rust = "4"
 

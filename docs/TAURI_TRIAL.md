@@ -503,6 +503,32 @@ per process, so it overstates both a little).
 - Size: the shell adds ~3 MB. Today's builds add nothing for the window (Chrome/Edge must be
   installed). The backend's PyInstaller build stays what it is.
 
+### Memory: what the app itself uses
+
+The working set summed over the tree (the ~540 MB above and in #107) counts the shared WebView2
+binaries once per process. Memory only this app uses (USS, unique set size: closest to Task
+Manager's "Memory" column) is **~191 MB**, the packaged test build, window open, 12 s after start:
+
+| | USS |
+|---|---|
+| Backend (Python: Flask, DuckDB, yt-dlp) | 74 MB |
+| WebView2 renderer (the page) | 36 MB |
+| WebView2 GPU process | 33 MB |
+| WebView2 browser process | 31 MB |
+| WebView2 network / storage / crashpad | 8 / 3 / 2 MB |
+| Shell | 4 MB |
+
+- **Hidden in the tray**, the shell sets WebView2's memory target to Low (`ICoreWebView2_19`,
+  `system::webview_memory_low`) and back to Normal when the window shows: **189–192 → 170–174 MB** after
+  20 s (the renderer 35 → 19–21 MB; working set −60 MB), 3 runs each; showing it again from the tray
+  is no slower (paint 0.054–0.075 s before, 0.062–0.064 s after). After `TRAY_RELEASE_AFTER` the window
+  is still closed for real, which frees WebView2 entirely.
+- Measured, not shipped: `--in-process-gpu` (the GPU process merged into the browser process, still
+  hardware-accelerated) saves **~15 MB** (176–177 MB open), but a GPU driver crash would then take the
+  whole WebView2 down instead of only its GPU process. `--disable-gpu` saves ~17 MB but draws
+  everything in software (the renderer grows 36 → 41 MB and the animations cost CPU). Earlier:
+  `--renderer-process-limit=1` and `--enable-low-end-device-mode` change nothing (one renderer already).
+
 ## What Tauri gives us next
 
 All Tauri v2, Rust crate / JS package:
