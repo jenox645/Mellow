@@ -9,7 +9,7 @@ The owner looked at the first themes and said they were the most generic AI desi
 
 ## Mellow is the face of the project
 
-The mascot (Mellow, the sheep girl with headphones) is MellowDLP's identity. **Never draw a new logo, glyph or wordmark-icon** for the app, the window, the tray, the installer or a splash: the owner rejected a drawn "M" mark for exactly that. Use her art: the mood drawings `assets/*_mellow_vector.svg` (shipped through `build_setup.py`'s `MASCOTS` table and `gui/lib/mascots.js`), `assets/mellow.ico`, and the owner's detailed line art `assets/sleeping_mellow_vector.svg` (curled up asleep in her headphones; `fill="currentColor"`, so it takes the theme's ink colour; 286 KB, so add it to the bundle only where it's shown large: a loading screen, an empty state, an idle Feed). At small sizes (tray, title bar, favicon) use a simplified render of her existing art, for example the round sheep-face badge on her sleeve and boot, never a new drawing. Animate her with her own lines (draw-on, a slow breathing scale, the headphones' cable), not with effects laid over her.
+The mascot (Mellow, the sheep girl with headphones) is MellowDLP's identity. **Never draw a new logo, glyph or wordmark-icon** for the app, the window, the tray, the installer or a splash: the owner rejected a drawn "M" mark for exactly that. Use her art: the mood drawings `assets/*_mellow_vector.svg` (shipped through `build_setup.py`'s `MASCOTS` table and `gui/lib/mascots.js`), `assets/mellow.ico`, and the owner's detailed line art `assets/sleeping_mellow_vector.svg` (curled up asleep in her headphones; `fill="currentColor"`, so it takes the theme's ink colour; 286 KB, so add it to the bundle only where it's shown large: a loading screen, an empty state, an idle Feed). At small sizes (tray, title bar, favicon) use a simplified render of her existing art, for example the round sheep-face badge on her sleeve and boot, never a new drawing. **Don't make her breathe, bob or float**: the owner finds an idle scale/translate loop on her weird. She may draw on (her own lines, once, when she appears) and then she stays still; no effects laid over her either.
 
 ## What the owner likes
 
@@ -52,6 +52,7 @@ Mellow has real numbers: download speed, progress, ETA, items done/left, disk fr
 - On hover / focus: brackets close in, a marker slides to the item, a rule extends; press = a short snap.
 - Toasts, modals, the victory overlay: their own entrances built from the same kit.
 - Animate only `transform`, `opacity` and `stroke-dashoffset`; durations from the theme's `--dur-*` tokens; `prefers-reduced-motion: reduce` turns all of it off (keep the global rule winning).
+- **The victory overlay is part of the theme too:** each theme makes its own (Classic's is the default), and it must run at the display's frame rate: no animating `filter`, `box-shadow`, `width`/`height` or big blurred layers; measure it in DevTools' performance panel.
 
 ### Typography
 A display face with character for this theme + a mono for figures and micro-labels (OFL, woff2 Latin subset in `gui/fonts/` with the licence). Tracked caps micro-labels around 9–10 px (never under 8.5 px), tabular numerals, Japanese subtitles small and quiet. Size contrast should be large: a title or a numeral can be big.
@@ -60,6 +61,8 @@ A display face with character for this theme + a mono for figures and micro-labe
 Monochrome base (light or dark), one accent on under ~5 % of the surface (live state, the main action, the selection), red only for danger. Every text colour keeps 4.5:1 on its background (`tests/test_themes.py`).
 
 ## Process (put the evidence in the PR)
+
+Start every visual PR with the model and effort it was made with (for example "Opus 5.5, max effort"): the owner wants to know.
 
 1. **References.** In `gui/themes/<id>/DIRECTION.md`, list 6–10 real references (name + what you take from each). At least half from game UI or film HUDs; none from SaaS dashboards or UI kits.
 2. **Mockup first.** Build the Feed and the Vault as one static HTML file (`gui/themes/<id>/mockup.html`, using the theme's fonts and ornament kit), screenshot it at 1440×900, and put the screenshot in the PR before building the real screens.
