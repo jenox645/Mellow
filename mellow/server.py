@@ -22,7 +22,6 @@ from . import (
     applog,
     changelog,
     desktop,
-    downloader,
     errors,
     ffmpeg_install,
     folder_move,
@@ -64,9 +63,13 @@ from .constants import (
     WEBHOOK_TIMEOUT_SECS,
 )
 from .ffmpeg_locate import find_ffmpeg
+from .lazy import LazyModule
 from .version import APP_VERSION
 
 log = logging.getLogger(__name__)
+
+# yt-dlp comes with it: loaded on first use, not before the server answers (mellow/lazy.py)
+downloader = LazyModule("mellow.downloader")
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 

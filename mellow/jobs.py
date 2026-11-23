@@ -20,7 +20,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Callable
 
-from . import analytics, downloader, errors, power, vault
+from . import analytics, errors, power, vault
 from .config import download_root, load_config, update_config, write_atomic
 from .constants import (
     DEFAULT_DOWNLOAD_WORKERS,
@@ -31,6 +31,10 @@ from .constants import (
     SYNC_REPORT_ITEMS_KEEP,
     WORKER_POLL_SECS,
 )
+from .lazy import LazyModule
+
+# yt-dlp comes with it: loaded when a job first runs (mellow/lazy.py)
+downloader = LazyModule("mellow.downloader")
 
 log = logging.getLogger(__name__)
 
