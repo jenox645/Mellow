@@ -84,7 +84,13 @@ function useWrapped() {
   React.useEffect(() => {
     if (!open) return;
     setData(null);
-    API.get('/api/analytics/wrapped?year=' + year).then(setData).catch(() => setData({ error: true }));
+    // The state outlives the card: an answer that comes back after the card closed or
+    // moved to another year (close + reopen before it lands) is dropped, not shown
+    let current = true;
+    API.get('/api/analytics/wrapped?year=' + year)
+      .then(d => { if (current) setData(d); })
+      .catch(() => { if (current) setData({ error: true }); });
+    return () => { current = false; };
   }, [open, year]);
 
   return {
