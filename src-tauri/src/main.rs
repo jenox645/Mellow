@@ -86,6 +86,18 @@ struct Shell {
     /// What the tray's picture shows (whole percent, paused)
     tray_picture: Mutex<(Option<f64>, bool)>,
     menu: Mutex<Option<tray::TrayMenu>>,
+    /// Where mellowdlp:// links go (deliver_link)
+    links: Mutex<LinkRoute>,
+}
+
+/// Until the backend we started is ready, links wait: it may find another MellowDLP
+/// running (FlaskWebGUI's, or one started with --no-window) and leave the window to
+/// that copy, which has no pipe of ours.
+#[derive(Default)]
+struct LinkRoute {
+    ready: bool,
+    attached: bool,
+    waiting: Vec<String>,
 }
 
 fn timing(event: &str) {
@@ -419,11 +431,35 @@ fn open_deep_links(app: &AppHandle, links: &[Url]) {
         match links::deep_link_target(link) {
             Some(target) => {
                 show_main(app);
-                send(app, "open_link", json!({ "url": target }));
+                deliver_link(app, target);
             }
             None => eprintln!("MellowDLP shell: ignored the link {link}"),
         }
     }
+}
+
+/// A link for the Feed: to our backend (its page analyzes it), held until it's ready,
+/// or, when the window shows another MellowDLP, handed over through the clipboard.
+fn deliver_link(app: &AppHandle, url: String) {
+    let shell = app.state::<Shell>();
+    let mut route = shell.links.lock().unwrap();
+    if !route.ready {
+        route.waiting.push(url);
+    } else if route.attached {
+        drop(route);
+        hand_over_link(app, &url);
+    } else {
+        drop(route);
+        send(app, "open_link", json!({ "url": url }));
+    }
+}
+
+/// The other copy has no pipe of ours (and an older one no open_link): the link goes on the
+/// clipboard, which its Feed offers when the window is focused, and a notification says so.
+fn hand_over_link(app: &AppHandle, url: &str) {
+    let copied = arboard::Clipboard::new().and_then(|mut clipboard| clipboard.set_text(url.to_owned())).is_ok();
+    let body = if copied { "The link is on the clipboard: paste it in the Feed." } else { url };
+    system::notify(app, "MellowDLP was already open", body, show_main);
 }
 
 // ── The backend ─────────────────────────────────────────────────────────────
@@ -446,6 +482,7 @@ fn start_backend(app: &AppHandle, background: bool) -> Result<(), String> {
     let resources = app.path().resource_dir().ok();
     let launch = Launch::resolve(|name| std::env::var_os(name), resources.as_deref(), &checkout());
     eprintln!("MellowDLP shell: starting the backend: {}", launch.describe());
+    app.state::<Shell>().links.lock().unwrap().ready = false;
     let stdout = app.state::<Backend>().spawn(&launch, background)?;
     timing("backend_spawned");
 
@@ -467,7 +504,22 @@ fn start_backend(app: &AppHandle, background: bool) -> Result<(), String> {
                         app.exit(0);
                         return;
                     }
+                    if let Some(window) = app.get_webview_window(WINDOW_LABEL) {
+                        // That copy has no shell: its page draws no title bar and can't move or
+                        // close this window, so the system's frame comes back
+                        let _ = window.set_decorations(other_copy || !backend::CUSTOM_FRAME);
+                    }
                     go_to(&app, &url);
+                    let waiting = {
+                        let shell = app.state::<Shell>();
+                        let mut route = shell.links.lock().unwrap();
+                        route.ready = true;
+                        route.attached = other_copy;
+                        std::mem::take(&mut route.waiting)
+                    };
+                    for link in waiting {
+                        deliver_link(&app, link);
+                    }
                 }
                 Line::Event(Event::State(state)) => apply_state(&app, state),
                 Line::Event(Event::Notify { title, body }) => system::notify(&app, &title, &body, show_main),

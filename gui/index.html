@@ -136,10 +136,14 @@
     .titlebar-name b{font-family:var(--font-display);font-weight:700;font-size:10.5px;letter-spacing:var(--logo-tracking);color:var(--t2)}
     .titlebar-name i{font-style:normal;color:var(--t4)}
     .titlebar-fill{flex:1}
-    .titlebar-btn{-webkit-app-region:no-drag;app-region:no-drag;width:46px;border:0;border-radius:0;background:transparent;color:var(--titlebar-fg);display:flex;align-items:center;justify-content:center;transition:background var(--dur-fast),color var(--dur-fast)}
-    .titlebar-btn:hover{background:var(--titlebar-hover);color:var(--t1)}
+    /* Hover: a layer fades in (opacity only, the motion rule); the glyph's colour changes at once */
+    .titlebar-btn{-webkit-app-region:no-drag;app-region:no-drag;position:relative;width:46px;border:0;border-radius:0;background:transparent;color:var(--titlebar-fg);display:flex;align-items:center;justify-content:center}
+    .titlebar-btn::before{content:'';position:absolute;inset:0;background:var(--titlebar-hover);opacity:0;transition:opacity var(--dur-fast)}
+    .titlebar-close::before{background:var(--danger)}
+    .titlebar-btn:hover::before{opacity:1}
+    .titlebar-btn:hover{color:var(--t1)}
+    .titlebar-btn svg{position:relative}
     .titlebar-btn:active svg{transform:scale(.88)}
-    .titlebar-close:hover{background:var(--danger);color:var(--t1)}
     .titlebar-rule,.titlebar-progress{position:absolute;left:0;right:0;bottom:0;height:1px;transform-origin:left;pointer-events:none}
     .titlebar-rule{background:var(--titlebar-rule);animation:titlebar-draw var(--dur-reveal) var(--ease-out)}
     .titlebar-progress{background:var(--accent);transition:transform var(--dur-base) var(--ease-out)}

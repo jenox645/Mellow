@@ -434,7 +434,11 @@ The window on Windows draws its own frame; the page still gets **no IPC**:
 - **Global shortcut** (Config → *Download the copied link*, default Ctrl+Alt+D, empty = off) and
   **`mellowdlp://download?url=<link>`** (the installer registers the scheme; the window comes up and the Feed
   analyzes the link, never a download by itself; one http(s) link only; a link sent before the page connects
-  waits for it).
+  waits for it). Links wait in the shell until its backend is ready: when that backend finds another MellowDLP
+  running (FlaskWebGUI's, `--no-window`) the window shows that copy, which has no pipe of ours, so the link goes
+  on the clipboard (its Feed offers a copied link) and a notification says so.
+- **Attached to another copy** (`MELLOW_READY … attached`): that copy's page draws no title bar, so the window
+  gets the system's frame back (`set_decorations(true)`) instead of staying frameless without controls.
 - Left out on purpose: Mica/acrylic (`window-vibrancy`) — the owner rejects glassmorphism and Classic's band is
   opaque by design; a theme could opt in later. File drops keep the page's HTML5 handler (link drops anywhere;
   Tauri's own handler would give file paths but turn link drops off on Windows).
