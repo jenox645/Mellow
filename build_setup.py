@@ -319,8 +319,9 @@ if not src_html.exists():
 shutil.copy2(src_html, STATIC / "index.html")
 # Bundled web fonts: the app never fetches them from Google
 shutil.copytree(GUI / "fonts", STATIC / "fonts", dirs_exist_ok=True)
-# The desktop app's title bar mark (scripts/make_icons.py)
-shutil.copy2(ASSETS / "mellow-badge.png", STATIC / "mellow-badge.png")
+# The desktop app's title bar mark, Mellow's sheep-face badge (scripts/make_icons.py)
+for badge in ("mellow-badge.png", "mellow-badge@2x.png"):
+    shutil.copy2(ASSETS / badge, STATIC / badge)
 # The desktop app's splash is Classic's loading screen (src-tauri/ui/index.html): the same
 # mascots and fonts, next to it in the shell's bundled page (gitignored copies)
 SPLASH_UI = HERE / "src-tauri" / "ui"

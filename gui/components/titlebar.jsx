@@ -27,8 +27,9 @@ export function TitleBar({ progress, onWindowOp }) {
   return (
     <div className="titlebar" data-tour="titlebar">
       <div className="titlebar-mark" aria-hidden="true">
-        {/* Mellow herself, as on the tray (scripts/make_icons.py) */}
-        <img src="/mellow-badge.png" width="18" height="18" alt="" draggable="false" />
+        {/* Mellow's sheep-face badge, as on the tray and the taskbar (scripts/make_icons.py) */}
+        <img src="/mellow-badge.png" srcSet="/mellow-badge.png 1x, /mellow-badge@2x.png 2x"
+          width="18" height="18" alt="" draggable="false" />
       </div>
       <div className="titlebar-name"><b>MELLOWDLP</b><i>メロウ</i></div>
       <div className="titlebar-fill" />
