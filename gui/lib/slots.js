@@ -4,8 +4,9 @@
 export const SLOT_NAMES = ['Sidebar', 'TopBar', 'StatusBar', 'LoadingScreen', 'PageFrame'];
 
 // Pages a theme may draw its own way. The page's logic stays shared: a view gets what the
-// page's hook returns (useFeedPage, useVaultPage) and calls its handlers, never the API.
-export const PAGE_NAMES = ['feed', 'vault'];
+// page's hook returns (useFeedPage, useQueuePage, useVaultPage, useAnalyticsPage, useSignalPage,
+// useConfigPage) and calls its handlers, never the API.
+export const PAGE_NAMES = ['feed', 'queue', 'vault', 'analytics', 'signal', 'config'];
 
 // The components for `theme`: its own where it registered one, Classic's for the rest;
 // `pages` holds the page views the same way

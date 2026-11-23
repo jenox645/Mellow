@@ -46,14 +46,29 @@ test('registryProblems names unknown themes, slots and pages', () => {
     ['tactical: unknown page "fed"']);
 });
 
+// Each page: Classic's view and the page's logic (its hook)
+const PAGE_FILES = {
+  feed: ['feed.jsx', 'feed-logic.js'], queue: ['queue.jsx', 'queue-logic.js'], vault: ['vault.jsx', 'vault-logic.js'],
+  analytics: ['analytics.jsx', 'analytics-logic.js'], signal: ['signal.jsx', 'signal-logic.js'],
+  config: ['config.jsx', 'config-logic.js'],
+};
+
+test('every page is split into logic and a view', () => {
+  assert.deepEqual(Object.keys(PAGE_FILES).sort(), [...PAGE_NAMES].sort());
+});
+
 test('page views draw and call handlers: the API stays in the pages\' logic', async () => {
   const { readFile } = await import('node:fs/promises');
-  for (const view of ['feed.jsx', 'vault.jsx']) {
-    const src = await readFile(new URL('../../gui/pages/' + view, import.meta.url), 'utf8');
-    assert.doesNotMatch(src, /lib\/api\.js|\bAPI\./, view + ' calls the API itself');
+  for (const [view, logic] of Object.values(PAGE_FILES)) {
+    const viewSrc = await readFile(new URL('../../gui/pages/' + view, import.meta.url), 'utf8');
+    assert.doesNotMatch(viewSrc, /lib\/api\.js|\bAPI\.|\bfetch\(|new EventSource/, view + ' calls the API itself');
+    const logicSrc = await readFile(new URL('../../gui/pages/' + logic, import.meta.url), 'utf8');
+    assert.match(logicSrc, /lib\/api\.js/, logic);
   }
-  for (const logic of ['feed-logic.js', 'vault-logic.js']) {
-    const src = await readFile(new URL('../../gui/pages/' + logic, import.meta.url), 'utf8');
-    assert.match(src, /lib\/api\.js/, logic);
-  }
+});
+
+test('the App draws every page with the theme\'s view of it', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const app = await readFile(new URL('../../gui/app.jsx', import.meta.url), 'utf8');
+  for (const name of PAGE_NAMES) assert.match(app, new RegExp('View=\\{S\\.pages\\.' + name + '\\}'), name);
 });
