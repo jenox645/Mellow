@@ -23,6 +23,7 @@ Nothing is sent before attach(): without a shell (FlaskWebGUI's window,
 """
 from __future__ import annotations
 
+import itertools
 import json
 import logging
 import threading
@@ -84,10 +85,10 @@ def active() -> bool:
     return _out is not None
 
 
-def send(kind: str, **data) -> bool:
+def send(message_type: str, **data) -> bool:
     """One message to the shell; False when there is none (or its pipe broke)."""
     global _out
-    line = EVENT_PREFIX + json.dumps({"type": kind, **data}, ensure_ascii=True, separators=(",", ":"))
+    line = EVENT_PREFIX + json.dumps({"type": message_type, **data}, ensure_ascii=True, separators=(",", ":"))
     with _out_lock:
         if _out is None:
             return False
@@ -237,6 +238,7 @@ def state(queue: dict, paused: bool, cfg: dict | None = None) -> dict:
         "run_in_background": bool(cfg.get("run_in_background", True)),
         "start_with_system": bool(cfg.get("start_with_system", False)),
         "tray_notice_seen": bool(cfg.get("tray_notice_seen", False)),
+        "global_shortcut": str(cfg.get("global_shortcut") or ""),
         "keep_running": bool(cfg.get("run_in_background", True)) and has_work,
     }
 
@@ -369,3 +371,38 @@ def queue_finished(done: list[dict], open_pages: int) -> None:
 
 # The shell's window shown or hidden (to the tray, or closed there for good)
 register("window", lambda message: set_window_visible(bool(message.get("visible", True))))
+
+
+# ── Questions to the shell (a native dialog) ─────────────────────────────────
+# ask() sends {"type": kind, "id": n, …} and waits for {"cmd": "answer", "id": n, …}
+
+_answers: dict[int, dict | None] = {}
+_answers_cv = threading.Condition()
+_question_ids = itertools.count(1)
+
+
+def ask(what: str, timeout: float, **data) -> dict | None:
+    """Ask the shell (a native dialog) and wait for its answer; None without a
+    shell, or when it doesn't answer within `timeout`."""
+    if not active():
+        return None
+    qid = next(_question_ids)
+    with _answers_cv:
+        _answers[qid] = None
+    if not send(what, id=qid, **data):
+        with _answers_cv:
+            _answers.pop(qid, None)
+        return None
+    with _answers_cv:
+        _answers_cv.wait_for(lambda: _answers.get(qid) is not None, timeout)
+        return _answers.pop(qid, None)
+
+
+def _answer(message: dict) -> None:
+    with _answers_cv:
+        if message.get("id") in _answers:
+            _answers[message["id"]] = message
+            _answers_cv.notify_all()
+
+
+register("answer", _answer)

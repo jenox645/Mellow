@@ -30,6 +30,9 @@ pub const BACKEND_DIR: &str = "backend";
 pub const BACKEND_EXE: &str = if cfg!(windows) { "mellowdlp-backend.exe" } else { "mellowdlp-backend" };
 /// What the backend reads to know which window it serves.
 pub const SHELL_ENV: (&str, &str) = ("MELLOW_SHELL", "tauri");
+/// Windows: a frameless window whose page draws the title bar (gui/components/titlebar.jsx);
+/// elsewhere the system's own frame (not checked frameless on Linux or macOS)
+pub const CUSTOM_FRAME: bool = cfg!(windows);
 
 const SHUTDOWN_GRACE: Duration = Duration::from_secs(3);
 const SHUTDOWN_POLL: Duration = Duration::from_millis(50);
@@ -83,6 +86,9 @@ impl Launch {
             }
         };
         cmd.arg("--shell").env(SHELL_ENV.0, SHELL_ENV.1);
+        if CUSTOM_FRAME {
+            cmd.env("MELLOW_SHELL_FRAME", "custom");
+        }
         cmd
     }
 

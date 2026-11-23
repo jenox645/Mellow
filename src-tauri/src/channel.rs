@@ -34,6 +34,19 @@ pub enum Event {
     Launch {
         url: String,
     },
+    /// The page's title bar buttons (/api/window): minimize | maximize | close
+    WindowOp {
+        op: String,
+    },
+    /// A native file or folder dialog; the answer goes back as {"cmd": "answer", "id", "path"}
+    Dialog {
+        id: u64,
+        kind: String,
+        #[serde(default)]
+        initial: Option<String>,
+        #[serde(default)]
+        extension: Option<String>,
+    },
     /// A newer backend's message this shell doesn't know: ignored
     #[serde(other)]
     Unknown,
@@ -59,6 +72,8 @@ pub struct State {
     pub tray_notice_seen: bool,
     /// Closing the window keeps MellowDLP in the tray
     pub keep_running: bool,
+    /// Config's key combination for "download the copied link" ("" = none)
+    pub global_shortcut: String,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
@@ -136,6 +151,18 @@ mod tests {
         assert_eq!(
             parse(r#"MELLOW_EVENT {"type":"launch","url":"http://127.0.0.1:5123/launch?t=new"}"#),
             Line::Event(Event::Launch { url: "http://127.0.0.1:5123/launch?t=new".into() })
+        );
+    }
+
+    #[test]
+    fn window_ops_and_dialogs() {
+        assert_eq!(
+            parse(r#"MELLOW_EVENT {"type":"window_op","op":"maximize"}"#),
+            Line::Event(Event::WindowOp { op: "maximize".into() })
+        );
+        assert_eq!(
+            parse(r#"MELLOW_EVENT {"type":"dialog","id":7,"kind":"folder","initial":"C:\\Music"}"#),
+            Line::Event(Event::Dialog { id: 7, kind: "folder".into(), initial: Some("C:\\Music".into()), extension: None })
         );
     }
 

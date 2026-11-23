@@ -413,6 +413,44 @@ with a stricter colour threshold gave Tauri 1.49 / 1.64 / 1.49 s (app screen) an
 (first data). The packaged backend is faster than the trial's `python main.py` (first data 1.4 s vs
 1.8 s): the frozen build doesn't scan site-packages.
 
+### Premium window
+
+The window on Windows draws its own frame; the page still gets **no IPC**:
+
+- **Title bar** (`gui/components/titlebar.jsx`, theme slot `TitleBar`, tokens `--titlebar-*`): the window has
+  no system frame (`decorations(false)`; Tauri keeps the caption style for snap and the window animations, and
+  resizes from the edges natively). The page's 32 px band is the drag region through CSS `app-region: drag`
+  (wry turns on WebView2's non-client regions): drag, Windows snap and double-click to maximize are the
+  system's own. Its three buttons go page → `/api/window` → backend → `MELLOW_EVENT window_op` → shell. The
+  bottom rule draws on when the window opens and fills with the first download's progress. Every theme sets its
+  band (`--titlebar-bg`); Tactical's comes out orange on its own surface with no extra code.
+  `/api/system` says `window_frame: "custom"`; on Linux and macOS the system frame stays (not checked frameless).
+- **Splash**: the window's background is Classic's from the first frame (no white flash before a page paints);
+  the bundled page draws the glyph on, with a scan line, and drags the window; its two buttons are links the
+  shell catches (`links::splash_op`).
+- **Native dialogs**: BROWSE and IMPORT FILE ask the shell over the pipe (`shell.ask("dialog")` →
+  `{"cmd": "answer"}`); it shows the system's dialog owned by the window (`rfd`, what tauri-plugin-dialog wraps,
+  without the script that plugin puts in every page). Tk only without a shell.
+- **Global shortcut** (Config → *Download the copied link*, default Ctrl+Alt+D, empty = off) and
+  **`mellowdlp://download?url=<link>`** (the installer registers the scheme; the window comes up and the Feed
+  analyzes the link, never a download by itself; one http(s) link only; a link sent before the page connects
+  waits for it). Links wait in the shell until its backend is ready: when that backend finds another MellowDLP
+  running (FlaskWebGUI's, `--no-window`) the window shows that copy, which has no pipe of ours, so the link goes
+  on the clipboard (its Feed offers a copied link) and a notification says so.
+- **Attached to another copy** (`MELLOW_READY … attached`): that copy's page draws no title bar, so the window
+  gets the system's frame back (`set_decorations(true)`) instead of staying frameless without controls.
+- Left out on purpose: Mica/acrylic (`window-vibrancy`) — the owner rejects glassmorphism and Classic's band is
+  opaque by design; a theme could opt in later. File drops keep the page's HTML5 handler (link drops anywhere;
+  Tauri's own handler would give file paths but turn link drops off on Windows).
+
+Checked on the installed build (throwaway home, real mouse and keyboard input): dragging the band moved the
+window by exactly the drag (120, 80 px), the right edge resized it, double-click maximized and restored, the three
+buttons did what they say, BROWSE opened the system's folder dialog **owned by the window** (and a cancel came
+back empty), the close button quit with nothing running; a `mellowdlp://` link started from the system brought
+the Feed up with the link analyzed; Ctrl+Alt+D downloaded the copied link; uninstalling removed the scheme.
+Screenshots (outside the repo): the band on Classic, Tactical and Classic Light, maximized, the splash, the
+folder dialog, the Feed after a link.
+
 ## Numbers
 
 Both from source with the same Python and the same throwaway home; Tauri = release shell; today =

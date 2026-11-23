@@ -19,6 +19,7 @@ except ModuleNotFoundError:
     tkinter = None  # type: ignore[assignment]
     tkinter_available = False
 
+from . import shell
 from .constants import DIALOG_TIMEOUT_SECS, EXPLORER_FIND_SECS, EXPLORER_POLL_SECS
 
 log = logging.getLogger(__name__)
@@ -213,8 +214,21 @@ def _tk_dialog(dialog_fn: Any, **kwargs: Any) -> str:
     return result[0] if result else ""
 
 
+def dialogs_available() -> bool:
+    """A native file or folder dialog can be shown: the desktop shell's
+    (owned by its window), else Tk's."""
+    return shell.active() or tkinter_available
+
+
+def _shell_dialog(**question) -> str:
+    answer = shell.ask("dialog", DIALOG_TIMEOUT_SECS, **question)
+    return str((answer or {}).get("path") or "")
+
+
 def ask_open_file(extension: str = "") -> str:
     """Native "open file" dialog; "" when cancelled."""
+    if shell.active():
+        return _shell_dialog(kind="file", extension=extension)
     filetypes = ([("Text files", f"*{extension}"), ("All files", "*.*")] if extension
                  else [("All files", "*.*")])
     return _tk_dialog(tkinter.filedialog.askopenfilename, filetypes=filetypes)
@@ -222,4 +236,6 @@ def ask_open_file(extension: str = "") -> str:
 
 def ask_folder(initial: str) -> str:
     """Native folder picker; "" when cancelled."""
+    if shell.active():
+        return _shell_dialog(kind="folder", initial=initial)
     return _tk_dialog(tkinter.filedialog.askdirectory, initialdir=initial, mustexist=False)

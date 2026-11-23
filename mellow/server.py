@@ -297,6 +297,26 @@ def _shell_setting(key: str):
     return _set
 
 
+# A mellowdlp:// link (the shell): the Feed analyzes it. With no page connected
+# yet (the window is still opening) it waits for the next one (api_progress).
+# One lock around "is a page there? else keep it" and "subscribe, take what's kept":
+# a page connecting in between would otherwise miss the link
+_pending_open_link: list[str] = []
+_open_link_lock = threading.Lock()
+
+
+def _shell_open_link(message: dict) -> None:
+    url = _link(message.get("url", ""))
+    if url is None:
+        return
+    with _open_link_lock:
+        if open_pages():
+            _push_progress({"status": "open_link", "url": url})
+        else:
+            _pending_open_link[:] = [url]
+
+
+shell.register("open_link", _shell_open_link)
 shell.register("pause", _pause_all)
 shell.register("resume", _resume_all)
 shell.register("download", _shell_download)
@@ -519,7 +539,7 @@ def api_open_folder() -> Response:
 
 @app.route("/api/browse-file", methods=["POST"])
 def api_browse_file() -> Response:
-    if not desktop.tkinter_available:
+    if not desktop.dialogs_available():
         return jsonify({"path": "", "error": "File dialogs unavailable (tkinter missing)"})
     data = request.get_json(force=True) or {}
     return jsonify({"path": desktop.ask_open_file(data.get("filter", ""))})
@@ -543,7 +563,7 @@ def api_read_url_file() -> Response:
 
 @app.route("/api/browse-folder", methods=["POST"])
 def api_browse_folder() -> Response:
-    if not desktop.tkinter_available:
+    if not desktop.dialogs_available():
         return jsonify({"path": "", "error": "File dialogs unavailable (tkinter missing)"})
     data = request.get_json(force=True) or {}
     return jsonify({"path": desktop.ask_folder(data.get("initial") or str(Path.home()))})
@@ -579,7 +599,23 @@ def api_system() -> Response:
         "log_path": str(applog.LOG_PATH),
         # The desktop app (src-tauri/) is this page's window: Config shows its settings
         "shell": "tauri" if shell.active() else None,
+        # "custom": a frameless window, the page draws the title bar (titlebar.jsx)
+        "window_frame": os.environ.get("MELLOW_SHELL_FRAME") if shell.active() else None,
     })
+
+
+# The desktop app's title bar buttons (gui/components/titlebar.jsx), done by the shell
+WINDOW_OPS = ("minimize", "maximize", "close")
+
+
+@app.route("/api/window", methods=["POST"])
+def api_window() -> Response:
+    op = (request.get_json(force=True) or {}).get("op")
+    if op not in WINDOW_OPS:
+        return jsonify({"error": f"op must be one of: {', '.join(WINDOW_OPS)}"}), 400
+    if not shell.send("window_op", op=op):
+        return jsonify({"error": "No desktop window to act on"}), 409
+    return jsonify({"ok": True})
 
 
 @app.route("/api/whats-new")
@@ -908,7 +944,10 @@ def api_resume() -> Response:
 @app.route("/api/progress")
 def api_progress() -> Response:
     def generate():
-        q = _sse_subscribe()
+        with _open_link_lock:
+            q = _sse_subscribe()
+            if _pending_open_link:
+                q.put_nowait({"status": "open_link", "url": _pending_open_link.pop()})
         try:
             while True:
                 try:

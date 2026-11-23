@@ -49,6 +49,8 @@ use serde_json::{json, Value};
 use tauri::webview::{NewWindowResponse, PageLoadEvent};
 use tauri::window::ProgressBarState;
 use tauri::{AppHandle, Manager, RunEvent, Url, WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent};
+use tauri_plugin_deep_link::DeepLinkExt;
+use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 use tauri_plugin_window_state::{AppHandleExt, StateFlags};
 
 use backend::{Backend, Launch};
@@ -84,6 +86,18 @@ struct Shell {
     /// What the tray's picture shows (whole percent, paused)
     tray_picture: Mutex<(Option<f64>, bool)>,
     menu: Mutex<Option<tray::TrayMenu>>,
+    /// Where mellowdlp:// links go (deliver_link)
+    links: Mutex<LinkRoute>,
+}
+
+/// Until the backend we started is ready, links wait: it may find another MellowDLP
+/// running (FlaskWebGUI's, or one started with --no-window) and leave the window to
+/// that copy, which has no pipe of ours.
+#[derive(Default)]
+struct LinkRoute {
+    ready: bool,
+    attached: bool,
+    waiting: Vec<String>,
 }
 
 fn timing(event: &str) {
@@ -153,6 +167,10 @@ fn build_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
         .title(WINDOW_TITLE)
         .inner_size(WINDOW_WIDTH, WINDOW_HEIGHT)
         .visible(false) // shown once sized (window-state, or fit_outer_size)
+        // Windows: no system frame; the page draws the title bar (backend::CUSTOM_FRAME).
+        // Classic's background from the first frame: no white flash before a page paints
+        .decorations(!backend::CUSTOM_FRAME)
+        .background_color(tauri::window::Color(7, 9, 15, 255))
         // The page's own drag and drop (a link dropped anywhere, files dropped on
         // the Vault): with Tauri's handler on, Windows never gives the page drop events
         .disable_drag_drop_handler()
@@ -162,7 +180,13 @@ fn build_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
         })
         .on_navigation({
             let app = app.clone();
-            move |url| follow(&app, url, route(url), "a navigation")
+            move |url| {
+                if let Some(op) = links::splash_op(url) {
+                    window_op(&app, op);
+                    return false;
+                }
+                follow(&app, url, route(url), "a navigation")
+            }
         })
         .on_new_window({
             let app = app.clone();
@@ -290,6 +314,47 @@ fn show_progress(window: &WebviewWindow, state: &State) {
     let _ = window.set_progress_bar(ProgressBarState { status: Some(status), progress });
 }
 
+/// The title bar's buttons (the page's, through the backend; the splash's).
+fn window_op(app: &AppHandle, op: &str) {
+    let Some(window) = app.get_webview_window(WINDOW_LABEL) else { return };
+    let done = match op {
+        "minimize" => window.minimize(),
+        "maximize" if window.is_maximized().unwrap_or(false) => window.unmaximize(),
+        "maximize" => window.maximize(),
+        // As the system's close button: the tray decides (close_to_tray)
+        "close" => window.close(),
+        _ => Ok(()),
+    };
+    if let Err(e) = done {
+        eprintln!("MellowDLP shell: window {op}: {e}");
+    }
+}
+
+/// A native file or folder dialog owned by the window (rfd), on its own thread;
+/// the answer (the path, "" when cancelled) goes back to the backend.
+fn dialog(app: &AppHandle, id: u64, kind: String, initial: Option<String>, extension: Option<String>) {
+    let app = app.clone();
+    std::thread::spawn(move || {
+        let mut picker = rfd::FileDialog::new();
+        if let Some(window) = app.get_webview_window(WINDOW_LABEL) {
+            picker = picker.set_parent(&window);
+        }
+        if let Some(dir) = initial.filter(|d| !d.is_empty()) {
+            picker = picker.set_directory(dir);
+        }
+        let path = if kind == "folder" {
+            picker.pick_folder()
+        } else {
+            if let Some(ext) = extension.as_deref().map(|e| e.trim_start_matches('.')).filter(|e| !e.is_empty()) {
+                picker = picker.add_filter(format!("{} files", ext.to_uppercase()), &[ext]).add_filter("All files", &["*"]);
+            }
+            picker.pick_file()
+        };
+        let path = path.map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
+        send(&app, "answer", json!({ "id": id, "path": path }));
+    });
+}
+
 // ── The tray ────────────────────────────────────────────────────────────────
 
 fn on_menu(app: &AppHandle, id: &str) {
@@ -334,12 +399,67 @@ fn apply_state(app: &AppHandle, new: State) {
     if let Some(window) = app.get_webview_window(WINDOW_LABEL) {
         show_progress(&window, &new);
     }
+    if first || old.global_shortcut != new.global_shortcut {
+        set_global_shortcut(app, &old.global_shortcut, &new.global_shortcut);
+    }
     if first || old.start_with_system != new.start_with_system {
         let now = system::start_with_system(app, new.start_with_system);
         if now != new.start_with_system {
             send(app, "start_with_system", json!({ "value": now }));
         }
     }
+}
+
+/// Config's key combination for "download the copied link", from anywhere.
+fn set_global_shortcut(app: &AppHandle, old: &str, new: &str) {
+    let shortcuts = app.global_shortcut();
+    if !old.is_empty() {
+        let _ = shortcuts.unregister(old);
+    }
+    if new.trim().is_empty() {
+        return;
+    }
+    if let Err(e) = shortcuts.register(new.trim()) {
+        eprintln!("MellowDLP shell: shortcut {new}: {e}");
+        system::notify(app, "Shortcut not set", &format!("{new} can't be used ({e}). Config → In the background."), show_main);
+    }
+}
+
+/// mellowdlp://download?url=<link>: the window comes up and the Feed analyzes the link.
+fn open_deep_links(app: &AppHandle, links: &[Url]) {
+    for link in links {
+        match links::deep_link_target(link) {
+            Some(target) => {
+                show_main(app);
+                deliver_link(app, target);
+            }
+            None => eprintln!("MellowDLP shell: ignored the link {link}"),
+        }
+    }
+}
+
+/// A link for the Feed: to our backend (its page analyzes it), held until it's ready,
+/// or, when the window shows another MellowDLP, handed over through the clipboard.
+fn deliver_link(app: &AppHandle, url: String) {
+    let shell = app.state::<Shell>();
+    let mut route = shell.links.lock().unwrap();
+    if !route.ready {
+        route.waiting.push(url);
+    } else if route.attached {
+        drop(route);
+        hand_over_link(app, &url);
+    } else {
+        drop(route);
+        send(app, "open_link", json!({ "url": url }));
+    }
+}
+
+/// The other copy has no pipe of ours (and an older one no open_link): the link goes on the
+/// clipboard, which its Feed offers when the window is focused, and a notification says so.
+fn hand_over_link(app: &AppHandle, url: &str) {
+    let copied = arboard::Clipboard::new().and_then(|mut clipboard| clipboard.set_text(url.to_owned())).is_ok();
+    let body = if copied { "The link is on the clipboard: paste it in the Feed." } else { url };
+    system::notify(app, "MellowDLP was already open", body, show_main);
 }
 
 // ── The backend ─────────────────────────────────────────────────────────────
@@ -362,6 +482,7 @@ fn start_backend(app: &AppHandle, background: bool) -> Result<(), String> {
     let resources = app.path().resource_dir().ok();
     let launch = Launch::resolve(|name| std::env::var_os(name), resources.as_deref(), &checkout());
     eprintln!("MellowDLP shell: starting the backend: {}", launch.describe());
+    app.state::<Shell>().links.lock().unwrap().ready = false;
     let stdout = app.state::<Backend>().spawn(&launch, background)?;
     timing("backend_spawned");
 
@@ -383,11 +504,30 @@ fn start_backend(app: &AppHandle, background: bool) -> Result<(), String> {
                         app.exit(0);
                         return;
                     }
+                    if let Some(window) = app.get_webview_window(WINDOW_LABEL) {
+                        // That copy has no shell: its page draws no title bar and can't move or
+                        // close this window, so the system's frame comes back
+                        let _ = window.set_decorations(other_copy || !backend::CUSTOM_FRAME);
+                    }
                     go_to(&app, &url);
+                    let waiting = {
+                        let shell = app.state::<Shell>();
+                        let mut route = shell.links.lock().unwrap();
+                        route.ready = true;
+                        route.attached = other_copy;
+                        std::mem::take(&mut route.waiting)
+                    };
+                    for link in waiting {
+                        deliver_link(&app, link);
+                    }
                 }
                 Line::Event(Event::State(state)) => apply_state(&app, state),
                 Line::Event(Event::Notify { title, body }) => system::notify(&app, &title, &body, show_main),
                 Line::Event(Event::Launch { url }) => go_to(&app, &url),
+                Line::Event(Event::WindowOp { op }) => window_op(&app, &op),
+                Line::Event(Event::Dialog { id, kind, initial, extension }) => {
+                    dialog(&app, id, kind, initial, extension)
+                }
                 Line::Event(Event::Unknown) => {}
                 _ => println!("{line}"),
             }
@@ -420,6 +560,19 @@ fn main() {
         .plugin(tauri_plugin_opener::Builder::new().open_js_links_on_click(false).build())
         // The window opens where and as big as it was left (not hidden or shown: we decide)
         .plugin(tauri_plugin_window_state::Builder::default().with_state_flags(state_flags()).build())
+        // Config's key combination: the tray's "download the copied link", from any app
+        .plugin(
+            tauri_plugin_global_shortcut::Builder::new()
+                .with_handler(|app, _shortcut, event| {
+                    if event.state() == ShortcutState::Pressed {
+                        on_menu(app, "paste");
+                    }
+                })
+                .build(),
+        )
+        // mellowdlp:// links (the installer registers the scheme; a second launch
+        // with one hands it over through the single-instance plugin)
+        .plugin(tauri_plugin_deep_link::init())
         // Config's "Start with Windows": the system starts it with --background
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
@@ -430,6 +583,10 @@ fn main() {
         .setup(move |app| {
             let handle = app.handle().clone();
             let (_icon, menu) = tray::build(&handle, on_menu, show_main)?;
+            {
+                let links = handle.clone();
+                app.deep_link().on_open_url(move |event| open_deep_links(&links, &event.urls()));
+            }
             *app.state::<Shell>().menu.lock().unwrap() = Some(menu);
             if background {
                 app.state::<Shell>().in_tray.store(true, SeqCst);
@@ -438,6 +595,10 @@ fn main() {
             }
             if let Err(e) = start_backend(&handle, background) {
                 show_error(&handle, &e);
+            }
+            // Started by a mellowdlp:// link: once the backend listens (the command waits in its pipe)
+            if let Ok(Some(links)) = app.deep_link().get_current() {
+                open_deep_links(&handle, &links);
             }
             Ok(())
         })

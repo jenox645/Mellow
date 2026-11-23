@@ -19,5 +19,14 @@
       "icons/icon.png",
       "../assets/mellow.ico"
     ]
+  },
+  "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": [
+          "mellowdlp"
+        ]
+      }
+    }
   }
 }

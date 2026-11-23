@@ -4,22 +4,53 @@
 <meta charset="utf-8">
 <title>MellowDLP</title>
 <style>
-  html, body { margin: 0; height: 100%; background: #07090F; color: #9fb3c8;
-    font: 13px/1.5 "Consolas", "DejaVu Sans Mono", monospace; }
-  body { display: flex; align-items: center; justify-content: center; }
-  #msg { max-width: 640px; padding: 16px; white-space: pre-wrap; }
-  #msg.error { color: #ff6b6b; }
+  html, body { margin: 0; height: 100%; background: #07090F; color: #9fb3c8; overflow: hidden;
+    font: 11px/1.6 "Consolas", "DejaVu Sans Mono", monospace; letter-spacing: .14em; user-select: none; }
+  /* The window has no frame on Windows: the whole splash drags it */
+  body { -webkit-app-region: drag; app-region: drag; display: flex; align-items: center; justify-content: center; }
+  .bar { position: fixed; top: 0; right: 0; display: flex; }
+  .bar a { -webkit-app-region: no-drag; app-region: no-drag; width: 46px; height: 32px; display: flex;
+    align-items: center; justify-content: center; color: #8a9bb0; }
+  .bar a:hover { background: rgba(47, 216, 245, .10); color: #d8ecf5; }
+  .bar a.close:hover { background: #d23c4b; color: #fff; }
+  .mark { display: flex; flex-direction: column; align-items: center; gap: 18px; }
+  .glyph path { fill: none; stroke: #2fd8f5; stroke-width: 1.5; stroke-dasharray: 60; stroke-dashoffset: 60;
+    animation: draw .7s cubic-bezier(.2, .7, .2, 1) forwards; }
+  .glyph path + path { animation-delay: .25s; }
+  .name { color: #d8ecf5; font-weight: 700; letter-spacing: .42em; padding-left: .42em; }
+  .scan { width: 220px; height: 1px; background: rgba(47, 216, 245, .18); position: relative; overflow: hidden; }
+  .scan::after { content: ''; position: absolute; top: 0; left: 0; width: 60px; height: 1px; background: #2fd8f5;
+    animation: scan 1.1s linear infinite; }
+  #msg { min-height: 1.6em; color: #6f8399; text-transform: uppercase; }
+  #msg.error { color: #ff6b6b; text-transform: none; letter-spacing: .02em; max-width: 560px; white-space: pre-wrap; text-align: center; }
+  @keyframes draw { to { stroke-dashoffset: 0; } }
+  @keyframes scan { from { transform: translateX(-60px); } to { transform: translateX(220px); } }
+  @media (prefers-reduced-motion: reduce) { .glyph path { animation: none; stroke-dashoffset: 0; } .scan::after { animation: none; } }
 </style>
 </head>
 <body>
-<!-- Shown only until the backend says it is ready (src/main.rs then
-     navigates this window to the server's /launch page). -->
-<div id="msg">Starting MellowDLP…</div>
+<!-- Shown only until the backend says it is ready (src/main.rs then navigates this
+     window to the server's /launch page). Its buttons are links the shell catches
+     (links::splash_op): this page has no IPC. -->
+<div class="bar">
+  <a href="/__window/minimize" title="Minimize"><svg viewBox="0 0 10 10" width="10" height="10"><path d="M0 5.5h10" stroke="currentColor"/></svg></a>
+  <a class="close" href="/__window/close" title="Close"><svg viewBox="0 0 10 10" width="10" height="10"><path d="M.5.5l9 9M9.5.5l-9 9" stroke="currentColor"/></svg></a>
+</div>
+<div class="mark">
+  <svg class="glyph" viewBox="0 0 16 16" width="56" height="56" aria-hidden="true">
+    <path d="M3 11.5V4l5 5.5L13 4v7.5"/>
+    <path d="M2.5 13.75h11"/>
+  </svg>
+  <div class="name">MELLOWDLP</div>
+  <div class="scan"></div>
+  <div id="msg">starting</div>
+</div>
 <script>
   window.mellowShellError = function (text) {
     var el = document.getElementById('msg');
     el.className = 'error';
     el.textContent = text;
+    document.querySelector('.scan').style.visibility = 'hidden';
   };
 </script>
 </body>

@@ -279,6 +279,12 @@ function App() {
   }, [config.ui_theme]);
   // The window's parts for this theme: its own components where it has them (gui/themes/slots.jsx)
   const S = React.useMemo(() => themeSlots(theme), [theme]);
+  // The desktop app's frameless window: the page draws its title bar (slot TitleBar)
+  const customFrame = sysInfo.window_frame === 'custom';
+  React.useEffect(() => {
+    document.documentElement.classList.toggle('has-titlebar', customFrame);
+  }, [customFrame]);
+  const windowOp = React.useCallback((op) => { API.post('/api/window', { op }).catch(() => {}); }, []);
 
   // Initial load: stats, config, vault — then the once-a-day yt-dlp check
   React.useEffect(() => {
@@ -440,6 +446,9 @@ function App() {
         refreshVault();
       } else if (fx.type === 'victory') {
         celebrate(fx);
+      } else if (fx.type === 'open_link') {
+        setClipboardSuggestion({ url: fx.url, ts: Date.now() });
+        setPage('feed');
       }
     }
     dispatch({ type: 'effects_done', count: effects.length });
@@ -447,11 +456,18 @@ function App() {
 
   const switchPage = React.useCallback((p) => setPage(p), []);
 
+  const titleBar = customFrame ? (
+    <S.TitleBar onWindowOp={windowOp}
+      progress={appState === 'downloading' && dlState ? { pct: dlState.pct, paused: isPaused } : null} />
+  ) : null;
+
   if (loading) {
-    return <S.LoadingScreen onReady={() => setLoading(false)} />;
+    return <>{titleBar}<S.LoadingScreen onReady={() => setLoading(false)} /></>;
   }
 
   return (
+    <>
+    {titleBar}
     <div className="app">
       <S.Sidebar
         page={page}
@@ -662,6 +678,7 @@ function App() {
         </Modal>
       )}
     </div>
+    </>
   );
 }
 

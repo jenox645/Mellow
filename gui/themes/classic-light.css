@@ -105,3 +105,6 @@
 
 /* Toasts: a small ink notch in the bottom-right corner */
 :root[data-theme="classic-light"] .notif::after{content:'';position:absolute;right:0;bottom:0;width:9px;height:9px;background:var(--t1);clip-path:polygon(100% 0,100% 100%,0 100%);pointer-events:none}
+
+/* The desktop app's title bar (titlebar.jsx): this theme's own surface */
+:root[data-theme="classic-light"]{--titlebar-bg:var(--bg2);}

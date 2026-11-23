@@ -46,6 +46,13 @@ export function DesktopAppPanel({ local, set, sysInfo }) {
             <Toggle checked={local.start_with_system === true} onChange={v => set('start_with_system', v)} />
           </Row>
         )}
+        {tray && (
+          <Row name="Download the Copied Link"
+            sub="A key combination that downloads the link you copied, from any app (empty: off)">
+            <input type="text" className="inp-sm" style={{ width: 130 }} value={local.global_shortcut || ''}
+              placeholder="Ctrl+Alt+D" onChange={e => set('global_shortcut', e.target.value)} />
+          </Row>
+        )}
         <Row name="Daily Sync Time"
           sub="Folders on Daily sync at this time, or as soon as MellowDLP runs after it (it never wakes a sleeping computer)">
           <input type="time" className="inp-sm" style={{ width: 110 }} value={local.auto_sync_time || '03:00'}
