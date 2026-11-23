@@ -653,10 +653,12 @@
     .db-info{font-family:var(--font-mono);font-size:10.5px;color:var(--t3);display:flex;align-items:center;gap:8px}
     .db-val{color:var(--accent)}
     /* VICTORY OVERLAY */
-    .victory-overlay{position:fixed;inset:0;background:var(--scrim-victory);backdrop-filter:var(--overlay-blur);z-index:9000;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;animation:fadein var(--dur-slower) var(--ease-out);cursor:pointer;overflow:hidden;transition:opacity var(--dur-dismiss) var(--ease),transform var(--dur-dismiss) var(--ease)}
+    .victory-overlay{position:fixed;inset:0;background:var(--scrim-victory);z-index:9000;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;animation:fadein var(--dur-slower) var(--ease-out);cursor:pointer;overflow:hidden;transition:opacity var(--dur-dismiss) var(--ease),transform var(--dur-dismiss) var(--ease)}
     .victory-overlay.dismissing{opacity:0;transform:scale(1.03);pointer-events:none}
-    .victory-mascot{width:340px;height:auto;animation:mascot-float var(--dur-loop-float-fast) var(--ease-in-out) infinite;color:var(--accent);mix-blend-mode:var(--mascot-blend);filter:var(--tint-accent)}
-    .victory-mascot svg{width:340px;height:auto;display:block}
+    .victory-mascot{width:340px;height:auto;animation:mascot-float var(--dur-loop-float-fast) var(--ease-in-out) infinite;color:var(--accent);will-change:transform}
+    /* The tint and blend sit on the drawing, not on what floats: the floating box is a layer the GPU moves; it isn't re-filtered and re-blended each frame */
+    .victory-mascot svg{width:340px;height:auto;display:block;mix-blend-mode:var(--mascot-blend);filter:var(--tint-accent)}
+    img.victory-mascot{mix-blend-mode:var(--mascot-blend);filter:var(--tint-accent)}   /* PNG art: the image is the drawing */
     .victory-text{font-family:var(--font-display);font-size:24px;font-weight:800;color:var(--accent);letter-spacing:6px;text-shadow:var(--glow-victory);text-transform:uppercase}
     .victory-sparkle{position:absolute;width:4px;height:4px;background:var(--accent);border-radius:50%;animation:sparklePop var(--dur-sparkle) var(--ease) forwards;animation-delay:var(--delay)}
     @keyframes sparklePop{0%{transform:scale(0) translate(0,0);opacity:1}100%{transform:scale(1.5) translate(var(--tx),var(--ty));opacity:0}}
