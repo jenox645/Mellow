@@ -7,6 +7,10 @@ description: The owner's design standard for MellowDLP's look. Load it before an
 
 The owner looked at the first themes and said they were the most generic AI design they had seen: pill buttons, rounded white cards, a friendly rounded font, blue with a yellow accent, a dock of icons, no animation worth the name, and pages that were still Classic's layout in new colours. This file exists so that doesn't happen again. Read all of it before you design anything.
 
+## Mellow is the face of the project
+
+The mascot (Mellow, the sheep girl with headphones) is MellowDLP's identity. **Never draw a new logo, glyph or wordmark-icon** for the app, the window, the tray, the installer or a splash: the owner rejected a drawn "M" mark for exactly that. Use her art: the mood drawings `assets/*_mellow_vector.svg` (shipped through `build_setup.py`'s `MASCOTS` table and `gui/lib/mascots.js`), `assets/mellow.ico`, and the owner's detailed line art `assets/sleeping_mellow_vector.svg` (curled up asleep in her headphones; `fill="currentColor"`, so it takes the theme's ink colour; 286 KB, so add it to the bundle only where it's shown large: a loading screen, an empty state, an idle Feed). At small sizes (tray, title bar, favicon) use a simplified render of her existing art, for example the round sheep-face badge on her sleeve and boot, never a new drawing. Animate her with her own lines (draw-on, a slow breathing scale, the headphones' cable), not with effects laid over her.
+
 ## What the owner likes
 
 - **Functional menus of Japanese games**, not their lobbies: NIKKE's inventory, squad, recruit and shop screens; Blue Archive's menus for brightness and slanted shapes. High-contrast white/grey or black surfaces, black top and bottom bands, sharp geometric panels with cut corners, tall condensed caps titles with a small Japanese subtitle, compact technical labels and stats, thin rules, small status indicators, tab rows where the chosen tab is solid.
