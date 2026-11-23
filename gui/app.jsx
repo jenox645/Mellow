@@ -73,9 +73,30 @@ function fileActions(path) {
   ];
 }
 
+// The current page's DOM lives in one node the App keeps (`pageHost`) and renders the page
+// into through a portal; the theme's PageFrame only gets this slot, which moves that node
+// into the frame. A theme switch that changes the frame (Classic ↔ Tactical) then moves the
+// page instead of remounting it, so its hook keeps its state (unsaved Config edits too).
+// `display: contents` keeps both wrappers out of the layout.
+function PageSlot({ host }) {
+  const ref = React.useRef(null);
+  React.useLayoutEffect(() => {
+    const slot = ref.current;
+    slot.appendChild(host);
+    return () => { if (host.parentNode === slot) slot.removeChild(host); };
+  }, [host]);
+  return <div ref={ref} className="page-slot" style={{ display: 'contents' }} />;
+}
+
 function App() {
   const [loading, setLoading] = React.useState(true);
   const [page, setPage] = React.useState('feed');
+  const pageHost = React.useMemo(() => {
+    const el = document.createElement('div');
+    el.className = 'page-host';
+    el.style.display = 'contents';
+    return el;
+  }, []);
   // Everything the server's progress events drive (gui/lib/downloads.js)
   const [dl, dispatch] = React.useReducer(downloadsReducer, undefined, initialDownloads);
   const {
@@ -466,8 +487,9 @@ function App() {
       <div className="main">
         <S.TopBar page={page} onGuide={startGuide} />
 
-        <S.PageFrame page={page}>
+        <S.PageFrame page={page}><PageSlot host={pageHost} /></S.PageFrame>
 
+        {ReactDOM.createPortal(<>
         {page === 'feed' && (
           <FeedPage
             View={S.pages.feed}
@@ -501,6 +523,7 @@ function App() {
         )}
         {page === 'queue' && (
           <QueuePage
+            View={S.pages.queue}
             dlState={dlState}
             showNotif={showNotif}
             activeJobs={activeJobs}
@@ -538,11 +561,12 @@ function App() {
           />
         )}
         {page === 'analytics' && (
-          <AnalyticsPage stats={stats} refreshStats={refreshStats} showNotif={showNotif} />
+          <AnalyticsPage View={S.pages.analytics} stats={stats} refreshStats={refreshStats} showNotif={showNotif} />
         )}
-        {page === 'signal' && <SignalApiPage />}
+        {page === 'signal' && <SignalApiPage View={S.pages.signal} />}
         {page === 'config' && (
           <ConfigPage
+            View={S.pages.config}
             config={config}
             setConfig={setConfig}
             showNotif={showNotif}
@@ -555,7 +579,7 @@ function App() {
             refreshStats={refreshStats}
           />
         )}
-        </S.PageFrame>
+        </>, pageHost)}
 
         <S.StatusBar sysInfo={sysInfo} speedHistory={speedHistory} theme={theme} config={config}
           appUpdate={appUpdateOffer} onAppUpdate={() => takeAppUpdate(appUpdateOffer)}

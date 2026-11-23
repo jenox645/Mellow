@@ -1,7 +1,7 @@
-"""A theme's own page views: the Feed and the Vault draw what their hooks return.
+"""A theme's own page views: every page draws what its hook returns.
 
-The app is bundled again with tests/browser/page_views/, which registers two minimal
-views for Classic (as gui/themes/slots.jsx registers a theme's), and that bundle is
+The app is bundled again with tests/browser/page_views/, which registers a minimal
+view of each page for Classic (as gui/themes/slots.jsx registers a theme's), and that bundle is
 served in place of static/app.bundle.js. The views' buttons call the hooks' handlers,
 which must do what Classic's buttons do.
 """
@@ -22,6 +22,18 @@ FEED_KEYS = {"url", "setUrl", "handleAnalyze", "analyzing", "info", "mode", "set
              "setToggle", "handleDownload", "dlState", "config", "playlistItems", "searchResults", "pickSearchResult"}
 VAULT_KEYS = {"vaultFolders", "selectedFolder", "setSelectedFolder", "folderName", "files", "shownFiles",
               "onFileClick", "selectedFiles", "handleSync", "handleOpenFile", "syncReport", "marquee", "refreshAll"}
+QUEUE_KEYS = {"dlState", "activeJobs", "playlistItems", "completedItems", "failedItems", "syncPlan", "jobs",
+              "activeCount", "queuedJobsCount", "handleCancelJob", "startJobNow", "retryJob", "handleReorder",
+              "handleCancel", "qTab", "setQTab", "handleRetryFailed", "handleRetryAll", "onPause", "onResume"}
+ANALYTICS_KEYS = {"stats", "range", "setRange", "localStats", "statVal", "saveOverride", "hourly", "dailyTrend",
+                  "dailyFailures", "handleExport", "wrappedOpen", "openWrapped", "wrappedData", "historyRows",
+                  "searchHistory", "historyNext", "redownloadHistoryRow", "deleteHistoryRow"}
+SIGNAL_KEYS = {"presets", "activePreset", "pickPreset", "sql", "editSql", "runQuery", "running", "result",
+               "schemaText", "baseUrl", "webhooks", "saveWebhooks", "removeWebhook", "eventsOpen", "liveEvents"}
+CONFIG_KEYS = {"config", "setConfig", "sysInfo", "local", "set", "handleSave", "handleReset", "browseFolder",
+               "namePreview", "testCookies", "doVacuum", "downloadBackup", "handleRestoreFile", "checkAppUpdate",
+               "checkUpdate", "updateYtdlp", "openReleasePage", "currentTheme", "pickTheme", "doPurge",
+               "setDesktopNotifications"}
 
 
 @pytest.fixture(scope="module")
@@ -92,6 +104,102 @@ def test_a_vault_view_gets_the_folders_and_opening_one_loads_its_files(dummy_pag
     page.locator(".dummy-folder", has_text="Lofi").click()
     expect(page.locator("#dummy-open")).to_have_text("Lofi")
     expect(page.locator(".dummy-file")).to_have_text(["rain.mp3", "snow.mp3"])
+
+
+def _wait_for(page, check, timeout_ms=5000):
+    for _ in range(timeout_ms // 100):
+        if check():
+            return
+        page.wait_for_timeout(100)
+    assert check()
+
+
+def _json(body):
+    return lambda route: route.fulfill(status=200, content_type="application/json", body=json.dumps(body))
+
+
+def test_a_queue_view_gets_the_jobs_and_start_now_works(dummy_page):
+    page = dummy_page
+    started = []
+    later = 4_102_444_800   # 2100: a ⏾ job that isn't due
+    page.route("**/api/queue/status", _json({"jobs": [
+        {"id": "j1", "type": "feed", "label": "Tonight's download", "url": "https://youtu.be/x", "status": "queued",
+         "queue_position": 0, "not_before": later}]}))
+
+    def start_now(route):
+        started.append(route.request.url.rsplit("/api/queue/", 1)[1])
+        route.fulfill(status=200, content_type="application/json", body="{}")
+    page.route("**/api/queue/*/start-now", start_now)
+    page.keyboard.press("2")
+    expect(page.locator("#dummy-queue")).to_be_visible()
+    assert page.locator("[data-tour=queue-stats]").count() == 0      # Classic's isn't drawn
+    assert QUEUE_KEYS <= _keys(page, "#dummy-queue")
+    expect(page.locator("#dummy-counts")).to_have_text("0 active · 1 queued · tab pending")
+    page.locator(".dummy-job", has_text="Tonight's download").click()
+    _wait_for(page, lambda: started)
+    assert started == ["j1/start-now"]
+
+
+def test_an_analytics_view_gets_its_range_and_history(dummy_page):
+    page = dummy_page
+    ranges, searches = [], []
+
+    def stats(route):
+        rng = route.request.url.split("range=")[1] if "range=" in route.request.url else None
+        ranges.append(rng)
+        route.fulfill(status=200, content_type="application/json",
+                      body=json.dumps({"total_downloads": {"7d": 7, "30d": 30}.get(rng, 0)}))
+
+    def history(route):
+        search = (route.request.url.split("search=")[1].split("&")[0] if "search=" in route.request.url else "")
+        searches.append(search)
+        rows = [{"id": 1, "title": "rain on a tin roof"}, {"id": 2, "title": "snow day"}]
+        route.fulfill(status=200, content_type="application/json",
+                      body=json.dumps([r for r in rows if search in r["title"]]))
+    page.route("**/api/stats?range=*", stats)
+    page.route("**/api/history?*", history)
+    page.keyboard.press("4")
+    expect(page.locator("#dummy-analytics")).to_be_visible()
+    assert page.locator(".range-tabs").count() == 0
+    assert ANALYTICS_KEYS <= _keys(page, "#dummy-analytics")
+    expect(page.locator("#dummy-range")).to_have_text("30d 30")
+    page.locator("#dummy-7d").click()
+    expect(page.locator("#dummy-range")).to_have_text("7d 7")
+    assert ranges == ["30d", "7d"]
+    expect(page.locator(".dummy-row")).to_have_text(["rain on a tin roof", "snow day"])
+    page.locator("#dummy-history-search").fill("rain")
+    expect(page.locator(".dummy-row")).to_have_text(["rain on a tin roof"])
+    assert searches[-1] == "rain"
+
+
+def test_a_signal_view_runs_a_preset_query(dummy_page):
+    page = dummy_page
+    sent = []
+    page.on("request", lambda r: sent.append(r.post_data_json["sql"]) if r.url.endswith("/api/analytics/query") else None)
+    page.keyboard.press("5")
+    expect(page.locator("#dummy-signal")).to_be_visible()
+    assert page.locator(".query-textarea").count() == 0
+    assert SIGNAL_KEYS <= _keys(page, "#dummy-signal")
+    expect(page.locator("#dummy-result")).to_have_text("NO RESULT")
+    page.locator(".dummy-preset", has_text="Storage by format").click()
+    page.locator("#dummy-run").click()
+    expect(page.locator("#dummy-result")).to_have_text("0 rows")      # the real query, on this test's empty DB
+    assert len(sent) == 1 and sent[0].startswith("SELECT format, COUNT(*)")
+
+
+def test_a_config_view_edits_and_saves_a_setting(dummy_page):
+    from mellow import config
+    page = dummy_page
+    page.keyboard.press("6")
+    expect(page.locator("#dummy-config")).to_be_visible()
+    assert page.locator(".cfg-layout").count() == 0
+    assert CONFIG_KEYS <= _keys(page, "#dummy-config")
+    expect(page.locator("#dummy-theme")).to_have_text("classic")
+    page.locator("#dummy-template").fill("%(uploader)s - %(title)s.%(ext)s")
+    # The server's /api/filename-preview names its sample video with what's typed
+    expect(page.locator("#dummy-preview")).to_have_text("Rick Astley - Never Gonna Give You Up (Official Video).mp4")
+    page.locator("#dummy-save").click()
+    _wait_for(page, lambda: config.load_config().get("filename_template") == "%(uploader)s - %(title)s.%(ext)s")
 
 
 def test_classic_views_are_what_a_theme_without_its_own_gets(page):
