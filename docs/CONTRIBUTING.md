@@ -44,7 +44,7 @@ On Linux, `python3-tk` gives you the native BROWSE dialogs, and `xclip` the "cop
 also needs Rust (stable, [rustup.rs](https://rustup.rs)) and, on Linux, `libwebkit2gtk-4.1-dev build-essential
 libssl-dev libayatana-appindicator3-dev librsvg2-dev`.
 ```bash
-python build_setup.py --tauri    # dist/tauri/: the NSIS installer (Windows), AppImage + .deb (Linux)
+python build_setup.py --tauri    # dist/tauri/: the NSIS installer (Windows), AppImage + .deb + .rpm (Linux)
 python build_setup.py --tauri --test-identity   # "MellowDLP Test": touches none of an installed MellowDLP's entries
 cd src-tauri && cargo run        # the shell from source: it starts `python main.py --shell` itself
 ```

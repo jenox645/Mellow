@@ -103,7 +103,7 @@ backend build. Rust (stable) and, on Windows, the WebView2 runtime (part of Wind
 needed; on Linux the `webkit2gtk-4.1` development packages. The installable app:
 
 ```bash
-python build_setup.py --tauri    # → dist/tauri/: MellowDLP_<v>_x64-setup.exe (Windows), .AppImage + .deb (Linux)
+python build_setup.py --tauri    # → dist/tauri/: MellowDLP_<v>_x64-setup.exe (Windows), .AppImage + .deb + .rpm (Linux)
 ```
 
 It builds the backend with PyInstaller as for today's app, then `tauri build` with
@@ -159,7 +159,7 @@ Tauri window on Windows). Screenshots are pictures of the real window (`PrintWin
 | ✅ | Second launch | Tauri already open → the new process hands over to it (single-instance plugin) and exits; still one shell and one backend. Today's app (FlaskWebGUI) running → the Tauri window signs in to *that* copy (`attached`, the `--shell` process exits); closing the Tauri window leaves that copy running. The reverse (Tauri running, then today's app launched) is unchanged: main.py's guard opens a browser window on the running server | ✅ With a D-Bus session bus: the new process exits 0 in 55 ms, the first window comes back from minimized and takes focus; one shell, one backend. ⚠️ Without one (bare Xvfb) the plugin can't hand over: a second window opens, signed in to the running backend through main.py's guard |
 | ⚠️ | Drag and drop of a link / of files | Tauri's handler is off so the page gets HTML5 drop events (Tauri docs: required on Windows). Not tried with a real drag from another app | — not checked |
 | ⚠️ | Desktop notifications (`new Notification`, Config opt-in) | Before #69: `Notification.requestPermission()` answered `denied` at once, no prompt (WebView2 leaves the permission to the host app and wry didn't grant it). #69's permission handler answers WebView2's `PermissionRequested` the same way as on Linux (built and type-checked for `x86_64-pc-windows-msvc`); **not yet run on Windows** | ✅ A finished download with the window minimized and Config's toggle on: the app's own `new Notification` reached the notification daemon (`Notify` "Download complete" / "clip" on D-Bus). `Notification.permission` is `granted` right after every launch, without a click; geolocation is denied. [Details](#links-and-notifications-69) |
-| ✅ | Installed app (NSIS installer) | `MellowDLP_2.14.2_x64-setup.exe` installed silently; started with a throwaway home and **no Python, ffmpeg or node on `PATH`**: shell, `mellowdlp-backend.exe`, 6 WebView2 processes, no python.exe; signed in, a clip analyzed and downloaded with live progress (`▼ 22%` → `▼ 80%` → `⚙ processing`); the window's X → shell gone in 0.09 s, nothing left after 0.5 s, instance file removed. [Packaged mode](#packaged-mode) | 🔧 Built and smoke-tested in CI (`tauri.yml`, ubuntu-22.04): AppImage + deb, the bundled backend started as the shell starts it. Not run in a window |
+| ✅ | Installed app (NSIS installer) | `MellowDLP_2.14.2_x64-setup.exe` installed silently; started with a throwaway home and **no Python, ffmpeg or node on `PATH`**: shell, `mellowdlp-backend.exe`, 6 WebView2 processes, no python.exe; signed in, a clip analyzed and downloaded with live progress (`▼ 22%` → `▼ 80%` → `⚙ processing`); the window's X → shell gone in 0.09 s, nothing left after 0.5 s, instance file removed. [Packaged mode](#packaged-mode) | 🔧 Built and smoke-tested in CI (`tauri.yml`, ubuntu-22.04): AppImage + deb + rpm, the bundled backend started as the shell starts it; the rpm installed with dnf in a Fedora container. Not run in a window |
 | ⚠️ | External links | Before #69: refused (logged). #69 opens them in the default browser through `tauri-plugin-opener`; same code on Windows, **not yet run there** | ✅ The signed-out screen's `target="_blank"` link opened `https://github.com/jenox645/Mellow/releases/latest` in the default browser; `mailto:`, links and `window.open` too; `file:`, `ftp:` and a new window for the app refused. [Details](#links-and-notifications-69) |
 
 Not checked: macOS (no machine), #69's links and notifications on Windows, the Linux bundles in a window, a first-ever start
@@ -415,6 +415,31 @@ cleanly, so every Tauri start is a clean one. — = the capture missed it in tha
 with a stricter colour threshold gave Tauri 1.49 / 1.64 / 1.49 s (app screen) and 1.42 / 1.41 / 1.42 s
 (first data). The packaged backend is faster than the trial's `python main.py` (first data 1.4 s vs
 1.8 s): the frozen build doesn't scan site-packages.
+
+### Install on Fedora
+
+`build_setup.py --tauri` on Linux also makes an **rpm** (`MellowDLP-<v>-1.x86_64.rpm`, in CI's
+`MellowDLP-tauri-Linux` artifact), with Fedora's package names (`tauri.bundle.conf.json`, `linux.rpm`).
+It requires `webkit2gtk4.1`, `libayatana-appindicator-gtk3` (the tray), `gstreamer1-plugins-base` and
+`gstreamer1-plugins-good`. It recommends what plays mp4/m4a in the Vault: `gstreamer1-plugin-libav`,
+`gstreamer1-plugin-openh264`, `gstreamer1-plugins-bad-free` (Fedora's `-free` GStreamer has no H.264 of
+its own, see [Linux run](#linux-run)).
+
+```bash
+sudo dnf install ./MellowDLP-*.rpm          # the rpm: dnf brings what it requires and recommends
+sudo dnf install fuse-libs                  # the AppImage instead: it needs FUSE 2 to start
+chmod +x MellowDLP_*.AppImage && ./MellowDLP_*.AppImage
+```
+
+- **The tray on GNOME:** GNOME shows no tray icons by itself. Install `gnome-shell-extension-appindicator`
+  and turn it on in Extensions to get MellowDLP's tray. Without it, a window hidden to the tray comes back
+  when you start MellowDLP again.
+- **Every codec:** RPM Fusion's GStreamer packages (`gstreamer1-plugins-ugly`, `gstreamer1-libav` with
+  the full FFmpeg) play what the `-free` ones don't.
+- **Checked in CI only**: `rpm -qpR` (the requirements above), and `dnf install` of the rpm in a
+  `fedora:latest` container (every name resolves, and neither the shell nor the backend links a missing
+  library). Not run in a Fedora GNOME session: the window, the tray and video playback there are still
+  to be seen.
 
 ### Premium window
 
