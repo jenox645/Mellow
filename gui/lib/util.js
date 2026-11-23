@@ -1,6 +1,18 @@
 // Shared formatting helpers.
 'use strict';
 
+// The desktop app's splash is Classic's loading screen: opened from it (/launch?splash=1)
+// the page doesn't play its own again. Read once, then forgotten (a reload plays it).
+export function takeShellSplash() {
+  try {
+    const shown = sessionStorage.getItem('mellow-splash-done') === '1';
+    sessionStorage.removeItem('mellow-splash-done');
+    return shown;
+  } catch {
+    return false;
+  }
+}
+
 import { DEFAULT_THEME, THEME_PAIRS, THEME_STORAGE_KEY, THEMES } from './constants.js';
 
 export function fmtBytes(b) {

@@ -479,7 +479,8 @@ def launch() -> Response:
         resp = Response(_LAUNCH_REFUSED_PAGE, 403, mimetype="text/html")
     else:
         sid, token = signed
-        resp = Response(session.signed_in_page(token), mimetype="text/html")
+        resp = Response(session.signed_in_page(token, splash=request.args.get("splash") == "1"),
+                        mimetype="text/html")
         resp.set_cookie(session.COOKIE, sid, httponly=True, samesite="Strict", path="/")
     resp.headers["Cache-Control"] = "no-store"
     resp.headers["Referrer-Policy"] = "no-referrer"

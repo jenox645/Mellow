@@ -354,3 +354,14 @@ def test_a_mellowdlp_link_waits_for_the_window_to_connect(channel):
 def test_the_shell_gets_the_global_shortcut(channel):
     update_config(lambda c: c.update(global_shortcut="Ctrl+Alt+M"))
     assert shell.state({"jobs": []}, paused=False)["global_shortcut"] == "Ctrl+Alt+M"
+
+
+def test_the_shells_splash_hands_over_without_a_second_loading_screen(anon_client):
+    from mellow import session
+    session.start_instance(5123, publish=False)
+    page = anon_client.get("/launch?t=" + session.launch_token() + "&splash=1").get_data(as_text=True)
+    assert 'sessionStorage.setItem("mellow-splash-done", "1")' in page
+    plain = anon_client.get("/launch?t=" + session.launch_token()).get_data(as_text=True)
+    assert "mellow-splash-done" not in plain
+    # Classic's background on both: nothing flashes white between the splash and the app
+    assert "background:#07090F" in page and "background:#07090F" in plain

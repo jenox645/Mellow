@@ -423,12 +423,15 @@ The window on Windows draws its own frame; the page still gets **no IPC**:
   resizes from the edges natively). The page's 32 px band is the drag region through CSS `app-region: drag`
   (wry turns on WebView2's non-client regions): drag, Windows snap and double-click to maximize are the
   system's own. Its three buttons go page → `/api/window` → backend → `MELLOW_EVENT window_op` → shell. The
-  bottom rule draws on when the window opens and fills with the first download's progress. Every theme sets its
+  bottom rule draws on when the window opens and fills with the first download's progress. Its mark,
+  like the tray icon, is Mellow herself: a small badge of the app icon's mascot (`scripts/make_icons.py`;
+  an official badge dropped in `assets/tray-source.png` replaces it). Every theme sets its
   band (`--titlebar-bg`); Tactical's comes out orange on its own surface with no extra code.
   `/api/system` says `window_frame: "custom"`; on Linux and macOS the system frame stays (not checked frameless).
 - **Splash**: the window's background is Classic's from the first frame (no white flash before a page paints);
-  the bundled page draws the glyph on, with a scan line, and drags the window; its two buttons are links the
-  shell catches (`links::splash_op`).
+  the bundled page **is Classic's loading screen** (the same mascots, fonts and animation, copied in by
+  `build_setup.py`), and the page skips its own when it opens from it (`/launch?splash=1`): one loading
+  screen, no restart. It drags the window; its two buttons are links the shell catches (`links::splash_op`).
 - **Native dialogs**: BROWSE and IMPORT FILE ask the shell over the pipe (`shell.ask("dialog")` →
   `{"cmd": "answer"}`); it shows the system's dialog owned by the window (`rfd`, what tauri-plugin-dialog wraps,
   without the script that plugin puts in every page). Tk only without a shell.

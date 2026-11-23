@@ -2,7 +2,8 @@
 // The band is the window's drag region (CSS app-region: native drag, snap,
 // double-click to maximize, no IPC); its buttons go to the shell through the
 // backend (/api/window). Its bottom rule draws on when the window opens and
-// fills with the first download's progress. A theme restyles it with the
+// fills with the first download's progress; its mark is the mascot badge.
+// A theme restyles it with the
 // --titlebar-* tokens, or replaces it (slot TitleBar, gui/lib/slots.js).
 'use strict';
 
@@ -26,10 +27,8 @@ export function TitleBar({ progress, onWindowOp }) {
   return (
     <div className="titlebar" data-tour="titlebar">
       <div className="titlebar-mark" aria-hidden="true">
-        <svg viewBox="0 0 16 16" width="15" height="15">
-          <path d="M3 11.5V4l5 5.5L13 4v7.5" {...stroke} strokeWidth="1.5" strokeLinejoin="miter" />
-          <path d="M2.5 13.75h11" {...stroke} strokeWidth="1.2" />
-        </svg>
+        {/* Mellow herself, as on the tray (scripts/make_icons.py) */}
+        <img src="/mellow-badge.png" width="18" height="18" alt="" draggable="false" />
       </div>
       <div className="titlebar-name"><b>MELLOWDLP</b><i>メロウ</i></div>
       <div className="titlebar-fill" />

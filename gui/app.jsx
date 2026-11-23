@@ -7,7 +7,7 @@
 'use strict';
 
 import { API } from './lib/api.js';
-import { applyTheme } from './lib/util.js';
+import { applyTheme, takeShellSplash } from './lib/util.js';
 import {
   CLIPBOARD_URL_RE,
   NOTIF_ACTION_TIMEOUT_MS,
@@ -74,7 +74,8 @@ function fileActions(path) {
 }
 
 function App() {
-  const [loading, setLoading] = React.useState(true);
+  // The desktop app's splash already was the loading screen: no second one
+  const [loading, setLoading] = React.useState(() => !takeShellSplash());
   const [page, setPage] = React.useState('feed');
   // Everything the server's progress events drive (gui/lib/downloads.js)
   const [dl, dispatch] = React.useReducer(downloadsReducer, undefined, initialDownloads);
