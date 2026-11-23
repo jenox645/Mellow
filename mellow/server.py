@@ -298,18 +298,22 @@ def _shell_setting(key: str):
 
 
 # A mellowdlp:// link (the shell): the Feed analyzes it. With no page connected
-# yet (the window is still opening) it waits for the next one (api_progress)
+# yet (the window is still opening) it waits for the next one (api_progress).
+# One lock around "is a page there? else keep it" and "subscribe, take what's kept":
+# a page connecting in between would otherwise miss the link
 _pending_open_link: list[str] = []
+_open_link_lock = threading.Lock()
 
 
 def _shell_open_link(message: dict) -> None:
     url = _link(message.get("url", ""))
     if url is None:
         return
-    if open_pages():
-        _push_progress({"status": "open_link", "url": url})
-    else:
-        _pending_open_link[:] = [url]
+    with _open_link_lock:
+        if open_pages():
+            _push_progress({"status": "open_link", "url": url})
+        else:
+            _pending_open_link[:] = [url]
 
 
 shell.register("open_link", _shell_open_link)
@@ -941,9 +945,10 @@ def api_resume() -> Response:
 @app.route("/api/progress")
 def api_progress() -> Response:
     def generate():
-        q = _sse_subscribe()
-        if _pending_open_link:
-            q.put_nowait({"status": "open_link", "url": _pending_open_link.pop()})
+        with _open_link_lock:
+            q = _sse_subscribe()
+            if _pending_open_link:
+                q.put_nowait({"status": "open_link", "url": _pending_open_link.pop()})
         try:
             while True:
                 try:
