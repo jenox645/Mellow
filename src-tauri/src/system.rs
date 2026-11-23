@@ -78,3 +78,31 @@ pub fn start_with_system(app: &AppHandle, wanted: bool) -> bool {
     }
     launcher.is_enabled().unwrap_or(now)
 }
+
+/// Hidden in the tray, WebView2 may give memory back: its renderer trims caches and
+/// the JavaScript heap (ICoreWebView2_19's memory usage target, "Low"); back on
+/// screen, "Normal". Windows only; an older WebView2 runtime without it is left as is.
+pub fn webview_memory_low(window: &tauri::WebviewWindow, low: bool) {
+    #[cfg(windows)]
+    {
+        let _ = window.with_webview(move |webview| {
+            use webview2_com::Microsoft::Web::WebView2::Win32::{
+                ICoreWebView2_19, COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL,
+            };
+            use windows_core::Interface;
+            // 0: normal, 1: low (COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_*)
+            let level = COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL(if low { 1 } else { 0 });
+            unsafe {
+                if let Ok(core) = webview.controller().CoreWebView2() {
+                    if let Ok(core) = core.cast::<ICoreWebView2_19>() {
+                        if let Err(e) = core.SetMemoryUsageTargetLevel(level) {
+                            eprintln!("MellowDLP shell: WebView2 memory target: {e}");
+                        }
+                    }
+                }
+            }
+        });
+    }
+    #[cfg(not(windows))]
+    let _ = (window, low);
+}
