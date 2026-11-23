@@ -40,6 +40,14 @@ python main.py --no-window   # just the server; open the printed sign-in link (o
 ```
 On Linux, `python3-tk` gives you the native BROWSE dialogs, and `xclip` the "copied a link?" suggestion.
 
+**The Tauri app** (`src-tauri/`, a native window instead of Chrome's; see [TAURI_TRIAL.md](TAURI_TRIAL.md)):
+also needs Rust (stable, [rustup.rs](https://rustup.rs)) and, on Linux, `libwebkit2gtk-4.1-dev build-essential
+libssl-dev libayatana-appindicator3-dev librsvg2-dev`.
+```bash
+python build_setup.py --tauri    # dist/tauri/: the NSIS installer (Windows), AppImage + .deb (Linux)
+cd src-tauri && cargo run        # the shell from source: it starts `python main.py --shell` itself
+```
+
 ---
 
 ## Development

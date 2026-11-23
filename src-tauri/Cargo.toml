@@ -1,0 +1,50 @@
+[package]
+name = "mellowdlp-shell"
+version = "2.14.2"
+description = "MellowDLP desktop shell (Tauri): the window around the Flask backend, and the tray"
+edition = "2021"
+publish = false
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon", "image-png"] }
+tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
+tauri-plugin-deep-link = "2"
+tauri-plugin-global-shortcut = "2"
+tauri-plugin-opener = "2"
+tauri-plugin-window-state = "2"
+tauri-plugin-autostart = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# The clipboard (what tauri-plugin-clipboard-manager wraps), for the tray's "download the copied link"
+arboard = "3"
+# Native file/folder dialogs (what tauri-plugin-dialog wraps, without its script in the page)
+rfd = "0.17"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_System_JobObjects",
+    "Win32_System_Threading",
+] }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+# Notifications straight to the system (system.rs says why not tauri-plugin-notification)
+[target.'cfg(windows)'.dependencies.tauri-winrt-notification]
+version = "0.8"
+
+[target.'cfg(not(windows))'.dependencies]
+notify-rust = "4"
+
+# Tauri's recommended size settings
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+panic = "abort"
+strip = true

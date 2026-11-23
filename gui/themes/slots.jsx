@@ -7,6 +7,7 @@
 // pages/vault-logic.js); Classic's views (ClassicFeedView, ClassicVaultView) show how.
 import { Sidebar, TopBar, StatusBar } from '../components/chrome.jsx';
 import { LoadingScreen } from '../components/loading.jsx';
+import { TitleBar } from '../components/titlebar.jsx';
 import { ClassicFeedView } from '../pages/feed.jsx';
 import { ClassicVaultView } from '../pages/vault.jsx';
 import { THEMES } from '../lib/constants.js';
@@ -20,7 +21,7 @@ function PageFrame({ children }) {
 }
 
 export const DEFAULT_SLOTS = {
-  Sidebar, TopBar, StatusBar, LoadingScreen, PageFrame,
+  Sidebar, TopBar, StatusBar, LoadingScreen, PageFrame, TitleBar,
   pages: { feed: ClassicFeedView, vault: ClassicVaultView },
 };
 

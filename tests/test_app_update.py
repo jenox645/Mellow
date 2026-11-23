@@ -193,6 +193,28 @@ def test_install_kind(tmp_path, monkeypatch):
     assert app_update.install_kind()[0] is None
 
 
+def test_the_tauri_bundle_never_has_its_backend_swapped(tmp_path, monkeypatch):
+    # The Tauri app's backend sits in its bundle's resources, a writable folder
+    # with no Inno uninstaller next to it: "windows-portable" would replace the
+    # backend exe alone with the FlaskWebGUI app's portable exe
+    exe = tmp_path / 'backend' / 'mellowdlp-backend.exe'
+    exe.parent.mkdir()
+    exe.write_bytes(b'x')
+    monkeypatch.setenv('MELLOW_SHELL', 'tauri')
+    for platform in ('win32', 'linux'):
+        _frozen(monkeypatch, exe, platform)
+        monkeypatch.delenv('APPIMAGE', raising=False)
+        kind, note = app_update.install_kind()
+        assert kind is None and 'Tauri' in note, platform
+    # A release that has every download: still none of them is for this copy
+    with patch('mellow.app_update.urlopen', side_effect=_github('windows-portable')):
+        data = app_update.check()
+    assert data['update_available'] and data['can_install'] is False and 'Tauri' in data['install_note']
+    # Run from source (tauri dev), it's what it was: a checkout
+    monkeypatch.setattr(sys, 'frozen', False)
+    assert 'source' in app_update.install_kind()[1]
+
+
 # ── Install ───────────────────────────────────────────────────────────────────
 
 def _install(kind, target, fake, monkeypatch):

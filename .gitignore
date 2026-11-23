@@ -20,5 +20,8 @@ assets/wizard_small.bmp
 *.json
 !package.json
 !package-lock.json
+# The Tauri trial's config: tauri::generate_context!() needs it to build at all
+!src-tauri/tauri.conf.json
+!src-tauri/tauri.bundle.conf.json
 .pytest_cache/
 .ruff_cache/

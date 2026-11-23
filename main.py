@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import secrets
+import signal
 import socket
 import sys
 import threading
@@ -15,7 +16,7 @@ from urllib.request import ProxyHandler, build_opener
 
 from flaskwebgui import FlaskUI
 
-from mellow import applog, session, ytdlp_update
+from mellow import applog, session, shell, ytdlp_update
 from mellow.config import load_config
 from mellow.constants import API_PORT_MIN, LAUNCH_TOKEN_TTL_NO_WINDOW_SECS
 
@@ -28,6 +29,13 @@ BROWSER_OPEN_DELAY_SECS = 1      # let the server start listening first
 PAGE_WATCH_INTERVAL_SECS = 2
 PAGE_GONE_EXIT_SECS = 30        # a reload or a short network hiccup reconnects well before
 FIRST_PAGE_TIMEOUT_SECS = 120
+# --shell: a desktop shell (src-tauri/) owns the window and reads READY_PREFIX + launch URL
+SHELL_FLAG = "--shell"
+READY_PREFIX = "MELLOW_READY "
+# With --shell: the shell started at login, with no window (its tray only)
+BACKGROUND_FLAG = "--background"
+STD_INPUT_HANDLE = -10          # Windows GetStdHandle/SetStdHandle
+STD_OUTPUT_HANDLE = -11
 
 # Where versions before sign-in wrote their port; removed at start
 LEGACY_PORT_FILE = Path.home() / ".mellow_dlp.port"
@@ -110,7 +118,14 @@ def main() -> None:
     sys.excepthook = _log_crash
     # Single-instance guard: a second launch opens the existing UI instead of
     # spawning a duplicate server + window.
+    shell = SHELL_FLAG in sys.argv
     existing = _running_instance()
+    if existing and shell:
+        # The shell's window signs in to the running copy instead
+        log.info(f"already running at {existing['url']}: the shell attaches to it")
+        _print_ready(existing["url"], session.launch_token(existing["secret"], existing["port"]),
+                     attached=True)
+        sys.exit(0)
     if existing:
         log.info(f"already running at {existing['url']}, opening a window on it")
         _open_in_browser(_launch_page_uri(existing["url"], existing["secret"], existing["port"]))
@@ -144,7 +159,128 @@ def main() -> None:
               f"http://127.0.0.1:{port}/launch?t={token}", flush=True)
         flask_app.run(host="127.0.0.1", port=port, threaded=True)
         return
+    if shell:
+        _run_shell(flask_app, port, background=BACKGROUND_FLAG in sys.argv)
+        return
     _run_window(flask_app, port)
+
+
+def _print_ready(url: str, token: str, attached: bool = False, out=None) -> None:
+    """The one stdout line a desktop shell waits for (SHELL_FLAG): where its
+    window signs in. The token is single-use and short-lived
+    (LAUNCH_TOKEN_TTL_SECS), and goes through the shell's pipe, never a
+    command line."""
+    print(f"{READY_PREFIX}{url}/launch?t={token}{' attached' if attached else ''}",
+          file=out or sys.stdout, flush=True)
+
+
+def _run_shell(flask_app, port: int, stdin=None, background: bool = False) -> None:
+    """--shell: serve for a desktop shell that started this process (src-tauri/)
+    and owns the window. Prints the ready line once the server listens, then
+    talks to the shell over the same pipes (mellow/shell.py); exits when the
+    shell closes stdin (it quit or died).
+
+    background (BACKGROUND_FLAG): the shell started at login with no window,
+    so nobody sees the "resume pending downloads?" prompt: what was
+    unfinished (a download for the night, a sync the shutdown cut short) is
+    queued again at once."""
+    from werkzeug.serving import make_server
+
+    from mellow import jobs
+    from mellow import server as app_server
+    server = make_server("127.0.0.1", port, flask_app, threaded=True)
+    channel = _detach_stdout() or sys.stdout
+    watched = stdin if stdin is not None else _detach_stdin()
+    base = f"http://127.0.0.1:{port}"
+    # A new window (from the tray, long after the first link expired) signs in with a fresh link
+    shell.register("launch", lambda _message: shell.send("launch", url=f"{base}/launch?t={session.launch_token()}"))
+    threading.Thread(target=_exit_with_parent, args=(watched,), daemon=True).start()
+    log.info(f"serving for a desktop shell at {base}" + (" (started in the background)" if background else ""))
+    _print_ready(base, session.launch_token(), out=channel)
+    shell.attach(channel, open_pages=app_server.open_pages, window_visible=not background)
+    if background and jobs.manager.restorable:
+        resumed = jobs.manager.restore_pending()
+        log.info(f"started in the background: {len(resumed)} unfinished download(s) queued again")
+        shell.notify("Downloads resumed", f"{len(resumed)} unfinished download(s) queued again.")
+    server.serve_forever()
+
+
+def _detach_stdout():
+    """The shell's pipe as the channel's own file, with stdout itself pointed elsewhere.
+
+    The shell reads its messages (the ready line, then shell.py's) from this
+    pipe: a print or a library writing to stdout must not land in the middle
+    of one. stdout goes to stderr when there is one, else nowhere. None when
+    stdout isn't a real file (pythonw, tests)."""
+    try:
+        fd = os.dup(sys.stdout.fileno())
+    except (AttributeError, OSError, ValueError):
+        return None
+    try:
+        target = os.dup(2)
+    except OSError:                 # no stderr: the windowed build under the shell
+        target = os.open(os.devnull, os.O_WRONLY)
+    os.dup2(target, 1)
+    os.close(target)
+    if os.name == "nt":
+        import ctypes
+        import msvcrt
+        ctypes.windll.kernel32.SetStdHandle(STD_OUTPUT_HANDLE, msvcrt.get_osfhandle(1))
+    sys.stdout = sys.stderr if sys.stderr is not None else open(os.devnull, "w")
+    return os.fdopen(fd, "w", encoding="utf-8", errors="replace")
+
+
+def _detach_stdin():
+    """The shell's pipe as a file of its own, with stdin itself pointed at the null device.
+
+    The watcher blocks reading that pipe. On Windows a child process that
+    inherits it as stdin (ffmpeg, deno… every Popen without stdin=) hangs at
+    start until that pending read ends: analyzing a link would wait until
+    the window closed. Children get the null device instead."""
+    try:
+        fd = os.dup(sys.stdin.fileno())
+    except (AttributeError, OSError, ValueError):     # no stdin (pythonw), or not a real one
+        return None
+    null = os.open(os.devnull, os.O_RDONLY)
+    os.dup2(null, 0)
+    os.close(null)
+    if os.name == "nt":
+        import ctypes
+        import msvcrt
+        ctypes.windll.kernel32.SetStdHandle(STD_INPUT_HANDLE, msvcrt.get_osfhandle(0))
+    # UTF-8: the shell sends links as they are (café, 東京)
+    return os.fdopen(fd, "r", encoding="utf-8", errors="replace")
+
+
+def _exit_with_parent(stdin) -> None:
+    """Act on the shell's commands (shell.dispatch) until it closes our stdin
+    (EOF), then quit like the window does."""
+    if stdin is None:   # no stdin at all (pythonw): nothing to watch
+        return
+    try:
+        while line := stdin.readline():
+            shell.dispatch(line)
+    except (OSError, ValueError):
+        pass
+    log.info("the desktop shell closed: quitting")
+    _stop_instance()
+    _end_own_group()
+    os._exit(0)
+
+
+def _end_own_group() -> None:
+    """Unix: what this backend started (ffmpeg, deno…) ends with it.
+
+    The desktop shell starts the backend as the leader of its own process
+    group and kills that group when its window closes. A shell that died
+    (SIGKILL, a crash) can't, and the children would outlive the backend, so
+    the backend ends its group itself as its last act (Windows: the shell's
+    job object does it). Never when it shares its parent's group (started from
+    a terminal or a test): that would end the parent too."""
+    if not hasattr(os, "killpg") or os.getpgrp() != os.getpid():
+        return
+    logging.shutdown()
+    os.killpg(os.getpid(), signal.SIGKILL)
 
 
 def _run_window(flask_app, port: int) -> None:

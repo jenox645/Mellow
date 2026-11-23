@@ -1,0 +1,39 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "bundle": {
+    "active": true,
+    "publisher": "MellowDLP",
+    "category": "Video",
+    "shortDescription": "Download video and music with yt-dlp",
+    "longDescription": "MellowDLP downloads videos, music and whole playlists with yt-dlp, keeps folders in sync with their playlists and shows what you have.",
+    "homepage": "https://github.com/jenox645/Mellow",
+    "license": "MIT",
+    "licenseFile": "../LICENSE",
+    "resources": {
+      "../dist/MellowDLP-backend/": "backend/"
+    },
+    "windows": {
+      "webviewInstallMode": { "type": "downloadBootstrapper", "silent": true },
+      "nsis": {
+        "installMode": "currentUser",
+        "installerIcon": "../assets/mellow.ico",
+        "sidebarImage": "../assets/wizard_large.bmp",
+        "displayLanguageSelector": false
+      }
+    },
+    "linux": {
+      "deb": {
+        "depends": [
+          "gstreamer1.0-plugins-base",
+          "gstreamer1.0-plugins-good",
+          "gstreamer1.0-libav",
+          "gstreamer1.0-gl"
+        ],
+        "recommends": ["gstreamer1.0-plugins-bad"]
+      },
+      "appimage": {
+        "bundleMediaFramework": true
+      }
+    }
+  }
+}

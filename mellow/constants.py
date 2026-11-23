@@ -80,6 +80,15 @@ SYNC_INTERVALS: dict[str, int] = {   # interval key → seconds
 }
 SYNC_RETRY_BACKOFF_SECS: int = 3600  # first wait before auto-sync retries a failed folder (doubles each time)
 SYNC_RETRY_BACKOFF_MAX_SECS: int = 24 * 3600   # ...up to this
+DEFAULT_AUTO_SYNC_TIME: str = "03:00"  # "daily" folders sync at this local time (config auto_sync_time)
+# A folder synced this shortly before its daily time (by hand) skips that day's run
+SYNC_DAILY_MIN_GAP_SECS: int = 6 * 3600
+
+# ── Desktop shell (shell.py, src-tauri/) ──────────────────────────────────────
+SHELL_STATE_MIN_INTERVAL_SECS: float = 0.25   # the tray and taskbar get a new state at most this often
+SHELL_STATE_REFRESH_SECS: int = 30            # ...and this often anyway (a scheduled time comes)
+SHELL_TITLE_MAX_CHARS: int = 80              # a title in the tray's tooltip or a notification
+SHELL_NOTIFY_BODY_MAX_CHARS: int = 300       # a notification's text
 
 # ── History / API limits ──────────────────────────────────────────────────────
 HISTORY_MAX_LIMIT: int = 500

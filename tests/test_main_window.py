@@ -1,5 +1,6 @@
 """main.py: the window, or the default browser when there's no Chromium-based one."""
 import json
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -278,3 +279,160 @@ def test_a_fixed_port_is_used_when_free_and_skipped_when_taken():
     for bad in (0, 80, 70000, "x"):
         update_config(lambda c, bad=bad: c.update(api_port=bad))
         assert main._choose_port() >= 1024
+
+
+# ── --shell: a desktop shell (src-tauri/) owns the window ───────────────────────
+
+def _ready_line(out: str) -> tuple[str, str, list[str]]:
+    """(base URL, launch token, extra words) of the one ready line in `out`."""
+    lines = [ln for ln in out.splitlines() if ln.startswith(main.READY_PREFIX)]
+    assert len(lines) == 1, out
+    url, *extra = lines[0][len(main.READY_PREFIX):].split()
+    base, _, token = url.partition('/launch?t=')
+    return base, token, extra
+
+
+def test_the_shell_ready_line_comes_once_the_server_listens():
+    from mellow import session
+    session.start_instance(5123, publish=False)
+    order = []
+    server = MagicMock()
+    server.serve_forever.side_effect = lambda: order.append('serving')
+    with patch('werkzeug.serving.make_server',
+               side_effect=lambda host, port, app, threaded: order.append(('bound', host, port)) or server), \
+            patch('main._print_ready', side_effect=lambda *a, **k: order.append(('ready', k['out']))), \
+            patch('main._detach_stdin') as detach, \
+            patch('main._detach_stdout') as channel, \
+            patch('main.shell.attach', side_effect=lambda out, **k: order.append(('channel', out))), \
+            patch('main.threading.Thread') as watcher:
+        main._run_shell(MagicMock(), 5123)
+    # The ready line first, then shell.py's messages, on the same pipe moved off stdout
+    assert order == [('bound', '127.0.0.1', 5123), ('ready', channel.return_value),
+                     ('channel', channel.return_value), 'serving']
+    # The stdin watcher reads the shell's pipe, moved off stdin
+    assert watcher.call_args.kwargs['args'] == (detach.return_value,)
+    watcher.return_value.start.assert_called_once()
+
+
+def _run_shell_quietly(background, restorable):
+    from mellow import jobs, session
+    session.start_instance(5123, publish=False)
+    with patch('werkzeug.serving.make_server'), patch('main._print_ready'), \
+            patch('main._detach_stdin'), patch('main._detach_stdout'), patch('main.shell.attach'), \
+            patch('main.threading.Thread'), patch('main.shell.notify') as notify, \
+            patch.object(jobs.manager, 'restorable', restorable), \
+            patch.object(jobs.manager, 'restore_pending', return_value=['a', 'b']) as restore:
+        main._run_shell(MagicMock(), 5123, background=background)
+    return restore, notify
+
+
+def test_started_in_the_background_it_queues_the_unfinished_downloads_again():
+    # At login (the shell's tray only) nobody sees the "resume pending downloads?" prompt
+    restore, notify = _run_shell_quietly(True, [{'url': 'https://x/1'}, {'url': 'https://x/2'}])
+    restore.assert_called_once()
+    assert '2 unfinished' in notify.call_args.args[1]
+    # With a window the prompt asks, as before
+    restore, notify = _run_shell_quietly(False, [{'url': 'https://x/1'}])
+    restore.assert_not_called()
+    notify.assert_not_called()
+
+
+def test_a_new_window_gets_a_fresh_sign_in_link_from_the_shell_channel():
+    from mellow import session
+    _run_shell_quietly(False, [])
+    with patch('main.shell.send') as send:
+        main.shell._handlers['launch']({'cmd': 'launch'})
+    kind, url = send.call_args.args[0], send.call_args.kwargs['url']
+    assert kind == 'launch' and url.startswith('http://127.0.0.1:5123/launch?t=')
+    assert session.redeem(url.split('t=')[1]) is not None
+
+
+def test_the_shells_commands_are_read_from_its_pipe():
+    import io
+    lines = '{"cmd": "pause"}\n{"cmd": "download", "url": "https://x/v"}\n'
+    with patch('main.shell.dispatch') as dispatch, patch('main._stop_instance'), \
+            patch('main._end_own_group'), patch('main.os._exit'):
+        main._exit_with_parent(io.StringIO(lines))
+    assert [c.args[0].strip() for c in dispatch.call_args_list] == [
+        '{"cmd": "pause"}', '{"cmd": "download", "url": "https://x/v"}']
+
+
+def test_the_shells_commands_are_read_as_utf8():
+    import subprocess
+    import sys
+    code = "import main; f = main._detach_stdin(); print(ascii(f.readline().strip()))"
+    line = '{"cmd": "download", "url": "https://example.com/caf\u00e9/\u6771\u4eac"}'
+    done = subprocess.run([sys.executable, "-c", code], input=(line + "\n").encode("utf-8"),
+                          capture_output=True, timeout=60, cwd=str(Path(main.__file__).parent))
+    assert done.returncode == 0, done.stderr
+    assert done.stdout.decode("ascii").strip() == ascii(line)
+
+
+def test_nothing_else_written_to_stdout_reaches_the_shells_pipe():
+    # A print (or a library) writing to stdout would break the line the shell is reading
+    import subprocess
+    import sys
+    code = ("import sys, main; ch = main._detach_stdout(); print('stray print'); "
+            "sys.stdout.flush(); ch.write('MELLOW_EVENT {}\\n'); ch.flush()")
+    done = subprocess.run([sys.executable, '-c', code], capture_output=True, text=True, timeout=60,
+                          cwd=str(Path(main.__file__).parent))
+    assert done.returncode == 0, done.stderr
+    assert done.stdout == 'MELLOW_EVENT {}\n'
+    assert 'stray print' in done.stderr
+
+
+def test_the_ready_line_signs_a_window_in_once(capsys):
+    from mellow import session
+    session.start_instance(5123, publish=False)
+    main._print_ready('http://127.0.0.1:5123', session.launch_token())
+    base, token, extra = _ready_line(capsys.readouterr().out)
+    assert base == 'http://127.0.0.1:5123' and extra == []
+    assert session.redeem(token) is not None
+    assert session.redeem(token) is None                # single use
+
+
+def test_a_second_shell_launch_attaches_to_the_running_copy(capsys):
+    from mellow import session
+    running = {"port": 6001, "secret": b"s" * 32, "url": "http://127.0.0.1:6001"}
+    with patch('main.applog.setup'), \
+            patch.object(main.sys, 'excepthook', main.sys.excepthook), \
+            patch.object(main.sys, 'argv', ['main.py', main.SHELL_FLAG]), \
+            patch('main._running_instance', return_value=running), \
+            patch('main.webbrowser.open') as browser_open, \
+            pytest.raises(SystemExit) as exit_:
+        main.main()
+    assert exit_.value.code == 0
+    browser_open.assert_not_called()                    # the shell's window goes there instead
+    base, token, extra = _ready_line(capsys.readouterr().out)
+    assert base == 'http://127.0.0.1:6001' and extra == ['attached']
+    # Made with the running copy's secret: that copy redeems it
+    nonce, expires, mac = token.split('.')
+    assert session.same(mac, session._mac(b"s" * 32, 'launch', 6001, nonce, expires))
+
+
+def test_the_shell_backend_quits_when_its_shell_closes_stdin():
+    import io
+    with patch('main._stop_instance') as stop, patch('main._end_own_group') as end_group, \
+            patch('main.os._exit') as exit_:
+        main._exit_with_parent(io.StringIO('a line the shell wrote\n'))
+    stop.assert_called_once()
+    end_group.assert_called_once()
+    exit_.assert_called_once_with(0)
+    with patch('main.os._exit') as exit_:
+        main._exit_with_parent(None)                    # pythonw: nothing to watch
+    exit_.assert_not_called()
+
+
+@pytest.mark.parametrize('pgrp, ends', [(4321, True), (1, False)])
+def test_a_backend_leading_its_own_process_group_ends_it_on_the_way_out(pgrp, ends):
+    # The Tauri shell starts the backend as a group leader (pgrp == pid); from a
+    # terminal or a test it shares its parent's group, which must survive
+    with patch('main.os.getpid', return_value=4321), \
+            patch('main.os.getpgrp', return_value=pgrp, create=True), \
+            patch('main.os.killpg', create=True) as killpg, patch('main.logging.shutdown'), \
+            patch('main.signal.SIGKILL', 9, create=True):      # Windows has no SIGKILL
+        main._end_own_group()
+    if ends:
+        killpg.assert_called_once_with(4321, 9)
+    else:
+        killpg.assert_not_called()

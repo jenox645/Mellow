@@ -8,6 +8,14 @@ the global default) via `vault_sync_schedule` in the config:
     auto_sync_enabled: bool            — master switch (default off)
     auto_sync_default_interval: str    — "6h" | "daily" | "weekly"
     vault_sync_schedule: {path: key}   — per-folder override; "off" opts out
+    auto_sync_time: "HH:MM"            — when "daily" folders sync (local time)
+
+"daily" is a time of day, not 24 hours after the last sync: a folder is due
+once that day's auto_sync_time has passed and it hasn't synced since (or
+synced only SYNC_DAILY_MIN_GAP_SECS before it, by hand). A computer that was
+off or asleep at that time catches up as soon as MellowDLP runs. MellowDLP
+never wakes or keeps awake a computer for it (power.py holds sleep off only
+while a job is queued); "6h" and "weekly" stay intervals.
 
 Actual enqueueing is injected (`sync_fn`) so this module stays free of any
 Flask/server dependency.
@@ -17,13 +25,15 @@ from __future__ import annotations
 import logging
 import threading
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Callable
 
 from . import analytics
 from .config import load_config
 from .constants import (
+    DEFAULT_AUTO_SYNC_TIME,
     SCHEDULER_TICK_SECS,
+    SYNC_DAILY_MIN_GAP_SECS,
     SYNC_INTERVALS,
     SYNC_RETRY_BACKOFF_MAX_SECS,
     SYNC_RETRY_BACKOFF_SECS,
@@ -34,6 +44,7 @@ log = logging.getLogger(__name__)
 DEFAULT_INTERVAL_KEY = "daily"
 SCHEDULE_OFF = "off"
 SCHEDULE_INHERIT = "default"
+DAILY_SECS = SYNC_INTERVALS["daily"]
 
 _thread: threading.Thread | None = None
 _last_attempt: dict[str, float] = {}  # folder → when auto-sync last queued it
@@ -46,6 +57,31 @@ def _parse_sync_time(stamp: str | None) -> float | None:
         return datetime.fromisoformat(stamp).timestamp()
     except ValueError:
         return None
+
+
+def _hhmm(text: str) -> tuple[int, int] | None:
+    try:
+        hour, minute = (int(x) for x in str(text).split(":"))
+    except ValueError:
+        return None
+    return (hour, minute) if 0 <= hour < 24 and 0 <= minute < 60 else None
+
+
+def daily_time(cfg: dict) -> str:
+    """Config's daily sync time as HH:MM (an unreadable one: the default)."""
+    hm = _hhmm(cfg.get("auto_sync_time") or "") or _hhmm(DEFAULT_AUTO_SYNC_TIME)
+    return f"{hm[0]:02d}:{hm[1]:02d}"
+
+
+def daily_mark(hhmm: str, now: float) -> float:
+    """The latest local HH:MM at or before `now`: today's once it has passed,
+    else yesterday's (wall-clock arithmetic, so DST days are right too)."""
+    hour, minute = _hhmm(hhmm) or _hhmm(DEFAULT_AUTO_SYNC_TIME)
+    now_dt = datetime.fromtimestamp(now)
+    mark = now_dt.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    if mark > now_dt:
+        mark -= timedelta(days=1)
+    return mark.timestamp()
 
 
 def interval_for(cfg: dict, path: str) -> int | None:
@@ -83,8 +119,18 @@ def hold_off(folder: str, interval: int) -> tuple[float, int]:
     return max(0.0, wait - age), failures
 
 
+def is_due(cfg: dict, interval: int, last: float | None, now: float) -> bool:
+    """Whether a folder with this interval, last synced at `last`, syncs now."""
+    if last is None:
+        return True
+    if interval == DAILY_SECS:
+        mark = daily_mark(daily_time(cfg), now)
+        return last < mark and (mark - last) >= SYNC_DAILY_MIN_GAP_SECS
+    return (now - last) >= interval
+
+
 def due_folders(cfg: dict, now: float | None = None) -> list[str]:
-    """Folders with linked playlists whose last sync is older than their interval."""
+    """Folders with linked playlists whose turn has come (is_due)."""
     if not cfg.get("auto_sync_enabled", False):
         return []
     now = now if now is not None else time.time()
@@ -96,10 +142,21 @@ def due_folders(cfg: dict, now: float | None = None) -> list[str]:
         interval = interval_for(cfg, path)
         if not interval:
             continue
-        last = _parse_sync_time(sync_times.get(path))
-        if last is None or (now - last) >= interval:
+        if is_due(cfg, interval, _parse_sync_time(sync_times.get(path)), now):
             due.append(path)
     return due
+
+
+def next_wait(cfg: dict, now: float | None = None) -> float:
+    """How long the loop sleeps: SCHEDULER_TICK_SECS, or less when the daily
+    time comes sooner, so a daily sync starts on the minute."""
+    if not cfg.get("auto_sync_enabled", False):
+        return SCHEDULER_TICK_SECS
+    now = now if now is not None else time.time()
+    next_mark = daily_mark(daily_time(cfg), now) + DAILY_SECS
+    if next_mark - now > DAILY_SECS:     # a DST day: the mark computed for "tomorrow" is today's
+        next_mark -= DAILY_SECS
+    return max(1.0, min(SCHEDULER_TICK_SECS, next_mark - now + 1))
 
 
 def tick(sync_fn: Callable[[str], bool],
@@ -140,12 +197,15 @@ def start(sync_fn: Callable[[str], bool],
         return
 
     def _loop() -> None:
+        wait = SCHEDULER_TICK_SECS
         while True:
-            time.sleep(SCHEDULER_TICK_SECS)
+            time.sleep(wait)
             try:
                 tick(sync_fn, is_syncing_fn)
+                wait = next_wait(load_config())
             except Exception as exc:
                 log.warning(f"tick failed: {exc}")
+                wait = SCHEDULER_TICK_SECS
 
     _thread = threading.Thread(target=_loop, name="auto-sync", daemon=True)
     _thread.start()

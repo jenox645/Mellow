@@ -70,3 +70,6 @@
   /* Type (the families come with gui/fonts/fonts.css) */
   --font-display:'Barlow Condensed',sans-serif;--font-body:'Barlow',sans-serif;--font-mono:'JetBrains Mono',monospace;
 }
+
+/* The desktop app's title bar (titlebar.jsx): this theme's own surface */
+:root[data-theme="archive"]{--titlebar-bg:var(--bg2);}
