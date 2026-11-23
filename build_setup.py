@@ -442,6 +442,10 @@ def build_tauri() -> list[Path]:
     version_conf.parent.mkdir(exist_ok=True)
     version_conf.write_text(json.dumps({"version": VERSION}), encoding="utf-8")
     bundles = "nsis" if IS_WINDOWS else "deb,appimage" if IS_LINUX else "app,dmg"
+    # Bundles of an earlier build (another version, or the test identity) aren't this build's
+    for stale in (TAURI_DIR / "target" / "release" / "bundle").glob("*/*"):
+        if stale.is_file() and stale.suffix.lower() in (".exe", ".deb", ".appimage", ".dmg"):
+            stale.unlink()
     configs = ["--config", str(TAURI_DIR / "tauri.bundle.conf.json"), "--config", str(version_conf)]
     if TEST_IDENTITY:
         configs += ["--config", str(TAURI_DIR / "tauri.test-identity.conf.json")]
