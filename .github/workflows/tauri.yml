@@ -2,7 +2,8 @@ name: Tauri app
 
 # The Tauri app (src-tauri/, docs/TAURI_TRIAL.md): `cargo test`, then
 # `build_setup.py --tauri` on Windows and Linux and a smoke test of the backend
-# the bundle carries, run the way the shell runs it. Nothing is published: the
+# the bundle carries, run the way the shell runs it; the Linux rpm is installed
+# with dnf in a Fedora container. Nothing is published: the
 # bundles are this run's artifacts for a week. Pull requests that touch the app
 # or its build only.
 on:
@@ -58,7 +59,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             libwebkit2gtk-4.1-dev build-essential libssl-dev libxdo-dev \
-            libayatana-appindicator3-dev librsvg2-dev patchelf file python3-tk \
+            libayatana-appindicator3-dev librsvg2-dev patchelf file python3-tk rpm \
             gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-gl
 
       - name: Shell tests (cargo test)
@@ -78,6 +79,39 @@ jobs:
           exe=dist/MellowDLP-backend/mellowdlp-backend
           [[ "$RUNNER_OS" == Windows ]] && exe="$exe.exe"
           python scripts/smoke_binary.py --shell "$exe"
+
+      # The rpm for Fedora: what it requires, then a dnf install in a Fedora container
+      # (every package name resolves there; the shell and the backend link nothing missing)
+      - name: Check the rpm (requirements, and dnf on Fedora)
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          rpm_file=$(ls dist/tauri/*.rpm)
+          rpm -qpi "$rpm_file"
+          requires=$(rpm -qpR "$rpm_file"); files=$(rpm -qpl "$rpm_file")
+          echo "--- requires"; echo "$requires"
+          echo "--- recommends"; rpm -qp --recommends "$rpm_file"
+          for dep in webkit2gtk4.1 libayatana-appindicator-gtk3 gstreamer1-plugins-base gstreamer1-plugins-good; do
+            grep -qx "$dep" <<< "$requires" || { echo "::error::the rpm doesn't require $dep"; exit 1; }
+          done
+          shell_bin=$(grep -x '/usr/bin/mellowdlp-shell' <<< "$files") || { echo "::error::no /usr/bin/mellowdlp-shell"; exit 1; }
+          backend_bin=$(grep '/backend/mellowdlp-backend$' <<< "$files") || { echo "::error::no backend in the rpm"; exit 1; }
+          docker run --rm -v "$PWD/dist/tauri:/rpms:ro" -e SHELL_BIN="$shell_bin" -e BACKEND_BIN="$backend_bin" \
+            fedora:latest bash -euc '
+              cat /etc/fedora-release
+              dnf install -y /rpms/*.rpm
+              echo "--- recommended, installed:"
+              rpm -q gstreamer1-plugin-libav gstreamer1-plugin-openh264 gstreamer1-plugins-bad-free || true
+              for bin in "$SHELL_BIN" "$BACKEND_BIN"; do
+                if ldd "$bin" | grep "not found"; then echo "::error::$bin links a missing library on Fedora"; exit 1; fi
+              done
+              # The installed backend starts there (headless: the shell needs a display)
+              test -x "$BACKEND_BIN" || { echo "::error::$BACKEND_BIN is not executable"; exit 1; }
+              timeout 90 "$BACKEND_BIN" --no-window > /tmp/backend.log 2>&1 &
+              for i in $(seq 60); do grep -q "http://127.0.0.1:" /tmp/backend.log && break; sleep 1; done
+              grep -q "http://127.0.0.1:" /tmp/backend.log || { echo "::error::the installed backend did not start"; cat /tmp/backend.log; exit 1; }
+              kill %1 || true
+              echo "dnf installed the rpm; the shell and the backend find every library they link; the backend serves"'
 
       - name: Upload the bundles
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

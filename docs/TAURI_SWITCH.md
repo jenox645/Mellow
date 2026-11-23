@@ -8,7 +8,7 @@ marked **Decide**; things only the owner can do are marked **Owner**.
 ## Where the Tauri app is
 
 - Packaged (#99): the PyInstaller one-folder backend inside the bundle; `build_setup.py --tauri`
-  makes the NSIS installer (Windows) and the AppImage + deb (Linux); checked as an installed app on
+  makes the NSIS installer (Windows) and the AppImage + deb + rpm (Linux); checked as an installed app on
   Windows, built and smoke-tested on Linux by `tauri.yml`.
 - Tray and daily sync (#100): close to the tray, tray menu, taskbar progress, start with the system,
   a daily sync at a time of day with the window closed, notifications from the tray.

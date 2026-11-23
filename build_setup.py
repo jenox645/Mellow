@@ -30,7 +30,7 @@ FRONTEND_ONLY = "--frontend-only" in sys.argv
 # Install deps into .venv and run the test suite instead of building.
 RUN_TESTS = "--run-tests" in sys.argv
 # The Tauri app (src-tauri/) instead of the FlaskWebGUI one: the one-folder
-# backend goes into the Tauri bundle (NSIS installer, AppImage + deb)
+# backend goes into the Tauri bundle (NSIS installer, AppImage + deb + rpm)
 TAURI = "--tauri" in sys.argv
 # With --tauri: an installer for checks on a machine that has the real app. It has
 # its own name, identifier, exe name and link scheme (src-tauri/tauri.test-identity.conf.json),
@@ -442,10 +442,10 @@ def build_tauri() -> list[Path]:
     version_conf = HERE / "build" / "tauri-version.conf.json"
     version_conf.parent.mkdir(exist_ok=True)
     version_conf.write_text(json.dumps({"version": VERSION}), encoding="utf-8")
-    bundles = "nsis" if IS_WINDOWS else "deb,appimage" if IS_LINUX else "app,dmg"
+    bundles = "nsis" if IS_WINDOWS else "deb,rpm,appimage" if IS_LINUX else "app,dmg"
     # Bundles of an earlier build (another version, or the test identity) aren't this build's
     for stale in (TAURI_DIR / "target" / "release" / "bundle").glob("*/*"):
-        if stale.is_file() and stale.suffix.lower() in (".exe", ".deb", ".appimage", ".dmg"):
+        if stale.is_file() and stale.suffix.lower() in (".exe", ".deb", ".rpm", ".appimage", ".dmg"):
             stale.unlink()
     configs = ["--config", str(TAURI_DIR / "tauri.bundle.conf.json"), "--config", str(version_conf)]
     if TEST_IDENTITY:
@@ -453,7 +453,7 @@ def build_tauri() -> list[Path]:
     run([str(tauri_cli), "build", "--bundles", bundles, *configs], cwd=str(HERE))
 
     bundle_dir = TAURI_DIR / "target" / "release" / "bundle"
-    made = [p for pattern in ("nsis/*.exe", "deb/*.deb", "appimage/*.AppImage", "dmg/*.dmg")
+    made = [p for pattern in ("nsis/*.exe", "deb/*.deb", "rpm/*.rpm", "appimage/*.AppImage", "dmg/*.dmg")
             for p in bundle_dir.glob(pattern) if VERSION in p.name]
     if not made:
         fail(f"tauri build finished but no bundle for {VERSION} is in {bundle_dir}")
