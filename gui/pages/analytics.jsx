@@ -1,27 +1,20 @@
 // ANALYTICS page — KPI cards, charts, sync health, history browser.
+// The logic is useAnalyticsPage (analytics-logic.js); this file is Classic's view of it. A theme
+// can register its own view of the page (gui/themes/slots.jsx, `pages: { analytics: … }`).
 'use strict';
 
-import { API, download } from '../lib/api.js';
 import {
   cssVar, fmtBytes, fmtSpeed, fmtEta, fmtDate, fmtTimestamp, timeAgo, platformTagClass, themeRgba,
 } from '../lib/util.js';
 import { Ico } from '../components/icons.jsx';
 import { EditableStat, LineChart, Modal } from '../components/common.jsx';
-import { HISTORY_LIMIT, HISTORY_SEARCH_DEBOUNCE_MS } from '../lib/constants.js';
+import { useAnalyticsPage } from './analytics-logic.js';
 
 const MONTH_LABELS = ['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D'];
 
 // Year-in-review card — one DuckDB query of pure novelty
-function WrappedModal({ onClose }) {
+function WrappedModal({ year, data, setYear, onClose }) {
   const currentYear = new Date().getFullYear();
-  const [year, setYear] = React.useState(currentYear);
-  const [data, setData] = React.useState(null);
-
-  React.useEffect(() => {
-    setData(null);
-    API.get('/api/analytics/wrapped?year=' + year).then(setData).catch(() => setData({ error: true }));
-  }, [year]);
-
   const maxMonthly = data && data.monthly ? Math.max(...data.monthly, 1) : 1;
 
   return (
@@ -100,44 +93,11 @@ function WrappedModal({ onClose }) {
   );
 }
 
-function HistoryPanel({ showNotif, refreshStats }) {
-  const [rows, setRows] = React.useState([]);
-  const [search, setSearch] = React.useState('');
-  const [typeFilter, setTypeFilter] = React.useState('all');
-  const [offset, setOffset] = React.useState(0);
-  const [loading, setLoading] = React.useState(false);
-
-  const load = React.useCallback(() => {
-    setLoading(true);
-    const params = new URLSearchParams({ limit: HISTORY_LIMIT, offset, type: typeFilter });
-    if (search.trim()) params.set('search', search.trim());
-    API.get('/api/history?' + params.toString())
-      .then(d => setRows(Array.isArray(d) ? d : []))
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, [search, typeFilter, offset]);
-
-  React.useEffect(() => {
-    const t = setTimeout(load, HISTORY_SEARCH_DEBOUNCE_MS);
-    return () => clearTimeout(t);
-  }, [load]);
-
-  const redownload = (r) => {
-    API.post('/api/download', { url: r.url, mode: r.format === 'audio' ? 'audio' : 'video', quality: r.quality || 'best' })
-      .then(() => showNotif('Re-queued', r.title || r.url))
-      .catch(e => showNotif('Error', e.message, 'error'));
-  };
-
-  const openFile = (r) => {
-    API.post('/api/vault/open-file', { path: r.file_path }).catch(() => {});
-  };
-
-  const deleteRow = (r) => {
-    API.del('/api/history', { ids: [r.id] })
-      .then(() => { setRows(rs => rs.filter(x => x.id !== r.id)); refreshStats && refreshStats(); })
-      .catch(e => showNotif('Error', e.message, 'error'));
-  };
-
+function HistoryPanel({
+  historyRows: rows, historyLoading: loading, historySearch: search, historyType: typeFilter, historyOffset: offset,
+  historyHasPrev, historyHasNext, searchHistory, filterHistoryType, historyPrev, historyNext, redownloadHistoryRow,
+  openHistoryFile, deleteHistoryRow,
+}) {
   return (
     <div className="chart-panel" style={{ marginTop: 16 }}>
       <div className="chart-title">History Browser</div>
@@ -147,9 +107,9 @@ function HistoryPanel({ showNotif, refreshStats }) {
           className="inp-sm" style={{ flex: 1, maxWidth: 320 }}
           placeholder="Search title / url / uploader..."
           value={search}
-          onChange={e => { setSearch(e.target.value); setOffset(0); }}
+          onChange={e => searchHistory(e.target.value)}
         />
-        <select className="sel" value={typeFilter} onChange={e => { setTypeFilter(e.target.value); setOffset(0); }}>
+        <select className="sel" value={typeFilter} onChange={e => filterHistoryType(e.target.value)}>
           <option value="all">ALL TYPES</option>
           <option value="video">VIDEO</option>
           <option value="audio">AUDIO</option>
@@ -157,8 +117,8 @@ function HistoryPanel({ showNotif, refreshStats }) {
         <span style={{ marginLeft: 'auto', fontFamily: 'var(--font-mono)', fontSize: 10.5, color: 'var(--t4)' }}>
           {offset + 1}–{offset + rows.length}
         </span>
-        <button className="btn btn-secondary btn-sm" disabled={offset === 0} onClick={() => setOffset(o => Math.max(0, o - HISTORY_LIMIT))}>‹ PREV</button>
-        <button className="btn btn-secondary btn-sm" disabled={rows.length < HISTORY_LIMIT} onClick={() => setOffset(o => o + HISTORY_LIMIT)}>NEXT ›</button>
+        <button className="btn btn-secondary btn-sm" disabled={!historyHasPrev} onClick={historyPrev}>‹ PREV</button>
+        <button className="btn btn-secondary btn-sm" disabled={!historyHasNext} onClick={historyNext}>NEXT ›</button>
       </div>
       <table className="data-table">
         <thead>
@@ -180,9 +140,9 @@ function HistoryPanel({ showNotif, refreshStats }) {
                 </span>
               </td>
               <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-                {r.url && <button className="btn btn-secondary btn-sm" style={{ padding: '2px 6px', fontSize: 9.5, marginRight: 4 }} title="Download again" onClick={() => redownload(r)}>↻ DL</button>}
-                {r.file_path && <button className="btn btn-secondary btn-sm" style={{ padding: '2px 6px', fontSize: 9.5, marginRight: 4 }} title="Open file" onClick={() => openFile(r)}>▶ OPEN</button>}
-                <button className="btn btn-danger btn-sm" style={{ padding: '2px 6px', fontSize: 9.5 }} title="Delete record" onClick={() => deleteRow(r)}>✕</button>
+                {r.url && <button className="btn btn-secondary btn-sm" style={{ padding: '2px 6px', fontSize: 9.5, marginRight: 4 }} title="Download again" onClick={() => redownloadHistoryRow(r)}>↻ DL</button>}
+                {r.file_path && <button className="btn btn-secondary btn-sm" style={{ padding: '2px 6px', fontSize: 9.5, marginRight: 4 }} title="Open file" onClick={() => openHistoryFile(r)}>▶ OPEN</button>}
+                <button className="btn btn-danger btn-sm" style={{ padding: '2px 6px', fontSize: 9.5 }} title="Delete record" onClick={() => deleteHistoryRow(r)}>✕</button>
               </td>
             </tr>
           ))}
@@ -197,54 +157,19 @@ function HistoryPanel({ showNotif, refreshStats }) {
   );
 }
 
-// Per-day counts with the days that had none filled in as 0. The query only
-// returns active days, so a line through them drew 1 Jan next to 20 Jan.
-function dailySeries(rows, range) {
-  if (!rows || !rows.length) return [];
-  const counts = new Map(rows.map(r => [r.day, r.count]));
-  const key = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const span = { '7d': 7, '30d': 30 }[range];
-  const day = span ? new Date(today) : new Date(rows[0].day + 'T00:00:00');
-  if (span) day.setDate(day.getDate() - (span - 1));
-  const out = [];
-  for (; day <= today; day.setDate(day.getDate() + 1)) {
-    out.push({ x: key(day), y: counts.get(key(day)) || 0 });
-  }
-  return out.length ? out : rows.map(r => ({ x: r.day, y: r.count }));
+// The Analytics page: its logic, drawn by the theme's view (Classic's unless the theme has one)
+export function AnalyticsPage({ View = ClassicAnalyticsView, ...props }) {
+  const analytics = useAnalyticsPage(props);
+  return <View {...analytics} />;
 }
 
-export function AnalyticsPage({ stats, refreshStats, showNotif }) {
-  const [range, setRange] = React.useState('30d');
-  const [wrappedOpen, setWrappedOpen] = React.useState(false);
-  const [localStats, setLocalStats] = React.useState(stats);
-  const [overrides, setOverrides] = React.useState({});
+export function ClassicAnalyticsView(props) {
+  const {
+    range, setRange, localStats, statVal, saveOverride, hourly, dailyTrend, dailyFailures, handleExport,
+    wrappedOpen, wrappedYear, wrappedData, openWrapped, closeWrapped, setWrappedYear,
+  } = props;
   const platformRef = React.useRef(null);
   const donutRef = React.useRef(null);
-
-  React.useEffect(() => {
-    API.get('/api/stats?range=' + range)
-      .then(setLocalStats)
-      .catch(() => {});
-  }, [range]);
-
-  React.useEffect(() => {
-    setLocalStats(s => ({ ...s, ...stats }));
-  }, [stats]);
-
-  React.useEffect(() => {
-    API.get('/api/analytics/overrides').then(setOverrides).catch(() => {});
-  }, []);
-
-  const saveOverride = React.useCallback((key, val) => {
-    const update = { [key]: val };
-    setOverrides(o => ({ ...o, ...update }));
-    API.post('/api/analytics/overrides', update).catch(() => {});
-  }, []);
-
-  // Use override value if present, else computed value
-  const statVal = (key, computed) => (key in overrides && overrides[key] !== '' && overrides[key] !== null) ? overrides[key] : computed;
 
   // Draw platform bars
   React.useEffect(() => {
@@ -302,12 +227,7 @@ export function AnalyticsPage({ stats, refreshStats, showNotif }) {
     ctx.fillText('TOTAL', cx, cy + 14);
   }, [localStats.storage_by_format]);
 
-  const hourly = localStats.hourly_activity || Array(24).fill(0);
   const maxHour = Math.max(...hourly, 1);
-
-  const handleExport = () => {
-    download('/api/analytics/export').catch(e => showNotif('Export Failed', e.message, 'error'));
-  };
 
   return (
     <div className="content active">
@@ -324,7 +244,7 @@ export function AnalyticsPage({ stats, refreshStats, showNotif }) {
               </div>
             ))}
           </div>
-          <button className="btn btn-secondary btn-sm" data-tour="analytics-wrapped" onClick={() => setWrappedOpen(true)} title="Year in review">
+          <button className="btn btn-secondary btn-sm" data-tour="analytics-wrapped" onClick={openWrapped} title="Year in review">
             ✦ WRAPPED
           </button>
           <button className="btn btn-amber btn-sm" data-tour="analytics-export" onClick={handleExport}>
@@ -333,7 +253,7 @@ export function AnalyticsPage({ stats, refreshStats, showNotif }) {
         </div>
       </div>
 
-      {wrappedOpen && <WrappedModal onClose={() => setWrappedOpen(false)} />}
+      {wrappedOpen && <WrappedModal year={wrappedYear} data={wrappedData} setYear={setWrappedYear} onClose={closeWrapped} />}
 
       {/* KPI CARDS — click any value to edit/override */}
       <div className="g4" style={{ marginBottom: 16 }} data-tour="analytics-stats">
@@ -414,7 +334,7 @@ export function AnalyticsPage({ stats, refreshStats, showNotif }) {
         <div className="chart-panel">
           <div className="chart-title">Download Trend</div>
           <div className="chart-sub">DOWNLOADS PER DAY — {range === 'all' ? 'ALL TIME' : 'LAST ' + range.toUpperCase()}</div>
-          <LineChart data={dailySeries(localStats.by_day_last_30, range)} />
+          <LineChart data={dailyTrend} />
         </div>
         <div className="chart-panel">
           <div className="chart-title">Storage by Format</div>
@@ -487,7 +407,7 @@ export function AnalyticsPage({ stats, refreshStats, showNotif }) {
           <div className="chart-sub">ERRORED DOWNLOADS PER DAY</div>
           {(localStats.failures_by_day || []).length ? (
             <LineChart
-              data={dailySeries(localStats.failures_by_day, range)}
+              data={dailyFailures}
               color="--danger-rgb"
             />
           ) : (
@@ -595,7 +515,7 @@ export function AnalyticsPage({ stats, refreshStats, showNotif }) {
         )}
       </div>
 
-      <HistoryPanel showNotif={showNotif} refreshStats={refreshStats} />
+      <HistoryPanel {...props} />
     </div>
   );
 }
