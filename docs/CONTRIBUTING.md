@@ -45,6 +45,7 @@ also needs Rust (stable, [rustup.rs](https://rustup.rs)) and, on Linux, `libwebk
 libssl-dev libayatana-appindicator3-dev librsvg2-dev`.
 ```bash
 python build_setup.py --tauri    # dist/tauri/: the NSIS installer (Windows), AppImage + .deb (Linux)
+python build_setup.py --tauri --test-identity   # "MellowDLP Test": touches none of an installed MellowDLP's entries
 cd src-tauri && cargo run        # the shell from source: it starts `python main.py --shell` itself
 ```
 

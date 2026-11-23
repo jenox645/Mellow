@@ -36,7 +36,8 @@ pub fn splash_op(url: &Url) -> Option<&str> {
 /// the app to analyze: one http(s) link, else nothing. It goes to the Feed,
 /// never straight to a download: a web page can start these links.
 pub fn deep_link_target(link: &Url) -> Option<String> {
-    if link.scheme() != "mellowdlp" || !matches!(link.host_str(), Some("download" | "open")) {
+    // mellowdlp-test: the test identity's scheme (tauri.test-identity.conf.json)
+    if !matches!(link.scheme(), "mellowdlp" | "mellowdlp-test") || !matches!(link.host_str(), Some("download" | "open")) {
         return None;
     }
     let target = link.query_pairs().find(|(key, _)| key == "url")?.1.into_owned();
@@ -187,6 +188,8 @@ mod tests {
         let link = "mellowdlp://download?url=https%3A%2F%2Fwww.youtube.com%2Fwatch%3Fv%3Dabc%26list%3Dx";
         assert_eq!(deep_link_target(&url(link)).as_deref(), Some(ok));
         assert_eq!(deep_link_target(&url("mellowdlp://open?url=http://example.com/v")).as_deref(), Some("http://example.com/v"));
+        assert_eq!(deep_link_target(&url("mellowdlp-test://open?url=http://example.com/v")).as_deref(), Some("http://example.com/v"));
+        assert_eq!(deep_link_target(&url("mellowdlpx://open?url=http://example.com/v")), None);
         for bad in ["mellowdlp://download?url=javascript:alert(1)", "mellowdlp://download?url=file:///etc/passwd",
                     "mellowdlp://download", "mellowdlp://delete?url=https://x.com/", "https://example.com/?url=https://x.com/"] {
             assert_eq!(deep_link_target(&url(bad)), None, "{bad}");

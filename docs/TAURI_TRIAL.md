@@ -366,7 +366,8 @@ Screenshots (`PrintWindow` of the real window, kept outside the repo): `10_tauri
 
 **Found on the way.**
 
-- **Install folder = data folder.** The per-user NSIS install goes to `%LOCALAPPDATA%\MellowDLP`,
+- **Install folder = data folder** (fixed since: the bundle's NSIS template installs to
+  `%LOCALAPPDATA%\Programs\MellowDLP`, see TAURI_SWITCH.md). The per-user NSIS install went to `%LOCALAPPDATA%\MellowDLP`,
   which is also MellowDLP's own data folder (`datadir.py`: instance file, launch pages, API keys).
   It works: the uninstaller removes the files it installed and the folder only if empty, and the app
   only ever deletes its own `launch-*.html` there. Today's installer uses `%LOCALAPPDATA%\Programs\MellowDLP`;

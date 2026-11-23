@@ -32,6 +32,11 @@ RUN_TESTS = "--run-tests" in sys.argv
 # The Tauri app (src-tauri/) instead of the FlaskWebGUI one: the one-folder
 # backend goes into the Tauri bundle (NSIS installer, AppImage + deb)
 TAURI = "--tauri" in sys.argv
+# With --tauri: an installer for checks on a machine that has the real app. It has
+# its own name, identifier, exe name and link scheme (src-tauri/tauri.test-identity.conf.json),
+# so it never writes the real app's uninstall entry, install-folder key, shortcuts,
+# start-with-Windows value or mellowdlp:// registration
+TEST_IDENTITY = "--test-identity" in sys.argv
 SYSTEM = platform.system()   # 'Windows' | 'Linux' | 'Darwin'
 IS_WINDOWS = SYSTEM == "Windows"
 IS_LINUX   = SYSTEM == "Linux"
@@ -427,9 +432,10 @@ def build_tauri() -> list[Path]:
     version_conf.parent.mkdir(exist_ok=True)
     version_conf.write_text(json.dumps({"version": VERSION}), encoding="utf-8")
     bundles = "nsis" if IS_WINDOWS else "deb,appimage" if IS_LINUX else "app,dmg"
-    run([str(tauri_cli), "build", "--bundles", bundles,
-         "--config", str(TAURI_DIR / "tauri.bundle.conf.json"), "--config", str(version_conf)],
-        cwd=str(HERE))
+    configs = ["--config", str(TAURI_DIR / "tauri.bundle.conf.json"), "--config", str(version_conf)]
+    if TEST_IDENTITY:
+        configs += ["--config", str(TAURI_DIR / "tauri.test-identity.conf.json")]
+    run([str(tauri_cli), "build", "--bundles", bundles, *configs], cwd=str(HERE))
 
     bundle_dir = TAURI_DIR / "target" / "release" / "bundle"
     made = [p for pattern in ("nsis/*.exe", "deb/*.deb", "appimage/*.AppImage", "dmg/*.dmg")
