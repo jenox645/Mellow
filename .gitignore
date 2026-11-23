@@ -23,5 +23,9 @@ assets/wizard_small.bmp
 # The Tauri trial's config: tauri::generate_context!() needs it to build at all
 !src-tauri/tauri.conf.json
 !src-tauri/tauri.bundle.conf.json
+!src-tauri/tauri.test-identity.conf.json
+# Copied by build_setup.py for the shell's splash
+/src-tauri/ui/mascots.js
+/src-tauri/ui/fonts/
 .pytest_cache/
 .ruff_cache/

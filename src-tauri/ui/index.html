@@ -4,54 +4,82 @@
 <meta charset="utf-8">
 <title>MellowDLP</title>
 <style>
-  html, body { margin: 0; height: 100%; background: #07090F; color: #9fb3c8; overflow: hidden;
-    font: 11px/1.6 "Consolas", "DejaVu Sans Mono", monospace; letter-spacing: .14em; user-select: none; }
+  /* Classic's LoadingScreen (gui/components/loading.jsx + gui/index.html), drawn by the
+     shell while the backend starts. Its mascots and fonts are the app's own, copied here
+     by build_setup.py. The page doesn't play its own afterwards (/launch?splash=1). */
+  @font-face { font-family: 'Oxanium'; src: url('fonts/oxanium-latin.woff2') format('woff2'); font-weight: 200 800; }
+  @font-face { font-family: 'Share Tech Mono'; src: url('fonts/sharetechmono-latin.woff2') format('woff2'); }
+  html, body { margin: 0; height: 100%; background: #07090F; overflow: hidden; user-select: none; }
   /* The window has no frame on Windows: the whole splash drags it */
-  body { -webkit-app-region: drag; app-region: drag; display: flex; align-items: center; justify-content: center; }
-  .bar { position: fixed; top: 0; right: 0; display: flex; }
+  body { -webkit-app-region: drag; app-region: drag; }
+  .loading-screen { position: fixed; inset: 0; background: #07090F; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 20px; }
+  .loading-mascot { width: 280px; height: auto; color: #00D8FF; animation: mascot-float 3.5s ease-in-out infinite; }
+  .loading-mascot svg { display: block; width: 100%; height: auto; }
+  .loading-title { font-family: 'Oxanium', sans-serif; font-size: 22px; font-weight: 700; color: #00D8FF;
+    letter-spacing: 0.12em; text-shadow: 0 0 12px rgba(0, 216, 255, 0.3); min-height: 30px; }
+  .loading-title .cursor { opacity: 0.5; animation: pulse 1s infinite; }
+  .loading-sub { font-family: 'Share Tech Mono', monospace; font-size: 11px; color: #8AABB8; letter-spacing: 0.2em;
+    text-transform: uppercase; }
+  .loading-sub.error { color: #ff6b6b; text-transform: none; letter-spacing: 0.02em; max-width: 560px;
+    text-align: center; white-space: pre-wrap; }
+  .loading-bar { width: 260px; height: 2px; background: #162035; overflow: hidden; }
+  .loading-bar-fill { height: 100%; background: #00D8FF; animation: loading-fill 4.5s ease-in-out infinite; }
+  @keyframes loading-fill { 0% { width: 0; margin-left: 0; } 50% { width: 80%; margin-left: 10%; } 100% { width: 0; margin-left: 100%; } }
+  @keyframes mascot-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
+  /* Window buttons (the window's, not the loading screen's): links the shell catches */
+  .bar { position: fixed; top: 0; right: 0; display: flex; z-index: 1; }
   .bar a { -webkit-app-region: no-drag; app-region: no-drag; width: 46px; height: 32px; display: flex;
-    align-items: center; justify-content: center; color: #8a9bb0; }
-  .bar a:hover { background: rgba(47, 216, 245, .10); color: #d8ecf5; }
-  .bar a.close:hover { background: #d23c4b; color: #fff; }
-  .mark { display: flex; flex-direction: column; align-items: center; gap: 18px; }
-  .glyph path { fill: none; stroke: #2fd8f5; stroke-width: 1.5; stroke-dasharray: 60; stroke-dashoffset: 60;
-    animation: draw .7s cubic-bezier(.2, .7, .2, 1) forwards; }
-  .glyph path + path { animation-delay: .25s; }
-  .name { color: #d8ecf5; font-weight: 700; letter-spacing: .42em; padding-left: .42em; }
-  .scan { width: 220px; height: 1px; background: rgba(47, 216, 245, .18); position: relative; overflow: hidden; }
-  .scan::after { content: ''; position: absolute; top: 0; left: 0; width: 60px; height: 1px; background: #2fd8f5;
-    animation: scan 1.1s linear infinite; }
-  #msg { min-height: 1.6em; color: #6f8399; text-transform: uppercase; }
-  #msg.error { color: #ff6b6b; text-transform: none; letter-spacing: .02em; max-width: 560px; white-space: pre-wrap; text-align: center; }
-  @keyframes draw { to { stroke-dashoffset: 0; } }
-  @keyframes scan { from { transform: translateX(-60px); } to { transform: translateX(220px); } }
-  @media (prefers-reduced-motion: reduce) { .glyph path { animation: none; stroke-dashoffset: 0; } .scan::after { animation: none; } }
+    align-items: center; justify-content: center; color: #709DB1; }
+  .bar a:hover { background: rgba(0, 216, 255, 0.10); color: #D8ECF5; }
+  .bar a.close:hover { background: #E5484D; color: #D8ECF5; }
+  @media (prefers-reduced-motion: reduce) { .loading-mascot, .loading-bar-fill, .loading-title .cursor { animation: none; } }
 </style>
 </head>
 <body>
-<!-- Shown only until the backend says it is ready (src/main.rs then navigates this
-     window to the server's /launch page). Its buttons are links the shell catches
-     (links::splash_op): this page has no IPC. -->
 <div class="bar">
   <a href="/__window/minimize" title="Minimize"><svg viewBox="0 0 10 10" width="10" height="10"><path d="M0 5.5h10" stroke="currentColor"/></svg></a>
   <a class="close" href="/__window/close" title="Close"><svg viewBox="0 0 10 10" width="10" height="10"><path d="M.5.5l9 9M9.5.5l-9 9" stroke="currentColor"/></svg></a>
 </div>
-<div class="mark">
-  <svg class="glyph" viewBox="0 0 16 16" width="56" height="56" aria-hidden="true">
-    <path d="M3 11.5V4l5 5.5L13 4v7.5"/>
-    <path d="M2.5 13.75h11"/>
-  </svg>
-  <div class="name">MELLOWDLP</div>
-  <div class="scan"></div>
-  <div id="msg">starting</div>
+<div class="loading-screen">
+  <div id="mascot" class="loading-mascot"></div>
+  <div class="loading-title"><span id="typed"></span><span class="cursor">_</span></div>
+  <div class="loading-sub" id="sub">MELLOW // DATA LAKE COMMANDER</div>
+  <div class="loading-bar"><div class="loading-bar-fill"></div></div>
 </div>
+<script src="mascots.js"></script>
 <script>
-  window.mellowShellError = function (text) {
-    var el = document.getElementById('msg');
-    el.className = 'error';
-    el.textContent = text;
-    document.querySelector('.scan').style.visibility = 'hidden';
-  };
+  (function () {
+    // The same pool as loading.jsx
+    var pool = ['MASCOT_DJ', 'MASCOT_VIBING', 'MASCOT_CHILLING', 'MASCOT_TIRED', 'MASCOT_COMFY', 'MASCOT_SUCCESS',
+      'MASCOT_TROUBLESHOOTING', 'MASCOT_VICTORY'].map(function (n) { return window[n]; }).filter(Boolean);
+    var art = pool.length ? pool[Math.floor(Math.random() * pool.length)] : null;
+    var holder = document.getElementById('mascot');
+    if (art && /^\s*<(\?xml|svg)/i.test(art)) {
+      holder.innerHTML = art.replace(/^<\?xml[^?]*\?>\s*/i, '');
+      holder.style.filter = 'drop-shadow(0 0 24px rgba(0, 216, 255, 0.35))';
+    } else if (art) {
+      var img = document.createElement('img');
+      img.src = art;
+      img.alt = '';
+      img.className = 'loading-mascot';
+      img.style.filter = 'sepia(1) saturate(6.7) hue-rotate(151deg) brightness(0.87) drop-shadow(0 0 24px rgba(0, 216, 255, 0.35))';
+      img.style.mixBlendMode = 'screen';
+      holder.replaceWith(img);
+    }
+    var target = 'WELCOME, ADMINISTRATOR', i = 0, typed = document.getElementById('typed');
+    var timer = setInterval(function () {
+      typed.textContent = target.slice(0, ++i);
+      if (i >= target.length) clearInterval(timer);
+    }, 60);
+    var sub = document.getElementById('sub');
+    window.mellowSplashVersion = function (v) { if (!sub.classList.contains('error')) sub.textContent = 'MELLOW // DATA LAKE COMMANDER v' + v; };
+    window.mellowShellError = function (text) {
+      sub.className = 'loading-sub error';
+      sub.textContent = text;
+    };
+  })();
 </script>
 </body>
 </html>

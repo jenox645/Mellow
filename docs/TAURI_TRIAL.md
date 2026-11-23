@@ -192,7 +192,8 @@ needed before it built at all, on any machine:
   CSP off, no global Tauri object) and `.gitignore` now lets it through. The identifier
   (`io.github.jenox645.mellowdlp`) is a guess: replace the file with the original if it differs.
 - Linux needs a PNG window icon (`failed to open icon …/icons/icon.png`): `src-tauri/icons/icon.png`
-  is the 128 px image of `assets/mellow.ico`, listed before the `.ico` in `bundle.icon`.
+  is the 128 px image of `assets/mellow.ico`. Linux's window icon is the first PNG in `bundle.icon`, today
+  the sheep-face badge's `icons/64x64.png` (see *Icons* under Premium window).
 
 **How it was driven.** WebKitGTK has no DevTools protocol, so the real window was used with the
 real X input: `xdotool` for clicks and typing (and reading the window title), `import -window root`
@@ -366,7 +367,8 @@ Screenshots (`PrintWindow` of the real window, kept outside the repo): `10_tauri
 
 **Found on the way.**
 
-- **Install folder = data folder.** The per-user NSIS install goes to `%LOCALAPPDATA%\MellowDLP`,
+- **Install folder = data folder** (fixed since: the bundle's NSIS template installs to
+  `%LOCALAPPDATA%\Programs\MellowDLP`, see TAURI_SWITCH.md). The per-user NSIS install went to `%LOCALAPPDATA%\MellowDLP`,
   which is also MellowDLP's own data folder (`datadir.py`: instance file, launch pages, API keys).
   It works: the uninstaller removes the files it installed and the folder only if empty, and the app
   only ever deletes its own `launch-*.html` there. Today's installer uses `%LOCALAPPDATA%\Programs\MellowDLP`;
@@ -377,8 +379,9 @@ Screenshots (`PrintWindow` of the real window, kept outside the repo): `10_tauri
   at its own exe. Try the Tauri app on an account without today's app, or re-point the shortcuts.
 - **The shell's file name** stays `mellowdlp-shell.exe`: NSIS's "is it running?" check looks for the
   main binary's name, and named `MellowDLP.exe` it would find (and offer to close) today's app.
-- **The icon** is the mascot's line art (`assets/mellow.ico`): at 16 px in the title bar and taskbar
-  it reads as grey noise. Today's Chrome window shows the same icon as its favicon.
+- **The icon** was the mascot's line art (`assets/mellow.ico`): at 16 px in the title bar and taskbar
+  it read as grey noise (today's Chrome window shows it as its favicon). The shell's small sizes are now
+  Mellow's sheep-face badge (*Icons* under Premium window).
 
 **Sizes** (Windows, this machine's build):
 
@@ -422,12 +425,25 @@ The window on Windows draws its own frame; the page still gets **no IPC**:
   resizes from the edges natively). The page's 32 px band is the drag region through CSS `app-region: drag`
   (wry turns on WebView2's non-client regions): drag, Windows snap and double-click to maximize are the
   system's own. Its three buttons go page → `/api/window` → backend → `MELLOW_EVENT window_op` → shell. The
-  bottom rule draws on when the window opens and fills with the first download's progress. Every theme sets its
+  bottom rule draws on when the window opens and fills with the first download's progress. Its mark is
+  Mellow's sheep-face badge, as on the tray and the taskbar (*Icons* below). Every theme sets its
   band (`--titlebar-bg`); Tactical's comes out orange on its own surface with no extra code.
   `/api/system` says `window_frame: "custom"`; on Linux and macOS the system frame stays (not checked frameless).
+- **Icons**: the small sizes are Mellow's sheep-face badge, the round badge on the sleeve of the owner's
+  line art of her asleep (`assets/sleeping_mellow_vector.svg`): her own lines cut out, levelled, with the
+  sleeve's ink as a rim so it reads on a dark and a light taskbar, never a new drawing. `scripts/make_icons.py`
+  makes every file from two 512 px masters (`assets/mellow-badge-source.png`, and
+  `assets/mellow-badge-small-source.png`, the same cut with its eyes, mouth and rim thickened for 16-24 px);
+  `--cut <svg>` cuts the masters again from the art. It writes the tray (`src-tauri/icons/tray.png`), the
+  title bar's mark (`assets/mellow-badge.png` + `@2x`, copied into static/ by the build), the exe's icon
+  (`src-tauri/icons/icon.ico`: the badge at 16-64 px, `assets/mellow.ico`'s art at 128 px; Windows takes the
+  window's and the taskbar's icon from it, and the shortcuts') and Linux's `32x32.png` / `64x64.png`. To swap
+  the badge: replace the masters (any square transparent PNG) and run the script. The installer keeps
+  `assets/mellow.ico`.
 - **Splash**: the window's background is Classic's from the first frame (no white flash before a page paints);
-  the bundled page draws the glyph on, with a scan line, and drags the window; its two buttons are links the
-  shell catches (`links::splash_op`).
+  the bundled page **is Classic's loading screen** (the same mascots, fonts and animation, copied in by
+  `build_setup.py`), and the page skips its own when it opens from it (`/launch?splash=1`): one loading
+  screen, no restart. It drags the window; its two buttons are links the shell catches (`links::splash_op`).
 - **Native dialogs**: BROWSE and IMPORT FILE ask the shell over the pipe (`shell.ask("dialog")` →
   `{"cmd": "answer"}`); it shows the system's dialog owned by the window (`rfd`, what tauri-plugin-dialog wraps,
   without the script that plugin puts in every page). Tk only without a shell.

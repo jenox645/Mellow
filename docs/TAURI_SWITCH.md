@@ -111,17 +111,42 @@ Next to today's jobs, until the switch, then instead of them:
 
 ## 6. Install folder, shortcuts, data
 
-- **Decide:** the install folder. NSIS per user installs to `%LOCALAPPDATA%\MellowDLP`, which is
-  also MellowDLP's data folder (instance file, launch pages, API keys). It works (the uninstaller only
-  deletes its own files), but `%LOCALAPPDATA%\Programs\MellowDLP` (today's) keeps program and data
-  apart: it needs a custom NSIS template (`bundle.windows.nsis.template`) with that default.
+- **Done:** the install folder. Tauri's NSIS default per user is `%LOCALAPPDATA%\MellowDLP`, MellowDLP's
+  own data folder (instance file, launch pages, API keys), where an install must never live. The bundle
+  uses Tauri's template with one change (`src-tauri/nsis/installer.nsi`, "MellowDLP:"): the default is
+  `%LOCALAPPDATA%\Programs\MellowDLP`, the Inno app's folder (re-fetch the template when the CLI is bumped).
 - **Decide:** the installed shell's name: `mellowdlp-shell.exe` today. `MellowDLP.exe` reads better
   once the Inno app is gone (the bridge removes it first, so NSIS's "is it running?" check, which goes
   by name, no longer finds the old app).
 - Data stays where it is (home folder, data folder): nothing to migrate. WebView2's own data is in
   `%LOCALAPPDATA%\io.github.jenox645.mellowdlp\EBWebView` (the uninstaller's "delete app data" box).
 
-## 7. Order
+## 7. Next to the Inno install (until the bridge)
+
+Both installers now default to `%LOCALAPPDATA%\Programs\MellowDLP`. What each owns there:
+
+| | Inno (today's app) | NSIS (the Tauri app) |
+|---|---|---|
+| Uninstall entry (HKCU) | `…\Uninstall\MellowDLP_is1` | `…\Uninstall\MellowDLP` |
+| Files | `MellowDLP.exe`, `_internal\`, `unins000.exe/.dat` | `mellowdlp-shell.exe`, `backend\`, `uninstall.exe` |
+| Remembered folder | its uninstall entry | `HKCU\Software\MellowDLP\MellowDLP` (kept by a silent uninstall: the next install goes back there) |
+| Shortcuts | `Start Menu\Programs\MellowDLP.lnk`, `Desktop\MellowDLP.lnk` | the same two names |
+
+- **No file clashes**: both can sit in the folder; each uninstaller removes only its own files (and the
+  folder once it is empty). The data (home folder, `%LOCALAPPDATA%\MellowDLP`) belongs to neither.
+- **Shortcuts are the clash**: the last installer to run owns `MellowDLP.lnk`. The NSIS uninstaller only
+  removes a shortcut that points at its own exe; **Inno's removes its shortcut paths whatever they point
+  at**, so uninstalling the Inno app after installing the Tauri one deletes the Tauri app's shortcuts.
+  Hence the bridge's order (section 2): Inno uninstall first, then the NSIS install.
+- Both apps can't run at once for one account: the second one finds the first (`instance.json`) and
+  opens a window on it (the Tauri shell's backend attaches, `--background` exits).
+- **Trying the Tauri app on a machine that has it installed for real**: `python build_setup.py --tauri
+  --test-identity` makes *MellowDLP Test* (`src-tauri/tauri.test-identity.conf.json`: its own name,
+  identifier, `mellowdlp-shell-test.exe`, `mellowdlp-test://`), which writes none of the real app's
+  entries, keys, shortcuts or links. Install it with `/S /D=<a scratch folder>`, uninstall it, then
+  delete `HKCU\Software\MellowDLP\MellowDLP Test` (the remembered folder).
+
+## 8. Order
 
 1. Merge the premium window (phase 3) and settle the decisions above.
 2. One release that ships the Tauri builds **next to** today's (new names, no updater path yet):

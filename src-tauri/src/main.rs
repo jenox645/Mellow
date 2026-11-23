@@ -201,6 +201,10 @@ fn build_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
                 let backend = app.state::<Backend>().origin();
                 if matches!(load.event(), PageLoadEvent::Finished) && is_backend_page(load.url(), backend.as_deref()) {
                     let _ = webview.eval(links::ASK_NOTIFICATIONS);
+                } else if matches!(load.event(), PageLoadEvent::Finished) && links::is_local(load.url()) {
+                    // The splash shows the version as the page's loading screen does
+                    let version = app.package_info().version.to_string();
+                    let _ = webview.eval(format!("window.mellowSplashVersion && window.mellowSplashVersion({version:?})"));
                 }
             }
         })
@@ -465,7 +469,9 @@ fn hand_over_link(app: &AppHandle, url: &str) {
 // ── The backend ─────────────────────────────────────────────────────────────
 
 fn go_to(app: &AppHandle, url: &str) {
-    let Ok(url) = Url::parse(url) else { return };
+    let Ok(mut url) = Url::parse(url) else { return };
+    // The window comes from the splash (Classic's loading screen): the page skips its own
+    url.query_pairs_mut().append_pair("splash", "1");
     if !(is_local(&url) && backend_origin(&url).is_some()) {
         show_error(app, &format!("unexpected sign-in link: {url}"));
         return;

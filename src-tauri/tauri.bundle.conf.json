@@ -13,12 +13,16 @@
       "../dist/MellowDLP-backend/": "backend/"
     },
     "windows": {
-      "webviewInstallMode": { "type": "downloadBootstrapper", "silent": true },
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper",
+        "silent": true
+      },
       "nsis": {
         "installMode": "currentUser",
         "installerIcon": "../assets/mellow.ico",
         "sidebarImage": "../assets/wizard_large.bmp",
-        "displayLanguageSelector": false
+        "displayLanguageSelector": false,
+        "template": "nsis/installer.nsi"
       }
     },
     "linux": {
@@ -29,7 +33,9 @@
           "gstreamer1.0-libav",
           "gstreamer1.0-gl"
         ],
-        "recommends": ["gstreamer1.0-plugins-bad"]
+        "recommends": [
+          "gstreamer1.0-plugins-bad"
+        ]
       },
       "appimage": {
         "bundleMediaFramework": true

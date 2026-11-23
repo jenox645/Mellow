@@ -32,6 +32,11 @@ RUN_TESTS = "--run-tests" in sys.argv
 # The Tauri app (src-tauri/) instead of the FlaskWebGUI one: the one-folder
 # backend goes into the Tauri bundle (NSIS installer, AppImage + deb)
 TAURI = "--tauri" in sys.argv
+# With --tauri: an installer for checks on a machine that has the real app. It has
+# its own name, identifier, exe name and link scheme (src-tauri/tauri.test-identity.conf.json),
+# so it never writes the real app's uninstall entry, install-folder key, shortcuts,
+# start-with-Windows value or mellowdlp:// registration
+TEST_IDENTITY = "--test-identity" in sys.argv
 SYSTEM = platform.system()   # 'Windows' | 'Linux' | 'Darwin'
 IS_WINDOWS = SYSTEM == "Windows"
 IS_LINUX   = SYSTEM == "Linux"
@@ -314,6 +319,17 @@ if not src_html.exists():
 shutil.copy2(src_html, STATIC / "index.html")
 # Bundled web fonts: the app never fetches them from Google
 shutil.copytree(GUI / "fonts", STATIC / "fonts", dirs_exist_ok=True)
+# The desktop app's title bar mark, Mellow's sheep-face badge (scripts/make_icons.py)
+for badge in ("mellow-badge.png", "mellow-badge@2x.png"):
+    shutil.copy2(ASSETS / badge, STATIC / badge)
+# The desktop app's splash is Classic's loading screen (src-tauri/ui/index.html): the same
+# mascots and fonts, next to it in the shell's bundled page (gitignored copies)
+SPLASH_UI = HERE / "src-tauri" / "ui"
+if SPLASH_UI.is_dir():
+    shutil.copy2(STATIC / "mascots.js", SPLASH_UI / "mascots.js")
+    (SPLASH_UI / "fonts").mkdir(exist_ok=True)
+    for font in ("oxanium-latin.woff2", "sharetechmono-latin.woff2", "OFL-oxanium.txt", "OFL-sharetechmono.txt"):
+        shutil.copy2(STATIC / "fonts" / font, SPLASH_UI / "fonts" / font)
 # The themes index.html links (token overrides; Classic is index.html itself) and their assets;
 # their components (gui/themes/slots.jsx, gui/themes/<id>/*.jsx) are in the bundle, not copied
 shutil.copytree(GUI / "themes", STATIC / "themes", dirs_exist_ok=True,
@@ -427,9 +443,14 @@ def build_tauri() -> list[Path]:
     version_conf.parent.mkdir(exist_ok=True)
     version_conf.write_text(json.dumps({"version": VERSION}), encoding="utf-8")
     bundles = "nsis" if IS_WINDOWS else "deb,appimage" if IS_LINUX else "app,dmg"
-    run([str(tauri_cli), "build", "--bundles", bundles,
-         "--config", str(TAURI_DIR / "tauri.bundle.conf.json"), "--config", str(version_conf)],
-        cwd=str(HERE))
+    # Bundles of an earlier build (another version, or the test identity) aren't this build's
+    for stale in (TAURI_DIR / "target" / "release" / "bundle").glob("*/*"):
+        if stale.is_file() and stale.suffix.lower() in (".exe", ".deb", ".appimage", ".dmg"):
+            stale.unlink()
+    configs = ["--config", str(TAURI_DIR / "tauri.bundle.conf.json"), "--config", str(version_conf)]
+    if TEST_IDENTITY:
+        configs += ["--config", str(TAURI_DIR / "tauri.test-identity.conf.json")]
+    run([str(tauri_cli), "build", "--bundles", bundles, *configs], cwd=str(HERE))
 
     bundle_dir = TAURI_DIR / "target" / "release" / "bundle"
     made = [p for pattern in ("nsis/*.exe", "deb/*.deb", "appimage/*.AppImage", "dmg/*.dmg")

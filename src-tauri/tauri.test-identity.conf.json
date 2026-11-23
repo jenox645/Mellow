@@ -1,0 +1,14 @@
+{
+  "productName": "MellowDLP Test",
+  "mainBinaryName": "mellowdlp-shell-test",
+  "identifier": "io.github.jenox645.mellowdlp.test",
+  "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": [
+          "mellowdlp-test"
+        ]
+      }
+    }
+  }
+}

@@ -321,9 +321,15 @@ def sign_in(base_url: str, secret: bytes, port: int, timeout: float = 15) -> dic
     return {"Cookie": cookie, HEADER: token}
 
 
-def signed_in_page(token: str) -> str:
-    """What /launch answers: keep the header token for this tab, then open the app."""
+def signed_in_page(token: str, splash: bool = False) -> str:
+    """What /launch answers: keep the header token for this tab, then open the app.
+
+    splash: the desktop app's splash, Classic's loading screen, has been on screen:
+    the page skips its own (gui/lib/util.js takeShellSplash). The page is Classic's
+    background colour, so nothing flashes white between the splash and the app."""
+    handover = 'sessionStorage.setItem("mellow-splash-done", "1");' if splash else ""
     return (
-        '<!DOCTYPE html><html><head><meta charset="utf-8"><title>MellowDLP</title></head><body>'
-        f'<script>sessionStorage.setItem({json.dumps(STORAGE_KEY)}, {json.dumps(token)});'
+        '<!DOCTYPE html><html style="background:#07090F"><head><meta charset="utf-8"><title>MellowDLP</title>'
+        '</head><body>'
+        f'<script>sessionStorage.setItem({json.dumps(STORAGE_KEY)}, {json.dumps(token)});{handover}'
         'location.replace("/");</script></body></html>')
