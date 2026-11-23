@@ -6,9 +6,10 @@
 
 import { fmtBytes, fmtSpeed, themeRgba } from '../../lib/util.js';
 import { SVG } from '../../components/icons.jsx';
+import { SegBar } from './ornaments.jsx';
 import {
   TACTICAL_GAUGE_SEGMENTS as GAUGE_SEGMENTS, TACTICAL_RAIL_GRAPH_BARS as RAIL_GRAPH_BARS,
-  TACTICAL_RAIL_GRAPH_H as RAIL_GRAPH_H, TACTICAL_STATUS_GRAPH_H as STATUS_GRAPH_H,
+  TACTICAL_RAIL_GRAPH_H as RAIL_GRAPH_H, TACTICAL_DISK_SEGMENTS as DISK_SEGMENTS,
 } from '../../lib/constants.js';
 
 // The six sections, in the order of the 1–6 keys. `role` is what the command bar calls the page.
@@ -189,87 +190,80 @@ export function TacticalPageFrame({ page, children }) {
   );
 }
 
-// One cell of the annunciator row: a caption over... beside its value
-function Cell({ cap, lamp, className, children, ...rest }) {
-  return (
-    <div className={'sb-seg tac-cell' + (className ? ' ' + className : '')} {...rest}>
-      {lamp && <i className={'tac-lamp ' + lamp} />}
-      {cap && <span className="tac-cell-cap">{cap}</span>}
-      <span className="tac-cell-val">{children}</span>
-    </div>
-  );
+// The download folder, short: its last two parts ("…/Music/Lo-fi"), the whole path on hover
+function shortPath(p) {
+  if (!p) return '—';
+  const parts = p.split(/[\\/]+/).filter(Boolean);
+  return parts.length <= 2 ? p : '…/' + parts.slice(-2).join('/');
 }
 
-// The StatusBar slot: an annunciator row (link, yt-dlp, ffmpeg, disk, the update offer, speed, folder)
-export function TacticalStatusBar({ sysInfo, speedHistory, theme, config, appUpdate, onAppUpdate, ffmpegInstall, onGetFfmpeg }) {
-  const canvasRef = React.useRef(null);
+// Free space as lit segments on a log scale: 1 GB lights 2 of 10, 10 GB 6, 100 GB and more all 10
+function diskSegments(free) {
+  if (!free) return 0;
+  return Math.max(1, Math.min(DISK_SEGMENTS, Math.round(2 + 4 * Math.log10(free / 1e9))));
+}
 
-  // Speed history as a stepped line (a strip chart)
-  React.useEffect(() => {
-    const c = canvasRef.current;
-    const box = c && prepare(c, STATUS_GRAPH_H);
-    if (!box) return;
-    const { ctx, w } = box;
-    const pts = speedHistory.length ? speedHistory : Array(60).fill(0);
-    const maxV = Math.max(...pts, 1);
-    const step = w / pts.length;
-    ctx.strokeStyle = themeRgba('--t2-rgb', 0.8);
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    pts.forEach((v, i) => {
-      const y = Math.round(STATUS_GRAPH_H - 1 - (v / maxV) * (STATUS_GRAPH_H - 2)) + 0.5;
-      if (i === 0) ctx.moveTo(0, y);
-      else ctx.lineTo(i * step, y);
-      ctx.lineTo((i + 1) * step, y);
-    });
-    ctx.stroke();
-  }, [speedHistory, theme]);   // the line's colour is the theme's
-
-  const currentSpeed = speedHistory.length ? speedHistory[speedHistory.length - 1] : 0;
-  const isActive = currentSpeed > 0;
+// The StatusBar slot: a telemetry strip. It says something only when it matters: the link lamp, a tick
+// tape that carries the live speed trace (STANDBY when idle), one health lamp that stays quiet while
+// yt-dlp and FFmpeg are fine and turns into its action when not (GET FFMPEG, its progress, a newer
+// MellowDLP), the disk as a segment gauge, and the download folder, short.
+export function TacticalStatusBar({ sysInfo, speedHistory, config, appUpdate, onAppUpdate, ffmpegInstall, onGetFfmpeg }) {
+  const pts = speedHistory.length ? speedHistory : [0];
+  const currentSpeed = pts[pts.length - 1] || 0;
+  const live = currentSpeed > 0;
+  const max = Math.max(...pts, 1);
+  const W = 600, H = 26;
+  const line = pts.map((v, i) => `${(i * W / Math.max(pts.length - 1, 1)).toFixed(1)},${(H - 4 - (v / max) * (H - 9)).toFixed(1)}`).join(' ');
+  const [num, unit] = fmtSpeed(currentSpeed).split(' ');
+  const health = 'yt-dlp ' + (sysInfo.ytdlp_version || '—') + ' · FFmpeg ' + (sysInfo.ffmpeg ? 'OK' + (sysInfo.ffmpeg_path ? ' (' + sysInfo.ffmpeg_path + ')' : '') : 'missing');
+  const free = sysInfo.disk_free_bytes;
 
   return (
-    <div className="statusbar tac-status">
-      <Cell cap="LINK" lamp={isActive ? 'live' : 'idle'} className={isActive ? 'tac-cell-live' : ''}>
-        {isActive ? 'DOWNLOADING' : 'IDLE'}
-      </Cell>
-      <Cell cap="YT-DLP">{sysInfo.ytdlp_version || '—'}</Cell>
+    <div className="statusbar tac-status tx-strip">
+      <div className={'tx-strip-link' + (live ? ' live' : '')}><i aria-hidden="true" />LINK · {live ? 'RECEIVING' : 'IDLE'}</div>
+
+      <div className={'tx-strip-tape' + (live ? ' live' : '')} title="Download speed, last samples">
+        <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" aria-hidden="true">
+          {Array.from({ length: 61 }, (_, i) => (
+            <line key={i} className="tk" x1={i * 10} x2={i * 10} y1={i % 10 ? H - 5 : H - 9} y2={H} vectorEffect="non-scaling-stroke" />
+          ))}
+          {live && <polyline className="ln" points={line} vectorEffect="non-scaling-stroke" />}
+        </svg>
+        <span className="rd">{live ? <><b>{num}</b> {(unit || '').toUpperCase()}</> : 'STANDBY'}</span>
+      </div>
+
       {ffmpegInstall ? (
-        <Cell cap="FFMPEG" lamp="warn" className="sb-update" title="Downloading and checking ffmpeg">
-          {ffmpegInstall.stage === 'downloading' ? ffmpegInstall.pct + '%' : 'INSTALLING…'}
-        </Cell>
+        <div className="tx-strip-health warn sb-update" title="Downloading and checking FFmpeg">
+          <i aria-hidden="true" />FFMPEG {ffmpegInstall.stage === 'downloading' ? ffmpegInstall.pct + '%' : 'INSTALLING…'}
+        </div>
       ) : !sysInfo.ffmpeg && sysInfo.ffmpeg_installable ? (
-        <Cell lamp="err" className="sb-update sb-ffmpeg-get" onClick={onGetFfmpeg}
-          title="ffmpeg merges, converts and trims. Click to download it into MellowDLP (checked against its published checksum)">
-          FFMPEG MISSING — GET IT
-        </Cell>
+        <button type="button" className="err sb-update sb-ffmpeg-get" onClick={onGetFfmpeg}
+          title="FFmpeg merges, converts and trims. Click to download it into MellowDLP (checked against its published checksum)">
+          ⚠ FFMPEG MISSING — GET IT
+        </button>
       ) : (
-        <Cell cap="FFMPEG" lamp={sysInfo.ffmpeg ? 'ok' : 'err'} title={sysInfo.ffmpeg
-          ? (sysInfo.ffmpeg_path || 'ffmpeg found')
-          : (sysInfo.ffmpeg_install_note || 'ffmpeg is needed to merge, convert and trim.')}>
-          {sysInfo.ffmpeg ? 'OK' : 'MISSING'}
-        </Cell>
-      )}
-      {sysInfo.disk_free_bytes != null && (
-        <Cell cap={sysInfo.disk_low ? 'DISK LOW' : 'DISK'} lamp={sysInfo.disk_low ? 'err' : 'ok'}
-          className={sysInfo.disk_low ? 'tac-cell-err' : ''} title="Free space on the download drive">
-          {fmtBytes(sysInfo.disk_free_bytes)} FREE
-        </Cell>
+        <div className={'tx-strip-health' + (sysInfo.ffmpeg ? '' : ' err')}
+          title={sysInfo.ffmpeg ? health : (sysInfo.ffmpeg_install_note || 'FFmpeg is needed to merge, convert and trim.')}>
+          <i aria-hidden="true" />{sysInfo.ffmpeg ? 'SYSTEMS' : 'FFMPEG MISSING'}
+        </div>
       )}
       {appUpdate && (
-        <Cell className="sb-update" onClick={onAppUpdate}
+        <button type="button" className="sb-update" onClick={onAppUpdate}
           title={appUpdate.can_install
             ? 'Download, check and install MellowDLP ' + appUpdate.latest + ', then restart'
             : (appUpdate.install_note || 'Open the release page')}>
           ⬆ MELLOWDLP {appUpdate.latest} — {appUpdate.can_install ? 'UPDATE' : 'GET IT'}
-        </Cell>
+        </button>
       )}
-      <div className="sb-graph tac-status-graph" title="Download speed">
-        <canvas ref={canvasRef} />
-      </div>
-      <Cell cap="OUT" className="sb-path" title={config.output_dir || undefined}>
-        {config.output_dir || '—'}
-      </Cell>
+
+      {free != null && (
+        <div className={'tx-strip-disk' + (sysInfo.disk_low ? ' err' : '')} title="Free space on the download drive (the gauge is a log scale: 1 GB, 10 GB, 100 GB)">
+          {sysInfo.disk_low ? 'DISK LOW' : 'DISK'}
+          <SegBar value={diskSegments(free) / DISK_SEGMENTS} segments={DISK_SEGMENTS} className={sysInfo.disk_low ? 'err' : ''} />
+          <b>{fmtBytes(free)}</b>
+        </div>
+      )}
+      <div className="tx-strip-out sb-path" title={config.output_dir || undefined}>OUT <span>{shortPath(config.output_dir)}</span></div>
     </div>
   );
 }

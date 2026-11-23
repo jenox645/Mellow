@@ -555,7 +555,7 @@ export function ClassicFeedView({
 
 // YouTube search results: click one to analyze it (the list stays for the
 // next pick), or tick several and download them together
-function SearchResults({ results, info, onPick, onPickMany, onClear }) {
+export function SearchResults({ results, info, onPick, onPickMany, onClear }) {
   const [ticked, setTicked] = React.useState(() => new Set());
   React.useEffect(() => { setTicked(new Set()); }, [results]);
   const tick = (e, key) => {

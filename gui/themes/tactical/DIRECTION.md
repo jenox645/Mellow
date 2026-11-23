@@ -84,3 +84,111 @@ squares, never dots. Numbers (`01`–`06`, `SEC 03`) do the work icons would do 
 Tabs across the top instead of a sidebar; instruments on the right; two-colour logic (bone = chosen,
 orange = live) instead of one neon everywhere; cut corners and parallelograms instead of glow and HUD
 brackets; segmented gauges instead of smooth bars; a boot log instead of a greeting.
+
+---
+
+# v2 — its own pages (#98)
+
+The owner's verdict on v1: the frame was new, but every page inside was Classic's layout in graphite, so
+"it still feels like the OG Mellow". v2 keeps the console (header tabs, rail, graphite + one orange-red,
+cut corners, no glow) and gives the Feed, the Vault and the status bar their own layouts, drawn with an
+SVG instrument kit. The mockup is `mockup.html` (static, open it from `static/themes/tactical/` after a
+build); the views are `feed.jsx`, `vault.jsx` and `chrome.jsx`'s `TacticalStatusBar`; the kit is
+`ornaments.jsx`.
+
+## References for v2 (FUI and game menus first)
+
+| Reference | Taken |
+|---|---|
+| **Territory Studio, The Martian** (mission control screens) | The transfer column: one big ring instrument with degree ticks and labelled stops, readouts in black label blocks under it, a framed trace beside the numbers |
+| **GMUNK, Oblivion** (Bubbleship and tower UI) | Thin-line instruments that *are* the data: the ring's chevron head riding the arc, a dotted hub that turns while live, crop marks that snap onto each block |
+| **The Expanse** (Rocinante ops consoles) | Numbered blocks (A–D) with a caption, a rule that runs to the edge, plain-word menus instead of button rows |
+| **Death Stranding** (cargo and order menus) | The Vault as an index of numbered bays with a capacity bar each, and an order sheet (the bay's record) beside it rather than a card wall |
+| **NieR:Automata** (system menu) | Bone plate = chosen (the open bay, the chosen stop), everything else grey; a hatched band only for the one warning that matters (a failed sync) |
+| **NIKKE** (inventory / squad screens) | Big tracked caps titles with a small Japanese subtitle, the outlined index numeral, cut-corner label blocks |
+| **Glass cockpit tapes** (Airbus PFD speed tape) | The quality and bitrate rulers: a tick scale with a triangle marker that slides to the pick; the status bar's tick tape that carries the live speed trace |
+| **Armored Core VI** (assembly screen) | The loadout always on the table (mode plates, rulers, lamp switches), not hidden behind an OPTIONS button |
+
+## Layouts
+
+- **Feed = INTAKE.** A: the target, one command line (`>` prompt, ANALYZE / RESCAN at its end, PASTE and
+  IMPORT as words above it, DEST under it). B: the loadout, always open: VID / AUD plates, the quality
+  ruler (bitrate ruler for audio), container / format as a segmented selector, the extras as lamp
+  switches, presets and the CHAPTERS / EXTENDED drawers. C: the dossier of the analyzed target (framed
+  cover with a crosshair, the editable file name, a four-cell fact grid, DOWNLOAD as a tall plate).
+  D, on the right: the transfer instrument (state lamp, ring gauge, SPEED / ETA / DONE blocks, speed
+  trace, the item now, pipeline nodes, PAUSE / CANCEL, the destination disk as a ruler with this
+  download's share). Idle, the ring holds Mellow asleep (her own line art) and says STANDING BY. The
+  roster (pending / done) appears under the dossier only when there is one.
+- **Vault = STORAGE.** A: the index, always on the left: total size, the vault's allocation as one
+  segmented strip (the open bay lit), the word menu (REFRESH · SYNC ALL · DUPES · WATCH), then each
+  folder as a numbered bay (label block, name, count · size, a 12-segment bar against the biggest bay,
+  a sync lamp: SYNCED 2H / LINKED / FAILED / WATCHED / LOCAL / OVER BUDGET). B, on the right: the
+  allocation table until a bay is opened; then the bay's record (◂ INDEX + path, the bay number and the
+  name large, MEDIA / SIZE / LAST SYNC blocks, the sync report, SYNC NOW and a word menu, the
+  LIST / SM / MD / LG selector) above its files: a ruled, numbered table or covers with crop marks.
+- **Status bar = telemetry strip.** The link lamp; a tick tape that carries the live speed trace with
+  the speed at its end (STANDBY when idle); one health lamp (SYSTEMS: yt-dlp's version and FFmpeg's path
+  on hover) that turns into its action when needed (GET FFMPEG, its progress, a newer MellowDLP); the
+  disk as a 10-segment log gauge; the folder, short (`…/Downloads/MellowDLP`, the full path on hover).
+
+## The kit (`ornaments.jsx`)
+
+Brackets (crop marks, snap in, close in on hover) · Reg (`+` mark) · Node (diamond, triangle, dot) ·
+LabelBlock (big numeral + caption, rolls when its value changes) · Hatch (warning band) · Ruler (tick
+scale with a sliding marker, the stops are the buttons) · RingGauge (270° dial, 51 ticks drawn in one
+after another, value arc, chevron head) · SegBar · Spark (framed trace) · Caption (index, title, Japanese
+subtitle, a rule that draws on) · ScanLine. 1 px strokes in `currentColor`, colours from tokens.
+
+## Motion thesis
+
+- **Focal moment:** the transfer ring. Its ticks draw in when the page opens; while downloading the arc
+  sweeps with the progress (`stroke-dashoffset`), the chevron head rides it (`rotate`), the hub turns,
+  the percentage and the readouts roll on each change, a scan band crosses the item now and the trace
+  scrolls. Paused: the arc turns amber and everything holds.
+- **Continuity:** the quality marker slides to the chosen stop; the opened bay's accent bar grows and
+  its share in the allocation strip lights; bays and file rows come in as a list (25 / 14 ms apart,
+  capped at 30 items).
+- **Feedback:** plates, stops and lamp switches snap 1 px when chosen; word-menu entries draw an
+  underline on hover; crop marks close in on hover / focus.
+- Only `transform`, `opacity` and `stroke-dashoffset` move. `prefers-reduced-motion` ends every
+  animation at once (the theme's own rule) and removes the scan band; state changes (the arc's value,
+  the lit stop) stay.
+
+## Slop check (mellow-design "Rejected")
+
+1. Pill shapes — absent: every control is square or cut-corner.
+2. White cards with soft shadows — absent: graphite blocks, 1 px hairlines, no shadow except dialogs.
+3. Friendly rounded sans — absent: Chakra Petch (cut corners) + Barlow + JetBrains Mono, as v1.
+4. Blue + yellow + green pill — absent: graphite and bone, orange-red only for live / go; green only as
+   a 6 px sync lamp.
+5. Bottom dock / stat-chip row — removed: v1's Feed had Classic's four stat tiles; they are gone (the
+   rail already shows records, database and library). No dock.
+6. Gradients / glass / glow — absent (the only gradient is the scan band, a moving light, not a fill).
+7. Stock icons as the language — absent: the kit draws the ornaments; icons only in the header tabs (v1).
+8. Classic's layout recoloured — replaced: see Layouts. Classic's Feed is URL panel → hidden options →
+   info card → progress panel → queue + stat tiles; Intake is a two-column console with an always-open
+   loadout and a transfer instrument. Classic's Vault is a toolbar over a card grid, then a second page
+   of cards; Storage is a master-detail index that never leaves the screen.
+9. Hover-only "animation" — absent: see the motion thesis.
+
+*Would someone who knows Classic guess it's the same app?* **Feed:** no — there is no URL panel with a
+hidden options drawer, no progress bar card, no stat tiles; a command line, rulers and a ring instrument
+take their place. **Vault:** no — no folder cards and no breadcrumb page; the folders are an index of
+numbered bays that stays beside the open bay's record. **Status bar:** no — five equal boxed facts became
+a lamp, a live tape, one health indicator, a gauge and a short path.
+
+## Critique notes (impeccable critique / audit / animate) and what changed
+
+- *Focus:* the command line's own focus ring doubled with the field's; the line now turns orange as a
+  whole when focused, the field draws none.
+- *Narrow windows (1100 × 780):* the dossier stacks its actions under the cover, the transfer column and
+  the index get slimmer, the bay's segment bar and the table's date column drop out (`max-width:1280px`).
+- *States:* idle (Mellow asleep, STANDBY, controls disabled), paused (amber arc, RESUME), processing,
+  no estimate, won't fit (the disk ruler and the fact cell turn red), empty vault, empty folder, a folder
+  still loading — all drawn.
+- *A11y:* rulers and selectors are radio groups, the extras are switches, the bay tools have labels;
+  every text colour is a token that keeps 4.5:1 (`tests/test_themes.py`).
+- *Performance:* no canvas on the new pages; the trace is one polyline; long lists cap their stagger.
+- *Not done (out of scope here):* the Queue, Analytics, Signal and Config pages still use Classic's views
+  in Tactical's colours; they can take their own views now that #97 split them (a second PR, as #98 allows).

@@ -99,7 +99,8 @@ export const THEME_STORAGE_KEY = 'mellow-theme';   // localStorage: index.html a
 export const TACTICAL_GAUGE_SEGMENTS = 14;     // the instrument rail's speed gauge
 export const TACTICAL_RAIL_GRAPH_BARS = 18;    // its history, one bar per sample
 export const TACTICAL_RAIL_GRAPH_H = 30;       // px
-export const TACTICAL_STATUS_GRAPH_H = 14;     // px, the annunciator row's speed line
+export const TACTICAL_DISK_SEGMENTS = 10;      // the telemetry strip's disk gauge (a log scale)
+export const TACTICAL_SPEED_TRACE_SAMPLES = 48; // the Intake's transfer trace, one per progress event
 export const TACTICAL_SPLASH_SEGMENTS = 24;    // the boot splash's bar…
 export const TACTICAL_SPLASH_STEP_MS = 40;     // …lights one segment after the other
 

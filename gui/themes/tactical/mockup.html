@@ -1,0 +1,154 @@
+<!doctype html>
+<!-- Tactical v2 mockup: the Intake (Feed, downloading) and the Storage index (Vault, a folder open),
+     static, with the theme's fonts, its tactical.css and the ornament kit's shapes. Open it from
+     static/themes/tactical/ after a build (it needs ../../fonts and tactical/sleeping-mellow.svg). -->
+<html data-theme="tactical"><head><meta charset="utf-8"><title>Tactical v2 mockup</title>
+<link rel="stylesheet" href="../../fonts/fonts.css"><link rel="stylesheet" href="../tactical.css">
+<style>
+:root[data-theme="tactical"] body{margin:0;background:var(--bg);color:var(--t1);font-family:var(--font-body)}
+:root[data-theme="tactical"] .mk-screen{width:1440px;height:900px;display:grid;grid-template-rows:52px 30px 1fr 26px;grid-template-columns:1fr 92px;overflow:hidden;border-bottom:4px solid #000}
+:root[data-theme="tactical"] .mk-head{grid-column:1 / -1;background:var(--surface-chrome);border-bottom:1px solid var(--border2);display:flex;align-items:center;padding:0 16px;gap:30px;font:600 12px var(--font-display);letter-spacing:.16em;color:var(--t3)}
+:root[data-theme="tactical"] .mk-head b{color:var(--bg);background:var(--t1);padding:8px 16px}
+:root[data-theme="tactical"] .mk-cmd{background:var(--bg1);border-bottom:1px solid var(--border);font:500 10px var(--font-mono);color:var(--t3);display:flex;align-items:center;padding:0 14px;letter-spacing:.12em}
+:root[data-theme="tactical"] .mk-rail{grid-row:2 / 4;grid-column:2;background:var(--surface-chrome);border-left:1px solid var(--border)}
+:root[data-theme="tactical"] .mk-page{padding:14px 16px;overflow:hidden}
+:root[data-theme="tactical"] .mk-strip{grid-column:1 / -1}
+</style></head><body>
+
+<!-- ═══ FEED: the Intake, a playlist downloading ═══ -->
+<div class="mk-screen">
+  <div class="mk-head">MELLOWDLP <b>01 FEED</b> 02 QUEUE &nbsp; 03 VAULT &nbsp; 04 ANALYTICS &nbsp; 05 SIGNAL API &nbsp; 06 CONFIG</div>
+  <div class="mk-cmd">SEC 01 · MELLOW / COMMAND / INTAKE</div>
+  <div class="mk-rail"></div>
+  <div class="mk-page"><div class="tx-page">
+    <div class="tx-head">
+      <span class="tx-head-num">01</span>
+      <div class="tx-head-sub"><span class="tx-micro">SECTION 01 // COMMAND</span><span class="tx-head-title">INTAKE</span></div>
+      <span class="tx-head-jp">取り込み</span>
+      <svg class="tx-head-rule"><line class="tx-draw" x1="0" y1="11.5" x2="100%" y2="11.5" pathLength="1"/></svg>
+      <div class="tx-head-side"><span class="tx-micro">QUEUE 4 · RECORDS 133</span></div>
+    </div>
+    <div class="tf">
+      <div class="tf-main">
+        <div class="tx-block tf-target tx-bracketed">
+          <div class="tx-cap"><span class="tx-cap-num">A</span><span class="tx-cap-title">Target</span><span class="tx-cap-jp">対象</span><svg class="tx-cap-rule"><line x1="0" y1=".5" x2="100%" y2=".5"/></svg>
+            <div class="tx-menu"><button>Paste</button><button>Import .txt</button></div></div>
+          <div class="tf-cmdline"><span class="tf-prompt">&gt;</span><input class="tf-url" value="https://www.youtube.com/playlist?list=PLdemoRain"><button class="tx-btn">↺ Rescan</button></div>
+          <div class="tf-hint"><span class="tx-micro">↵ DOWNLOAD</span><span class="tx-micro">WORDS SEARCH YOUTUBE</span></div>
+          <div class="tf-dest"><span class="tx-micro">DEST</span><input class="tf-input" style="flex:1" placeholder="Default — /tmp/mellow-demo/you/Downloads/MellowDLP   (↑ recent folders)"><button class="tx-btn">Browse</button></div>
+        </div>
+        <div class="tx-block tf-load">
+          <div class="tx-cap"><span class="tx-cap-num">B</span><span class="tx-cap-title">Loadout</span><span class="tx-cap-jp">装備</span><svg class="tx-cap-rule"><line x1="0" y1=".5" x2="100%" y2=".5"/></svg></div>
+          <div class="tf-modes"><button class="tf-mode on"><b>VID</b><span>VIDEO</span></button><button class="tf-mode"><b>AUD</b><span>AUDIO ONLY</span></button></div>
+          <div class="tf-scale"><span class="tx-micro">QUALITY</span><div class="tx-ruler" id="ruler"></div></div>
+          <div class="tf-pick"><span class="tx-micro">CONTAINER</span><div class="tx-segsel"><button class="on">mp4</button><button>mkv</button><button>webm</button></div></div>
+          <div class="tf-toggles"><button class="tf-tog on"><i></i>Embed Thumbnail</button><button class="tf-tog"><i></i>Subtitles</button><button class="tf-tog on"><i></i>Chapters</button><button class="tf-tog on"><i></i>Metadata</button><button class="tf-tog"><i></i>SponsorBlock</button></div>
+          <div class="tf-more"><div class="tx-menu"><button>Presets ▸</button><button>Extended ▸</button></div><span class="tf-preset"><button>NIGHT AUDIO</button><button>✕</button></span><span class="tf-preset"><button>+ SAVE CURRENT</button></span></div>
+        </div>
+        <div class="tx-block tf-dossier">
+          <div class="tf-thumb tx-bracketed"><img src="" style="background:linear-gradient(160deg,#e8a0b0,#6a4fa0)"><svg class="tf-cross" viewBox="0 0 256 144" preserveAspectRatio="none"><path d="M128 62v20M118 72h20" stroke="currentColor" fill="none"/></svg><span class="tf-fmt">MP4</span><div class="tx-lb dark sm"><span class="tx-lb-val">16:14</span><span class="tx-lb-cap">8 ITEMS</span></div></div>
+          <div class="tf-dbody"><div class="info-title">Rainy Day Lofi</div>
+            <dl class="tf-facts"><div><dt>SOURCE</dt><dd>YouTube</dd></div><div><dt>CHANNEL</dt><dd>Lofi Sheep</dd></div><div><dt>ITEMS</dt><dd>4 LEFT</dd></div><div><dt>EST SIZE</dt><dd>≈ 418 MB</dd></div></dl>
+            <div class="tf-note"><span class="amber">PLAYLIST</span> each item saved as it finishes</div></div>
+          <div class="tf-acts"><button class="tx-btn go tf-go" disabled>ACTIVE<small>5 / 8</small></button><button class="tx-btn">⏾ Later</button></div>
+        </div>
+        <div class="tx-block tf-roster">
+          <div class="tf-roster-head"><div class="tx-cap"><span class="tx-cap-num">C</span><span class="tx-cap-title">Roster</span><span class="tx-cap-jp">名簿</span><svg class="tx-cap-rule"><line x1="0" y1=".5" x2="100%" y2=".5"/></svg></div><div class="tx-tabs"><button class="on">Pending 4</button><button>Done 4</button></div></div>
+          <div class="tf-done"><span class="n">05</span><span class="ph"></span><div><div class="t">the last bus home</div><div class="m">3:38 · QUEUED</div></div><span class="tx-micro">✕</span></div>
+          <div class="tf-done"><span class="n">06</span><span class="ph"></span><div><div class="t">foggy window doodles</div><div class="m">3:55 · QUEUED</div></div><span class="tx-micro">✕</span></div>
+        </div>
+      </div>
+      <div class="tx-block tf-xfer live tx-bracketed">
+        <div class="tx-cap"><span class="tx-cap-num">D</span><span class="tx-cap-title">Transfer</span><span class="tx-cap-jp">転送</span><svg class="tx-cap-rule"><line x1="0" y1=".5" x2="100%" y2=".5"/></svg></div>
+        <div class="tf-xfer-state"><b><i></i>RECEIVING</b><span>ITEM 05 / 08</span></div>
+        <div class="tf-ringwrap" id="ring"></div>
+        <div class="tf-readouts"><div class="tx-lb dark"><span class="tx-lb-val">7.0</span><span class="tx-lb-cap">MB/S</span></div><div class="tx-lb dark"><span class="tx-lb-val">0:04</span><span class="tx-lb-cap">ETA</span></div><div class="tx-lb dark"><span class="tx-lb-val">41</span><span class="tx-lb-cap">MB DONE</span></div></div>
+        <div class="tx-spark live" id="spark"></div>
+        <div class="tf-now"><span class="ph"></span><div><div class="s">NOW · RAINY DAY LOFI</div><div class="t">the last bus home</div></div><span class="tx-scan"></span></div>
+        <div class="tf-steps" id="steps"></div>
+        <div class="tf-ctl"><button class="tx-btn">Pause</button><button class="tx-btn danger">Cancel</button></div>
+        <div class="tf-disk"><div class="tf-disk-row"><span class="tx-micro">DEST DISK</span><b>28.7 GB FREE</b></div><div class="tf-disk-bar"><span class="tf-disk-fill" style="transform:scaleX(.62)"></span></div><div class="tf-disk-scale"><span>0</span><span>THIS DOWNLOAD ≈ 418 MB</span></div></div>
+      </div>
+    </div>
+  </div></div>
+  <div class="statusbar tac-status tx-strip mk-strip"><div class="tx-strip-link live"><i></i>LINK · RECEIVING</div><div class="tx-strip-tape live" id="tape"><span class="rd"><b>7.0</b> MB/S</span></div><div class="tx-strip-health"><i></i>SYSTEMS</div><div class="tx-strip-disk">DISK <span class="tx-seg" id="dseg"></span><b>28.7 GB</b></div><div class="tx-strip-out">OUT <span>…/Downloads/MellowDLP</span></div></div>
+</div>
+
+<!-- ═══ VAULT: the Storage index, a folder open ═══ -->
+<div class="mk-screen">
+  <div class="mk-head">MELLOWDLP &nbsp; 01 FEED &nbsp; 02 QUEUE <b>03 VAULT</b> 04 ANALYTICS &nbsp; 05 SIGNAL API &nbsp; 06 CONFIG</div>
+  <div class="mk-cmd">SEC 03 · MELLOW / VAULT / MEDIA STORAGE</div>
+  <div class="mk-rail"></div>
+  <div class="mk-page"><div class="tx-page">
+    <div class="tx-head">
+      <span class="tx-head-num">03</span>
+      <div class="tx-head-sub"><span class="tx-micro">SECTION 03 // MEDIA</span><span class="tx-head-title">STORAGE</span></div>
+      <span class="tx-head-jp">保管庫</span>
+      <svg class="tx-head-rule"><line class="tx-draw" x1="0" y1="11.5" x2="100%" y2="11.5" pathLength="1"/></svg>
+      <div class="tx-head-side"><button class="tx-btn go">+ Add playlist</button></div>
+    </div>
+    <div class="tv">
+      <div class="tx-block tv-index">
+        <div class="tv-index-head">
+          <div class="tx-cap"><span class="tx-cap-num">A</span><span class="tx-cap-title">Index</span><span class="tx-cap-jp">索引</span><svg class="tx-cap-rule"><line x1="0" y1=".5" x2="100%" y2=".5"/></svg><span class="tx-micro">8 BAYS</span></div>
+          <div class="tv-total"><span class="tv-total-num">5.4<small>GB</small></span><span class="tx-micro">ACROSS 59 FILES</span></div>
+          <div class="tv-share" id="share"></div>
+          <div class="tx-menu"><button>Refresh</button><button>Sync all</button><button>Dupes</button><button>Watch folder</button></div>
+        </div>
+        <div class="tv-bays" id="bays"></div>
+      </div>
+      <div class="tv-detail">
+        <div class="tx-block tv-folder-head tx-bracketed">
+          <div class="tv-crumb"><button>◂ INDEX</button><span>/tmp/mellow-demo/you/Downloads/MellowDLP/Lofi Study Beats</span></div>
+          <div class="tv-fname"><div class="tx-lb"><span class="tx-lb-val">05</span><span class="tx-lb-cap">BAY</span></div><h2>Lofi Study Beats</h2></div>
+          <div class="tv-readouts"><div class="tx-lb dark"><span class="tx-lb-val">14</span><span class="tx-lb-cap">MEDIA</span></div><div class="tx-lb dark"><span class="tx-lb-val">78.5</span><span class="tx-lb-cap">MB</span></div><div class="tx-lb dark"><span class="tx-lb-val">2H</span><span class="tx-lb-cap">LAST SYNC</span></div><div class="tx-lb dark"><span class="tx-lb-val">MP3</span><span class="tx-lb-cap">SYNC FORMAT</span></div><div class="tf-note" style="margin-left:8px"><span class="ok">COMPLETE</span> 3 new · 11 already there · <span class="tx-hatch"><svg><defs><pattern id="h" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="6" stroke="currentColor" stroke-width="2"/></pattern></defs><rect width="100%" height="100%" fill="url(#h)"/></svg><b>1 FAILED</b></span> <span class="lnk">DETAILS</span></div></div>
+          <div class="tv-actions"><button class="tx-btn amber">↻ Sync now</button><div class="tx-menu"><button>Sync options</button><button>♪ Re-tag</button><button>Refresh</button><button>Open in explorer</button><button>⇄ Move</button></div><div class="tx-segsel"><button class="on">☰ List</button><button>SM</button><button>MD</button><button>LG</button></div></div>
+        </div>
+        <div class="tx-block">
+          <div class="tv-tools"><div class="tv-search"><span class="tx-micro">FIND</span><input placeholder="title, in this folder — ライブラリを検索"></div><select class="tv-sort"><option>SORT · NAME</option></select><span class="tx-micro">RANDOM</span><span class="tv-rand"><button>−</button><input value="5"><button>+</button></span><button class="tx-btn">Pick</button><button class="tx-btn go">▶ Play all 14</button><button class="tx-btn">Select</button></div>
+          <div class="tv-sel">or drag over files · Ctrl+click · Shift+click a range</div>
+          <div class="tv-files" id="files"></div>
+        </div>
+      </div>
+    </div>
+  </div></div>
+  <div class="statusbar tac-status tx-strip mk-strip"><div class="tx-strip-link"><i></i>LINK · IDLE</div><div class="tx-strip-tape" id="tape2"><span class="rd">STANDBY</span></div><div class="tx-strip-health"><i></i>SYSTEMS</div><div class="tx-strip-disk">DISK <span class="tx-seg" id="dseg2"></span><b>28.7 GB</b></div><div class="tx-strip-out">OUT <span>…/Downloads/MellowDLP</span></div></div>
+</div>
+
+<script>
+// What ornaments.jsx draws, for the static mockup
+const S = 'http://www.w3.org/2000/svg';
+function ring(size, v) {
+  const c = size / 2, r = c - 22, ri = r - 9, pt = (d, R) => { const a = d * Math.PI / 180; return [c + R * Math.cos(a), c + R * Math.sin(a)]; };
+  const arc = (R, f, t) => { const [x1, y1] = pt(f, R), [x2, y2] = pt(t, R); return `M${x1} ${y1}A${R} ${R} 0 ${t - f > 180 ? 1 : 0} 1 ${x2} ${y2}`; };
+  let t = '';
+  for (let i = 0; i <= 50; i++) { const d = 135 + 270 * i / 50, m = i % 5 === 0, [a, b] = pt(d, r + (m ? 8 : 4)), [e, f] = pt(d, r + 1); t += `<line x1="${a}" y1="${b}" x2="${e}" y2="${f}" class="${m ? 'maj' : ''}" style="--i:${i}"/>`; }
+  let l = ''; [0, 25, 50, 75, 100].forEach(p => { const [x, y] = pt(135 + 2.7 * p, r + 17); l += `<text x="${x}" y="${y + 3}" text-anchor="middle">${p}</text>`; });
+  return `<div class="tx-ring live" style="width:${size}px;height:${size}px"><svg width="${size}" height="${size}"><g class="tx-ring-ticks">${t}</g><g class="tx-ring-labels">${l}</g><path class="tx-ring-track" d="${arc(ri, 135, 405)}"/><path class="tx-ring-band" d="${arc(ri - 5, 135, 405)}"/><path class="tx-ring-val" d="${arc(ri, 135, 405)}" pathLength="1" style="stroke-dashoffset:${1 - v}"/><circle class="tx-ring-hub" cx="${c}" cy="${c}" r="${ri - 22}"/></svg><div class="tx-ring-mid"><div class="tf-pct">63<small>%</small></div><div class="tf-pct-cap">ITEM <b>05</b> OF 08</div></div></div>`;
+}
+document.getElementById('ring').innerHTML = ring(236, 0.63);
+const stops = ['360p', '480p', '720p', '1080p', '4k', 'best'];
+let ru = '<svg class="tx-ruler-svg"><line x1="0" y1="11.5" x2="100%" y2="11.5" stroke="currentColor"/>';
+stops.forEach((s, i) => { const x = i / 5 * 100; ru += `<line x1="${x}%" x2="${x}%" y1="3" y2="11.5" stroke="currentColor"/>`; for (let j = 1; j < 5 && i < 5; j++) { const m = x + 20 * j / 5; ru += `<line x1="${m}%" x2="${m}%" y1="8" y2="11.5" stroke="currentColor" opacity=".55"/>`; } });
+ru += '</svg><span class="tx-ruler-mark" style="transform:translateX(60%)"><svg class="tx-node" width="8" height="8"><path d="M0 0L8 4L0 8Z" fill="currentColor"/></svg></span>';
+stops.forEach((s, i) => { ru += `<button class="tx-ruler-stop${s === '1080p' ? ' on' : ''}" style="left:${i * 20}%">${s}</button>`; });
+document.getElementById('ruler').innerHTML = ru;
+const pts = [2, 3, 3, 5, 6, 6, 7, 5, 6, 8, 7, 9, 8, 7, 7, 8, 9, 10, 8, 7, 7, 6, 7, 8, 7];
+const line = pts.map((v, i) => `${i * 300 / 24},${38 - v / 10 * 34}`).join(' ');
+document.getElementById('spark').innerHTML = `<svg viewBox="0 0 300 40" preserveAspectRatio="none"><line class="tx-spark-grid" x1="75" x2="75" y1="0" y2="40"/><line class="tx-spark-grid" x1="150" x2="150" y1="0" y2="40"/><line class="tx-spark-grid" x1="225" x2="225" y1="0" y2="40"/><polyline class="tx-spark-line" points="${line}" vector-effect="non-scaling-stroke"/></svg><span class="tx-spark-cap">SPEED · 60 S</span>`;
+document.getElementById('steps').innerHTML = ['FETCH', 'META', 'DL', 'MERGE', 'INDEX', 'DB'].map((s, i) => `<div class="tf-step ${i < 2 ? 'done' : i === 2 ? 'now' : ''}"><svg class="tx-node" width="9" height="9"><path d="M4.5 .75L8.25 4.5L4.5 8.25L.75 4.5Z" fill="${i < 2 ? 'currentColor' : 'none'}" stroke="currentColor"/></svg>${s}</div>`).join('');
+function tape(id, live) {
+  let s = '<svg preserveAspectRatio="none" viewBox="0 0 600 26">';
+  for (let i = 0; i <= 60; i++) s += `<line class="tk" x1="${i * 10}" x2="${i * 10}" y1="${i % 10 ? 20 : 16}" y2="26"/>`;
+  if (live) s += `<polyline class="ln" vector-effect="non-scaling-stroke" points="${pts.concat(pts).map((v, i) => `${i * 600 / 49},${22 - v * 1.8}`).join(' ')}"/>`;
+  document.getElementById(id).insertAdjacentHTML('afterbegin', s + '</svg>');
+}
+tape('tape', true); tape('tape2', false);
+['dseg', 'dseg2'].forEach(id => document.getElementById(id).innerHTML = Array.from({ length: 10 }, (_, i) => `<i class="${i < 7 ? 'on' : ''}"></i>`).join(''));
+const folders = [['Anime Openings', 8, '4.8 GB', 'ok', 'SYNCED 2H', 1], ['Deep Focus', 5, '2.1 GB', '', 'LOCAL', .44], ['Game Soundtracks', 7, '43.4 MB', '', 'LOCAL', .05], ['Jazz Café', 6, '38.0 MB', '', 'LOCAL', .05], ['Lofi Study Beats', 14, '78.5 MB', 'ok', 'SYNCED 2H', .06], ['Podcasts', 5, '195.3 MB', '', 'LOCAL', .08], ['Road Trip', 5, '26.4 MB', '', 'LOCAL', .04], ['Synthwave Drive', 9, '56.8 MB', 'err', '1 FAILED', .05]];
+document.getElementById('share').innerHTML = folders.map((f, i) => `<i class="${i === 4 ? 'on' : ''}" style="flex:${Math.max(f[5], .02)};--i:${i}"></i>`).join('');
+document.getElementById('bays').innerHTML = folders.map((f, i) => `<div class="tv-bay${i === 4 ? ' on' : ''}" style="--i:${i}"><div class="tx-lb"><span class="tx-lb-val">0${i + 1}</span></div><div class="tv-bay-name">${f[0]}</div><div class="tv-bay-meta">${f[1]} MEDIA · ${f[2]} <span class="tx-seg ${i === 4 ? 'hot' : ''}">${Array.from({ length: 12 }, (_, k) => `<i class="${k < Math.ceil(f[5] * 12) ? 'on' : ''}"></i>`).join('')}</span></div><div class="tv-bay-side"><span class="tv-lamp ${f[3]}"><i></i>${f[4]}</span><span class="tv-bay-tools"><button>↻</button><button>⋮</button></span></div></div>`).join('');
+const files = ['after the rain', 'bookstore cat', 'cloud nine', 'coffee shop at 3am', 'late night ramen', 'moonlit stroll', 'pages & pencils', 'rainy window — lofi beats to study', 'sleepy sheep lullaby', 'slow mornings', 'snow on the balcony', 'tea for two'];
+document.getElementById('files').innerHTML = files.map((f, i) => `<div class="tv-row" style="--i:${i}"><span class="n">${String(i + 1).padStart(2, '0')}</span><span class="tv-thumb" style="background:linear-gradient(150deg,hsl(${i * 40} 60% 70%),hsl(${i * 40 + 120} 40% 40%))"></span><span class="nm">${f}</span><span class="x a">MP3</span><span class="sz">${(3 + i % 5).toFixed(1)} MB</span><span class="dt">2026-11-23</span><span class="tx-micro">⋯</span></div>`).join('');
+</script>
+</body></html>

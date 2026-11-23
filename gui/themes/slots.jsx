@@ -18,6 +18,8 @@ import { THEMES } from '../lib/constants.js';
 import { resolveSlots, registryProblems } from '../lib/slots.js';
 import { TacticalSidebar, TacticalTopBar, TacticalStatusBar, TacticalPageFrame } from './tactical/chrome.jsx';
 import { TacticalLoadingScreen } from './tactical/splash.jsx';
+import { TacticalFeedView } from './tactical/feed.jsx';
+import { TacticalVaultView } from './tactical/vault.jsx';
 
 // Classic's frame around the current page: nothing (a theme can add a header, rails, a backdrop)
 function PageFrame({ children }) {
@@ -36,6 +38,7 @@ export const THEME_SLOTS = {
   tactical: {
     Sidebar: TacticalSidebar, TopBar: TacticalTopBar, StatusBar: TacticalStatusBar,
     LoadingScreen: TacticalLoadingScreen, PageFrame: TacticalPageFrame,
+    pages: { feed: TacticalFeedView, vault: TacticalVaultView },
   },
 };
 
