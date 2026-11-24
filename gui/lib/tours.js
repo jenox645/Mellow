@@ -566,6 +566,106 @@ export const TOURS = {
   ],
 };
 
+// A theme that draws a page its own way (gui/themes/slots.jsx `pages`) marks the same data-tour parts, but
+// where its part looks or is named differently, the step says so in its words: per theme, per tour, per
+// target, the fields that replace the shared step's (title, text, tip, missing, example).
+export const THEME_STEPS = {
+  tactical: {
+    feed: {
+      'feed-import': {
+        text: 'IMPORT .TXT reads a .txt with one link per line and queues them all as one download. It also reads a '
+          + 'mellow_archive.txt from another computer, which turns back into the links of everything in that folder.',
+      },
+      'feed-options': {
+        title: 'The loadout',
+        text: 'VID or AUD. For video: slide the marker along the QUALITY ruler (BEST takes the highest the site has) '
+          + 'and pick a CONTAINER — MP4 plays everywhere, MKV holds anything, WEBM is smaller. For audio: MP3 for any '
+          + 'player, M4A/AAC/Opus are smaller at the same quality, FLAC/WAV are lossless.',
+        tip: 'The loadout stays open, and keeps its settings when you paste the next link or switch pages.',
+      },
+      'feed-toggles': {
+        text: 'Each is a switch: ■ on, □ off. EMBED THUMBNAIL puts the cover art into the file; CHAPTERS and '
+          + 'METADATA (title, artist, date) are written in too. SUBTITLES (video) embeds them. SPONSORBLOCK cuts '
+          + 'sponsor segments, intros and "like and subscribe" reminders out of YouTube videos. NORMALIZE VOLUME '
+          + '(audio) evens out loudness from one track to the next.',
+        tip: 'Hover a switch to see exactly what it does. Subtitle languages: Config → Subtitle Languages.',
+      },
+      'feed-advanced': {
+        text: 'EXTENDED ▸ opens it. CLIP START / END keeps just that stretch. A video with chapters also shows '
+          + 'CHAPTERS ▸ beside it: tick the ones you want and each becomes its own file. CUSTOM FORMAT STRING is a '
+          + 'yt-dlp format for experts.',
+      },
+      'feed-info': {
+        text: 'The target\'s dossier: title, length, channel, the site and an estimated size, flagged when it won\'t '
+          + 'fit the drive. If you already downloaded this video, it says when, with OPEN and SHOW IN FOLDER.',
+      },
+      'feed-progress': {
+        title: 'Transfer',
+        text: 'The ring fills with the download, the SPEED TRACE draws the speed, and the stages light up as it goes '
+          + '(FETCH → META → DL → MERGE → INDEX → DB). Idle, it stands by. ❚❚ PAUSE stops every download where it '
+          + 'is; CANCEL stops this one.',
+      },
+    },
+    vault: {
+      'vault-folders': {
+        title: 'The index',
+        text: 'Every folder MellowDLP downloads into is a numbered bay: its files, their size, a bar for how big it '
+          + 'is next to the biggest, and a lamp (SYNCED, LINKED, WATCHED, LOCAL, FAILED, OVER BUDGET). Click a bay to '
+          + 'open its record on the right; ↻ on a linked bay opens its sync.',
+        tip: 'Until a bay is open, the right side is the ALLOCATION: where the space goes, biggest first. REFRESH '
+          + 'rescans the disk.',
+        example: { onlyMissing: true, kind: 'rows', rows: [
+          { text: '01  Chill', sub: '214 MEDIA · 1.8 GB', badge: 'SYNCED 2H', tone: 'cyan' },
+          { text: '02  Courses', sub: '36 MEDIA · 9.2 GB', badge: 'OVER BUDGET', tone: 'red' },
+        ] },
+      },
+      'vault-watch': {
+        text: '+ WATCH shows any folder on your computer here as a bay, even ones MellowDLP didn\'t fill, so you can '
+          + 'browse, play and clean it up like the others. Its lamp says WATCHED.',
+      },
+      'vault-dupes': {
+        text: 'DUPES looks for the same video saved in more than one folder and can delete the smaller copies.',
+        tip: 'Handy after importing old downloads with + WATCH.',
+      },
+      'vault-card-menu': {
+        missing: 'Each bay has a ⋮ menu at its right end.',
+        text: '⋮ on a bay: Stats & Budget, Link Playlist, Sync, Open in Explorer, Rename, Generate Archive File, '
+          + 'Remove from Vault (which only forgets the folder: your files stay).',
+        tip: 'Stats & Budget sets a size limit. Past it, the bay\'s lamp says OVER BUDGET and Stats suggests which '
+          + 'files to remove, oldest first.',
+      },
+    },
+    vault_folder: {
+      'vault-tools': {
+        tip: '"13 OF 40 SHOWN" under the tools says how many files match the search.',
+      },
+      'vault-view': {
+        text: '☰ LIST shows one ruled line per file (name, type, size, date): many files at a glance. SM, MD and LG '
+          + 'are framed covers with their thumbnail, small to large.',
+      },
+      'vault-move': {
+        tip: 'Each bay\'s ⋮ menu in the index has it too (Move to…).',
+      },
+      'vault-back': {
+        text: '◂ INDEX closes this record and the right side shows the ALLOCATION again. Another bay in the index '
+          + 'opens that one instead.',
+      },
+    },
+  },
+};
+
+// The steps of a tour as `theme` shows them. The same array every time for the same tour and theme:
+// the GUIDE re-runs a step (scrolls, opens panels) when its step object changes.
+const merged = new Map();
+export function tourSteps(id, theme) {
+  const steps = TOURS[id];
+  const own = (THEME_STEPS[theme] || {})[id];
+  if (!steps || !own) return steps;
+  const key = theme + '|' + id;
+  if (!merged.has(key)) merged.set(key, steps.map(s => (s.target && own[s.target] ? { ...s, ...own[s.target] } : s)));
+  return merged.get(key);
+}
+
 // Which tour the GUIDE button starts: the vault has one for the folder list
 // and one for an open folder.
 export function tourIdFor(page, vaultFolderOpen) {

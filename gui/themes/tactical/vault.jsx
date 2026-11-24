@@ -127,7 +127,15 @@ export function TacticalVaultView(v) {
         </div>
       </div>
 
-      {open ? <VaultFolderDialogs {...v} /> : <VaultRootDialogs {...v} />}
+      {open ? (
+        <>
+          <VaultFolderDialogs {...v} />
+          {/* The index stays beside an open bay, so its dialogs (Dupes, + Watch's archive prompt, a bay's
+              stats/rename/link) must stay mounted too; the ones both sets draw (sync, move, drop) and the
+              ⋮ menu (hidden while a bay is open) come from the folder's set, so they never show twice */}
+          <VaultRootDialogs {...v} syncModal={null} moveModal={null} dropModal={null} cardMenuData={null} />
+        </>
+      ) : <VaultRootDialogs {...v} />}
     </div>
   );
 }
@@ -211,14 +219,14 @@ function FolderRecord({ v }) {
           <LabelBlock value={pad2(bay)} caption="BAY" />
           <h2 title={folderName}>{folderName}</h2>
         </div>
-        <div className="tv-readouts" data-tour="vault-report">
+        <div className="tv-readouts">
           <LabelBlock className="dark" value={files.length} caption="MEDIA" />
           <LabelBlock className="dark" value={size[0]} caption={size[1] || 'SIZE'} />
           <LabelBlock className="dark" value={lastSynced ? timeAgo(lastSynced).replace(' ago', '').toUpperCase() : '—'}
             caption={lastSynced ? 'LAST SYNC' : (libEntry || canSync) ? 'NEVER SYNCED' : 'NOT LINKED'} />
           {failed > 0 && <Hatch>{failed} FAILED LAST SYNC</Hatch>}
         </div>
-        {report && <div className="tv-report"><SyncReport report={report} onRetry={retrySyncItem} /></div>}
+        {report && <div className="tv-report" data-tour="vault-report"><SyncReport report={report} onRetry={retrySyncItem} /></div>}
         <div className="tv-actions">
           {canSync && (
             <button type="button" className="tx-btn amber" data-tour="vault-sync" onClick={handleSync} disabled={!!syncingId}>
