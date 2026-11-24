@@ -7,7 +7,7 @@ mellow/            backend package — modules import each other relatively (`fr
 gui/               frontend source (React ES modules + index.html/CSS; fonts/ = bundled woff2 + OFL licenses;
                    themes/ = one token file per theme other than Classic)
 static/            build output only (gitignored): bundle, React, index.html, mascots.js
-assets/            icons, mascot art (*_vector used by the build; sleeping_mellow_vector.svg = the owner's detailed line art, currentColor), installer images;
+assets/            icons, mascot art (*_vector used by the build; sleeping_ / peace_mellow_vector.svg = the owner's detailed line art, currentColor), installer images;
                    originals/ holds unused source art
 tests/             pytest suite (imports `from mellow import …`, patches `mellow.<module>.<name>`);
                    tests/js/ = frontend unit tests (node:test); tests/browser/ = Chromium smoke tests (marker `browser`)
