@@ -34,7 +34,7 @@ function MediaPreviewModal({ file, onClose }) {
 
 // Last sync of a folder: counts, then (on demand) what was added, what failed
 // and why. Failed items with a link can be downloaded again from here.
-function SyncReport({ report, onRetry }) {
+export function SyncReport({ report, onRetry }) {
   const [open, setOpen] = React.useState(false);
   const added = report.added || [], failed = report.failed || [], filtered = report.filtered || [];
   const parts = [
@@ -88,44 +88,18 @@ export function VaultPage({ View = ClassicVaultView, ...props }) {
   return <View {...vault} />;
 }
 
-export function ClassicVaultView({
-  vaultFolders, selectedFolder, setSelectedFolder, showNotif, onAddVault, onRefreshVault, isDownloading, onSyncStart,
-  budgets, folderMosaics, gridScale, vaultScale, setScale, refreshAll, syncAll, cardMenuData, setCardMenuData,
-  cardMenuRef, openFolderStats, generateArchive, handleVaultRemove, handleVaultRename, pickMoveTarget,
-  handleWatchFolder, confirmWatchFolder, watchArchivePrompt, setWatchArchivePrompt, dragOver, handleDragOver,
-  handleDragLeave, handleDrop, dropModal, setDropModal, linkPlModal, setLinkPlModal, syncModal, setSyncModal,
-  renameModal, setRenameModal, dupModal, setDupModal, moveModal, setMoveModal, handleMove, folderStatsModal,
-  setFolderStatsModal, folderStatsData, budgetInput, setBudgetInput, handleSetBudget, cleanupData,
-  loadCleanupCandidates, deleteCleanupCandidate, folderName, selectedFolderMeta, libEntry, lastSynced, canSync,
-  syncingId, handleSync, syncReport, retrySyncItem, taggableCount, retagOpen, setRetagOpen, retagging, handleRetag,
-  files, shownFiles, loading, loadFolder, fileThumbs, fileThumbUrl, vaultSearch, setVaultSearch, vaultSort,
-  setVaultSort, handleOpenFile, handleOpenFolder, handleDeleteFile, deleteConfirm, setDeleteConfirm, confirmDelete,
-  ctxMenu, setCtxMenu, ctxMenuRef, previewFile, setPreviewFile, randomizerCount, setRandomizerCount,
-  randomizedFiles, setRandomizedFiles, handleRandomize, handlePlayAll, handlePlayRandom, filesBoxRef, marquee,
-  onFileClick, selectedFiles, setSelectedFiles, selectionMode, setSelectionMode, showChecks, handlePlaySelected,
-  deleteManyConfirm, setDeleteManyConfirm, handleDeleteSelected,
-}) {
-  const moveDialog = () => moveModal && (
-    <Modal title="MOVE FOLDER" onClose={() => !moveModal.moving && setMoveModal(null)}
-      footer={<>
-        <button className="btn btn-secondary btn-sm" disabled={moveModal.moving} onClick={() => setMoveModal(null)}>CANCEL</button>
-        <button className="btn btn-primary btn-sm" data-tour="vault-move-go" disabled={moveModal.moving} onClick={handleMove}>
-          {moveModal.moving ? 'MOVING…' : '⇄ MOVE'}
-        </button>
-      </>}>
-      <div className="move-folder-body">
-        <div><span className="move-folder-label">FOLDER</span>{moveModal.folder.path}</div>
-        <div><span className="move-folder-label">INTO</span>{moveModal.into}</div>
-        <p>
-          The folder and everything in it moves there. Its linked playlists, sync format and schedule, name,
-          budget and download history go with it, and its archive file too: the next sync won&apos;t download
-          what it already has.
-        </p>
-        <p className="move-folder-note">Another drive: the files are copied first, which takes a while for a big folder.</p>
-      </div>
-    </Modal>
-  );
-
+export function ClassicVaultView(v) {
+  const {
+    vaultFolders, selectedFolder, setSelectedFolder, onAddVault, budgets, folderMosaics, gridScale, vaultScale,
+    setScale, refreshAll, syncAll, cardMenuData, setCardMenuData, pickMoveTarget, handleWatchFolder, dragOver,
+    handleDragOver, handleDragLeave, handleDrop, setSyncModal, setDupModal, folderName, selectedFolderMeta,
+    libEntry, lastSynced, canSync, syncingId, handleSync, syncReport, retrySyncItem, taggableCount,
+    setRetagOpen, files, shownFiles, loading, loadFolder, fileThumbs, fileThumbUrl, vaultSearch, setVaultSearch,
+    vaultSort, setVaultSort, handleOpenFolder, setCtxMenu, randomizerCount, setRandomizerCount, randomizedFiles,
+    setRandomizedFiles, handleRandomize, handlePlayAll, handlePlayRandom, filesBoxRef, marquee, onFileClick,
+    selectedFiles, setSelectedFiles, selectionMode, setSelectionMode, showChecks, handlePlaySelected,
+    setDeleteManyConfirm
+  } = v;
   // ── ROOT VIEW — folder grid ──────────────────────────────────────────────────
   if (!selectedFolder) {
     return (
@@ -245,162 +219,7 @@ export function ClassicVaultView({
           </div>
         )}
 
-        {/* Fixed-position folder card menu (renders above overflow:hidden) */}
-        {cardMenuData && (
-          <div
-            className="vfc-menu-popup"
-            ref={cardMenuRef}
-            style={{ top: cardMenuData.top, right: cardMenuData.right }}
-            onClick={e => e.stopPropagation()}
-          >
-            <div className="vfc-menu-item" onClick={() => openFolderStats(cardMenuData.folder)}>Stats &amp; Budget</div>
-            <div className="vfc-menu-item" onClick={() => { setCardMenuData(null); setLinkPlModal(cardMenuData.folder); }}>Link Playlist</div>
-            <div className="vfc-menu-item" onClick={() => { setCardMenuData(null); setSyncModal(cardMenuData.folder); }}>Sync</div>
-            <div className="vfc-menu-item" onClick={() => { setCardMenuData(null); handleOpenFolder(cardMenuData.folder.path); }}>Open in Explorer</div>
-            <div className="vfc-menu-item" onClick={() => { setCardMenuData(null); setRenameModal({ folder: cardMenuData.folder, name: cardMenuData.folder.name }); }}>Rename</div>
-            <div className="vfc-menu-item" onClick={() => pickMoveTarget(cardMenuData.folder)}
-              title="Move the folder somewhere else; its playlists, sync settings and history follow">Move to…</div>
-            <div className="vfc-menu-item" onClick={() => generateArchive(cardMenuData.folder)}>Generate Archive File</div>
-            <div className="vfc-menu-item danger" onClick={() => handleVaultRemove(cardMenuData.folder)}>Remove from Vault</div>
-          </div>
-        )}
-
-        {dropModal && (
-          <Modal title="DROP DETECTED" onClose={() => setDropModal(null)}
-            footer={
-              <>
-                <button className="btn btn-secondary btn-sm" onClick={() => setDropModal(null)}>CANCEL</button>
-                <button className="btn btn-secondary btn-sm" onClick={() => { setDropModal(null); handleWatchFolder(); }}>WATCH FOLDER</button>
-                <button className="btn btn-primary btn-sm" onClick={() => { setDropModal(null); onAddVault && onAddVault(); }}>LINK PLAYLIST</button>
-              </>
-            }
-          >
-            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--t2)', textAlign: 'center', lineHeight: 2 }}>
-              Dropped: <span style={{ color: 'var(--accent)' }}>{dropModal.name}</span><br />
-              <span style={{ color: 'var(--t4)', fontSize: 10.5 }}>What would you like to do?</span>
-            </div>
-          </Modal>
-        )}
-
-        {linkPlModal && <LinkPlaylistModal folder={linkPlModal} onClose={() => setLinkPlModal(null)} showNotif={showNotif} />}
-
-        {dupModal && <DuplicatesModal onClose={() => setDupModal(false)} showNotif={showNotif} onRefreshVault={onRefreshVault} />}
-
-        {syncModal && <SyncPlaylistModal folder={syncModal} onClose={() => setSyncModal(null)} showNotif={showNotif} onRefreshVault={onRefreshVault} isDownloading={isDownloading} onSyncStart={onSyncStart} />}
-        {moveDialog()}
-
-        {renameModal && (
-          <RenameVaultModal
-            folder={renameModal.folder}
-            initialName={renameModal.name}
-            onClose={() => setRenameModal(null)}
-            onSave={(name) => handleVaultRename(renameModal.folder, name)}
-          />
-        )}
-
-        {watchArchivePrompt && (
-          <Modal title="WATCH FOLDER — ARCHIVE FILE" onClose={() => setWatchArchivePrompt(null)}
-            footer={
-              <>
-                <button className="btn btn-secondary btn-sm" onClick={() => setWatchArchivePrompt(null)}>CANCEL</button>
-                <button className="btn btn-secondary btn-sm" onClick={() => confirmWatchFolder(watchArchivePrompt.path, false)}>NO ARCHIVE</button>
-                <button className="btn btn-primary btn-sm" onClick={() => confirmWatchFolder(watchArchivePrompt.path, true)}>YES, CREATE FILE</button>
-              </>
-            }
-          >
-            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--t2)', lineHeight: 2 }}>
-              <div style={{ color: 'var(--accent)', marginBottom: 6 }}>{watchArchivePrompt.path}</div>
-              <div>Create a <span style={{ color: 'var(--accent-2)' }}>mellow_archive.txt</span> in this folder?</div>
-              <div style={{ color: 'var(--t4)', fontSize: 10.5, marginTop: 4 }}>
-                This file tracks downloaded items so syncs skip duplicates,<br />
-                and can be imported as a URL list in the Feed section.
-              </div>
-            </div>
-          </Modal>
-        )}
-
-        {folderStatsModal && (
-          <Modal title={'STATS — ' + folderStatsModal.name.toUpperCase()} onClose={() => setFolderStatsModal(null)}>
-            {!folderStatsData ? (
-              <div style={{ padding: 24, textAlign: 'center', color: 'var(--t3)', fontFamily: 'var(--font-mono)', fontSize: 11 }}>Loading...</div>
-            ) : folderStatsData.error ? (
-              <div style={{ padding: 24, color: 'var(--danger)', fontFamily: 'var(--font-mono)', fontSize: 11 }}>{folderStatsData.error}</div>
-            ) : (
-              <div style={{ padding: '8px 0', fontFamily: 'var(--font-mono)', fontSize: 11 }}>
-                {(() => {
-                  const s = folderStatsData;
-                  const rows = [
-                    ['Path', s.path],
-                    ['Media Files', (s.media_count || 0) + ' items  (' + (s.audio_count || 0) + ' audio · ' + (s.video_count || 0) + ' video)'],
-                    ['Total Size', fmtBytes(s.total_size_bytes)],
-                    ['Avg File Size', fmtBytes(s.avg_size_bytes)],
-                    ['Linked Playlists', (s.linked_playlists || 0) + ' playlist(s)'],
-                    ['Formats', Object.entries(s.formats || {}).sort((a,b)=>b[1]-a[1]).map(([ext,n])=>ext.toUpperCase()+'('+n+')').join('  ')],
-                    ['Largest File', s.largest_file ? s.largest_file.name + '  · ' + fmtBytes(s.largest_file.size) : '—'],
-                    ['Smallest File', s.smallest_file ? s.smallest_file.name + '  · ' + fmtBytes(s.smallest_file.size) : '—'],
-                    ['Newest File', s.newest_file ? s.newest_file.name + '  · ' + timeAgo(s.newest_file.ts * 1000) : '—'],
-                    ['Oldest File', s.oldest_file ? s.oldest_file.name + '  · ' + timeAgo(s.oldest_file.ts * 1000) : '—'],
-                  ];
-                  return rows.map(([label, val]) => (
-                    <div key={label} style={{ display: 'flex', gap: 12, padding: '5px 0', borderBottom: '1px solid var(--border)' }}>
-                      <span style={{ color: 'var(--t3)', minWidth: 120, flexShrink: 0 }}>{label}</span>
-                      <span style={{ color: 'var(--accent)', wordBreak: 'break-all', fontSize: 11 }}>{val || '—'}</span>
-                    </div>
-                  ));
-                })()}
-                {/* STORAGE BUDGET */}
-                <div style={{ marginTop: 14, paddingTop: 10, borderTop: '1px solid var(--border)' }}>
-                  <div style={{ color: 'var(--accent-2)', fontSize: 10.5, letterSpacing: '0.1em', marginBottom: 6 }}>STORAGE BUDGET</div>
-                  <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                    <input
-                      className="inp-sm" type="number" min="0" step="0.5" style={{ width: 90 }}
-                      placeholder="GB" value={budgetInput}
-                      onChange={e => setBudgetInput(e.target.value)}
-                    />
-                    <span style={{ color: 'var(--t4)', fontSize: 10.5 }}>GB</span>
-                    <button className="btn btn-primary btn-sm" onClick={() => handleSetBudget(folderStatsModal.path, budgetInput)}>SET</button>
-                    {budgets[folderStatsModal.path] && (
-                      <button className="btn btn-secondary btn-sm" onClick={() => { setBudgetInput(''); handleSetBudget(folderStatsModal.path, null); }}>CLEAR</button>
-                    )}
-                  </div>
-                  {budgets[folderStatsModal.path] && folderStatsData.total_size_bytes > budgets[folderStatsModal.path] && (
-                    <div style={{ marginTop: 8 }}>
-                      <div style={{ color: 'var(--danger)', fontSize: 11 }}>
-                        ⚠ {fmtBytes(folderStatsData.total_size_bytes - budgets[folderStatsModal.path])} over budget
-                      </div>
-                      <button className="btn btn-secondary btn-sm" style={{ marginTop: 6 }}
-                        onClick={() => loadCleanupCandidates(folderStatsModal.path)}>
-                        VIEW CLEANUP CANDIDATES
-                      </button>
-                    </div>
-                  )}
-                  {cleanupData === 'loading' && (
-                    <div style={{ color: 'var(--t4)', fontSize: 10.5, marginTop: 6 }}>SCANNING...</div>
-                  )}
-                  {cleanupData && cleanupData !== 'loading' && (cleanupData.candidates || []).length > 0 && (
-                    <div style={{ maxHeight: 140, overflow: 'auto', marginTop: 8 }}>
-                      <div style={{ color: 'var(--t3)', fontSize: 10.5, marginBottom: 4 }}>
-                        Oldest files to free {fmtBytes(cleanupData.over_bytes)} (nothing is deleted automatically):
-                      </div>
-                      {cleanupData.candidates.map(f => (
-                        <div key={f.path} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 10.5, padding: '2px 0', borderBottom: '1px solid var(--border)' }}>
-                          <span style={{ flex: 1, color: 'var(--t2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</span>
-                          <span style={{ color: 'var(--t4)', flexShrink: 0 }}>{fmtBytes(f.size)} · {fmtDate(f.mtime * 1000)}</span>
-                          <button className="btn btn-danger btn-sm" style={{ padding: '1px 6px', fontSize: 9.5, flexShrink: 0 }}
-                            onClick={() => deleteCleanupCandidate(f)}>✕</button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
-                  <button className="btn btn-secondary btn-sm" onClick={() => { setFolderStatsModal(null); handleOpenFolder(folderStatsModal.path); }}>OPEN IN EXPLORER</button>
-                </div>
-              </div>
-            )}
-          </Modal>
-        )}
+        <VaultRootDialogs {...v} />
       </div>
     );
   }
@@ -639,6 +458,194 @@ export function ClassicVaultView({
       {marquee.overlay}
       </div>
 
+      <VaultFolderDialogs {...v} />
+    </div>
+  );
+}
+
+// The Classic view's dialogs and menus, shared with a theme's own view of the Vault (they only draw what
+// the hook returns): the folder grid's, and an open folder's
+export function VaultRootDialogs(v) {
+  const {
+    showNotif, onAddVault, onRefreshVault, isDownloading, onSyncStart, budgets, cardMenuData, setCardMenuData,
+    cardMenuRef, openFolderStats, generateArchive, handleVaultRemove, handleVaultRename, pickMoveTarget,
+    handleWatchFolder, confirmWatchFolder, watchArchivePrompt, setWatchArchivePrompt, dropModal, setDropModal,
+    linkPlModal, setLinkPlModal, syncModal, setSyncModal, renameModal, setRenameModal, dupModal, setDupModal,
+    folderStatsModal, setFolderStatsModal, folderStatsData, budgetInput, setBudgetInput, handleSetBudget,
+    cleanupData, loadCleanupCandidates, deleteCleanupCandidate, handleOpenFolder
+  } = v;
+  return (
+    <>
+      {/* Fixed-position folder card menu (renders above overflow:hidden) */}
+      {cardMenuData && (
+        <div
+          className="vfc-menu-popup"
+          ref={cardMenuRef}
+          style={{ top: cardMenuData.top, right: cardMenuData.right }}
+          onClick={e => e.stopPropagation()}
+        >
+          <div className="vfc-menu-item" onClick={() => openFolderStats(cardMenuData.folder)}>Stats &amp; Budget</div>
+          <div className="vfc-menu-item" onClick={() => { setCardMenuData(null); setLinkPlModal(cardMenuData.folder); }}>Link Playlist</div>
+          <div className="vfc-menu-item" onClick={() => { setCardMenuData(null); setSyncModal(cardMenuData.folder); }}>Sync</div>
+          <div className="vfc-menu-item" onClick={() => { setCardMenuData(null); handleOpenFolder(cardMenuData.folder.path); }}>Open in Explorer</div>
+          <div className="vfc-menu-item" onClick={() => { setCardMenuData(null); setRenameModal({ folder: cardMenuData.folder, name: cardMenuData.folder.name }); }}>Rename</div>
+          <div className="vfc-menu-item" onClick={() => pickMoveTarget(cardMenuData.folder)}
+            title="Move the folder somewhere else; its playlists, sync settings and history follow">Move to…</div>
+          <div className="vfc-menu-item" onClick={() => generateArchive(cardMenuData.folder)}>Generate Archive File</div>
+          <div className="vfc-menu-item danger" onClick={() => handleVaultRemove(cardMenuData.folder)}>Remove from Vault</div>
+        </div>
+      )}
+
+      {dropModal && (
+        <Modal title="DROP DETECTED" onClose={() => setDropModal(null)}
+          footer={
+            <>
+              <button className="btn btn-secondary btn-sm" onClick={() => setDropModal(null)}>CANCEL</button>
+              <button className="btn btn-secondary btn-sm" onClick={() => { setDropModal(null); handleWatchFolder(); }}>WATCH FOLDER</button>
+              <button className="btn btn-primary btn-sm" onClick={() => { setDropModal(null); onAddVault && onAddVault(); }}>LINK PLAYLIST</button>
+            </>
+          }
+        >
+          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--t2)', textAlign: 'center', lineHeight: 2 }}>
+            Dropped: <span style={{ color: 'var(--accent)' }}>{dropModal.name}</span><br />
+            <span style={{ color: 'var(--t4)', fontSize: 10.5 }}>What would you like to do?</span>
+          </div>
+        </Modal>
+      )}
+
+      {linkPlModal && <LinkPlaylistModal folder={linkPlModal} onClose={() => setLinkPlModal(null)} showNotif={showNotif} />}
+
+      {dupModal && <DuplicatesModal onClose={() => setDupModal(false)} showNotif={showNotif} onRefreshVault={onRefreshVault} />}
+
+      {syncModal && <SyncPlaylistModal folder={syncModal} onClose={() => setSyncModal(null)} showNotif={showNotif} onRefreshVault={onRefreshVault} isDownloading={isDownloading} onSyncStart={onSyncStart} />}
+      <MoveDialog {...v} />
+
+      {renameModal && (
+        <RenameVaultModal
+          folder={renameModal.folder}
+          initialName={renameModal.name}
+          onClose={() => setRenameModal(null)}
+          onSave={(name) => handleVaultRename(renameModal.folder, name)}
+        />
+      )}
+
+      {watchArchivePrompt && (
+        <Modal title="WATCH FOLDER — ARCHIVE FILE" onClose={() => setWatchArchivePrompt(null)}
+          footer={
+            <>
+              <button className="btn btn-secondary btn-sm" onClick={() => setWatchArchivePrompt(null)}>CANCEL</button>
+              <button className="btn btn-secondary btn-sm" onClick={() => confirmWatchFolder(watchArchivePrompt.path, false)}>NO ARCHIVE</button>
+              <button className="btn btn-primary btn-sm" onClick={() => confirmWatchFolder(watchArchivePrompt.path, true)}>YES, CREATE FILE</button>
+            </>
+          }
+        >
+          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--t2)', lineHeight: 2 }}>
+            <div style={{ color: 'var(--accent)', marginBottom: 6 }}>{watchArchivePrompt.path}</div>
+            <div>Create a <span style={{ color: 'var(--accent-2)' }}>mellow_archive.txt</span> in this folder?</div>
+            <div style={{ color: 'var(--t4)', fontSize: 10.5, marginTop: 4 }}>
+              This file tracks downloaded items so syncs skip duplicates,<br />
+              and can be imported as a URL list in the Feed section.
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {folderStatsModal && (
+        <Modal title={'STATS — ' + folderStatsModal.name.toUpperCase()} onClose={() => setFolderStatsModal(null)}>
+          {!folderStatsData ? (
+            <div style={{ padding: 24, textAlign: 'center', color: 'var(--t3)', fontFamily: 'var(--font-mono)', fontSize: 11 }}>Loading...</div>
+          ) : folderStatsData.error ? (
+            <div style={{ padding: 24, color: 'var(--danger)', fontFamily: 'var(--font-mono)', fontSize: 11 }}>{folderStatsData.error}</div>
+          ) : (
+            <div style={{ padding: '8px 0', fontFamily: 'var(--font-mono)', fontSize: 11 }}>
+              {(() => {
+                const s = folderStatsData;
+                const rows = [
+                  ['Path', s.path],
+                  ['Media Files', (s.media_count || 0) + ' items  (' + (s.audio_count || 0) + ' audio · ' + (s.video_count || 0) + ' video)'],
+                  ['Total Size', fmtBytes(s.total_size_bytes)],
+                  ['Avg File Size', fmtBytes(s.avg_size_bytes)],
+                  ['Linked Playlists', (s.linked_playlists || 0) + ' playlist(s)'],
+                  ['Formats', Object.entries(s.formats || {}).sort((a,b)=>b[1]-a[1]).map(([ext,n])=>ext.toUpperCase()+'('+n+')').join('  ')],
+                  ['Largest File', s.largest_file ? s.largest_file.name + '  · ' + fmtBytes(s.largest_file.size) : '—'],
+                  ['Smallest File', s.smallest_file ? s.smallest_file.name + '  · ' + fmtBytes(s.smallest_file.size) : '—'],
+                  ['Newest File', s.newest_file ? s.newest_file.name + '  · ' + timeAgo(s.newest_file.ts * 1000) : '—'],
+                  ['Oldest File', s.oldest_file ? s.oldest_file.name + '  · ' + timeAgo(s.oldest_file.ts * 1000) : '—'],
+                ];
+                return rows.map(([label, val]) => (
+                  <div key={label} style={{ display: 'flex', gap: 12, padding: '5px 0', borderBottom: '1px solid var(--border)' }}>
+                    <span style={{ color: 'var(--t3)', minWidth: 120, flexShrink: 0 }}>{label}</span>
+                    <span style={{ color: 'var(--accent)', wordBreak: 'break-all', fontSize: 11 }}>{val || '—'}</span>
+                  </div>
+                ));
+              })()}
+              {/* STORAGE BUDGET */}
+              <div style={{ marginTop: 14, paddingTop: 10, borderTop: '1px solid var(--border)' }}>
+                <div style={{ color: 'var(--accent-2)', fontSize: 10.5, letterSpacing: '0.1em', marginBottom: 6 }}>STORAGE BUDGET</div>
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                  <input
+                    className="inp-sm" type="number" min="0" step="0.5" style={{ width: 90 }}
+                    placeholder="GB" value={budgetInput}
+                    onChange={e => setBudgetInput(e.target.value)}
+                  />
+                  <span style={{ color: 'var(--t4)', fontSize: 10.5 }}>GB</span>
+                  <button className="btn btn-primary btn-sm" onClick={() => handleSetBudget(folderStatsModal.path, budgetInput)}>SET</button>
+                  {budgets[folderStatsModal.path] && (
+                    <button className="btn btn-secondary btn-sm" onClick={() => { setBudgetInput(''); handleSetBudget(folderStatsModal.path, null); }}>CLEAR</button>
+                  )}
+                </div>
+                {budgets[folderStatsModal.path] && folderStatsData.total_size_bytes > budgets[folderStatsModal.path] && (
+                  <div style={{ marginTop: 8 }}>
+                    <div style={{ color: 'var(--danger)', fontSize: 11 }}>
+                      ⚠ {fmtBytes(folderStatsData.total_size_bytes - budgets[folderStatsModal.path])} over budget
+                    </div>
+                    <button className="btn btn-secondary btn-sm" style={{ marginTop: 6 }}
+                      onClick={() => loadCleanupCandidates(folderStatsModal.path)}>
+                      VIEW CLEANUP CANDIDATES
+                    </button>
+                  </div>
+                )}
+                {cleanupData === 'loading' && (
+                  <div style={{ color: 'var(--t4)', fontSize: 10.5, marginTop: 6 }}>SCANNING...</div>
+                )}
+                {cleanupData && cleanupData !== 'loading' && (cleanupData.candidates || []).length > 0 && (
+                  <div style={{ maxHeight: 140, overflow: 'auto', marginTop: 8 }}>
+                    <div style={{ color: 'var(--t3)', fontSize: 10.5, marginBottom: 4 }}>
+                      Oldest files to free {fmtBytes(cleanupData.over_bytes)} (nothing is deleted automatically):
+                    </div>
+                    {cleanupData.candidates.map(f => (
+                      <div key={f.path} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 10.5, padding: '2px 0', borderBottom: '1px solid var(--border)' }}>
+                        <span style={{ flex: 1, color: 'var(--t2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</span>
+                        <span style={{ color: 'var(--t4)', flexShrink: 0 }}>{fmtBytes(f.size)} · {fmtDate(f.mtime * 1000)}</span>
+                        <button className="btn btn-danger btn-sm" style={{ padding: '1px 6px', fontSize: 9.5, flexShrink: 0 }}
+                          onClick={() => deleteCleanupCandidate(f)}>✕</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+                <button className="btn btn-secondary btn-sm" onClick={() => { setFolderStatsModal(null); handleOpenFolder(folderStatsModal.path); }}>OPEN IN EXPLORER</button>
+              </div>
+            </div>
+          )}
+        </Modal>
+      )}
+    </>
+  );
+}
+
+export function VaultFolderDialogs(v) {
+  const {
+    selectedFolder, showNotif, onRefreshVault, isDownloading, onSyncStart, dropModal, setDropModal, syncModal,
+    setSyncModal, canSync, taggableCount, retagOpen, setRetagOpen, retagging, handleRetag,
+    handleOpenFile, handleOpenFolder, handleDeleteFile, deleteConfirm, setDeleteConfirm, confirmDelete, ctxMenu,
+    setCtxMenu, ctxMenuRef, previewFile, setPreviewFile, selectedFiles, deleteManyConfirm, setDeleteManyConfirm,
+    handleDeleteSelected
+  } = v;
+  return (
+    <>
       {ctxMenu && (
         <div className="ctx-menu" ref={ctxMenuRef} style={{ left: ctxMenu.x, top: ctxMenu.y }} onClick={e => e.stopPropagation()}>
           <div className="ctx-item" onClick={() => { setPreviewFile(ctxMenu.file); setCtxMenu(null); }}>
@@ -738,7 +745,30 @@ export function ClassicVaultView({
       {/* Opened by SYNC OPTIONS; it was only mounted in the grid view, so the
           button in this view did nothing */}
       {syncModal && <SyncPlaylistModal folder={syncModal} onClose={() => setSyncModal(null)} showNotif={showNotif} onRefreshVault={onRefreshVault} isDownloading={isDownloading} onSyncStart={onSyncStart} />}
-      {moveDialog()}
-    </div>
+      <MoveDialog {...v} />
+    </>
+  );
+}
+
+function MoveDialog({ moveModal, setMoveModal, handleMove }) {
+  return moveModal && (
+    <Modal title="MOVE FOLDER" onClose={() => !moveModal.moving && setMoveModal(null)}
+      footer={<>
+        <button className="btn btn-secondary btn-sm" disabled={moveModal.moving} onClick={() => setMoveModal(null)}>CANCEL</button>
+        <button className="btn btn-primary btn-sm" data-tour="vault-move-go" disabled={moveModal.moving} onClick={handleMove}>
+          {moveModal.moving ? 'MOVING…' : '⇄ MOVE'}
+        </button>
+      </>}>
+      <div className="move-folder-body">
+        <div><span className="move-folder-label">FOLDER</span>{moveModal.folder.path}</div>
+        <div><span className="move-folder-label">INTO</span>{moveModal.into}</div>
+        <p>
+          The folder and everything in it moves there. Its linked playlists, sync format and schedule, name,
+          budget and download history go with it, and its archive file too: the next sync won&apos;t download
+          what it already has.
+        </p>
+        <p className="move-folder-note">Another drive: the files are copied first, which takes a while for a big folder.</p>
+      </div>
+    </Modal>
   );
 }

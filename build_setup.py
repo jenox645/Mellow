@@ -315,6 +315,9 @@ shutil.copytree(GUI / "fonts", STATIC / "fonts", dirs_exist_ok=True)
 # their components (gui/themes/slots.jsx, gui/themes/<id>/*.jsx) are in the bundle, not copied
 shutil.copytree(GUI / "themes", STATIC / "themes", dirs_exist_ok=True,
                 ignore=shutil.ignore_patterns("*.jsx", "*.js"))
+# Mellow asleep (the owner's line art, currentColor): Tactical draws her large on its idle Feed and
+# empty folders as a CSS mask, so it sits next to tactical.css rather than in the bundle
+shutil.copy2(HERE / "assets" / "sleeping_mellow_vector.svg", STATIC / "themes" / "tactical" / "sleeping-mellow.svg")
 print("  static/index.html, static/fonts/, static/themes/ — OK")
 
 

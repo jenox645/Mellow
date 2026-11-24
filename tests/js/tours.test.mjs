@@ -3,13 +3,18 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 
-import { TOURS, placeCard, tourIdFor } from '../../gui/lib/tours.js';
+import { THEME_STEPS, TOURS, placeCard, tourIdFor, tourSteps } from '../../gui/lib/tours.js';
 
 const GUI = new URL('../../gui/', import.meta.url);
 const source = ['pages', 'components']
   .flatMap(dir => readdirSync(new URL(dir + '/', GUI)).map(f => readFileSync(new URL(dir + '/' + f, GUI), 'utf8')))
   .join('\n');
 const tagged = name => source.includes('data-tour="' + name + '"') || source.includes("'" + name + "'");
+
+// A theme's own page views (gui/themes/<id>/*.jsx), for the pages it draws itself
+const themeSource = id => readdirSync(new URL('themes/' + id + '/', GUI)).filter(f => f.endsWith('.jsx'))
+  .map(f => readFileSync(new URL('themes/' + id + '/' + f, GUI), 'utf8')).join('\n');
+const OWN_VIEWS = { tactical: ['feed', 'vault', 'vault_folder'] };
 
 test('every page has a tour', () => {
   for (const page of ['feed', 'queue', 'vault', 'analytics', 'signal', 'config']) {
@@ -85,4 +90,39 @@ test('the card always stays inside the window', () => {
   }
   assert.equal(placeCard(null, CARD, VIEW).side, 'center');
   assert.equal(placeCard({ left: 0, top: 0, width: 1100, height: 780 }, CARD, VIEW).side, 'over');
+});
+
+test("a theme's own words replace a step's, only for steps that exist", () => {
+  const FIELDS = new Set(['title', 'text', 'tip', 'missing', 'example']);
+  for (const [theme, tours] of Object.entries(THEME_STEPS)) {
+    for (const [id, own] of Object.entries(tours)) {
+      assert.ok(TOURS[id], theme + ': no tour ' + id);
+      const targets = new Set(TOURS[id].map(s => s.target));
+      for (const [target, fields] of Object.entries(own)) {
+        assert.ok(targets.has(target), theme + '/' + id + ': no step points at ' + target);
+        for (const f of Object.keys(fields)) assert.ok(FIELDS.has(f), theme + '/' + id + '/' + target + ': ' + f);
+      }
+      const steps = tourSteps(id, theme);
+      assert.equal(steps.length, TOURS[id].length);
+      assert.deepEqual(steps.map(s => s.target), TOURS[id].map(s => s.target));     // same parts, same order
+      assert.equal(tourSteps(id, theme), steps, 'the same array each time (the GUIDE re-runs a changed step)');
+    }
+  }
+  assert.equal(tourSteps('vault', 'classic'), TOURS.vault);
+  assert.equal(tourSteps('vault', 'tactical')[0].title, 'The index');
+  assert.equal(tourSteps('vault', 'tactical')[0].target, 'vault-folders');
+});
+
+test("a theme's own page views mark every part their tours point at", () => {
+  for (const [theme, ids] of Object.entries(OWN_VIEWS)) {
+    const src = themeSource(theme);
+    const marked = name => src.includes('data-tour="' + name + '"') || src.includes("'" + name + "'");
+    for (const id of ids) {
+      for (const s of tourSteps(id, theme)) {
+        if (s.target) assert.ok(marked(s.target), theme + '/' + id + ': nothing is marked data-tour="' + s.target + '"');
+        // A panel the view keeps open needs no toggle; the part it opens must be there
+        for (const r of s.reveal || []) assert.ok(marked(r.unless), theme + '/' + id + ': reveal ' + r.unless);
+      }
+    }
+  }
 });

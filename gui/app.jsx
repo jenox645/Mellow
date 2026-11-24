@@ -37,7 +37,7 @@ import { SignalApiPage } from './pages/signal.jsx';
 import { ConfigPage } from './pages/config.jsx';
 import { AddVaultModal } from './components/vault-modals.jsx';
 import { Tour } from './components/tour.jsx';
-import { TOURS, tourIdFor } from './lib/tours.js';
+import { tourIdFor, tourSteps } from './lib/tours.js';
 
 const KEYBOARD_SHORTCUTS = [
   ['1 – 6', 'Jump to Feed / Queue / Vault / Analytics / Signal / Config'],
@@ -647,7 +647,7 @@ function App() {
 
       {tourId && (
         <Tour key={tourId} name={tourId === 'vault_folder' ? 'VAULT FOLDER' : tourId.toUpperCase()}
-          steps={TOURS[tourId]} onClose={closeGuide} />
+          steps={tourSteps(tourId, theme)} onClose={closeGuide} />
       )}
 
       {restorableJobs && (
