@@ -7,11 +7,17 @@ from __future__ import annotations
 # ── File extensions ───────────────────────────────────────────────────────────
 # A yt-dlp part ("Title.f399.mp4") a sync hasn't finished in this long is dropped
 STALE_PART_DAYS: int = 7
+# What the vault lists, plays and makes thumbnails for: every format ffmpeg reads
+# (Matroska audio, audiobooks, AIFF, WMA, transport streams, 3GP, Flash, WMV too)
 MEDIA_EXTS: frozenset[str] = frozenset({
     '.mp3', '.mp4', '.mkv', '.webm', '.flac', '.m4a',
     '.wav', '.opus', '.aac', '.ogg', '.avi', '.mov',
+    '.mka', '.m4b', '.aiff', '.aif', '.wma',
+    '.ts', '.m2ts', '.3gp', '.flv', '.wmv',
 })
-VIDEO_EXTS: frozenset[str] = frozenset({'.mp4', '.mkv', '.webm', '.avi', '.mov'})
+VIDEO_EXTS: frozenset[str] = frozenset({
+    '.mp4', '.mkv', '.webm', '.avi', '.mov', '.ts', '.m2ts', '.3gp', '.flv', '.wmv',
+})
 IMAGE_EXTS: frozenset[str] = frozenset({'.jpg', '.jpeg', '.png', '.webp'})
 SUBTITLE_EXTS: frozenset[str] = frozenset({'.srt', '.vtt', '.ass', '.lrc'})  # "<stem>.<lang>.srt" sidecars
 
@@ -35,7 +41,9 @@ MEDIA_MIME: dict[str, str] = {
     '.avi': 'video/x-msvideo', '.mov': 'video/quicktime',
     '.mp3': 'audio/mpeg', '.m4a': 'audio/mp4', '.aac': 'audio/aac',
     '.flac': 'audio/flac', '.wav': 'audio/wav', '.opus': 'audio/opus',
-    '.ogg': 'audio/ogg',
+    '.ogg': 'audio/ogg', '.mka': 'audio/x-matroska', '.m4b': 'audio/mp4', '.aiff': 'audio/aiff',
+    '.aif': 'audio/aiff', '.wma': 'audio/x-ms-wma', '.ts': 'video/mp2t', '.m2ts': 'video/mp2t',
+    '.3gp': 'video/3gpp', '.flv': 'video/x-flv', '.wmv': 'video/x-ms-wmv',
 }
 
 # ── Thumbnails ────────────────────────────────────────────────────────────────
@@ -46,6 +54,10 @@ THUMB_FETCH_TIMEOUT_SECS: int = 15   # sidecar download timeout
 THUMB_FFMPEG_TIMEOUT_SECS: int = 20  # on-demand frame extraction timeout
 THUMB_FFMPEG_SEEK_SECS: int = 30     # frame position for generated thumbnails
 THUMB_FFMPEG_WIDTH: int = 480        # generated thumbnail width
+THUMB_COVER_RAW_MAX_BYTES: int = 200_000   # a bigger embedded cover is scaled down (when ffmpeg is there)
+THUMB_DISK_CACHE_MAX_BYTES: int = 256 * 1024 * 1024  # the per-user thumbnail cache (datadir.cache_dir)
+THUMB_DISK_CACHE_PRUNE_EVERY: int = 50     # check the cache's size every this many new thumbnails
+THUMB_PREVIEW_PROBE_MAX: int = 12    # files without a sidecar a folder card looks into for a cover
 
 # ── Job queue ─────────────────────────────────────────────────────────────────
 MAX_DOWNLOAD_WORKERS: int = 3        # hard ceiling for concurrent downloads

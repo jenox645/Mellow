@@ -4,7 +4,7 @@ Linux: $XDG_DATA_HOME/mellowdlp (~/.local/share/mellowdlp), Windows:
 %LOCALAPPDATA%\\MellowDLP, macOS: ~/Library/Application Support/MellowDLP.
 Today it holds only what no other account may read (session.py's instance
 file and launch pages); the other per-user files still live in the home
-folder.
+folder. `cache_dir()` is the matching cache folder (thumbnails).
 """
 from __future__ import annotations
 
@@ -25,6 +25,20 @@ def data_dir(environ: dict | None = None) -> Path:
     if sys.platform == "darwin":
         return home / "Library" / "Application Support" / "MellowDLP"
     return Path(env.get("XDG_DATA_HOME") or home / ".local" / "share") / "mellowdlp"
+
+
+def cache_dir(environ: dict | None = None) -> Path:
+    """This account's cache folder: what can be made again (the vault's
+    thumbnails for files it can't put a sidecar next to). Linux:
+    $XDG_CACHE_HOME/mellowdlp (~/.cache/mellowdlp), Windows:
+    %LOCALAPPDATA%\\MellowDLP\\Cache, macOS: ~/Library/Caches/MellowDLP."""
+    env = os.environ if environ is None else environ
+    home = Path(env.get("USERPROFILE" if os.name == "nt" else "HOME") or Path.home())
+    if os.name == "nt":
+        return Path(env.get("LOCALAPPDATA") or home / "AppData" / "Local") / "MellowDLP" / "Cache"
+    if sys.platform == "darwin":
+        return home / "Library" / "Caches" / "MellowDLP"
+    return Path(env.get("XDG_CACHE_HOME") or home / ".cache") / "mellowdlp"
 
 
 def ensure_private() -> Path:

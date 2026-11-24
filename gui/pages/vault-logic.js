@@ -6,15 +6,13 @@
 
 import { API } from '../lib/api.js';
 import { fmtBytes } from '../lib/util.js';
-import { TAGGABLE_AUDIO } from '../lib/constants.js';
+import { TAGGABLE_AUDIO, VIDEO_EXTS } from '../lib/constants.js';
 import { useFitInWindow } from '../components/common.jsx';
 import { useMarquee } from '../components/marquee.jsx';
 import { clickSelect } from '../lib/selection.js';
 
 export const BYTES_PER_GB = 1024 ** 3;
-const VIDEO_PREVIEW_EXTS = ['mp4', 'webm', 'mkv', 'avi', 'mov'];
-
-export const isVideoExt = (ext) => VIDEO_PREVIEW_EXTS.includes((ext || '').toLowerCase());
+export const isVideoExt = (ext) => VIDEO_EXTS.includes((ext || '').toLowerCase());
 // In-app preview: streams through /api/vault/stream (Range-aware, seekable)
 export const mediaStreamUrl = (path) => '/api/vault/stream?path=' + encodeURIComponent(path);
 
