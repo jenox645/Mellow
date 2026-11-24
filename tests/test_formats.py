@@ -33,6 +33,9 @@ def test_the_frontend_offers_the_formats_the_backend_accepts():
         return set(re.findall(r"'(\w+)'", re.search(rf"export const {name} = \[(.*?)\]", js).group(1)))
     assert js_list('AUDIO_FORMATS') == set(constants.AUDIO_FORMATS)
     assert js_list('CONTAINERS') == set(constants.VIDEO_CONTAINERS)
+    # The vault's video files (▶ and the preview player) are the backend's
+    assert js_list('VIDEO_EXTS') == {e.lstrip('.') for e in constants.VIDEO_EXTS}
+    assert {e.lstrip('.') for e in constants.VIDEO_EXTS} <= {e.lstrip('.') for e in constants.MEDIA_EXTS}
 
 
 def test_every_toggle_reaches_downloads_syncs_and_library_entries(client, tmp_dir):

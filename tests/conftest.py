@@ -64,6 +64,7 @@ def isolated_user_files(tmp_path, request):
             patch('mellow.ytdlp_update.OVERLAY_PATH', tmp_path / 'ytdlp.zip'), \
             patch('mellow.ffmpeg_locate.MANAGED_DIR', tmp_path / 'ffmpeg'), \
             patch('mellow.datadir.data_dir', lambda: tmp_path / 'data'), \
+            patch('mellow.datadir.cache_dir', lambda: tmp_path / 'cache'), \
             patch('mellow.power.keeper', RecordingKeeper()), \
             patch('mellow.jobs._sync_plan', _no_sync_plan(request)), \
             patch.dict('os.environ', {}), \

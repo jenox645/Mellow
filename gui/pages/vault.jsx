@@ -6,6 +6,7 @@
 import { fmtBytes, fmtDate, fmtWait, timeAgo } from '../lib/util.js';
 import { Ico } from '../components/icons.jsx';
 import { Modal, Mascot } from '../components/common.jsx';
+import { MediaMark } from '../components/media-mark.jsx';
 import {
   MASCOT_CHILLING, MASCOT_TIRED, MASCOT_FRUSTRATED, MASCOT_COMFY_SAFE,
 } from '../lib/mascots.js';
@@ -415,7 +416,7 @@ export function ClassicVaultView({
   // type each render, and every thumbnail would load again while dragging
   const fileThumb = (file, small) => (
     <div className={'lib-thumb' + (small ? ' small' : '')}>
-      <span style={{ position: 'relative', zIndex: 0 }}>{isVideoExt(file.ext) ? '▶' : '♫'}</span>
+      <MediaMark video={isVideoExt(file.ext)} small={small} />
       {fileThumbs && (
         <img
           src={fileThumbUrl(file)}

@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Callable
 from urllib.parse import quote
 
-from . import analytics, formats
+from . import analytics, covers, formats, thumb_cache
 from .config import download_root, download_settings
 from .constants import (
     AUDIO_FORMATS,
@@ -26,10 +26,12 @@ from .constants import (
     PLAYER_ARGV_MAX_CHARS,
     SUBTITLE_EXTS,
     SYNC_PLAN_HAVE_LIST_MAX,
+    THUMB_COVER_RAW_MAX_BYTES,
     THUMB_FFMPEG_SEEK_SECS,
     THUMB_FFMPEG_TIMEOUT_SECS,
     THUMB_FFMPEG_WIDTH,
     THUMB_PREVIEW_LIMIT,
+    THUMB_PREVIEW_PROBE_MAX,
     VIDEO_CONTAINERS,
     VIDEO_EXTS,
 )
@@ -253,59 +255,144 @@ def list_folder_files(path: str) -> list[dict]:
 
 # ── Thumbnail serving ─────────────────────────────────────────────────────────
 
-# Media files ffmpeg could not make a thumbnail for. The vault grid asks for
-# every file's thumbnail on each render; without this an audio file with no
-# cover art spawned ffmpeg again every time.
+# Media files no thumbnail could be made for. The vault grid asks for every
+# file's thumbnail on each render; without this an audio file with no cover
+# art spawned ffmpeg again every time.
 _thumb_failed: set[tuple[str, float]] = set()
 
 # Thumbnail files next to a media file, sharing its stem
 _SIDECAR_EXTS = (".jpg", ".jpeg", ".png", ".webp")
 
 
-def _generate_thumb(media: Path, sidecar: Path) -> bool:
-    """Make a cached sidecar .jpg for a file that has none.
+def _no_window() -> dict:
+    if os.name == "nt":
+        return {"creationflags": getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)}
+    return {}
 
-    Video: grab a frame. Audio: pull out the embedded cover art, if any.
+
+def _generate_thumb(media: Path, out: Path) -> bool:
+    """Make a .jpg thumbnail at `out` with ffmpeg.
+
+    Video: grab a frame. Audio: pull out the embedded cover art, if any (the
+    formats mutagen can't read: Matroska audio, a damaged tag).
     """
     ffmpeg = find_ffmpeg()
     if not ffmpeg:
         return False
-    try:
-        key = (str(media), media.stat().st_mtime)
-    except OSError:
-        return False
-    if key in _thumb_failed:
-        return False
     scale = f"scale={THUMB_FFMPEG_WIDTH}:-1"
-    kw: dict = {"capture_output": True, "timeout": THUMB_FFMPEG_TIMEOUT_SECS}
-    if os.name == "nt":
-        kw["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+    kw: dict = {"capture_output": True, "timeout": THUMB_FFMPEG_TIMEOUT_SECS, **_no_window()}
 
     def made() -> bool:
-        return sidecar.exists() and sidecar.stat().st_size > 0
+        return out.exists() and out.stat().st_size > 0
 
     try:
         if media.suffix.lower() in VIDEO_EXTS:
             result = subprocess.run(
                 [ffmpeg, "-ss", str(THUMB_FFMPEG_SEEK_SECS), "-i", str(media), "-frames:v", "1",
-                 "-vf", scale, "-q:v", "4", "-y", str(sidecar)], **kw)
+                 "-vf", scale, "-q:v", "4", "-y", str(out)], **kw)
             if result.returncode != 0 or not made():
                 # Short clips: retry from the start
                 result = subprocess.run(
                     [ffmpeg, "-i", str(media), "-frames:v", "1",
-                     "-vf", scale, "-q:v", "4", "-y", str(sidecar)], **kw)
+                     "-vf", scale, "-q:v", "4", "-y", str(out)], **kw)
         else:
             # The cover art of an audio file is its only "video" stream
             result = subprocess.run(
                 [ffmpeg, "-i", str(media), "-map", "0:v:0", "-frames:v", "1",
-                 "-vf", scale, "-q:v", "4", "-y", str(sidecar)], **kw)
+                 "-vf", scale, "-q:v", "4", "-y", str(out)], **kw)
         ok = result.returncode == 0 and made()
     except Exception:
         ok = False
     if not ok:
-        _thumb_failed.add(key)
-        sidecar.unlink(missing_ok=True)
+        out.unlink(missing_ok=True)
     return ok
+
+
+def _shrink_cover(data: bytes) -> bytes | None:
+    """A big embedded cover (a 3000 px PNG) as a THUMB_FFMPEG_WIDTH jpg, or
+    None without ffmpeg (the cover is then shown as it is)."""
+    ffmpeg = find_ffmpeg()
+    if not ffmpeg:
+        return None
+    try:
+        result = subprocess.run(
+            [ffmpeg, "-v", "error", "-i", "pipe:0", "-frames:v", "1", "-vf", f"scale={THUMB_FFMPEG_WIDTH}:-1",
+             "-q:v", "4", "-f", "image2pipe", "-c:v", "mjpeg", "pipe:1"],
+            input=data, capture_output=True, timeout=THUMB_FFMPEG_TIMEOUT_SECS, **_no_window())
+    except Exception:
+        return None
+    return result.stdout if result.returncode == 0 and result.stdout[:3] == b"\xff\xd8\xff" else None
+
+
+def _audio_cover(p: Path) -> tuple[bytes, str] | None | bool:
+    """The cover inside an audio file (mutagen), scaled down when it's big.
+    False: its tags were read and hold none (no need to ask ffmpeg)."""
+    try:
+        cover = covers.embedded_cover(p)
+    except covers.NoCoverError:
+        return False
+    if cover is None:
+        return None
+    data, mime = cover
+    if len(data) > THUMB_COVER_RAW_MAX_BYTES:
+        small = _shrink_cover(data)
+        if small:
+            return small, "image/jpeg"
+    return data, mime
+
+
+def _media_thumb(p: Path) -> tuple[bytes, str] | None:
+    """A thumbnail for a media file with no sidecar: from the cache, else made.
+
+    Audio: the cover inside the file (mutagen, no ffmpeg needed), then ffmpeg
+    for what mutagen can't read. Video: a frame (ffmpeg), kept as a sidecar
+    next to the file like a downloaded thumbnail. Whatever can't be written
+    next to the file (a read-only folder) goes to the user's cache.
+    """
+    try:
+        st = p.stat()
+    except OSError:
+        return None
+    key = (str(p), st.st_mtime)
+    if key in _thumb_failed:
+        return None
+    hit = thumb_cache.get(p, st)
+    if hit:
+        return hit
+    if p.suffix.lower() not in VIDEO_EXTS:
+        found = _audio_cover(p)
+        if found:
+            thumb_cache.put(p, st, *found)
+            return found
+        if found is False:
+            _thumb_failed.add(key)
+            return None
+    # ffmpeg writes into the cache folder (always ours to write), then the
+    # frame of a video moves next to it when that folder can be written to
+    made = None
+    try:
+        thumb_cache.folder().mkdir(parents=True, exist_ok=True, mode=0o700)
+        fd, tmp_name = tempfile.mkstemp(dir=str(thumb_cache.folder()), suffix=".jpg")
+        os.close(fd)
+        tmp = Path(tmp_name)
+        try:
+            if _generate_thumb(p, tmp):
+                made = tmp.read_bytes()
+        finally:
+            tmp.unlink(missing_ok=True)
+    except OSError as exc:
+        log.warning(f"no thumbnail for {p}: {exc}")
+    if not made:
+        _thumb_failed.add(key)
+        return None
+    if p.suffix.lower() in VIDEO_EXTS:
+        try:
+            (p.parent / (p.stem + ".jpg")).write_bytes(made)
+            return made, "image/jpeg"
+        except OSError:
+            pass            # read-only folder: the cache keeps it
+    thumb_cache.put(p, st, made, "image/jpeg")
+    return made, "image/jpeg"
 
 
 def get_thumb_bytes(path: str) -> tuple[bytes, str] | None:
@@ -329,16 +416,29 @@ def get_thumb_bytes(path: str) -> tuple[bytes, str] | None:
                 return thumb.read_bytes(), _mime_for_ext(ext)
             except Exception:
                 return None
-    # No sidecar (pre-existing file / watched folder): make one with ffmpeg on
-    # demand and cache it next to the file.
+    # No sidecar (pre-existing file / watched folder): the cover inside, or a frame
     if p.suffix.lower() in MEDIA_EXTS:
-        sidecar = p.parent / (p.stem + ".jpg")
-        if _generate_thumb(p, sidecar):
-            try:
-                return sidecar.read_bytes(), "image/jpeg"
-            except Exception:
-                return None
+        return _media_thumb(p)
     return None
+
+
+def has_thumb(p: Path) -> bool:
+    """Whether a media file without a sidecar has a picture to show, without
+    running ffmpeg: one already made, or a cover inside (mutagen)."""
+    try:
+        st = p.stat()
+    except OSError:
+        return False
+    if (str(p), st.st_mtime) in _thumb_failed:
+        return False
+    if thumb_cache.get(p, st) is not None:
+        return True
+    if p.suffix.lower() in VIDEO_EXTS:
+        return False
+    try:
+        return covers.embedded_cover(p) is not None
+    except covers.NoCoverError:
+        return False
 
 
 def _mime_for_ext(ext: str) -> str:
@@ -363,11 +463,17 @@ def get_folder_previews(path: str) -> list[str]:
         except OSError:
             pass
     img_map = {f.stem.lower(): f for f in files if f.suffix.lower() in IMAGE_EXTS}
+    probes = 0
     for f in files:
         if is_media(f):
             match = img_map.get(f.stem.lower())
             if match:
                 thumb_urls.append(f"/api/vault/thumb?path={quote(str(root / match))}")
+            elif probes < THUMB_PREVIEW_PROBE_MAX:
+                # No sidecar (a folder of FLACs copied in): its own cover, or one made before
+                probes += 1
+                if has_thumb(root / f):
+                    thumb_urls.append(f"/api/vault/thumb?path={quote(str(root / f))}")
             if len(thumb_urls) >= THUMB_PREVIEW_LIMIT:
                 break
     return thumb_urls

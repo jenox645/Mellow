@@ -77,6 +77,8 @@ export const FORMAT_TOGGLES = [
 export const QUALITIES = ['best', '4k', '1080p', '720p', '480p', '360p'];
 export const CONTAINERS = ['mp4', 'mkv', 'webm'];
 export const AUDIO_FORMATS = ['mp3', 'aac', 'flac', 'm4a', 'opus', 'wav'];
+// Vault files that are video (▶, the preview player's <video>); the backend's VIDEO_EXTS, without dots
+export const VIDEO_EXTS = ['mp4', 'webm', 'mkv', 'avi', 'mov', 'ts', 'm2ts', '3gp', 'flv', 'wmv'];
 export const LOSSLESS_AUDIO = ['flac', 'wav'];
 // Audio files RE-TAG can write tags into (mellow/music_tags.py TAGGABLE_EXTS)
 export const TAGGABLE_AUDIO = ['mp3', 'm4a', 'aac', 'flac', 'opus', 'ogg'];
