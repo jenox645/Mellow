@@ -129,6 +129,8 @@ DOWNLOAD_READ_TIMEOUT_SECS: int = 60    # per read while downloading an update o
 DOWNLOAD_CHUNK_BYTES: int = 256 * 1024
 APP_UPDATE_EXIT_DELAY_SECS: float = 1.0  # lets the "restarting" event reach the page
 DIALOG_TIMEOUT_SECS: int = 120       # how long a native file/folder dialog may stay open
+PORTAL_REPLY_SECS: float = 10.0     # Linux: how long the desktop portal may take to answer a call (not the dialog itself)
+WINDOW_PROBE_SECS: float = 2.0      # Linux/X11: xdotool / xprop finding MellowDLP's window to put a dialog on
 M3U8_TEMP_MAX_AGE_SECS: int = 86400  # playlist temp files older than this are swept
 PRE_RESTORE_KEEP: int = 3            # backup restore: copies kept of the files it replaced, per file
 # The analytics DB is written in the storage format of this DuckDB version, so an

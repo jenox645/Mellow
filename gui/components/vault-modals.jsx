@@ -20,7 +20,7 @@ export function AddVaultModal({ onClose, onSaved, showNotif }) {
   const [saving, setSaving] = React.useState(false);
 
   const browseFolder = () => {
-    API.post('/api/browse-folder', {}).then(d => { if (d.path) setFolder(d.path); });
+    API.post('/api/browse-folder', { initial: folder || '' }).then(d => { if (d.path) setFolder(d.path); });
   };
 
   const handleSave = () => {
