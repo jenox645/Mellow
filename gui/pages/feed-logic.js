@@ -313,8 +313,9 @@ export function useFeedPage(props) {
   }, [url, info, importedUrls, onPlaylistDownload]);
 
   const browseDownloadPath = React.useCallback(() => {
-    API.post('/api/browse-folder', {}).then(d => { if (d.path) setDownloadPath(d.path); }).catch(() => {});
-  }, []);
+    API.post('/api/browse-folder', { initial: downloadPath || '' })
+      .then(d => { if (d.path) setDownloadPath(d.path); }).catch(() => {});
+  }, [downloadPath]);
 
   const startDownload = React.useCallback((extra) => {
     setSubmitting(true);

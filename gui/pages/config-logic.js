@@ -97,7 +97,7 @@ export function useConfigPage(props) {
   };
 
   const browseFolder = () => {
-    API.post('/api/browse-folder', {}).then(d => {
+    API.post('/api/browse-folder', { initial: local.output_dir || '' }).then(d => {
       if (!d.path) return;
       set('output_dir', d.path);
       // Saved at once, so the rest of the app (status bar OUT, the Feed's default folder) follows now
@@ -148,7 +148,8 @@ export function useConfigPage(props) {
   };
 
   const browseCookies = () => {
-    API.post('/api/browse-file', { filter: '.txt' }).then(d => { if (d.path) set('cookies_file', d.path); });
+    API.post('/api/browse-file', { filter: '.txt', initial: local.cookies_file || '' })
+      .then(d => { if (d.path) set('cookies_file', d.path); });
   };
 
   const checkUpdate = () => {

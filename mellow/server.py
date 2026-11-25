@@ -434,12 +434,16 @@ def api_open_folder() -> Response:
     return jsonify({"ok": True})
 
 
+_NO_DIALOGS = ("File dialogs unavailable: install zenity (or kdialog) or Python's tkinter"
+               if sys.platform.startswith("linux") else "File dialogs unavailable (tkinter missing)")
+
+
 @app.route("/api/browse-file", methods=["POST"])
 def api_browse_file() -> Response:
-    if not desktop.tkinter_available:
-        return jsonify({"path": "", "error": "File dialogs unavailable (tkinter missing)"})
+    if not desktop.dialogs_available():
+        return jsonify({"path": "", "error": _NO_DIALOGS})
     data = request.get_json(force=True) or {}
-    return jsonify({"path": desktop.ask_open_file(data.get("filter", ""))})
+    return jsonify({"path": desktop.ask_open_file(data.get("filter", ""), data.get("initial") or "")})
 
 
 @app.route("/api/read-url-file", methods=["POST"])
@@ -460,10 +464,11 @@ def api_read_url_file() -> Response:
 
 @app.route("/api/browse-folder", methods=["POST"])
 def api_browse_folder() -> Response:
-    if not desktop.tkinter_available:
-        return jsonify({"path": "", "error": "File dialogs unavailable (tkinter missing)"})
+    if not desktop.dialogs_available():
+        return jsonify({"path": "", "error": _NO_DIALOGS})
     data = request.get_json(force=True) or {}
-    return jsonify({"path": desktop.ask_folder(data.get("initial") or str(Path.home()))})
+    # Opens where the field already points (the page sends it), else in the download folder
+    return jsonify({"path": desktop.ask_folder(data.get("initial") or str(download_root(load_config())))})
 
 
 @app.route("/api/system")
