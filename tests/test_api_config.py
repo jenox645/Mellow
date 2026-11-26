@@ -73,3 +73,9 @@ def test_no_answer_can_be_embedded_or_framed_by_another_origin(client):
         assert resp.headers['Cross-Origin-Resource-Policy'] == 'same-origin', path
         assert "frame-ancestors 'none'" in resp.headers['Content-Security-Policy'], path
         assert resp.headers['X-Frame-Options'] == 'DENY', path
+
+
+def test_system_names_the_low_disk_threshold(client):
+    """The status bar's disk ruler hatches the zone below it (one number: constants.py)."""
+    from mellow.constants import LOW_DISK_WARN_BYTES
+    assert client.get('/api/system').get_json()['disk_low_bytes'] == LOW_DISK_WARN_BYTES

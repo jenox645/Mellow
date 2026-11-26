@@ -297,7 +297,7 @@ def test_get_ffmpeg_from_the_prompt_with_progress_in_the_status_bar(page, app_ur
     assert installs == [1]
 
     # The server's progress events drive the status bar
-    segment = page.locator(".statusbar .sb-seg:not(.sb-path)", has_text="FFMPEG")
+    segment = page.locator(".statusbar .sb-update", has_text="FFMPEG")
     for event in ({"stage": "downloading", "pct": 42, "version": "9.0"},
                   {"stage": "installing", "version": "9.0"}):
         server._push_progress({"status": "ffmpeg_install", **event})
@@ -306,7 +306,9 @@ def test_get_ffmpeg_from_the_prompt_with_progress_in_the_status_bar(page, app_ur
     server._push_progress({"status": "ffmpeg_install", "stage": "done", "version": "9.0",
                            "detail": "ffmpeg version n9.0.2"})
     expect(page.locator(".notif", has_text="FFmpeg Installed")).to_be_visible()
-    expect(segment).to_contain_text("FFmpeg OK")
+    # Installed: the action goes, and the quiet system marks say FFmpeg is there
+    expect(segment).to_have_count(0)
+    expect(page.locator(".statusbar .sb-sys")).to_have_attribute("title", re.compile("FFmpeg /home/me/.mellow_dlp_ffmpeg/ffmpeg"))
 
 
 def test_whats_new_shows_once_after_an_update_and_from_config(page, app_url):
@@ -848,5 +850,67 @@ def test_a_download_folder_picked_in_config_shows_in_the_status_bar_at_once(page
     page.locator(".nav-item").first.wait_for()
     page.locator(".nav-item", has_text=re.compile("config", re.I)).first.click()
     page.locator(".settings-row", has_text="Download Path").get_by_role("button", name="BROWSE", exact=True).click()
-    expect(page.locator(".statusbar .sb-path")).to_have_text(picked)
+    expect(page.locator(".statusbar .sb-path")).to_have_attribute("title", picked)
     assert _get(app_url, "/api/config")["output_dir"] == picked
+
+
+def test_the_status_bar_is_one_quiet_line_idle_and_the_live_strip_while_downloading(page, downloads):
+    """Idle: the download folder (short, the whole path on hover, a click opens it), the disk, the
+    system marks. Downloading: what, the speed, the ETA, a progress line; OUT follows the job's folder."""
+    from pathlib import Path
+
+    from mellow import server
+    bar = page.locator(".statusbar")
+    out = bar.locator(".sb-out")
+    expect(out).to_have_attribute("title", str(downloads))
+    expect(out.locator(".sb-val")).to_have_text("…/" + "/".join(Path(downloads).parts[-2:]))
+    expect(bar.locator(".sb-link")).to_contain_text("IDLE")
+    expect(bar.locator(".sb-disk")).to_be_visible()
+    expect(bar.locator(".sb-sys")).to_be_visible()
+    opened = []
+    page.route("**/api/open-folder", lambda r: (opened.append(r.request.post_data_json),
+               r.fulfill(status=200, content_type="application/json", body='{"ok": true}')))
+    out.click()
+    for _ in range(50):
+        if opened:
+            break
+        page.wait_for_timeout(100)
+    assert opened == [{"path": str(downloads)}]
+
+    # A download sent elsewhere with SAVE TO
+    elsewhere = str(downloads.parent / "Music" / "Lo-fi")
+    job = {"job_id": "sb1", "job_type": "feed", "job_label": "x", "job_folder": elsewhere}
+    server._push_progress({"status": "starting", **job})
+    for pct in (12, 42):
+        server._push_progress({"status": "downloading", "pct": pct, "speed": 3_000_000, "eta": 75,
+                               "current_item_title": "Aruarian Dance", **job})
+    expect(bar.locator(".sb-link")).to_contain_text("RECEIVING")
+    expect(bar.locator(".sb-title")).to_have_text("Aruarian Dance")
+    expect(bar.locator(".sb-eta")).to_contain_text("1:15")
+    expect(bar.locator(".sb-speed")).to_contain_text("2.9")
+    expect(bar.locator(".sb-spark polyline")).to_have_count(1)
+    expect(bar.locator(".sb-prog")).to_have_attribute("style", re.compile(r"--p:\s*42"))
+    expect(out).to_have_attribute("title", elsewhere)
+    expect(out).to_have_class(re.compile(r"\bjob\b"))
+    expect(bar.locator(".sb-disk")).to_have_count(0)          # static facts leave the room
+    expect(bar.locator(".sb-sys")).to_have_count(0)
+
+    server._push_progress({"status": "complete", "title": "Aruarian Dance", **job})
+    expect(bar.locator(".sb-link")).to_contain_text("IDLE")
+    expect(bar.locator(".sb-prog")).to_have_count(0)
+    expect(out).to_have_attribute("title", str(downloads))
+
+
+def test_a_newer_ytdlp_stays_offered_in_the_status_bar(page):
+    updates = []
+    page.route("**/api/check-ytdlp-update", lambda r: r.fulfill(status=200, content_type="application/json", body=json.dumps(
+        {"installed": "2026.11.23", "latest": "2026.12.01", "current": "2026.11.23", "update_available": True})))
+    page.route("**/api/update-ytdlp", lambda r: (updates.append(1), r.fulfill(
+        status=200, content_type="application/json", body='{"status": "updating"}')))
+    page.evaluate("localStorage.removeItem('mellow_ytdlp_check_ts')")   # the once-a-day check is due
+    page.reload()
+    offer = page.locator(".statusbar .sb-update", has_text="YT-DLP 2026.12.01")
+    expect(offer).to_be_visible()
+    offer.click()
+    expect(offer).to_have_count(0)
+    assert updates == [1]

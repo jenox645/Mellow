@@ -181,6 +181,22 @@ export function splitFolder(path) {
   return i < 0 ? { name: p, parent: '' } : { name: p.slice(i + 1) || p, parent: p.slice(0, i + 1) };
 }
 
+// The status bar's folder: its last `keep` names after "…", in the path's own separator
+// ("C:\Users\me\Music\Lo-fi" → "…\Music\Lo-fi"); a short path stays whole
+export function shortFolder(path, keep = 2) {
+  const p = String(path || '').replace(/(.)[\\/]+$/, '$1');
+  const sep = p.includes('\\') ? '\\' : '/';
+  const names = p.split(/[\\/]+/).filter(Boolean);
+  return names.length <= keep + 1 ? p : '…' + sep + names.slice(-keep).join(sep);
+}
+
+// Where `bytes` sits on a log scale from `lo` to `hi` (0…1, clamped): the status bar's disk ruler
+export function logScale(bytes, lo, hi) {
+  if (!(bytes > 0)) return 0;
+  const v = (Math.log10(bytes) - Math.log10(lo)) / (Math.log10(hi) - Math.log10(lo));
+  return Math.max(0, Math.min(1, v));
+}
+
 // ── Theme (gui/index.html :root, gui/themes/*.css) ────────────────────────────
 // Switch the page to a theme (config `ui_theme`) and remember it for index.html's early script, which
 // applies it before the next launch's first paint. An unknown id is Classic. Returns the id applied.

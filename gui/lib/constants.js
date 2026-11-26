@@ -27,6 +27,10 @@ export const VICTORY_FADE_MS = 800;
 
 // Buffers
 export const SPEED_HISTORY_LEN = 60;
+// The status bar: its speed trace shows the last samples; its disk ruler spans 0.1 GB … 1 TB (log)
+export const STATUS_SPARK_SAMPLES = 40;
+export const DISK_RULER_MIN_BYTES = 1024 ** 3 / 10;
+export const DISK_RULER_MAX_BYTES = 1000 * 1024 ** 3;
 export const COMPLETED_ITEMS_KEEP = 200;
 export const FAILED_ITEMS_KEEP = 100;
 export const LIVE_EVENTS_KEEP = 50;

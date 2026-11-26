@@ -565,6 +565,94 @@
     .cfg-danger{border-color:rgba(var(--danger-rgb),0.3)}
     .sb-update{color:var(--warn);cursor:pointer;font-weight:700}
     .sb-update:hover{color:var(--t1);background:rgba(var(--warn-rgb),0.15)}
+    /* Status bar (Classic): one quiet line when idle, the live strip while downloading.
+       .sbc scopes it: other themes' bars keep the .sb-seg / .sb-graph rules above. */
+    .statusbar.sbc{position:relative;align-items:center;font-family:var(--font-mono);font-size:10px;color:var(--t4);letter-spacing:0.06em;overflow:hidden}
+    .sbc .sb-cell{position:relative;display:flex;align-items:center;gap:6px;height:100%;padding:0 11px;white-space:nowrap;flex-shrink:0;animation:sb-in var(--dur-slide) var(--ease-spring) backwards;animation-delay:calc(var(--i,0) * 30ms)}
+    .sbc .sb-cell+.sb-cell::before{content:'';position:absolute;left:0;top:50%;width:1px;height:9px;margin-top:-4.5px;background:var(--border2)}
+    .sbc .sb-fill{flex:1;min-width:8px}
+    .sbc .sb-cap{font-size:9px;letter-spacing:0.14em;color:var(--t4)}
+    .sbc .sb-ja{font-size:9px;letter-spacing:0.04em;color:var(--t4)}
+    .sbc .sb-val{color:var(--t2);font-variant-numeric:tabular-nums}
+    .sbc .sb-num{color:var(--t1);font-variant-numeric:tabular-nums}
+    /* The link lamp: a diamond, hollow when idle; filled and pinging while receiving */
+    .sbc .sb-lamp{width:9px;height:9px;flex-shrink:0;overflow:visible}
+    .sbc .sb-lamp path{fill:none;stroke:currentColor;stroke-width:1}
+    .sbc .sb-link{color:var(--t3);letter-spacing:0.14em}
+    .sbc .sb-link.live{color:var(--accent)}
+    .sbc .sb-link.live .sb-lamp .core{fill:currentColor}
+    .sbc .sb-link.live .sb-lamp .ping{transform-origin:4.5px 4.5px;animation:sb-ping var(--dur-loop-ping) var(--ease-out) infinite}
+    .sbc .sb-link.paused{color:var(--warn)}
+    .sbc .sb-link.paused .sb-lamp .core{fill:currentColor}
+    .sbc .sb-link .ping{opacity:0}
+    /* What's downloading */
+    .sbc .sb-title{flex:1 1 auto;min-width:40px;overflow:hidden}
+    .sbc .sb-title>span:first-child{min-width:0;overflow:hidden;text-overflow:ellipsis;font-family:var(--font-body);font-size:11.5px;letter-spacing:0.01em;color:var(--t1)}
+    .sbc .sb-more{padding:0 4px;border:1px solid var(--border2);color:var(--t3);font-size:9px;letter-spacing:0.1em}
+    /* The speed: a framed sparkline that scrolls one sample at a time */
+    .sbc .sb-spark{width:150px;height:18px;flex-shrink:0;overflow:visible;color:var(--accent)}
+    .sbc .sb-spark .frame{fill:none;stroke:var(--t4);stroke-width:1;transform-box:fill-box;transform-origin:center;animation:sb-snap var(--dur-slide) var(--ease-spring) both}
+    .sbc .sb-spark .base{stroke:var(--border2);stroke-width:1}
+    .sbc .sb-spark .trace{fill:none;stroke:currentColor;stroke-width:1;stroke-linejoin:round}
+    .sbc .sb-spark .area{fill:currentColor;opacity:0.1;stroke:none}
+    .sbc .sb-spark .run{animation:sb-scroll var(--dur-slow) var(--ease-linear) both}
+    .sbc .sb-speed{display:inline-flex;align-items:baseline;min-width:62px}
+    .sbc .sb-pct .sb-num{display:inline-block;min-width:5.2ch;text-align:right}
+    .sbc .sb-eta .sb-num{display:inline-block;min-width:4.5ch}
+    .sbc .sb-speed .sb-num{color:var(--accent);font-size:11px}
+    .sbc .sb-speed .sb-cap{margin-left:3px}
+    /* Progress: a line along the window's bottom edge, its head a small chevron */
+    .sbc .sb-prog{position:absolute;left:0;right:0;bottom:0;height:2px;pointer-events:none;overflow:hidden}
+    .sbc .sb-prog-fill{position:absolute;inset:0;background:var(--accent);transform:translateX(calc(var(--p,0) * 1% - 100%));transition:transform var(--dur-slower) var(--ease-out)}
+    .sbc .sb-prog-scan{position:absolute;top:0;bottom:0;left:0;width:80px;background:var(--accent-hover);opacity:0.9;animation:sb-sweep var(--dur-loop-loading) var(--ease-in-out) infinite}
+    .sbc .sb-head{position:absolute;bottom:0;left:0;right:0;height:6px;pointer-events:none;transform:translateX(calc(var(--p,0) * 1%));transition:transform var(--dur-slower) var(--ease-out)}
+    .sbc .sb-head::before{content:'';position:absolute;left:-4px;bottom:0;border:4px solid transparent;border-bottom:4px solid var(--accent);border-top:0}
+    .sbc.processing .sb-prog-fill{opacity:0.45}
+    .sbc.paused .sb-head::before{border-bottom-color:var(--warn)}
+    .sbc.paused .sb-prog-fill{background:var(--warn)}
+    /* The download folder: short, the whole path on hover, a click opens it; brackets close in on hover */
+    .sbc .sb-out{flex:0 0 auto;justify-content:flex-start;background:none;border:0;cursor:pointer;font:inherit;color:inherit;letter-spacing:inherit;max-width:30%}
+    .sbc .sb-out .sb-val{overflow:hidden;text-overflow:ellipsis;color:var(--t3);transition:color var(--dur-fast)}
+    .sbc .sb-out.job .sb-val{color:var(--accent)}
+    .sbc .sb-out i{position:absolute;width:5px;height:5px;border-color:var(--accent);border-style:solid;opacity:0;transition:transform var(--dur-base) var(--ease-spring),opacity var(--dur-base)}
+    .sbc .sb-out i:first-of-type{left:4px;top:4px;border-width:1px 0 0 1px;transform:translate(-3px,-3px)}
+    .sbc .sb-out i:last-of-type{right:4px;bottom:4px;border-width:0 1px 1px 0;transform:translate(3px,3px)}
+    .sbc .sb-out:hover .sb-val,.sbc .sb-out:focus-visible .sb-val{color:var(--t1)}
+    .sbc .sb-out:hover i,.sbc .sb-out:focus-visible i{opacity:1;transform:none}
+    .sbc .sb-out:active{transform:translateY(1px)}
+    .sbc .sb-out:focus-visible{outline:none}
+    /* Free disk: a log ruler (a tick per decade), a red mark where "low" starts, the low zone hatched when it is */
+    .sbc .sb-ruler{width:56px;height:12px;flex-shrink:0;color:var(--t3);overflow:visible}
+    .sbc .sb-ruler .trk{fill:var(--border)}
+    .sbc .sb-ruler .tk{stroke:var(--t4);stroke-width:1}
+    .sbc .sb-ruler .bar{fill:currentColor;transform-origin:0 0;transform:scaleX(var(--v,0));transition:transform var(--dur-slower) var(--ease-out)}
+    .sbc .sb-ruler .lowmk{stroke:var(--danger);stroke-width:1}
+    .sbc .sb-ruler .low{fill:url(#sb-hatch)}
+    .sbc .sb-ruler .hz{color:var(--danger)}
+    .sbc .sb-disk.low{color:var(--danger)}
+    .sbc .sb-disk.low .sb-cap,.sbc .sb-disk.low .sb-val{color:var(--danger)}
+    .sbc .sb-disk.low .sb-ruler{color:var(--danger)}
+    /* System health: three quiet marks (yt-dlp, FFmpeg, JS runtime); a problem becomes its action */
+    .sbc .sb-sys .mk{width:6px;height:6px;transform:rotate(45deg);border:1px solid var(--success);background:rgba(var(--success-rgb),0.35)}
+    .sbc .sb-sys .mk.bad{border-color:var(--danger);background:var(--danger)}
+    .sbc .sb-act{gap:7px;margin:0 6px 0 4px;padding:0 9px 0 0;height:18px;border:1px solid rgba(var(--act-rgb),0.55);background:rgba(var(--act-rgb),0.06);color:rgb(var(--act-rgb));cursor:pointer;font:inherit;font-weight:700;letter-spacing:0.12em;clip-path:polygon(0 0,calc(100% - 6px) 0,100% 6px,100% 100%,0 100%);transition:background var(--dur-fast),color var(--dur-fast)}
+    .sbc .sb-act::before{display:none}
+    .sbc .sb-act{--act-rgb:var(--warn-rgb)}
+    .sbc .sb-act.err{--act-rgb:var(--danger-rgb)}
+    .sbc .sb-act .hatch{width:10px;height:100%;flex-shrink:0;color:rgb(var(--act-rgb))}
+    .sbc .sb-act:hover,.sbc .sb-act:focus-visible{background:rgba(var(--act-rgb),0.2);color:var(--t1);outline:none}
+    .sbc .sb-act:active{transform:translateY(1px)}
+    .sbc .sb-act .meter{position:absolute;left:10px;right:0;bottom:0;height:2px;overflow:hidden}
+    .sbc .sb-act .meter b{position:absolute;inset:0;background:rgb(var(--act-rgb));transform:translateX(calc(var(--p,0) * 1% - 100%));transition:transform var(--dur-slow) var(--ease-out)}
+    .sbc .sb-act.busy{cursor:default}
+    .sbc.live .sb-link{min-width:150px}
+    @media (max-width:1240px){.sbc .sb-ja{display:none}.sbc .sb-link{min-width:0}.sbc.live .sb-link{min-width:112px}.sbc .sb-spark{width:96px}.sbc .sb-cell{padding:0 8px}.sbc .sb-act{margin:0 3px}}
+    @media (max-width:1000px){.sbc .sb-ruler,.sbc .sb-sys .sb-cap{display:none}}
+    @keyframes sb-in{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:none}}
+    @keyframes sb-snap{from{opacity:0;transform:scale(1.12)}to{opacity:1;transform:none}}
+    @keyframes sb-ping{0%{opacity:0.9;transform:scale(1)}100%{opacity:0;transform:scale(2.4)}}
+    @keyframes sb-scroll{from{transform:translateX(var(--step,0px))}to{transform:none}}
+    @keyframes sb-sweep{from{transform:translateX(-80px)}to{transform:translateX(100vw)}}
     /* FOLDER FIELD WITH HISTORY (Feed SAVE TO) */
     .folder-input{flex:1;display:flex;gap:6px;align-items:center;min-width:0}
     .folder-field{position:relative;flex:1;min-width:0}

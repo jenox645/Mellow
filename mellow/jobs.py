@@ -531,6 +531,10 @@ class JobManager:
             event.setdefault("job_id", job["id"])
             event.setdefault("job_type", job["type"])
             event.setdefault("job_label", job["label"])
+            # Where it's saving: the status bar's OUT follows a download sent elsewhere (SAVE TO, a vault sync)
+            folder = job.get("sync_path") or job.get("output_dir")
+            if folder:
+                event.setdefault("job_folder", folder)
             # Plain-language title/hint/action next to yt-dlp's raw message
             errors.annotate(event)
             if status == "item_failed":

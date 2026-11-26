@@ -566,3 +566,17 @@ def test_the_skip_route(client):
         assert r.status_code == 200 and r.get_json()['skipped'] == 1
         skip.assert_called_once_with('j1', ['a'])
     assert client.post('/api/queue/j1/skip', json={'items': []}).status_code == 400
+
+
+def test_job_events_name_the_folder_the_job_saves_to(tmp_path):
+    """The status bar's OUT follows a download sent elsewhere (the Feed's SAVE TO, a vault sync):
+    every event of a job says where it saves. /api/v1/events leaves the path out."""
+    from mellow import server
+    events = []
+    elsewhere = str(tmp_path / 'Music' / 'Lo-fi')
+    with patch('mellow.downloader.download_video', side_effect=_fake_dl_failing(set())):
+        _make_manager(events).run_job(_multi_job(elsewhere, ['https://youtu.be/a'], job_type='feed'))
+        sync = dict(_multi_job(str(tmp_path), ['https://youtu.be/b'], job_id='sync'), sync_path=elsewhere)
+        _make_manager(events).run_job(sync)
+    assert events and {e['job_folder'] for e in events} == {elsewhere}
+    assert all('job_folder' not in (server._v1_event(e) or {}) for e in events)
