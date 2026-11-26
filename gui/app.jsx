@@ -126,6 +126,7 @@ function App() {
   const [victoryData, setVictoryData] = React.useState(null);
   const [restorableJobs, setRestorableJobs] = React.useState(null);
   const [appUpdateOffer, setAppUpdateOffer] = React.useState(null);   // a newer MellowDLP (check-app-update)
+  const [ytdlpOffer, setYtdlpOffer] = React.useState(null);           // a newer yt-dlp (check-ytdlp-update)
   const [whatsNew, setWhatsNew] = React.useState(null);               // {current, entries} to show
   const toastedVersion = React.useRef(null);
   const [clipboardSuggestion, setClipboardSuggestion] = React.useState(null);
@@ -160,12 +161,22 @@ function App() {
     API.post('/api/ffmpeg/install', {}).catch(err => showNotif('FFmpeg Install Failed', err.message, 'error'));
   }, [showNotif]);
 
+  // UPDATE YT-DLP (the toast, the status bar): its outcome comes as a ytdlp_updated event
+  const updateYtdlp = React.useCallback(() => {
+    setYtdlpOffer(null);
+    API.post('/api/update-ytdlp', {}).catch(err => showNotif('Update failed', err.message, 'error'));
+  }, [showNotif]);
+
+  const openFolder = React.useCallback(path => {
+    API.post('/api/open-folder', { path }).catch(() => {});
+  }, []);
+
   // Buttons for the fixes the backend can name (errors.py actions)
   const errorActions = React.useCallback((action) => {
     if (action === 'get_ffmpeg') return [{ label: 'GET FFMPEG', primary: true, onClick: installFfmpeg }];
     if (action === 'update_ytdlp') return [{
       label: 'UPDATE YT-DLP', primary: true,
-      onClick: () => API.post('/api/update-ytdlp', {}).catch(() => {}),
+      onClick: updateYtdlp,
     }];
     if (action === 'open_config') return [{ label: 'OPEN CONFIG', primary: true, onClick: () => setPage('config') }];
     if (action === 'open_release') return [{
@@ -173,7 +184,7 @@ function App() {
       onClick: () => API.post('/api/open-release', {}).catch(() => {}),
     }];
     return null;
-  }, [installFfmpeg]);
+  }, [installFfmpeg, updateYtdlp]);
 
   // No ffmpeg: offer it once per session (the status bar keeps the button)
   const ffmpegOffered = React.useRef(false);
@@ -321,16 +332,17 @@ function App() {
           try { localStorage.setItem(UPDATE_CHECK_STORAGE_KEY, String(Date.now())); } catch {}
           API.get('/api/check-ytdlp-update').then(u => {
             if (u && u.update_available) {
+              setYtdlpOffer(u);   // the status bar keeps the offer
               showNotif('yt-dlp Update Available', `${u.installed} → ${u.latest}`, 'info', [{
                 label: 'UPDATE NOW', primary: true,
-                onClick: () => API.post('/api/update-ytdlp', {}).catch(() => {}),
+                onClick: updateYtdlp,
               }]);
             }
           }).catch(() => {});
         }
       }
     }).catch(() => {});
-  }, [refreshStats, showNotif, checkAppUpdate]);
+  }, [refreshStats, showNotif, checkAppUpdate, updateYtdlp]);
 
   // A release published while the app is open shows up without a restart
   React.useEffect(() => {
@@ -583,7 +595,11 @@ function App() {
 
         <S.StatusBar sysInfo={sysInfo} speedHistory={speedHistory} theme={theme} config={config}
           appUpdate={appUpdateOffer} onAppUpdate={() => takeAppUpdate(appUpdateOffer)}
-          ffmpegInstall={ffmpegInstall} onGetFfmpeg={installFfmpeg} />
+          ffmpegInstall={ffmpegInstall} onGetFfmpeg={installFfmpeg}
+          appState={appState} dlState={dlState} isPaused={isPaused} activeJobs={activeJobs}
+          playlistTotalCount={playlistTotalCount} playlistCompletedCount={playlistCompletedCount}
+          ytdlpUpdate={ytdlpOffer} onUpdateYtdlp={updateYtdlp} onOpenFolder={openFolder}
+          onOpenConfig={() => setPage('config')} />
       </div>
 
       <Notif notif={notif} dismiss={() => setNotif(null)} />

@@ -493,6 +493,7 @@ def api_system() -> Response:
         "db_size_bytes": analytics.get_db_size(),
         "disk_free_bytes": disk_free,
         "disk_low": disk_free is not None and disk_free < LOW_DISK_WARN_BYTES,
+        "disk_low_bytes": LOW_DISK_WARN_BYTES,
         "log_path": str(applog.LOG_PATH),
     })
 

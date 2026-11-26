@@ -78,7 +78,7 @@ pyproject.toml     ruff and pytest settings (the app isn't a pip package)
 6. `complete` event: clears remaining `playlistItems`, triggers victory overlay if playlist
 
 ## SSE Event Types (server → frontend)
-All job-originated events carry `job_id`, `job_type`, `job_label` (multi-worker attribution).
+All job-originated events carry `job_id`, `job_type`, `job_label` (multi-worker attribution) and `job_folder` (where it saves: the status bar's OUT follows it; `/api/v1/events` leaves it out).
 The frontend handles them in one place: `gui/lib/downloads.js` `applyEvent(state, event)` is a pure
 reducer over the download state (dlState, activeJobs, playlist/completed/failed items, pause, counts).
 Side effects (toasts, chime, desktop notification, refreshes, the victory overlay) are queued in
@@ -121,6 +121,7 @@ details, usually arrives in between); `endedJobs` drops a late duplicate termina
 - Deleting a media file goes through `vault.delete_media_file()` (sidecars + history rows too)
 - All magic numbers live in `constants.py` (backend) / `gui/lib/constants.js` (frontend)
 - Stats polling: 3s during active download, 30s idle (frontend constants)
+- Status bar (`StatusBar` in chrome.jsx, Classic's; each theme draws its own): idle = one quiet line (OUT folder, short via `util.shortFolder`, click opens it; disk on a log ruler, `disk_low_bytes` from `/api/system`; three system marks); downloading = the live strip (title, items, speed trace, ETA, a progress line on the bottom edge). FFmpeg missing/installing, a newer MellowDLP or yt-dlp (`ytdlpOffer`), no JS runtime and a low disk while downloading each become an action (`.sb-update`)
 - Format lists (qualities, containers, audio formats, bitrates) for the UI live in `gui/lib/constants.js`; the backend validates against its own `AUDIO_FORMATS` / `VIDEO_CONTAINERS` (constants.py), and `tests/test_formats.py` fails when the two disagree
 - A new on/off download option is one entry in `formats.TOGGLES` and one in `FORMAT_TOGGLES` (constants.js; a test compares them) plus its effect in `downloader`. Downloads, sync formats (`SYNC_FORMAT_KEYS`), library entries (one DB column per toggle, added by `init_db`) and the `<FormatToggles>` checkboxes in the Feed and both vault dialogs pick it up
 - A vault folder's sync format: request → `vault_sync_formats[path]` (last choice: the sync dialog saves it as each option changes, `/api/vault/sync-format`, not only on its SYNC NOW; the Feed's vault link too) → its library entry → `infer_folder_format()` (what the files are). Auto-sync, "sync all" and the folder's own SYNC NOW send no format, so this chain decides them

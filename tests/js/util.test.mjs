@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 
 import {
   applyTheme, themeCards, estimateDownloadBytes, fmtBytes, fmtCount, fmtDuration, fmtWait, idxRanges, isLinkLike, matchFolders,
-  parseClock, splitFolder, stepHistory, themeRgba, videoInPlaylist,
+  logScale, parseClock, shortFolder, splitFolder, stepHistory, themeRgba, videoInPlaylist,
 } from '../../gui/lib/util.js';
 import { defaultToggles, togglesFor, togglesFrom } from '../../gui/lib/formats.js';
 
@@ -153,4 +153,22 @@ test('themeCards: Classic and Classic Light are one card showing the version in 
 test('themeRgba builds a canvas colour from a channel token', () => {
   fakePage({ '--accent-rgb': ' 0,216,255 ' });
   assert.equal(themeRgba('--accent-rgb', 0.85), 'rgba(0,216,255,0.85)');
+});
+
+test('status bar: the folder shortened to its last names, the disk on a log scale', () => {
+  assert.equal(shortFolder('C:\\Users\\me\\Music\\Lo-fi'), '…\\Music\\Lo-fi');
+  assert.equal(shortFolder('/home/me/Downloads/MellowDLP/'), '…/Downloads/MellowDLP');
+  assert.equal(shortFolder('D:\\Music\\Lo-fi'), 'D:\\Music\\Lo-fi');          // short enough already
+  assert.equal(shortFolder('/home/me'), '/home/me');
+  assert.equal(shortFolder('/'), '/');
+  assert.equal(shortFolder(''), '');
+  assert.equal(shortFolder(null), '');
+  assert.equal(shortFolder('\\\\nas\\share\\Music\\Jazz'), '…\\Music\\Jazz');  // a network share
+  const GB = 1024 ** 3;
+  assert.equal(logScale(GB, GB / 10, 1000 * GB), 0.25);
+  assert.equal(logScale(100 * GB, GB / 10, 1000 * GB), 0.75);
+  assert.equal(logScale(5000 * GB, GB / 10, 1000 * GB), 1);
+  assert.equal(logScale(1, GB / 10, 1000 * GB), 0);
+  assert.equal(logScale(0, GB / 10, 1000 * GB), 0);
+  assert.equal(logScale(null, GB / 10, 1000 * GB), 0);
 });
