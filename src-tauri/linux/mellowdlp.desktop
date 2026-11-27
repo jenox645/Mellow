@@ -1,0 +1,19 @@
+# MellowDLP's menu entry: tauri's bundler fills in the fields for the deb, the rpm and the AppImage.
+# StartupWMClass is the window's app ID (set_app_id in src/system.rs): GNOME and KDE find this file,
+# so the app's name and icon, through it.
+[Desktop Entry]
+Type=Application
+Name={{name}}
+GenericName=Video and Music Downloader
+{{#if comment}}
+Comment={{comment}}
+{{/if}}
+Exec={{exec}} %u
+Icon={{icon}}
+StartupWMClass={{name}}
+Terminal=false
+Categories={{categories}}
+Keywords=yt-dlp;youtube;download;video;music;playlist;
+{{#if mime_type}}
+MimeType={{mime_type}}
+{{/if}}

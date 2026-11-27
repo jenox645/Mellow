@@ -2304,6 +2304,7 @@ name = "mellowdlp-shell"
 version = "2.14.2"
 dependencies = [
  "arboard",
+ "gtk",
  "libc",
  "notify-rust",
  "rfd",

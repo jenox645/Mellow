@@ -22,7 +22,10 @@ To swap the badge, replace the masters with any square PNG with a transparent ba
 - `src-tauri/icons/icon.ico`: the exe's icon, so also the window's, the taskbar's and the
   shortcuts': the badge from 16 to 64 px, Mellow's app icon art (`assets/mellow.ico`) at 128 px
   for Explorer's large views;
-- `src-tauri/icons/32x32.png`, `64x64.png`: the badge for Linux (the window, menus and docks).
+- `src-tauri/icons/32x32.png`, `64x64.png`, `128x128.png`, `256x256.png`, `512x512.png`: the badge
+  for Linux. The window's icon is `64x64.png`; the bundles install every size into the `hicolor`
+  icon theme, where GNOME takes the dock's, Alt-Tab's and the app grid's (the large ones too:
+  unlike Windows' 128 px, Linux shows the badge at every size).
 
 `--cut` renders the art with Playwright's Chromium (requirements-dev.txt, then
 `python -m playwright install chromium`).
@@ -130,7 +133,10 @@ def make() -> None:
                ASSETS / "mellow-badge.png": badge(18),
                ASSETS / "mellow-badge@2x.png": badge(36),
                ICONS / "32x32.png": badge(32),
-               ICONS / "64x64.png": badge(64)}
+               ICONS / "64x64.png": badge(64),
+               ICONS / "128x128.png": badge(128),
+               ICONS / "256x256.png": badge(256),
+               ICONS / "512x512.png": badge(512)}
     for out, im in outputs.items():
         im.save(out)
         print(f"{out.relative_to(ROOT)} ({im.width}x{im.height})")

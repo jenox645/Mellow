@@ -147,6 +147,16 @@ def test_classic_is_the_page_itself():
 
 
 @pytest.mark.parametrize("theme", OTHER_THEMES)
+def test_a_theme_declares_its_colour_scheme(theme):
+    """WebKitGTK (the Tauri window on Linux) draws checkboxes, number fields and scrollbars in the
+    declared scheme; index.html gives that engine Classic's dark one, which a light theme that
+    declared none would keep (#117)."""
+    scheme = re.compile(r"(^|;)\s*color-scheme:\s*(light|dark)\s*(;|$)")
+    assert any(selectors.strip() == f':root[data-theme="{theme}"]' and scheme.search(body)
+               for selectors, body in _rules(_css(theme))), f"{theme}.css: no color-scheme"
+
+
+@pytest.mark.parametrize("theme", OTHER_THEMES)
 def test_a_theme_file_only_styles_its_own_theme(theme):
     rules = _rules(_css(theme))
     assert rules

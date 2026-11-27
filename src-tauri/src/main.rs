@@ -554,6 +554,9 @@ fn start_backend(app: &AppHandle, background: bool) -> Result<(), String> {
 fn main() {
     timing("shell_start");
     let background = std::env::args().any(|arg| arg == BACKGROUND_FLAG);
+    let context = tauri::generate_context!();
+    #[cfg(target_os = "linux")]
+    system::set_app_id(context.config().product_name.as_deref().unwrap_or(WINDOW_TITLE));
     let app = tauri::Builder::default()
         // First: a second launch shows this window instead of starting another backend;
         // the system starting it at login while it already runs shows nothing
@@ -611,7 +614,7 @@ fn main() {
             }
             Ok(())
         })
-        .build(tauri::generate_context!())
+        .build(context)
         .expect("error while building the MellowDLP shell");
 
     app.run(|app, event| match event {

@@ -27,6 +27,7 @@
     },
     "linux": {
       "deb": {
+        "desktopTemplate": "linux/mellowdlp.desktop",
         "depends": [
           "gstreamer1.0-plugins-base",
           "gstreamer1.0-plugins-good",
@@ -41,6 +42,7 @@
         "bundleMediaFramework": true
       },
       "rpm": {
+        "desktopTemplate": "linux/mellowdlp.desktop",
         "depends": [
           "webkit2gtk4.1",
           "libayatana-appindicator-gtk3",
