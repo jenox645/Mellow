@@ -34,6 +34,7 @@ from . import (
 )
 from . import backup as _backup
 from . import library as _library
+from . import thumbs as _thumbs
 from . import vault as _vault
 from .config import (
     download_root,
@@ -1027,16 +1028,29 @@ def api_vault_folder() -> Response:
     return jsonify({"files": files, "path": path, "folder_name": Path(path).name})
 
 
+# A transparent 1x1 GIF: "being made, ask again" (components/thumb-img.jsx asks again when an
+# image comes back this small)
+_THUMB_PENDING_GIF = bytes.fromhex("47494638396101000100800000000000ffffff21f90401000000002c00000000010001000002024401003b")
+
+
 @app.route("/api/vault/thumb")
 def api_vault_thumb() -> Response:
+    """A thumbnail, at once (thumbs.serve): what needs ffmpeg is made in the background meanwhile
+    (202 and a 1-pixel placeholder). Kept by the window for THUMB_CACHE_SECS, then checked with
+    its ETag; a picture whose small copy is still being made is checked every time."""
     path = request.args.get("path", "")
     if not path:
         return Response("", 404)
-    result = _vault.get_thumb_bytes(path)
+    result = _thumbs.serve(path)
     if result is None:
         return Response("", 404)
-    content, mime = result
-    return Response(content, mimetype=mime, headers={"Cache-Control": f"max-age={THUMB_CACHE_SECS}"})
+    if result == _thumbs.PENDING:
+        return Response(_THUMB_PENDING_GIF, status=202, mimetype="image/gif", headers={"Cache-Control": "no-store"})
+    headers = {"ETag": result.etag,
+               "Cache-Control": f"private, max-age={THUMB_CACHE_SECS}" if result.final else "private, no-cache"}
+    if result.etag in request.headers.get("If-None-Match", ""):
+        return Response(status=304, headers=headers)
+    return Response(result.data, mimetype=result.mime, headers=headers)
 
 
 @app.route("/api/playlist-items", methods=["POST"])

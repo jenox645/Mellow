@@ -47,7 +47,7 @@ MEDIA_MIME: dict[str, str] = {
 }
 
 # ── Thumbnails ────────────────────────────────────────────────────────────────
-THUMB_CACHE_SECS: int = 86400        # browser cache lifetime for /api/vault/thumb
+THUMB_CACHE_SECS: int = 86400        # browser cache lifetime for /api/vault/thumb (then revalidated: ETag)
 THUMB_PREVIEW_LIMIT: int = 4         # max mosaic thumbnails per folder card
 FILE_THUMBS_LIMIT: int = 100         # max paths per /api/vault/file-thumbs request
 THUMB_FETCH_TIMEOUT_SECS: int = 15   # sidecar download timeout
@@ -58,6 +58,9 @@ THUMB_COVER_RAW_MAX_BYTES: int = 200_000   # a bigger embedded cover is scaled d
 THUMB_DISK_CACHE_MAX_BYTES: int = 256 * 1024 * 1024  # the per-user thumbnail cache (datadir.cache_dir)
 THUMB_DISK_CACHE_PRUNE_EVERY: int = 50     # check the cache's size every this many new thumbnails
 THUMB_PREVIEW_PROBE_MAX: int = 12    # files without a sidecar a folder card looks into for a cover
+THUMB_SMALL_MIN_BYTES: int = 60_000  # a bigger picture (a download's 1280 px sidecar) is served as a THUMB_FFMPEG_WIDTH copy
+THUMB_WORKERS: int = 3               # background makers of frames, covers and small copies (ffmpeg)
+THUMB_QUEUE_MAX: int = 300           # waiting jobs kept; the oldest (scrolled past) go first
 
 # ── Job queue ─────────────────────────────────────────────────────────────────
 MAX_DOWNLOAD_WORKERS: int = 3        # hard ceiling for concurrent downloads

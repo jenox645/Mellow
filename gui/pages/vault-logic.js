@@ -6,7 +6,7 @@
 
 import { API } from '../lib/api.js';
 import { fmtBytes } from '../lib/util.js';
-import { TAGGABLE_AUDIO, VIDEO_EXTS } from '../lib/constants.js';
+import { MOSAIC_PRELOAD_MARGIN, TAGGABLE_AUDIO, VIDEO_EXTS } from '../lib/constants.js';
 import { useFitInWindow } from '../components/common.jsx';
 import { useMarquee } from '../components/marquee.jsx';
 import { clickSelect } from '../lib/selection.js';
@@ -42,7 +42,11 @@ export function useVaultPage(props) {
   const [folderStatsData, setFolderStatsData] = React.useState(null);
   // path → thumbnail URL for the open folder; null until known, so a card
   // doesn't fetch a guessed URL first and the right one after
-  const [fileThumbs, setFileThumbs] = React.useState(null);
+  // The open folder's thumbnail URLs, with the folder they were looked up for: shown only for that
+  // folder, so a folder opened again (or another one) starts without pictures and gets them once its
+  // cards are laid out. Pictures put in with the cards in one go were all loaded at once, lazy or not:
+  // 2,000 of them in a big folder (#126)
+  const [thumbsFor, setThumbsFor] = React.useState({ folder: null, thumbs: null });
   const [vaultScale, setVaultScale] = React.useState(() => { try { return localStorage.getItem('vault_scale') || 'md'; } catch { return 'md'; } });
   const [selectedFiles, setSelectedFiles] = React.useState(new Set());
   const [selectionMode, setSelectionMode] = React.useState(false);
@@ -96,15 +100,15 @@ export function useVaultPage(props) {
 
   const loadFolder = React.useCallback((folder) => {
     setLoading(true);
-    setFileThumbs(null);
+    setThumbsFor({ folder: null, thumbs: null });
     API.get('/api/vault/folder?path=' + encodeURIComponent(folder))
       .then(d => {
         const loaded = d.files || [];
         setFiles(loaded);
-        if (!loaded.length) { setFileThumbs({}); return; }
+        if (!loaded.length) { setThumbsFor({ folder, thumbs: {} }); return; }
         API.post('/api/vault/file-thumbs', { paths: loaded.map(f => f.path) })
-          .then(r => setFileThumbs(r.thumbs || {}))
-          .catch(() => setFileThumbs({}));
+          .then(r => setThumbsFor({ folder, thumbs: r.thumbs || {} }))
+          .catch(() => setThumbsFor({ folder, thumbs: {} }));
       })
       .catch(() => {})
       .finally(() => setLoading(false));
@@ -125,16 +129,38 @@ export function useVaultPage(props) {
     selectAnchor.current = null;
   }, [selectedFolder]);
 
-  // Load thumbnail mosaics for all vault folder cards
-  React.useEffect(() => {
-    if (!vaultFolders.length) return;
-    vaultFolders.forEach(folder => {
-      if (folderMosaics[folder.path] !== undefined) return;
-      API.get('/api/vault/folder-previews?path=' + encodeURIComponent(folder.path))
-        .then(d => setFolderMosaics(prev => ({ ...prev, [folder.path]: d.thumbs || [] })))
-        .catch(() => setFolderMosaics(prev => ({ ...prev, [folder.path]: [] })));
-    });
-  }, [vaultFolders]);
+  // A folder card's mosaic is asked for once the card comes near the screen (#126): a vault of 200
+  // folders asked for all their pictures at once, and an open folder's own pictures waited behind them.
+  // The view puts mosaicRef(path) on each card
+  const mosaicAsked = React.useRef(new Set());
+  const mosaicObserver = React.useRef(null);
+  const mosaicRefs = React.useRef(new Map());
+  const loadMosaic = React.useCallback((path) => {
+    if (mosaicAsked.current.has(path)) return;
+    mosaicAsked.current.add(path);
+    API.get('/api/vault/folder-previews?path=' + encodeURIComponent(path))
+      .then(d => setFolderMosaics(prev => ({ ...prev, [path]: d.thumbs || [] })))
+      .catch(() => setFolderMosaics(prev => ({ ...prev, [path]: [] })));
+  }, []);
+  const mosaicRef = React.useCallback((path) => {
+    if (!mosaicRefs.current.has(path)) {
+      mosaicRefs.current.set(path, (el) => {
+        if (!el) return;
+        if (typeof IntersectionObserver === 'undefined') { loadMosaic(path); return; }
+        if (!mosaicObserver.current) {
+          mosaicObserver.current = new IntersectionObserver(entries => entries.forEach(entry => {
+            if (!entry.isIntersecting) return;
+            mosaicObserver.current.unobserve(entry.target);
+            loadMosaic(entry.target.dataset.mosaicPath);
+          }), { rootMargin: MOSAIC_PRELOAD_MARGIN });
+        }
+        el.dataset.mosaicPath = path;
+        mosaicObserver.current.observe(el);
+      });
+    }
+    return mosaicRefs.current.get(path);
+  }, [loadMosaic]);
+  React.useEffect(() => () => mosaicObserver.current && mosaicObserver.current.disconnect(), []);
 
   const selectedFolderMeta = vaultFolders.find(f => f.path === selectedFolder);
   // The server links a folder to its library entry (library_id); matching on
@@ -390,7 +416,15 @@ export function useVaultPage(props) {
   };
 
   // A file's thumbnail: the one the folder listing found, the server's frame grab otherwise
-  const fileThumbUrl = (file) => fileThumbs[file.path] || '/api/vault/thumb?path=' + encodeURIComponent(file.path);
+  const fileThumbs = selectedFolder && thumbsFor.folder === selectedFolder ? thumbsFor.thumbs : null;
+  React.useEffect(() => {
+    if (selectedFolder) return;
+    setThumbsFor({ folder: null, thumbs: null });
+    setFiles([]);
+  }, [selectedFolder]);
+  // The file's version in the URL: a changed file is a new picture, never the one the window kept
+  const fileThumbUrl = (file) => fileThumbs[file.path]
+    || '/api/vault/thumb?path=' + encodeURIComponent(file.path) + '&v=' + Math.round((file.modified || 0) * 1e3);
 
   // A click opens the file; with SELECT on, Ctrl/⌘ or Shift it selects instead
   // (Shift: the range from the last file clicked), like a file explorer
@@ -456,7 +490,7 @@ export function useVaultPage(props) {
     ...props,
     budgets,
     // the folder cards
-    folderMosaics, gridScale, vaultScale, setScale, refreshAll, syncAll,
+    folderMosaics, mosaicRef, gridScale, vaultScale, setScale, refreshAll, syncAll,
     cardMenuData, setCardMenuData, cardMenuRef,
     openFolderStats, generateArchive, handleVaultRemove, handleVaultRename, pickMoveTarget,
     handleWatchFolder, confirmWatchFolder, watchArchivePrompt, setWatchArchivePrompt,

@@ -101,7 +101,7 @@ def test_a_card_shows_the_first_media_files_that_have_a_thumbnail(tmp_path):
     _write(root / "00 a folder.mp3")
     (root / "00 a folder.jpg").mkdir()                       # not a thumbnail
     previews = vault.get_folder_previews(str(root))
-    assert previews == [f"/api/vault/thumb?path={quote(str(root / (n + '.jpg')))}"
+    assert previews == [f"/api/vault/thumb?path={quote(str(root / (n + '.jpg')))}&v={(root / (n + '.jpg')).stat().st_mtime_ns}"
                         for n in names[:THUMB_PREVIEW_LIMIT]]
 
 

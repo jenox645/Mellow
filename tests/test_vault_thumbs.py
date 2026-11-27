@@ -237,7 +237,8 @@ def test_a_folder_card_shows_the_covers_inside_its_files(music):
         _with_cover(_audio(root / n))
     with patch("mellow.vault.find_ffmpeg", return_value=None):
         previews = vault.get_folder_previews(str(root))
-    assert previews == [f"/api/vault/thumb?path={quote(str(root / n))}" for n in names[:THUMB_PREVIEW_LIMIT]]
+    assert previews == [f"/api/vault/thumb?path={quote(str(root / n))}&v={(root / n).stat().st_mtime_ns}"
+                        for n in names[:THUMB_PREVIEW_LIMIT]]
 
 
 def test_the_vault_lists_every_format_ffmpeg_reads(music):
