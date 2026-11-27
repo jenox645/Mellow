@@ -123,3 +123,13 @@ export const MARQUEE_START_PX = 5;             // a press that moves less than t
 export const MARQUEE_EDGE_PX = 40;             // dragging this close to the top/bottom scrolls…
 export const MARQUEE_SCROLL_PX = 16;           // …this far each step
 export const MARQUEE_SCROLL_MS = 30;
+
+// Vault thumbnails being made in the background (components/thumb-img.jsx): asked for again after
+// THUMB_RETRY_FIRST_MS, then THUMB_RETRY_GROWTH times longer each time up to THUMB_RETRY_MAX_MS,
+// THUMB_RETRIES times (an answer is a few milliseconds: the server only looks whether it's made)
+export const THUMB_RETRY_FIRST_MS = 150;
+export const THUMB_RETRY_GROWTH = 1.6;
+export const THUMB_RETRY_MAX_MS = 3000;
+export const THUMB_RETRIES = 20;
+// A vault folder card asks for its mosaic once it is this close to the screen
+export const MOSAIC_PRELOAD_MARGIN = '300px';

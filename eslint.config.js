@@ -35,6 +35,7 @@ export default [
         EventSource: 'readonly',
         FileReader: 'readonly',
         ResizeObserver: 'readonly',
+        IntersectionObserver: 'readonly',
         setTimeout: 'readonly',
         clearTimeout: 'readonly',
         requestAnimationFrame: 'readonly',

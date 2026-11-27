@@ -451,29 +451,39 @@ def _mime_for_ext(ext: str) -> str:
 
 # ── Folder preview mosaics ────────────────────────────────────────────────────
 
+def thumb_url(path: Path | str, entry: os.DirEntry | None = None) -> str:
+    """The /api/vault/thumb URL of a picture or media file, with its version (mtime): a changed
+    file gets a new URL, so the window never shows the old picture it kept (thumbs.py)."""
+    try:
+        version = (entry.stat() if entry is not None else os.stat(path)).st_mtime_ns
+    except OSError:
+        version = 0
+    return f"/api/vault/thumb?path={quote(str(path))}&v={version}"
+
+
 def get_folder_previews(path: str) -> list[str]:
     """Return up to THUMB_PREVIEW_LIMIT thumbnail URLs for a folder."""
     root = Path(path)
     thumb_urls: list[str] = []
-    files = []
+    files: list[tuple[Path, os.DirEntry]] = []
     for entry in _entries(root):
         try:
             if entry.is_file():
-                files.append(Path(entry.name))
+                files.append((Path(entry.name), entry))
         except OSError:
             pass
-    img_map = {f.stem.lower(): f for f in files if f.suffix.lower() in IMAGE_EXTS}
+    img_map = {f.stem.lower(): (f, e) for f, e in files if f.suffix.lower() in IMAGE_EXTS}
     probes = 0
-    for f in files:
+    for f, entry in files:
         if is_media(f):
             match = img_map.get(f.stem.lower())
             if match:
-                thumb_urls.append(f"/api/vault/thumb?path={quote(str(root / match))}")
+                thumb_urls.append(thumb_url(root / match[0], match[1]))
             elif probes < THUMB_PREVIEW_PROBE_MAX:
                 # No sidecar (a folder of FLACs copied in): its own cover, or one made before
                 probes += 1
                 if has_thumb(root / f):
-                    thumb_urls.append(f"/api/vault/thumb?path={quote(str(root / f))}")
+                    thumb_urls.append(thumb_url(root / f, entry))
             if len(thumb_urls) >= THUMB_PREVIEW_LIMIT:
                 break
     return thumb_urls
@@ -489,14 +499,14 @@ def resolve_file_thumbs(paths: list[str], get_conn: Callable) -> dict[str, str]:
     def _dir_images(parent: Path) -> dict:
         key = str(parent)
         if key not in _dir_cache:
-            try:
-                _dir_cache[key] = {
-                    f.stem.lower(): f
-                    for f in parent.iterdir()
-                    if f.is_file() and f.suffix.lower() in IMAGE_EXTS
-                }
-            except Exception:
-                _dir_cache[key] = {}
+            images = {}
+            for entry in _entries(parent):
+                try:
+                    if Path(entry.name).suffix.lower() in IMAGE_EXTS and entry.is_file():
+                        images[Path(entry.name).stem.lower()] = entry
+                except OSError:
+                    pass
+            _dir_cache[key] = images
         return _dir_cache[key]
 
     no_sidecar: list[str] = []
@@ -504,7 +514,7 @@ def resolve_file_thumbs(paths: list[str], get_conn: Callable) -> dict[str, str]:
         fp = Path(p)
         match = _dir_images(fp.parent).get(fp.stem.lower())
         if match:
-            result[p] = f"/api/vault/thumb?path={quote(str(match))}"
+            result[p] = thumb_url(fp.parent / match.name, match)
         else:
             no_sidecar.append(p)
     if no_sidecar:

@@ -3,7 +3,9 @@
 The vault keeps a video's frame as a sidecar next to it when it can; a folder
 it can't write to (a read-only mount, another account's files) gets its
 thumbnails here instead. Audio covers always come here: the file itself holds
-the picture, so nothing is added to a music folder. An entry is named by the
+the picture, so nothing is added to a music folder. So do the small copies of
+big pictures (a download's 1280 px sidecar) the vault's cards are shown with
+(variant "small", thumbs.py). An entry is named by the
 file's path, mtime and size, so a changed file gets a new one; the oldest go
 once the folder passes THUMB_DISK_CACHE_MAX_BYTES.
 """
@@ -30,13 +32,16 @@ def folder() -> Path:
     return datadir.cache_dir() / "thumbs"
 
 
-def _name(media: Path, st: os.stat_result) -> str:
+def _name(media: Path, st: os.stat_result, variant: str = "") -> str:
     where = os.path.normcase(os.path.abspath(media))
-    return hashlib.sha1(f"{where}|{st.st_mtime_ns}|{st.st_size}".encode("utf-8", "surrogatepass")).hexdigest()
+    key = f"{where}|{st.st_mtime_ns}|{st.st_size}" + (f"|{variant}" if variant else "")
+    return hashlib.sha1(key.encode("utf-8", "surrogatepass")).hexdigest()
 
 
-def get(media: Path, st: os.stat_result) -> tuple[bytes, str] | None:
-    base = folder() / _name(media, st)
+def get(media: Path, st: os.stat_result, variant: str = "") -> tuple[bytes, str] | None:
+    """The picture kept for this version of `media` (`variant`: "small", the
+    small copy of a big picture; "" the picture itself)."""
+    base = folder() / _name(media, st, variant)
     for mime, ext in _EXTS.items():
         try:
             return base.with_suffix(ext).read_bytes(), mime
@@ -45,10 +50,10 @@ def get(media: Path, st: os.stat_result) -> tuple[bytes, str] | None:
     return None
 
 
-def put(media: Path, st: os.stat_result, data: bytes, mime: str) -> None:
+def put(media: Path, st: os.stat_result, data: bytes, mime: str, variant: str = "") -> None:
     """Keep a thumbnail; a cache that can't be written to only costs a remake."""
     global _writes
-    target = folder() / (_name(media, st) + _EXTS.get(mime, ".jpg"))
+    target = folder() / (_name(media, st, variant) + _EXTS.get(mime, ".jpg"))
     try:
         target.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         fd, tmp = tempfile.mkstemp(dir=str(target.parent), suffix=".tmp")

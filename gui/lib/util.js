@@ -1,7 +1,9 @@
 // Shared formatting helpers.
 'use strict';
 
-import { DEFAULT_THEME, THEME_PAIRS, THEME_STORAGE_KEY, THEMES } from './constants.js';
+import {
+  DEFAULT_THEME, THEME_PAIRS, THEME_STORAGE_KEY, THEMES, THUMB_RETRY_FIRST_MS, THUMB_RETRY_GROWTH, THUMB_RETRY_MAX_MS,
+} from './constants.js';
 
 export function fmtBytes(b) {
   if (!b && b !== 0) return '—';
@@ -214,4 +216,14 @@ export function cssVar(name, el) {
 // rgba() from a channel token: themeRgba('--accent-rgb', 0.85) → 'rgba(0,216,255,0.85)' in Classic
 export function themeRgba(name, alpha) {
   return `rgba(${cssVar(name)},${alpha})`;
+}
+
+// A vault thumbnail asked for again while the server makes it (components/thumb-img.jsx): a URL of its
+// own each time (a placeholder is never kept), and a little later each time
+export function thumbRetryUrl(src, attempt) {
+  return attempt ? src + (src.includes('?') ? '&' : '?') + 'retry=' + attempt : src;
+}
+
+export function thumbRetryDelay(attempt) {
+  return Math.min(Math.round(THUMB_RETRY_FIRST_MS * THUMB_RETRY_GROWTH ** attempt), THUMB_RETRY_MAX_MS);
 }

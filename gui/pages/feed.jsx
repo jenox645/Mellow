@@ -489,7 +489,7 @@ export function ClassicFeedView({
               {(completedItems || []).slice(0, 12).map((item, i) => (
                 <div key={i} className="q-completed-item">
                   {item.thumbnail
-                    ? <img src={item.thumbnail} style={{ width: 64, height: 36, objectFit: 'cover', flexShrink: 0, borderRadius: 2 }} alt="" onError={e => { e.target.style.display='none'; }} />
+                    ? <img src={item.thumbnail} loading="lazy" decoding="async" style={{ width: 64, height: 36, objectFit: 'cover', flexShrink: 0, borderRadius: 2 }} alt="" onError={e => { e.target.style.display='none'; }} />
                     : <div className="q-comp-thumb-ph">✓</div>}
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div className="q-comp-title">{item.title || 'Unknown'}</div>
@@ -592,7 +592,7 @@ function SearchResults({ results, info, onPick, onPickMany, onClear }) {
                 {ticked.has(item.url) ? '✓' : ''}
               </span>
               {item.thumbnail
-                ? <img src={item.thumbnail} className="pl-queue-thumb" alt="" onError={e => { e.target.style.display = 'none'; }} />
+                ? <img src={item.thumbnail} loading="lazy" decoding="async" className="pl-queue-thumb" alt="" onError={e => { e.target.style.display = 'none'; }} />
                 : <div className="pl-queue-thumb-ph">▶</div>}
               <div className="pl-queue-info">
                 <div className="pl-queue-title">{item.title || item.url}</div>

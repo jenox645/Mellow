@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 
 import {
   applyTheme, themeCards, estimateDownloadBytes, fmtBytes, fmtCount, fmtDuration, fmtWait, idxRanges, isLinkLike, matchFolders,
-  parseClock, splitFolder, stepHistory, themeRgba, videoInPlaylist,
+  parseClock, splitFolder, stepHistory, themeRgba, thumbRetryDelay, thumbRetryUrl, videoInPlaylist,
 } from '../../gui/lib/util.js';
 import { defaultToggles, togglesFor, togglesFrom } from '../../gui/lib/formats.js';
 
@@ -153,4 +153,15 @@ test('themeCards: Classic and Classic Light are one card showing the version in 
 test('themeRgba builds a canvas colour from a channel token', () => {
   fakePage({ '--accent-rgb': ' 0,216,255 ' });
   assert.equal(themeRgba('--accent-rgb', 0.85), 'rgba(0,216,255,0.85)');
+});
+
+test('a thumbnail being made is asked for again under a new URL, a little later each time', () => {
+  const src = '/api/vault/thumb?path=%2Fm%2Fclip.mkv&v=17';
+  assert.equal(thumbRetryUrl(src, 0), src);
+  assert.equal(thumbRetryUrl(src, 3), src + '&retry=3');
+  assert.equal(thumbRetryUrl('/x.jpg', 1), '/x.jpg?retry=1');
+  const delays = [0, 1, 2, 3, 10, 30].map(thumbRetryDelay);
+  assert.deepEqual(delays.slice(0, 4), [150, 240, 384, 614]);
+  assert.equal(delays[4], 3000);                       // capped
+  assert.equal(delays[5], 3000);
 });

@@ -67,7 +67,7 @@ export function PendingList({ items, setItems, jobId, showNotif, maxHeight, skip
                 ? <span className={'pl-queue-check' + (off ? '' : ' on')} role="checkbox" aria-checked={!off}>{off ? '' : '✓'}</span>
                 : <span className="pl-queue-idx">{item.idx}</span>}
               {item.thumbnail
-                ? <img src={item.thumbnail} className="pl-queue-thumb" alt="" onError={e => { e.target.style.display = 'none'; }} />
+                ? <img src={item.thumbnail} loading="lazy" decoding="async" className="pl-queue-thumb" alt="" onError={e => { e.target.style.display = 'none'; }} />
                 : <div className="pl-queue-thumb-ph">▶</div>}
               <div className="pl-queue-info">
                 <div className="pl-queue-title">{item.title || item.url || 'Unknown'}</div>

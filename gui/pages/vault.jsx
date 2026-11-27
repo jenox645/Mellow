@@ -7,6 +7,7 @@ import { fmtBytes, fmtDate, fmtWait, timeAgo } from '../lib/util.js';
 import { Ico } from '../components/icons.jsx';
 import { Modal, Mascot } from '../components/common.jsx';
 import { MediaMark } from '../components/media-mark.jsx';
+import { ThumbImg } from '../components/thumb-img.jsx';
 import {
   MASCOT_CHILLING, MASCOT_TIRED, MASCOT_FRUSTRATED, MASCOT_COMFY_SAFE,
 } from '../lib/mascots.js';
@@ -91,7 +92,7 @@ export function VaultPage({ View = ClassicVaultView, ...props }) {
 
 export function ClassicVaultView({
   vaultFolders, selectedFolder, setSelectedFolder, showNotif, onAddVault, onRefreshVault, isDownloading, onSyncStart,
-  budgets, folderMosaics, gridScale, vaultScale, setScale, refreshAll, syncAll, cardMenuData, setCardMenuData,
+  budgets, folderMosaics, mosaicRef, gridScale, vaultScale, setScale, refreshAll, syncAll, cardMenuData, setCardMenuData,
   cardMenuRef, openFolderStats, generateArchive, handleVaultRemove, handleVaultRename, pickMoveTarget,
   handleWatchFolder, confirmWatchFolder, watchArchivePrompt, setWatchArchivePrompt, dragOver, handleDragOver,
   handleDragLeave, handleDrop, dropModal, setDropModal, linkPlModal, setLinkPlModal, syncModal, setSyncModal,
@@ -175,18 +176,17 @@ export function ClassicVaultView({
               const thumbs = folderMosaics[folder.path] || [];
               const showMosaic = thumbs.length > 0;
               return (
-                <div key={folder.path} className="vault-folder-card" onClick={() => setSelectedFolder(folder.path)}>
+                <div key={folder.path} ref={mosaicRef(folder.path)} className="vault-folder-card" onClick={() => setSelectedFolder(folder.path)}>
                   {/* Thumbnail mosaic or folder icon */}
                   {showMosaic ? (
                     thumbs.length === 1 ? (
-                      <img src={thumbs[0]} style={{ width: '100%', flex: 1, minHeight: 0, objectFit: 'cover', display: 'block' }} alt=""
-                        onError={e => { e.target.style.display='none'; }} />
+                      <ThumbImg src={thumbs[0]} style={{ width: '100%', flex: 1, minHeight: 0, objectFit: 'cover', display: 'block' }} />
                     ) : (
                       <div className="vfc-mosaic">
                         {[0,1,2,3].map((i) => {
                           const t = thumbs[i] || null;
                           return t
-                            ? <img key={i} src={t} className="vfc-mosaic-cell" alt="" onError={e => { e.target.style.display='none'; }} />
+                            ? <ThumbImg key={i} src={t} className="vfc-mosaic-cell" />
                             : <div key={i} className="vfc-mosaic-ph" />;
                         })}
                       </div>
@@ -418,14 +418,8 @@ export function ClassicVaultView({
     <div className={'lib-thumb' + (small ? ' small' : '')}>
       <MediaMark video={isVideoExt(file.ext)} small={small} />
       {fileThumbs && (
-        <img
-          src={fileThumbUrl(file)}
-          loading="lazy" decoding="async" draggable={false}
-          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', zIndex: 1 }}
-          alt=""
-          onError={e => { e.target.style.display = 'none'; }}
-          onLoad={e => { e.target.style.display = ''; }}
-        />
+        <ThumbImg src={fileThumbUrl(file)}
+          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', zIndex: 1 }} />
       )}
       {!small && (
         <div className={'lib-fmt ' + (isVideoExt(file.ext) ? 'video' : 'audio')} style={{ position: 'absolute', top: 6, left: 6, zIndex: 2, margin: 0 }}>
