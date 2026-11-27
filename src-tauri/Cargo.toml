@@ -49,6 +49,10 @@ version = "0.62"
 [target.'cfg(not(windows))'.dependencies]
 notify-rust = "4"
 
+# The window's app ID on Linux (system.rs set_app_id): the GTK that tao already uses
+[target.'cfg(target_os = "linux")'.dependencies]
+gtk = "0.18"
+
 # Tauri's recommended size settings
 [profile.release]
 codegen-units = 1

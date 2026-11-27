@@ -21,6 +21,13 @@
       // 'dark' (what older versions stored), nothing or an unknown id: Classic
       document.documentElement.dataset.theme = THEME_IDS.indexOf(theme) >= 0 ? theme : 'classic';
     })();
+    // WebKitGTK (the Tauri window on Linux, GNOME Web) draws form controls with the GTK theme: the
+    // engine rules below (ENGINE: WEBKITGTK) need to know it's the one. Chromium and WebView2 aren't.
+    (function(){
+      var ua = navigator.userAgent;
+      if (/AppleWebKit/.test(ua) && !/Chrome\/|Chromium\/|Edg\//.test(ua) && /X11|Linux|BSD/.test(ua) && !/Android/.test(ua))
+        document.documentElement.dataset.engine = 'webkitgtk';
+    })();
   </script>
   <style>
     *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -567,6 +574,17 @@
     .settings-ctrl{flex-shrink:0}
     .sel{background:var(--surface-input-2);border:1px solid var(--border);color:var(--t1);padding:7px 10px;font-family:var(--font-mono);font-size:10.5px;outline:none;cursor:pointer;min-width:130px}
     .sel:focus{border-color:var(--accent)}
+    /* ENGINE: WEBKITGTK. It draws what the page leaves to the system (a select's box, checkboxes, number and
+       time fields, scrollbars) in the GTK theme, light unless the page declares a colour scheme, and a
+       select's box in GTK's own colours whatever the page asks: Classic's selects came out as white boxes
+       with near-invisible light text. Classic's scheme is dark (each other theme declares its own in its
+       file, which comes after this and wins); selects draw their own box and arrow from the theme's
+       tokens. Only this engine: Chromium and WebView2 already draw these as the CSS asks, and stay as
+       they are */
+    :root[data-engine="webkitgtk"]{color-scheme:dark}
+    :root[data-engine="webkitgtk"] select{-webkit-appearance:none;appearance:none;padding-right:28px;background-image:linear-gradient(45deg,transparent 50%,var(--t2) 50%),linear-gradient(135deg,var(--t2) 50%,transparent 50%);background-position:calc(100% - 16px) 50%,calc(100% - 11px) 50%;background-size:5px 5px;background-repeat:no-repeat}
+    :root[data-engine="webkitgtk"] select option{background-color:var(--bg2);color:var(--t1)}
+    :root[data-engine="webkitgtk"] input[type=checkbox]{accent-color:var(--accent)}
     /* APPEARANCE: one card per theme (Config); Classic's card has a Dark / Light switch (Classic Light) */
     .theme-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px}
     .theme-card{display:flex;flex-direction:column;gap:8px;padding:10px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-panel);cursor:pointer;user-select:none;transition:border-color var(--dur-fast),background var(--dur-fast)}

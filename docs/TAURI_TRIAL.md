@@ -191,9 +191,9 @@ needed before it built at all, on any machine:
   MellowDLP, version 2.14.2, `frontendDist: "ui"`, no windows in the config, `bundle.active` false,
   CSP off, no global Tauri object) and `.gitignore` now lets it through. The identifier
   (`io.github.jenox645.mellowdlp`) is a guess: replace the file with the original if it differs.
-- Linux needs a PNG window icon (`failed to open icon …/icons/icon.png`): `src-tauri/icons/icon.png`
-  is the 128 px image of `assets/mellow.ico`. Linux's window icon is the first PNG in `bundle.icon`, today
-  the sheep-face badge's `icons/64x64.png` (see *Icons* under Premium window).
+- Linux needs a PNG window icon (`failed to open icon …/icons/icon.png`). Linux's window icon is the
+  first PNG in `bundle.icon`, today the sheep-face badge's `icons/64x64.png` (see *Icons* under Premium
+  window); since #117 every Linux size is the badge (`icon.png`, `assets/mellow.ico`'s art, is gone).
 
 **How it was driven.** WebKitGTK has no DevTools protocol, so the real window was used with the
 real X input: `xdotool` for clicks and typing (and reading the window title), `import -window root`
@@ -240,9 +240,9 @@ its group: stdin closed → both end).
   frame yet, so nothing is subtracted: the page area is 1100×780 and the window 1102×805 with
   openbox's frame (1, 1, 20, 5), a little larger than Chrome's 1100×780. Running it again once the
   window is shown would match.
-- **Native `<select>`:** WebKitGTK draws selects with GTK's own light style (SORT BY in a vault
-  folder, Browser Cookies in Config): a white box on the dark theme. Chrome and WebView2 follow
-  the page's colours. A theme fix (`appearance: none` and our own arrow) belongs in `gui/`.
+- **Native `<select>`:** WebKitGTK drew selects with GTK's own light style (SORT BY in a vault
+  folder, every select in Config): a white box with near-invisible light text on Classic. Chrome and
+  WebView2 follow the page's colours. Fixed in #117, see [Install on Fedora](#install-on-fedora).
 - **Second launch needs D-Bus:** `tauri-plugin-single-instance` uses the session bus on Linux.
   Every desktop session has one, so it's only a headless/CI concern; without it the second window
   still works, as a second window.
@@ -441,6 +441,55 @@ chmod +x MellowDLP_*.AppImage && ./MellowDLP_*.AppImage
   library). Not run in a Fedora GNOME session: the window, the tray and video playback there are still
   to be seen.
 
+**Name and icon in GNOME (#117).** GNOME (and KDE) put a window under an app by its *app ID* (Wayland's
+`app_id`, X11's `WM_CLASS`) and a `.desktop` file whose name or `StartupWMClass` matches it; the app's name
+and icon come from that file. With none, GNOME shows the raw ID with a gear, which is what the AppImage did:
+`mellowdlp-shell` (GTK's default, the executable's name).
+
+- **The app ID is `MellowDLP`**, the product name (`set_app_id` in `src-tauri/src/system.rs`, before GTK
+  starts): Wayland's `xdg_toplevel.set_app_id("MellowDLP")`, X11's `WM_CLASS` `"MellowDLP", "MellowDLP"`.
+  It is the name of the `.desktop` file tauri's bundler writes (`MellowDLP.desktop`), and that file's
+  `StartupWMClass` (`src-tauri/linux/mellowdlp.desktop`, the deb's and the rpm's template; the AppImage is
+  made from the deb's files). Not tauri's `app.enableGTKAppId`: that also registers the app on the session bus.
+- **The icon** is Mellow's badge at every size the bundles install into `/usr/share/icons/hicolor/`
+  (32, 64, 128, 256, 512 px, `Icon=mellowdlp-shell`): the dock and the top bar ask for 32-64 px, Alt-Tab and
+  the app grid for 96-256. Before, 128 px was `assets/mellow.ico`'s art, so the large views weren't the badge.
+- **deb / rpm:** installed, `MellowDLP.desktop` and the icons are where GNOME looks; nothing else to do
+  (log out and in, or wait a few seconds, if the dock showed the old entry).
+- **AppImage:** it installs nothing, so GNOME has no `.desktop` file for it, and GNOME never uses a
+  window's own icon (an app it can't match gets `application-x-executable`, `shell-app.c`). Running it as
+  is, the dock and Alt-Tab say **MellowDLP** (the app ID; GNOME names such an app by it) with a generic
+  icon. For the badge too, integrate it once:
+  - **Gear Lever** (Flathub, `it.mijorus.gearlever`): open the AppImage with it and add it to the app
+    menu. It moves the AppImage to its folder and installs the AppImage's own `.desktop` file and icon;
+    `StartupWMClass=MellowDLP` comes along, so the window finds them.
+  - **By hand:**
+    ```bash
+    chmod +x MellowDLP_*.AppImage && mkdir -p ~/Applications && mv MellowDLP_*.AppImage ~/Applications/
+    cd /tmp && ~/Applications/MellowDLP_*.AppImage --appimage-extract 'usr/share/*' >/dev/null
+    cp -r squashfs-root/usr/share/icons/hicolor ~/.local/share/icons/
+    sed "s|^Exec=mellowdlp-shell|Exec=$(ls ~/Applications/MellowDLP_*.AppImage)|" \
+        squashfs-root/usr/share/applications/MellowDLP.desktop > ~/.local/share/applications/MellowDLP.desktop
+    rm -rf squashfs-root
+    ```
+- **Checked** (Ubuntu 24.04 container, WebKitGTK 2.52): under a headless Weston (Wayland), the shell's
+  protocol log shows `set_app_id("MellowDLP")` (`mellowdlp-shell` before); under Xvfb, `xprop` shows
+  `WM_CLASS "MellowDLP", "MellowDLP"` and a 64×64 `_NET_WM_ICON`; the built deb, rpm and AppImage carry
+  `MellowDLP.desktop` with `StartupWMClass=MellowDLP` and the badge at 32-512 px (`desktop-file-validate`
+  clean). GNOME Shell itself wasn't run: its matching (`shell-window-tracker.c`) tries the window's ID
+  against each `.desktop` file's `StartupWMClass`, then against the file names.
+
+**Form controls on WebKitGTK (#117).** WebKitGTK draws what the page leaves to the system (a select's
+box, checkboxes, number and time fields, scrollbars) in the GTK theme, light unless the page declares a
+colour scheme, and a select's box in GTK's colours whatever the page asks: Classic's Config showed white
+boxes with near-invisible text. `gui/index.html`'s early script marks the engine
+(`<html data-engine="webkitgtk">`: an AppleWebKit user agent on Linux that isn't Chrome's), and only that
+engine gets the rules under *ENGINE: WEBKITGTK*: Classic declares `color-scheme: dark` (Classic Light,
+Archive and Tactical already declare theirs), every select draws its own box and arrow from the theme's
+tokens, native checkboxes take `--accent`. Chromium and WebView2 aren't touched: Classic's Config is
+pixel-identical in Chromium before and after (the clock and a random port aside). The open list of a select
+is GTK's own menu, in the desktop's light or dark style: readable either way.
+
 ### Premium window
 
 The window on Windows draws its own frame; the page still gets **no IPC**:
@@ -462,7 +511,8 @@ The window on Windows draws its own frame; the page still gets **no IPC**:
   `--cut <svg>` cuts the masters again from the art. It writes the tray (`src-tauri/icons/tray.png`), the
   title bar's mark (`assets/mellow-badge.png` + `@2x`, copied into static/ by the build), the exe's icon
   (`src-tauri/icons/icon.ico`: the badge at 16-64 px, `assets/mellow.ico`'s art at 128 px; Windows takes the
-  window's and the taskbar's icon from it, and the shortcuts') and Linux's `32x32.png` / `64x64.png`. To swap
+  window's and the taskbar's icon from it, and the shortcuts') and Linux's `32x32.png` to `512x512.png` (the
+  badge at every size: GNOME's dock, Alt-Tab and app grid, see [Install on Fedora](#install-on-fedora)). To swap
   the badge: replace the masters (any square transparent PNG) and run the script. The installer keeps
   `assets/mellow.ico`.
 - **Splash**: the window's background is Classic's from the first frame (no white flash before a page paints);

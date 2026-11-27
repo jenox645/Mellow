@@ -1,5 +1,5 @@
 //! The system's services the tray needs: notifications, the clipboard and
-//! starting with the system.
+//! starting with the system; and on Linux, the window's app ID.
 //!
 //! Notifications go straight to the system (WinRT toasts on Windows,
 //! notify-rust elsewhere), not through tauri-plugin-notification: that plugin
@@ -12,6 +12,21 @@ use tauri_plugin_autostart::ManagerExt;
 
 /// The longest clipboard text sent to the backend as a link.
 const CLIPBOARD_MAX_CHARS: usize = 4096;
+
+/// Linux: the app ID GTK gives the window (Wayland's `app_id`, X11's `WM_CLASS`) is the
+/// product name, `MellowDLP`. That is also the name of the .desktop file tauri's bundler
+/// installs (`<productName>.desktop`) and its `StartupWMClass` (linux/mellowdlp.desktop):
+/// GNOME and KDE find the window's .desktop file through it, and show MellowDLP with Mellow's
+/// badge in Alt-Tab and the dock. GTK's own default is the executable's name
+/// (`mellowdlp-shell`), which matched no .desktop file's name, and is what GNOME showed (with a
+/// gear) for an AppImage, which installs none. Runs before GTK starts (`Builder::build`).
+/// X11's class half is GDK's program class, by default the same name with its first letter
+/// capitalized (so the same here). Not tauri's `app.enableGTKAppId`: that also registers a
+/// GApplication on the session bus.
+#[cfg(target_os = "linux")]
+pub fn set_app_id(product_name: &str) {
+    gtk::glib::set_prgname(Some(product_name));
+}
 
 /// A system notification. On Windows it shows on the main thread (WinRT wants
 /// an initialized apartment) and a click on it brings the window up.
@@ -105,4 +120,55 @@ pub fn webview_memory_low(window: &tauri::WebviewWindow, low: bool) {
     }
     #[cfg(not(windows))]
     let _ = (window, low);
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::Value;
+
+    fn config(text: &str) -> Value {
+        serde_json::from_str(text).expect("valid JSON")
+    }
+
+    /// The .desktop file every Linux bundle installs (#117) names the window by the app ID
+    /// set_app_id gives it, the product name: without that GNOME showed `mellowdlp-shell`
+    /// with a gear. Its links (mellowdlp://, MimeType) reach the app as the argument.
+    #[test]
+    fn the_desktop_file_finds_the_window_by_its_app_id() {
+        let desktop = include_str!("../linux/mellowdlp.desktop");
+        let has = |line: &str| desktop.lines().any(|l| l == line);
+        assert!(has("Name={{name}}") && has("StartupWMClass={{name}}"), "{desktop}");
+        assert!(has("Icon={{icon}}") && has("Exec={{exec}} %u"), "{desktop}");
+        assert!(desktop.contains("MimeType={{mime_type}}"), "the deep link's scheme");
+        let bundle = config(include_str!("../tauri.bundle.conf.json"));
+        for kind in ["deb", "rpm"] {
+            // the AppImage is made from the deb's files
+            assert_eq!(bundle["bundle"]["linux"][kind]["desktopTemplate"], "linux/mellowdlp.desktop");
+        }
+        let app = config(include_str!("../tauri.conf.json"));
+        assert_eq!(app["productName"], "MellowDLP");
+    }
+
+    /// Linux installs every PNG of `bundle.icon` into the hicolor theme, by its size: GNOME's
+    /// dock, Alt-Tab and app grid ask for 64 to 256 px and more. Each is Mellow's badge
+    /// (scripts/make_icons.py), at the size its name says.
+    #[test]
+    fn linux_gets_the_badge_at_every_size_gnome_asks_for() {
+        let app = config(include_str!("../tauri.conf.json"));
+        let icons: Vec<&str> = app["bundle"]["icon"].as_array().unwrap().iter().map(|v| v.as_str().unwrap()).collect();
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let mut sizes = Vec::new();
+        for icon in icons.iter().filter(|i| i.ends_with(".png")) {
+            let png = std::fs::read(dir.join(icon)).unwrap_or_else(|e| panic!("{icon}: {e}"));
+            let width = u32::from_be_bytes(png[16..20].try_into().unwrap());
+            let height = u32::from_be_bytes(png[20..24].try_into().unwrap());
+            assert_eq!(width, height, "{icon}");
+            assert!(icon.ends_with(&format!("/{width}x{height}.png")), "{icon} is {width}x{height}");
+            sizes.push(width);
+        }
+        sizes.sort();
+        assert_eq!(sizes, [32, 64, 128, 256, 512]);
+        // The window's own icon is the first PNG: the badge at 64 px
+        assert_eq!(icons.iter().find(|i| i.ends_with(".png")), Some(&"icons/64x64.png"));
+    }
 }
