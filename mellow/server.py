@@ -1317,8 +1317,11 @@ def api_vault_stream() -> Response:
     if not path or not p.is_file() or p.suffix.lower() not in MEDIA_EXTS:
         return jsonify({"error": "Not a streamable media file"}), 404
     mime = MEDIA_MIME.get(p.suffix.lower(), "application/octet-stream")
-    # conditional=True makes Flask honor Range requests (seek support)
-    return send_file(str(p), mimetype=mime, conditional=True)
+    # conditional=True makes Flask honor Range requests (seek support). The name
+    # goes in a header: a control character (Linux allows a newline in a file
+    # name) made it a 500, so the player said the file couldn't be played
+    name = "".join(" " if ord(c) < 32 or c == "\x7f" else c for c in p.name)
+    return send_file(str(p), mimetype=mime, conditional=True, download_name=name)
 
 
 @app.route("/api/vault/budget", methods=["POST"])

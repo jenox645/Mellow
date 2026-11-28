@@ -7,6 +7,7 @@ import logging
 import os
 import re as _re
 import shutil
+import stat
 import subprocess
 import tempfile
 import threading
@@ -718,19 +719,33 @@ def _subtitle_files(media: Path) -> list[Path]:
     return found
 
 
+def _unlink(path: Path, missing_ok: bool = False) -> None:
+    """Path.unlink, read-only files too: Windows refuses to delete a file with
+    the read-only attribute (WinError 5), which DELETE then reported as an
+    error. The user asked for it to go, as Explorer's Delete would do."""
+    try:
+        path.unlink(missing_ok=missing_ok)
+    except PermissionError:
+        mode = path.stat().st_mode
+        if mode & stat.S_IWRITE:
+            raise                      # writable already: refused for another reason
+        os.chmod(path, mode | stat.S_IWRITE)
+        path.unlink(missing_ok=missing_ok)
+
+
 def delete_media_file(path: Path) -> None:
     """Delete a media file, its thumbnail and subtitle sidecars and its history rows.
 
     Without the history rows going too, "you already have this" kept pointing
     at a deleted file. Raises OSError when the media file itself can't go.
     """
-    path.unlink()
+    _unlink(path)
     for ext in _SIDECAR_EXTS:
         with contextlib.suppress(OSError):
-            path.with_suffix(ext).unlink(missing_ok=True)
+            _unlink(path.with_suffix(ext), missing_ok=True)
     for side in _subtitle_files(path):
         with contextlib.suppress(OSError):
-            side.unlink()
+            _unlink(side)
     try:
         analytics.delete_history_by_path(str(path))
     except Exception as exc:
