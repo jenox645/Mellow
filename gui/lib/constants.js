@@ -121,3 +121,10 @@ export const MARQUEE_START_PX = 5;             // a press that moves less than t
 export const MARQUEE_EDGE_PX = 40;             // dragging this close to the top/bottom scrolls…
 export const MARQUEE_SCROLL_PX = 16;           // …this far each step
 export const MARQUEE_SCROLL_MS = 30;
+
+// Long lists are drawn a chunk per frame (hooks.useProgressiveList): the first
+// cards at once, the rest without a task long enough to freeze the window
+export const PROGRESSIVE_FILES_FIRST = 120;     // an open folder's files: more than a screen holds
+export const PROGRESSIVE_FILES_CHUNK = 150;     // ~30 ms of drawing each
+export const PROGRESSIVE_FOLDERS_FIRST = 48;    // the vault's folder cards (each draws its mosaic)
+export const PROGRESSIVE_FOLDERS_CHUNK = 60;

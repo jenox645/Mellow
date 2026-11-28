@@ -34,9 +34,17 @@ export function fmtDuration(s) {
   return m + ':' + String(sec).padStart(2, '0');
 }
 
+// One formatter for every date: toLocaleDateString() sets its locale up again at
+// each call (an open folder of 2,000 files spent 33 ms on it). Same text
+let dateFormat = null;
 export function fmtDate(ts) {
   if (!ts) return '—';
-  try { return new Date(ts).toLocaleDateString(); } catch { return ts; }
+  try {
+    const d = new Date(ts);
+    if (Number.isNaN(d.getTime())) return d.toLocaleDateString();      // "Invalid Date", as before
+    dateFormat = dateFormat || new Intl.DateTimeFormat();
+    return dateFormat.format(d);
+  } catch { return ts; }
 }
 
 export function fmtTimestamp(ts) {
