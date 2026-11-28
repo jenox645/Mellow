@@ -58,15 +58,18 @@ def interval_for(cfg: dict, path: str) -> int | None:
     return SYNC_INTERVALS.get(key)
 
 
-def hold_off(folder: str, interval: int) -> tuple[float, int]:
+def hold_off(folder: str, interval: int,
+             outcomes: list[tuple[str, float]] | None = None) -> tuple[float, int]:
     """(seconds this folder's auto-sync still waits, consecutive failures), from
     its last sync reports, which survive restarts and follow folder moves.
 
     Cancelled by the user: not before its next turn. Failed N times in a row:
     SYNC_RETRY_BACKOFF_SECS doubled each time, up to SYNC_RETRY_BACKOFF_MAX_SECS
     (a folder whose playlist is gone used to be retried every hour, forever).
+    outcomes: the folder's analytics.recent_sync_outcomes(), when already read.
     """
-    outcomes = analytics.recent_sync_outcomes(folder)
+    if outcomes is None:
+        outcomes = analytics.recent_sync_outcomes(folder)
     if not outcomes:
         return 0.0, 0
     status, age = outcomes[0]
