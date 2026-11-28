@@ -5,7 +5,7 @@
 
 import { fmtBytes, fmtDate, fmtWait, timeAgo } from '../lib/util.js';
 import { Ico } from '../components/icons.jsx';
-import { Modal, Mascot } from '../components/common.jsx';
+import { ListBlock, Modal, Mascot } from '../components/common.jsx';
 import {
   MASCOT_CHILLING, MASCOT_TIRED, MASCOT_FRUSTRATED, MASCOT_COMFY_SAFE,
 } from '../lib/mascots.js';
@@ -98,7 +98,7 @@ export function ClassicVaultView({
   setFolderStatsModal, folderStatsData, budgetInput, setBudgetInput, handleSetBudget, cleanupData,
   loadCleanupCandidates, deleteCleanupCandidate, folderName, selectedFolderMeta, libEntry, lastSynced, canSync,
   syncingId, handleSync, syncReport, retrySyncItem, taggableCount, retagOpen, setRetagOpen, retagging, handleRetag,
-  files, shownFiles, loading, loadFolder, fileThumbs, fileThumbUrl, vaultSearch, setVaultSearch, vaultSort,
+  files, shownFiles, fileBlocks, renderedFolders, loading, loadFolder, fileThumbs, fileThumbUrl, vaultSearch, setVaultSearch, vaultSort,
   setVaultSort, handleOpenFile, handleOpenFolder, handleDeleteFile, deleteConfirm, setDeleteConfirm, confirmDelete,
   ctxMenu, setCtxMenu, ctxMenuRef, previewFile, setPreviewFile, randomizerCount, setRandomizerCount,
   randomizedFiles, setRandomizedFiles, handleRandomize, handlePlayAll, handlePlayRandom, filesBoxRef, marquee,
@@ -170,7 +170,7 @@ export function ClassicVaultView({
           </div>
         ) : (
           <div className="vault-folder-grid" data-tour="vault-folders" style={{ '--vault-card-width': gridScale === 'sm' ? '160px' : gridScale === 'lg' ? '280px' : '200px' }}>
-            {vaultFolders.map((folder, folderIdx) => {
+            {renderedFolders.map((folder, folderIdx) => {
               const thumbs = folderMosaics[folder.path] || [];
               const showMosaic = thumbs.length > 0;
               return (
@@ -436,6 +436,8 @@ export function ClassicVaultView({
       )}
     </div>
   );
+  // Everything a file card reads: a block of cards is drawn again only when one changes
+  const cardDeps = [selectedFiles, randomizedFiles, fileThumbs, showChecks, selectionMode, shownFiles, vaultScale];
   const fileMenu = (file) => (
     <div className="lib-menu" onClick={(e) => {
       e.stopPropagation();
@@ -601,7 +603,7 @@ export function ClassicVaultView({
         <div className="vault-files" data-tour="vault-files">
           {vaultScale === 'list' ? (
             <div className="lib-list">
-              {shownFiles.map(file => (
+              {fileBlocks.map((block, i) => <ListBlock key={i} items={block} deps={cardDeps} render={file => (
                 <div key={file.path} data-select-key={file.path}
                   className={'lib-row' + fileMarks(file)} onClick={e => onFileClick(e, file)}>
                   {fileThumb(file, true)}
@@ -611,14 +613,14 @@ export function ClassicVaultView({
                   <span className="lib-row-date">{file.created ? fmtDate(file.created * 1000) : ''}</span>
                   {fileMenu(file)}
                 </div>
-              ))}
+              )} />)}
             </div>
           ) : (
             <div className="lib-grid" style={{
               '--lib-card-min': vaultScale === 'sm' ? '130px' : vaultScale === 'lg' ? '240px' : '175px',
               '--lib-thumb-h': vaultScale === 'sm' ? '72px' : vaultScale === 'lg' ? '135px' : '100px',
             }}>
-              {shownFiles.map(file => (
+              {fileBlocks.map((block, i) => <ListBlock key={i} items={block} deps={cardDeps} render={file => (
                 <div key={file.path} data-select-key={file.path}
                   className={'lib-card' + fileMarks(file)} onClick={e => onFileClick(e, file)}>
                   {fileThumb(file)}
@@ -631,7 +633,7 @@ export function ClassicVaultView({
                   </div>
                   {fileMenu(file)}
                 </div>
-              ))}
+              )} />)}
             </div>
           )}
         </div>

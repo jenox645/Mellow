@@ -425,3 +425,11 @@ export function WhatsNewModal({ entries, current, onClose }) {
     </Modal>
   );
 }
+
+// One block of a long list (hooks.useProgressiveBlocks): drawn again only when its
+// items or one of `deps` (everything `render` reads) changed, so the next block
+// appearing doesn't redraw the blocks before it
+export const ListBlock = React.memo(
+  function ListBlock({ items, render }) { return items.map(render); },
+  (a, b) => a.items === b.items && a.deps.length === b.deps.length && a.deps.every((d, i) => Object.is(d, b.deps[i])),
+);

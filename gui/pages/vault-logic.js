@@ -6,12 +6,17 @@
 
 import { API } from '../lib/api.js';
 import { fmtBytes } from '../lib/util.js';
-import { TAGGABLE_AUDIO } from '../lib/constants.js';
+import {
+  TAGGABLE_AUDIO, PROGRESSIVE_FILES_FIRST, PROGRESSIVE_FILES_CHUNK, PROGRESSIVE_FOLDERS_FIRST,
+  PROGRESSIVE_FOLDERS_CHUNK,
+} from '../lib/constants.js';
+import { useProgressiveBlocks, useProgressiveList } from '../lib/hooks.js';
 import { useFitInWindow } from '../components/common.jsx';
 import { useMarquee } from '../components/marquee.jsx';
 import { clickSelect } from '../lib/selection.js';
 
 export const BYTES_PER_GB = 1024 ** 3;
+const NO_FILES = [];
 const VIDEO_PREVIEW_EXTS = ['mp4', 'webm', 'mkv', 'avi', 'mov'];
 
 export const isVideoExt = (ext) => VIDEO_PREVIEW_EXTS.includes((ext || '').toLowerCase());
@@ -221,6 +226,15 @@ export function useVaultPage(props) {
       if (vaultSort === 'date') return (b.created || 0) - (a.created || 0);
       return a.name.localeCompare(b.name);
     }), [files, vaultSearch, vaultSort]);
+
+  // What the view draws: the same lists, a chunk per frame (a folder of 2,000
+  // files drawn at once froze the window for half a second). Selecting, Ctrl/⌘+A
+  // and PLAY use the whole lists. Nothing while a folder loads: the steps start
+  // with its own files, not the last folder's
+  const fileBlocks = useProgressiveBlocks(loading ? NO_FILES : shownFiles,
+    `${selectedFolder}|${vaultSort}|${vaultSearch}|${vaultScale}`, PROGRESSIVE_FILES_FIRST, PROGRESSIVE_FILES_CHUNK);
+  const renderedFolders = useProgressiveList(vaultFolders, 'folders',
+    PROGRESSIVE_FOLDERS_FIRST, PROGRESSIVE_FOLDERS_CHUNK);
 
   // Keys in an open folder, as in a file explorer: Ctrl/⌘+A selects every file
   // shown, Esc clears the selection, Delete asks to delete the selected files
@@ -471,7 +485,7 @@ export function useVaultPage(props) {
     // the open folder
     folderName, selectedFolderMeta, libEntry, lastSynced, canSync, syncingId, handleSync, syncReport, retrySyncItem,
     taggableCount, retagOpen, setRetagOpen, retagging, handleRetag,
-    files, shownFiles, loading, loadFolder, fileThumbs, fileThumbUrl, vaultSearch, setVaultSearch, vaultSort, setVaultSort,
+    files, shownFiles, fileBlocks, renderedFolders, loading, loadFolder, fileThumbs, fileThumbUrl, vaultSearch, setVaultSearch, vaultSort, setVaultSort,
     handleOpenFile, handleOpenFolder, handleDeleteFile, deleteConfirm, setDeleteConfirm, confirmDelete,
     ctxMenu, setCtxMenu, ctxMenuRef, previewFile, setPreviewFile,
     // RANDOMIZE / PLAY ALL
