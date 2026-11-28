@@ -132,13 +132,22 @@ _MPC_PATHS = [
 
 # ── Vault folder list ─────────────────────────────────────────────────────────
 
+def _unsorted_entries(path: str | Path) -> list[os.DirEntry]:
+    """_entries() without the sorting, for counts: [] when unreadable."""
+    try:
+        with os.scandir(path) as it:
+            return list(it)
+    except OSError:
+        return []
+
+
 def get_folder_media_stats(path: str) -> dict:
     """Media files in a folder and its subfolders (symlinked folders aren't
     followed, like Path.walk; an unreadable subfolder is left out)."""
     total, count = 0, 0
     pending = [path]
     while pending:
-        for entry in _entries(pending.pop()):
+        for entry in _unsorted_entries(pending.pop()):
             try:
                 if entry.is_dir(follow_symlinks=False):
                     pending.append(entry.path)
@@ -150,39 +159,41 @@ def get_folder_media_stats(path: str) -> dict:
     return {"item_count": count, "size_bytes": total}
 
 
-def _folder_record(path: str, name: str, **extra) -> dict:
+def _folder_record(path: str, name: str, counts: bool = True, **extra) -> dict:
     """One vault folder card: media count and size plus the folder's times."""
     try:
         st = Path(path).stat()
     except OSError:
         st = None
     return {
-        "path": path, "name": name, **get_folder_media_stats(path),
+        "path": path, "name": name, **(get_folder_media_stats(path) if counts else {}),
         "created_at": st.st_ctime if st else None,
         "modified_at": st.st_mtime if st else None,
         **extra,
     }
 
 
-def _download_root_folders(base_path: str) -> list[dict]:
+def _download_root_folders(base_path: str, counts: bool = True) -> list[dict]:
     """Every subfolder of the download folder."""
     root = Path(base_path)
     try:
         subdirs = sorted(d for d in root.iterdir() if d.is_dir() and not d.name.startswith("."))
     except OSError:
         return []
-    return [_folder_record(str(d), d.name) for d in subdirs]
+    return [_folder_record(str(d), d.name, counts) for d in subdirs]
 
 
-def build_folder_list(base_path: str, cfg: dict) -> list[dict]:
-    """Return the full vault folder list (download folder + watched + library-linked)."""
-    all_folders = _download_root_folders(base_path)
+def build_folder_list(base_path: str, cfg: dict, counts: bool = True) -> list[dict]:
+    """Return the full vault folder list (download folder + watched + library-linked).
+    counts=False: without each folder's media count and size (a walk of every
+    folder), for callers that only need which folders there are."""
+    all_folders = _download_root_folders(base_path, counts)
     by_path: dict[str, dict] = {f["path"]: f for f in all_folders}
 
     for wp in cfg.get("watched_folders", []):
         norm = str(Path(wp))
         if norm not in by_path and Path(norm).is_dir():
-            by_path[norm] = _folder_record(norm, Path(norm).name, watched=True)
+            by_path[norm] = _folder_record(norm, Path(norm).name, counts, watched=True)
             all_folders.append(by_path[norm])
 
     root = download_root(cfg)
@@ -198,13 +209,16 @@ def build_folder_list(base_path: str, cfg: dict) -> list[dict]:
             continue
         # A library folder shows even before its first sync created it
         by_path[norm] = _folder_record(actual_path, entry.get("folder_name") or Path(actual_path).name,
-                                       **link)
+                                       counts, **link)
         all_folders.append(by_path[norm])
 
     vault_names = cfg.get("vault_names", {})
     vault_hidden = set(cfg.get("vault_hidden", []))
     vault_sync_times = cfg.get("vault_sync_times", {})
     vault_playlists = cfg.get("vault_playlists", {})
+    # Every linked folder's last syncs in one query, not one each
+    outcomes = analytics.recent_sync_outcomes_of(
+        [f["path"] for f in all_folders if vault_playlists.get(f["path"])])
     for f in all_folders:
         if f["path"] in vault_names:
             f["name"] = vault_names[f["path"]]
@@ -212,15 +226,15 @@ def build_folder_list(base_path: str, cfg: dict) -> list[dict]:
         if f["playlist_count"] and f["path"] in vault_sync_times:
             f["last_synced"] = vault_sync_times[f["path"]]
         if f["playlist_count"]:
-            _add_sync_trouble(f, cfg)
+            _add_sync_trouble(f, cfg, outcomes.get(f["path"], []))
     return [f for f in all_folders if f["path"] not in vault_hidden]
 
 
-def _add_sync_trouble(folder: dict, cfg: dict) -> None:
+def _add_sync_trouble(folder: dict, cfg: dict, outcomes: list[tuple[str, float]]) -> None:
     """The card says when a folder's syncs keep failing, and when auto-sync tries again."""
     from . import scheduler
     interval = scheduler.interval_for(cfg, folder["path"]) or 0
-    wait, failures = scheduler.hold_off(folder["path"], interval)
+    wait, failures = scheduler.hold_off(folder["path"], interval, outcomes)
     if failures:
         folder["sync_failures"] = failures
         if cfg.get("auto_sync_enabled") and interval:
@@ -618,11 +632,16 @@ _YT_URL_ID_RE = _re.compile(r'(?:[?&]v=|youtu\.be/|/shorts/)([A-Za-z0-9_-]{11})'
 def _history_in(folder: Path) -> list[tuple[str, str, str | None]]:
     """(file name, source URL, item id) of the files in `folder` the download
     history knows (the id is recorded from 2.10.0 on)."""
+    # Only the rows under the folder (a big history is 50,000 rows: making a Path
+    # of each took 400 ms). The prefix test is looser than the check below (case
+    # and separators folded), never stricter
+    prefix = str(folder).lower().replace("\\", "/").rstrip("/") + "/"
     try:
         with analytics.get_conn() as con:
             rows = con.execute(
                 "SELECT file_path, url, video_id FROM downloads "
-                "WHERE status='success' AND file_path IS NOT NULL"
+                "WHERE status='success' AND file_path IS NOT NULL "
+                "AND starts_with(replace(lower(file_path), '\\', '/'), ?)", [prefix]
             ).fetchall()
     except Exception:
         return []
@@ -902,27 +921,28 @@ def find_duplicates(folders: list[str]) -> list[dict]:
     seen_paths: set[str] = set()
     for folder in folders:
         p = Path(folder)
-        if not p.is_dir():
-            continue
-        try:
-            for f in p.iterdir():
-                if not f.is_file() or not is_media(f):
+        folder_str = str(p)
+        # One listing per folder; a DirEntry knows it's a file without another
+        # call (and its size too on Windows), and its path as a string: 300
+        # folders took 220 ms with two stats and a Path per file
+        for entry in _unsorted_entries(folder_str):
+            if not _is_media_name(entry.name):
+                continue
+            m = _YT_ID_RE.search(entry.name)
+            if not m:
+                continue
+            key = entry.path
+            if key in seen_paths:
+                continue
+            try:
+                if not entry.is_file():
                     continue
-                key = str(f)
-                if key in seen_paths:
-                    continue
-                seen_paths.add(key)
-                m = _YT_ID_RE.search(f.name)
-                if not m:
-                    continue
-                try:
-                    size = f.stat().st_size
-                except OSError:
-                    continue
-                by_id.setdefault(m.group(1), []).append(
-                    {"path": key, "name": f.name, "folder": str(p), "size": size})
-        except PermissionError:
-            continue
+                size = entry.stat().st_size
+            except OSError:
+                continue
+            seen_paths.add(key)
+            by_id.setdefault(m.group(1), []).append(
+                {"path": key, "name": entry.name, "folder": folder_str, "size": size})
     groups = []
     for vid_id, copies in by_id.items():
         if len(copies) < 2:

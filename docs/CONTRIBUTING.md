@@ -73,6 +73,27 @@ CI runs the Python, JavaScript and browser tests on every pull request; pull req
 
 ---
 
+## A big library
+
+Most testing happens with a handful of files. To see how MellowDLP copes with a big library, make one
+(made-up: files of a few bytes with real extensions, nothing is downloaded) and time the routes the
+pages ask for:
+
+```bash
+python scripts/make_big_library.py /tmp/big     # 20,000 files in 300 folders, 50,000 history rows, 2,000 sync reports
+python scripts/route_bench.py /tmp/big          # server-side time of each route (first call, median of 5)
+HOME=/tmp/big python main.py                    # the app on it (Windows: set USERPROFILE=C:\big)
+```
+
+`make_big_library.py <home>` treats `<home>` as a user's home: the download folder, the config and the
+database go there, and it refuses a folder that already holds a library. `--files`, `--folders`,
+`--big-folder`, `--history` and `--reports` change the sizes; the same arguments always make the same
+library. `route_bench.py` runs the routes in its own process against that home (the stats cache emptied
+before each `/api/stats`), and times a real start up to the first `/api/stats` answer.
+`tests/test_big_library.py` pins what it found slow by the number of queries or calls.
+
+---
+
 ## Screenshots
 
 The README's pictures come from `scripts/screenshots.py`: it runs the app on made-up demo data

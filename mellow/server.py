@@ -1364,7 +1364,7 @@ def api_vault_cleanup_candidates() -> Response:
 def api_vault_duplicates() -> Response:
     """Cross-folder duplicate scan by yt-dlp [videoID] filename pattern."""
     cfg = load_config()
-    folders = {f["path"] for f in _vault.build_folder_list(download_root(cfg), cfg)}
+    folders = {f["path"] for f in _vault.build_folder_list(download_root(cfg), cfg, counts=False)}
     groups = _vault.find_duplicates(sorted(folders))
     return jsonify({
         "groups": groups,

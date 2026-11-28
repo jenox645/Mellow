@@ -713,15 +713,26 @@ def record_sync_report(folder: str, status: str, report: dict, duration_seconds:
 
 def recent_sync_outcomes(folder: str) -> list[tuple[str, float]]:
     """(status, seconds since) of the folder's last syncs, newest first."""
+    return recent_sync_outcomes_of([folder]).get(folder, [])
+
+
+def recent_sync_outcomes_of(folders: list[str]) -> dict[str, list[tuple[str, float]]]:
+    """recent_sync_outcomes() of many folders in one query (the vault's cards:
+    one query per linked folder took 2 ms each, 400 ms for 200 folders)."""
+    if not folders:
+        return {}
     try:
         with get_conn() as con:
             # The age is worked out by DuckDB, which also stamped finished_at
             rows = con.execute(
-                "SELECT status, epoch(CAST(now() AS TIMESTAMP)) - epoch(finished_at) FROM sync_reports "
-                "WHERE folder = ? ORDER BY id DESC", [folder]).fetchall()
+                "SELECT folder, status, epoch(CAST(now() AS TIMESTAMP)) - epoch(finished_at) FROM sync_reports "
+                "WHERE list_contains(?, folder) ORDER BY id DESC", [list(folders)]).fetchall()
     except Exception:
-        return []
-    return [(status, max(0.0, float(age or 0))) for status, age in rows]
+        return {}
+    outcomes: dict[str, list[tuple[str, float]]] = {}
+    for folder, status, age in rows:
+        outcomes.setdefault(folder, []).append((status, max(0.0, float(age or 0))))
+    return outcomes
 
 
 def get_sync_report(folder: str) -> dict | None:
