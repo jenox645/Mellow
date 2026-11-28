@@ -1,26 +1,32 @@
 """Desktop integration: file manager, default apps, clipboard, native dialogs."""
 from __future__ import annotations
 
+import importlib.util
 import logging
 import os
 import platform
 import subprocess
+import sys
 import threading
 import time
 import webbrowser
 from pathlib import Path
 from typing import Any
 
-try:
-    import tkinter
-    import tkinter.filedialog
-    tkinter_available = True
-except ModuleNotFoundError:
-    tkinter = None  # type: ignore[assignment]
-    tkinter_available = False
-
 from . import shell
-from .constants import DIALOG_TIMEOUT_SECS, EXPLORER_FIND_SECS, EXPLORER_POLL_SECS
+from .constants import (
+    DIALOG_TIMEOUT_SECS,
+    EXPLORER_FIND_SECS,
+    EXPLORER_POLL_SECS,
+    SHELL_CLIPBOARD_TIMEOUT_SECS,
+)
+
+# Tk (the clipboard on Windows, the dialogs) is imported on its first use, and
+# never under the desktop shell, whose window has its own: the shell's backend
+# build leaves Tk out (packaging/MellowDLP.spec), and loading it costs ~45 ms
+# and ~6 MB. Looking for the module doesn't load it.
+tkinter_available = (os.environ.get(shell.SHELL_ENV) != shell.SHELL_TAURI
+                     and ("tkinter" in sys.modules or importlib.util.find_spec("tkinter") is not None))
 
 log = logging.getLogger(__name__)
 
@@ -30,6 +36,13 @@ _INPUT_MOUSE = 0
 
 # Tk isn't thread-safe: every Tk use (clipboard, dialogs) goes through this lock
 _tk_lock = threading.Lock()
+
+
+def _tk():
+    """The tkinter module, imported now (tkinter_available says it's there)."""
+    import tkinter
+    import tkinter.filedialog
+    return tkinter
 
 
 def explorer_command(target: str, select: bool) -> str:
@@ -167,9 +180,17 @@ def open_url(url: str) -> None:
 
 def clipboard_text() -> str:
     system = platform.system()
+    if shell.active():
+        # The shell's window reads it (no Tk in its backend)
+        answer = shell.ask("clipboard", SHELL_CLIPBOARD_TIMEOUT_SECS)
+        if answer is not None:
+            return str(answer.get("text") or "").strip()
+        if system == "Windows":
+            return ""
     try:
         if system == "Windows" and tkinter_available:
             # Tk's clipboard: no shell window, no PowerShell spawned
+            tkinter = _tk()
             with _tk_lock:
                 root = tkinter.Tk()
                 root.withdraw()
@@ -192,10 +213,13 @@ def clipboard_text() -> str:
         return ""
 
 
-def _tk_dialog(dialog_fn: Any, **kwargs: Any) -> str:
+def _tk_dialog(dialog: str, **kwargs: Any) -> str:
+    """A Tk file dialog (`dialog`: tkinter.filedialog's function name)."""
     result: list[str] = []
 
     def _run() -> None:
+        tkinter = _tk()
+        dialog_fn = getattr(tkinter.filedialog, dialog)
         with _tk_lock:
             root = tkinter.Tk()
             root.withdraw()
@@ -231,11 +255,11 @@ def ask_open_file(extension: str = "") -> str:
         return _shell_dialog(kind="file", extension=extension)
     filetypes = ([("Text files", f"*{extension}"), ("All files", "*.*")] if extension
                  else [("All files", "*.*")])
-    return _tk_dialog(tkinter.filedialog.askopenfilename, filetypes=filetypes)
+    return _tk_dialog("askopenfilename", filetypes=filetypes)
 
 
 def ask_folder(initial: str) -> str:
     """Native folder picker; "" when cancelled."""
     if shell.active():
         return _shell_dialog(kind="folder", initial=initial)
-    return _tk_dialog(tkinter.filedialog.askdirectory, initialdir=initial, mustexist=False)
+    return _tk_dialog("askdirectory", initialdir=initial, mustexist=False)

@@ -12,12 +12,13 @@ import threading
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Callable
-
-import duckdb
+from typing import TYPE_CHECKING, Any, Callable
 
 from . import formats
 from .constants import DUCKDB_STORAGE_VERSION, STATS_CACHE_SECS, SYNC_REPORTS_KEEP
+
+if TYPE_CHECKING:
+    import duckdb
 
 log = logging.getLogger(__name__)
 
@@ -27,6 +28,11 @@ DB_PATH = Path.home() / ".mellow_dlp.duckdb"
 # rejects opening the same file twice with different configs in one process
 # (e.g. read_only vs read-write), which made Signal API queries fail while a
 # download was recording. Cursors of a shared parent are safe across threads.
+#
+# The file is opened, and duckdb itself (a 41 MB library) imported, on the
+# first use, not at start: the server listens without waiting for it. Every
+# connection runs this version's migrations (_migrate) before anything gets a
+# cursor of it, so no query ever sees an older schema.
 _conns: dict[str, duckdb.DuckDBPyConnection] = {}
 _conns_lock = threading.Lock()
 
@@ -65,12 +71,26 @@ def get_conn() -> duckdb.DuckDBPyConnection:
             with contextlib.suppress(Exception):
                 _conns.pop(old_key).close()
         if key not in _conns:
-            _conns[key] = _connect(key)
+            con = _connect(key)
+            try:
+                _migrate(con)
+            except BaseException:
+                with contextlib.suppress(Exception):
+                    con.close()
+                raise
+            _conns[key] = con
         return _conns[key].cursor()
+
+
+def is_open() -> bool:
+    """The database has been opened in this process (by its first use)."""
+    with _conns_lock:
+        return str(DB_PATH) in _conns
 
 
 def _open(path: str) -> duckdb.DuckDBPyConnection:
     """One connection, in the storage format older MellowDLP versions read."""
+    import duckdb
     return duckdb.connect(path, config={"storage_compatibility_version": DUCKDB_STORAGE_VERSION})
 
 
@@ -84,6 +104,7 @@ def _connect(path: str) -> duckdb.DuckDBPyConnection:
     moved aside (kept, not deleted) and the file is opened without it;
     init_db() then re-applies the migrations.
     """
+    import duckdb
     try:
         return _open(path)
     except duckdb.Error as exc:
@@ -135,7 +156,15 @@ def exclusive_file_access():
 
 @_writes
 def init_db() -> None:
-    with get_conn() as con:
+    """Open the database now, with this version's tables and columns (any first
+    use does the same: get_conn() migrates every connection it opens)."""
+    get_conn().close()
+
+
+def _migrate(parent: duckdb.DuckDBPyConnection) -> None:
+    """This version's tables and columns, on a connection just opened (get_conn)."""
+    import duckdb
+    with parent.cursor() as con:
         con.execute("""
             CREATE TABLE IF NOT EXISTS downloads (
                 id INTEGER PRIMARY KEY,
@@ -614,6 +643,7 @@ def run_query(sql: str) -> dict:
     # Only the first word was checked: "SELECT 1; COMMIT; COPY … TO 'file'" ran
     # all three (COMMIT ended the rolled-back transaction, COPY wrote a file).
     # DuckDB's own parser says how many statements there are, and of what kind
+    import duckdb
     try:
         statements = duckdb.extract_statements(stripped)
     except Exception as exc:
