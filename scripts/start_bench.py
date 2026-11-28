@@ -25,6 +25,7 @@ tests/browser does).
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import queue
 import signal
@@ -123,6 +124,7 @@ def main() -> int:
     parser.add_argument("backend", help="the backend exe, or main.py to run it from source")
     parser.add_argument("--runs", type=int, default=3)
     parser.add_argument("--settle", type=float, default=12.0, help="seconds from the start to the USS reading")
+    parser.add_argument("--json", action="store_true", help="print each run's numbers as JSON instead")
     args = parser.parse_args()
     target = Path(args.backend).resolve()
     from playwright.sync_api import sync_playwright
@@ -133,6 +135,10 @@ def main() -> int:
         one_run(target, env, 0, browser)   # warm-up: creates the config and the database
         runs = [one_run(target, env, args.settle, browser) for _ in range(args.runs)]
         browser.close()
+
+    if args.json:
+        print(json.dumps(runs))
+        return 0
 
     def row(key: str, unit: str, scale: float = 1.0) -> str:
         values = [r[key] for r in runs if r[key] is not None]

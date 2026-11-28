@@ -471,7 +471,10 @@ The window on Windows draws its own frame; the page still gets **no IPC**:
   screen, no restart. It drags the window; its two buttons are links the shell catches (`links::splash_op`).
 - **Native dialogs**: BROWSE and IMPORT FILE ask the shell over the pipe (`shell.ask("dialog")` →
   `{"cmd": "answer"}`); it shows the system's dialog owned by the window (`rfd`, what tauri-plugin-dialog wraps,
-  without the script that plugin puts in every page). Tk only without a shell.
+  without the script that plugin puts in every page). The PASTE button and the Feed's copied-link offer
+  (`/api/clipboard`) ask it too (`shell.ask("clipboard")`, `arboard`). The shell's backend has **no Tk**:
+  `build_setup.py --tauri` leaves tkinter and Tcl/Tk's data out, and `MELLOW_SHELL=tauri` keeps `desktop.py`
+  from importing it (#124). Tk only without a shell.
 - **Global shortcut** (Config → *Download the copied link*, default Ctrl+Alt+D, empty = off) and
   **`mellowdlp://download?url=<link>`** (the installer registers the scheme; the window comes up and the Feed
   analyzes the link, never a download by itself; one http(s) link only; a link sent before the page connects

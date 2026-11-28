@@ -23,8 +23,8 @@ from .constants import (
 
 # Tk (the clipboard on Windows, the dialogs) is imported on its first use, and
 # never under the desktop shell, whose window has its own: the shell's backend
-# build leaves Tk out (packaging/MellowDLP.spec), and loading it costs ~45 ms
-# and ~6 MB. Looking for the module doesn't load it.
+# build leaves Tk out (packaging/MellowDLP.spec); loading it cost ~45 ms and
+# ~6 MB at every start on Windows (#107). Looking for the module doesn't load it.
 tkinter_available = (os.environ.get(shell.SHELL_ENV) != shell.SHELL_TAURI
                      and ("tkinter" in sys.modules or importlib.util.find_spec("tkinter") is not None))
 

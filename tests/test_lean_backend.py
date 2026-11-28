@@ -257,3 +257,51 @@ def test_a_restored_database_is_migrated_when_it_is_next_used(unopened):
         _old_database(db_path)
     assert not analytics.is_open()
     assert "video_id" in analytics.run_query("SELECT * FROM downloads")["columns"]
+
+
+# ── The real backend, as the shell starts it ────────────────────────────────
+
+def _start_backend(home: Path, *flags: str) -> subprocess.Popen:
+    env = {**os.environ, "HOME": str(home), "USERPROFILE": str(home),
+           "LOCALAPPDATA": str(home / "AppData" / "Local"),
+           "XDG_DATA_HOME": str(home / ".local" / "share"), "MELLOW_SHELL": "tauri"}
+    return subprocess.Popen([sys.executable, str(ROOT / "main.py"), "--shell", *flags], cwd=ROOT, env=env,
+                            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                            start_new_session=True)
+
+
+def _until(pred, timeout: float) -> bool:
+    import time
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if pred():
+            return True
+        time.sleep(0.05)
+    return False
+
+
+@pytest.mark.skipif(not (ROOT / "static").exists(), reason="static/ isn't built")
+def test_the_shells_backend_opens_it_when_the_page_first_asks(tmp_path):
+    from mellow import session
+    proc = _start_backend(tmp_path)
+    try:
+        line = proc.stdout.readline().decode()
+        assert line.startswith("MELLOW_READY ")
+        db = tmp_path / ".mellow_dlp.duckdb"
+        assert not _until(db.exists, 1.5)        # serving, and no database yet
+        from urllib.request import ProxyHandler, Request, build_opener
+        opener = build_opener(ProxyHandler({}))
+        url = line.split(" ", 2)[1].strip()
+        with opener.open(url, timeout=15) as resp:
+            cookie = resp.headers["Set-Cookie"].split(";", 1)[0]
+            body = resp.read().decode()
+        token = json.loads(body.split(f"sessionStorage.setItem({json.dumps(session.STORAGE_KEY)}, ", 1)[1]
+                           .split(")", 1)[0])
+        request = Request(url.split("/launch", 1)[0] + "/api/stats",
+                          headers={"Cookie": cookie, session.HEADER: token})
+        with opener.open(request, timeout=30) as resp:
+            assert "total_downloads" in json.loads(resp.read())
+        assert db.exists()
+    finally:
+        proc.stdin.close()
+        proc.wait(timeout=15)
