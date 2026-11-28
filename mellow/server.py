@@ -1746,5 +1746,6 @@ def api_v1_events() -> Response:
 # ── App init ──────────────────────────────────────────────────────────────────
 
 def init_app() -> Flask:
-    analytics.init_db()
+    """The app, ready to serve. The database isn't opened here: its first use
+    does it, migrations first (analytics.get_conn)."""
     return app

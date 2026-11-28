@@ -471,7 +471,10 @@ The window on Windows draws its own frame; the page still gets **no IPC**:
   screen, no restart. It drags the window; its two buttons are links the shell catches (`links::splash_op`).
 - **Native dialogs**: BROWSE and IMPORT FILE ask the shell over the pipe (`shell.ask("dialog")` →
   `{"cmd": "answer"}`); it shows the system's dialog owned by the window (`rfd`, what tauri-plugin-dialog wraps,
-  without the script that plugin puts in every page). Tk only without a shell.
+  without the script that plugin puts in every page). The PASTE button and the Feed's copied-link offer
+  (`/api/clipboard`) ask it too (`shell.ask("clipboard")`, `arboard`). The shell's backend has **no Tk**:
+  `build_setup.py --tauri` leaves tkinter and Tcl/Tk's data out, and `MELLOW_SHELL=tauri` keeps `desktop.py`
+  from importing it (#124). Tk only without a shell.
 - **Global shortcut** (Config → *Download the copied link*, default Ctrl+Alt+D, empty = off) and
   **`mellowdlp://download?url=<link>`** (the installer registers the scheme; the window comes up and the Feed
   analyzes the link, never a download by itself; one http(s) link only; a link sent before the page connects
@@ -553,6 +556,35 @@ Manager's "Memory" column) is **~191 MB**, the packaged test build, window open,
   whole WebView2 down instead of only its GPU process. `--disable-gpu` saves ~17 MB but draws
   everything in software (the renderer grows 36 → 41 MB and the animations cost CPU). Earlier:
   `--renderer-process-limit=1` and `--enable-low-end-device-mode` change nothing (one renderer already).
+
+### A leaner backend (#124): no Tk, DuckDB on first use
+
+The shell's backend has no Tk (its window shows the dialogs and reads the clipboard), and opens the
+database on its first use instead of before the server listens. Measured on **Linux** (the cloud
+worker: Ubuntu 24.04, the one-folder backend as `build_setup.py --tauri` stages it), with
+`scripts/start_bench.py` (the backend started as the shell starts it, a Chromium page as its window;
+one warm-up, then the runs; *stats* = the page's `/api/stats`, which opens the database). Medians of 10
+runs, interleaved:
+
+| | ready line | first data | stats | USS, window open (12 s) | USS, `--background` start (10 s) |
+|---|---|---|---|---|---|
+| Before | 572 ms | 695 ms | 747 ms | 119–127 MB | 110 MB |
+| No Tk | 571 ms | 688 ms | 739 ms | 122 MB | 105 MB |
+| **No Tk + DuckDB on first use** | **491 ms** | **603 ms** | 755 ms | 122 MB | **56 MB** |
+| …and DuckDB opened in a thread at start (not kept) | 548 ms | 678 ms | 723 ms | 122 MB | — |
+
+- **Size**: the backend folder 121.4 → 110.1 MB; the deb's `Installed-Size` 124,978 → 113,947 KB; the
+  rpm 127.7 → 116.4 MB installed; the AppImage 136.6 → 132.6 MB. The FlaskWebGUI build is unchanged
+  (121.4 MB, Tk included).
+- **DuckDB**: the window's first requests include `/api/stats`, so with a window it opens ~250 ms
+  after the ready line anyway, and memory is the same once it has. The gain is the ready line and
+  the page's first answer (~80–90 ms sooner here), and a start **in the tray at login**, which never opens
+  it until a window or a due sync needs it (−49 MB). Opening it in a thread at start brought the
+  stats ~30 ms sooner but delayed everything else (the thread competes with the server's start), so
+  it isn't kept.
+- **Tk**: on Linux it costs no measurable time (the earlier −45 ms was Windows); −5 MB in memory.
+- **Windows**: not measured here. `python scripts/start_bench.py <MellowDLP-backend\mellowdlp-backend.exe>`
+  gives the same table on a Windows machine (`pip install psutil` for the USS).
 
 ## What Tauri gives us next
 

@@ -537,6 +537,13 @@ fn start_backend(app: &AppHandle, background: bool) -> Result<(), String> {
                 Line::Event(Event::Dialog { id, kind, initial, extension }) => {
                     dialog(&app, id, kind, initial, extension)
                 }
+                Line::Event(Event::Clipboard { id }) => {
+                    let app = app.clone();
+                    std::thread::spawn(move || {
+                        let text = system::clipboard_text().unwrap_or_default();
+                        send(&app, "answer", json!({ "id": id, "text": text }));
+                    });
+                }
                 Line::Event(Event::Unknown) => {}
                 _ => println!("{line}"),
             }

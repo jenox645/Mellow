@@ -3,7 +3,8 @@
 //!
 //! stdout: `MELLOW_READY <launch-url> [attached]` once the server listens, then
 //! one `MELLOW_EVENT <json object>` per message ("type": state, notify,
-//! launch). stdin: one JSON object per line, `{"cmd": ...}`.
+//! launch, window_op, and the questions dialog and clipboard). stdin: one
+//! JSON object per line, `{"cmd": ...}`.
 
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -46,6 +47,11 @@ pub enum Event {
         initial: Option<String>,
         #[serde(default)]
         extension: Option<String>,
+    },
+    /// The clipboard's text (the page's /api/clipboard: the backend has no Tk);
+    /// the answer goes back as {"cmd": "answer", "id", "text"}
+    Clipboard {
+        id: u64,
     },
     /// A newer backend's message this shell doesn't know: ignored
     #[serde(other)]
@@ -164,6 +170,7 @@ mod tests {
             parse(r#"MELLOW_EVENT {"type":"dialog","id":7,"kind":"folder","initial":"C:\\Music"}"#),
             Line::Event(Event::Dialog { id: 7, kind: "folder".into(), initial: Some("C:\\Music".into()), extension: None })
         );
+        assert_eq!(parse(r#"MELLOW_EVENT {"type":"clipboard","id":8}"#), Line::Event(Event::Clipboard { id: 8 }));
     }
 
     #[test]

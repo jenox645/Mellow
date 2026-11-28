@@ -7,6 +7,11 @@ from PyInstaller.utils.hooks import copy_metadata
 _is_windows = _platform.system() == "Windows"
 _is_linux   = _platform.system() == "Linux"
 _has_tkinter = _iu.find_spec("tkinter") is not None
+# build_setup.py --tauri: the backend for the desktop shell (src-tauri/), whose
+# window has its own dialogs and reads the clipboard (mellow/desktop.py), so Tk
+# and its Tcl/Tk data stay out (~6 MB, and ~45 ms and ~6 MB of memory at start)
+_for_shell = _os.environ.get("MELLOW_BUILD_SHELL") == "tauri"
+_with_tk = _has_tkinter and not _for_shell
 
 # The repository root (this file is in packaging/): every path below is
 # absolute, so the build doesn't depend on the folder it's started from
@@ -41,10 +46,11 @@ a = Analysis(
         "itsdangerous",
         "duckdb",
         "mutagen",
-    ] + (["tkinter", "tkinter.filedialog"] if _has_tkinter else []),
+    ] + (["tkinter", "tkinter.filedialog"] if _with_tk else []),
     hookspath=[],
     runtime_hooks=[],
-    excludes=["matplotlib", "numpy", "pandas", "pywebview", "pythonnet"],
+    excludes=["matplotlib", "numpy", "pandas", "pywebview", "pythonnet"]
+             + ([] if _with_tk else ["tkinter", "_tkinter"]),
     cipher=block_cipher,
     noarchive=False,
 )

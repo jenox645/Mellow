@@ -398,7 +398,9 @@ _pyi_args = [sys.executable, "-m", "PyInstaller", "--noconfirm",
              "--distpath", str(HERE / "dist"), "--workpath", str(HERE / "build")]
 if not DESKTOP_SHORTCUT:
     _pyi_args.append("--clean")
-run([*_pyi_args, str(spec_file)])
+# --tauri: the backend for the shell's window, which has its own dialogs and clipboard: no Tk
+_pyi_env = {**os.environ, "MELLOW_BUILD_SHELL": "tauri"} if TAURI else None
+run([*_pyi_args, str(spec_file)], env=_pyi_env)
 
 exe_name = "MellowDLP.exe" if IS_WINDOWS else "MellowDLP"
 built_exe = HERE / "dist" / exe_name

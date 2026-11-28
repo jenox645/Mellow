@@ -13,6 +13,8 @@ Tauri IPC:
     notify  a system notification ("title", "body"), sent when no visible
             window shows the app (a page on screen shows its own)
     launch  a fresh one-time sign-in link ("url"), for a new window
+    dialog, clipboard   questions (ask()): a native dialog, the clipboard's
+            text; the shell answers {"cmd": "answer", "id", "path" | "text"}
 - shell → backend: one JSON object per line on stdin, {"cmd": ...}. The
   module that owns an action registers its handler (server.py); each runs on
   its own thread, so a slow one never stalls the channel. EOF means the shell
@@ -42,6 +44,10 @@ from .constants import (
 log = logging.getLogger(__name__)
 
 EVENT_PREFIX = "MELLOW_EVENT "
+# The shell starts the backend with MELLOW_SHELL=tauri (src-tauri/src/backend.rs
+# SHELL_ENV): known before attach(), from the first import on
+SHELL_ENV = "MELLOW_SHELL"
+SHELL_TAURI = "tauri"
 
 _out: TextIO | None = None
 _out_lock = threading.Lock()
@@ -373,7 +379,7 @@ def queue_finished(done: list[dict], open_pages: int) -> None:
 register("window", lambda message: set_window_visible(bool(message.get("visible", True))))
 
 
-# ── Questions to the shell (a native dialog) ─────────────────────────────────
+# ── Questions to the shell (a native dialog, the clipboard) ──────────────────
 # ask() sends {"type": kind, "id": n, …} and waits for {"cmd": "answer", "id": n, …}
 
 _answers: dict[int, dict | None] = {}
@@ -382,8 +388,8 @@ _question_ids = itertools.count(1)
 
 
 def ask(what: str, timeout: float, **data) -> dict | None:
-    """Ask the shell (a native dialog) and wait for its answer; None without a
-    shell, or when it doesn't answer within `timeout`."""
+    """Ask the shell (a native dialog, the clipboard's text) and wait for its
+    answer; None without a shell, or when it doesn't answer within `timeout`."""
     if not active():
         return None
     qid = next(_question_ids)
